@@ -42,9 +42,6 @@ jobs:
       - name: Run Code Scan
         run: snyk code test --all-projects --sarif > snyk.sarif
 
-      - name: Run Monitor
-        run: snyk monitor --all-projects
-
       - name: Upload Results
         uses: github/codeql-action/upload-sarif@v3
         with:
