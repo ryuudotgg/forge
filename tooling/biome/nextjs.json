@@ -1,0 +1,9 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.0.0-beta.4/schema.json",
+  "extends": ["./base.json"],
+  "files": { "includes": ["**/*"] },
+  "linter": {
+    "enabled": true,
+    "domains": { "next": "recommended" }
+  }
+}

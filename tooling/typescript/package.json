@@ -1,0 +1,7 @@
+{
+  "name": "@ryuujs/tsconfig",
+  "version": "0.1.0",
+  "files": [
+    "*.json"
+  ]
+}

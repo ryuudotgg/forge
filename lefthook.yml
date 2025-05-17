@@ -1,0 +1,8 @@
+commit-msg:
+  jobs:
+    - run: bunx commitlint --edit ${1}
+
+pre-commit:
+  jobs:
+    - run: bun run check:fix --staged --no-errors-on-unmatched
+    - run: git update-index --again

@@ -1,0 +1,33 @@
+{
+  "name": "forge",
+  "private": true,
+  "packageManager": "bun@1.2.9",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tooling/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "check": "turbo run check --continue -- --cache --cache-location .cache/.biomecache",
+    "check:fix": "turbo run check --continue -- --write --cache --cache-location .cache/.biomecache",
+    "clean": "git clean -xdf .turbo node_modules",
+    "clean:workspaces": "turbo run clean",
+    "dev": "turbo watch dev --continue",
+    "postinstall": "bun run lint:ws",
+    "lint:ws": "bunx sherif@latest",
+    "start": "turbo run start --continue",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@commitlint/types": "^19.8.1",
+    "lefthook": "^1.11.13",
+    "turbo": "^2.5.3",
+    "typescript": "5.8.2"
+  },
+  "engines": {
+    "bun": "1.2.9"
+  }
+}
