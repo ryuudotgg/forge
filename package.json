@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "check": "turbo run check --continue -- --cache --cache-location .cache/.biomecache",
-    "check:fix": "turbo run check --continue -- --write --cache --cache-location .cache/.biomecache",
+    "check": "turbo run check --continue",
+    "check:fix": "turbo run check --continue -- --write",
     "clean": "git clean -xdf .turbo node_modules",
     "clean:workspaces": "turbo run clean",
     "dev": "turbo watch dev --continue",
