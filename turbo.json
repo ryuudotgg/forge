@@ -9,12 +9,10 @@
     },
     "check": {
       "dependsOn": ["^build"],
-      "outputs": [".cache/.biomecache"],
       "outputLogs": "new-only"
     },
     "check:fix": {
       "dependsOn": ["^build"],
-      "outputs": [".cache/.biomecache"],
       "outputLogs": "new-only"
     },
     "clean": {
