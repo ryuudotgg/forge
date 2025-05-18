@@ -36,7 +36,7 @@ Ryuu's Forge is a powerful CLI tool designed to kickstart your new project in ju
 ## ✨ Key Features
 
 - 🏗️ **Type Safety** - Full type-safety with strict type checking
-- 📦 **Bun** - Fast, disk-efficient package management
+- 📦 **PNPM** - Fast, disk-efficient package management
 - 🏃 **Turborepo** - High-performance build system
 - 📝 **Biome** - Fast and consistent code style
 - 🧪 **Testing** - Complete testing setup with Vitest

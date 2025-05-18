@@ -35,7 +35,7 @@ jobs:
         uses: ./tooling/github/setup
 
       - name: Lint / Format
-        run: bun run check
+        run: pnpm check
 
   typecheck:
     name: Type Checks
@@ -50,4 +50,4 @@ jobs:
         uses: ./tooling/github/setup
 
       - name: Type Check
-        run: bun run typecheck
+        run: pnpm typecheck

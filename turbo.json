@@ -1,39 +1,44 @@
 {
-  "$schema": "https://turborepo.com/schema.json",
-  "ui": "tui",
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", ".cache/tsbuildinfo.json"]
-    },
-    "check": {
-      "dependsOn": ["^build"],
-      "outputLogs": "new-only"
-    },
-    "check:fix": {
-      "dependsOn": ["^build"],
-      "outputLogs": "new-only"
-    },
-    "clean": {
-      "cache": false
-    },
-    "//#clean": {
-      "cache": false
-    },
-    "dev": {
-      "dependsOn": ["^dev"],
-      "cache": false,
-      "persistent": true
-    },
-    "start": {
-      "dependsOn": ["^start"],
-      "cache": false,
-      "persistent": true
-    },
-    "typecheck": {
-      "dependsOn": ["^build"],
-      "outputs": [".cache/tsbuildinfo.json"]
-    }
-  }
+	"$schema": "https://turborepo.com/schema.json",
+	"ui": "tui",
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*"],
+			"outputs": [
+				"dist/**",
+				".next/**",
+				"!.next/cache/**",
+				".cache/tsbuildinfo.json"
+			]
+		},
+		"check": {
+			"dependsOn": ["^build"],
+			"outputLogs": "new-only"
+		},
+		"check:fix": {
+			"dependsOn": ["^build"],
+			"outputLogs": "new-only"
+		},
+		"clean": {
+			"cache": false
+		},
+		"//#clean": {
+			"cache": false
+		},
+		"dev": {
+			"dependsOn": ["^dev"],
+			"cache": false,
+			"persistent": true
+		},
+		"start": {
+			"dependsOn": ["^start"],
+			"cache": false,
+			"persistent": true
+		},
+		"typecheck": {
+			"dependsOn": ["^build"],
+			"outputs": [".cache/tsbuildinfo.json"]
+		}
+	}
 }

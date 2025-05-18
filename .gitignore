@@ -1,18 +1,21 @@
 # Dependencies
-node_modules
+node_modules/
 
 # Local Env
 .env
 .env.local
 
 # Testing
-coverage
+coverage/
+
+# Cache
+.cache/
 
 # Turbo
-.turbo
+.turbo/
 
 # Vercel
-.vercel
+.vercel/
 
 # Build Outputs
 .next/

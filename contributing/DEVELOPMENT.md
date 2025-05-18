@@ -13,7 +13,9 @@ Ryuu's Forge is a monorepo-based project structured using workspaces:
 Ensure you have the following installed:
 
 - Git
-- [Bun](https://bun.sh)
+- [Node](https://nodejs.org)
+  - Version: [.nvmrc](../.nvmrc)
+- [PNPM](https://pnpm.io)
   - Version: [package.json#packageManager](../package.json#L4)
 
 ## Getting Started
@@ -28,7 +30,7 @@ cd forge
 2. Install dependencies:
 
 ```bash
-bun install
+pnpm install
 ```
 
 3. Copy the environment variables:
@@ -40,20 +42,20 @@ cp .env.example .env
 4. Start the development server:
 
 ```bash
-bun run dev
+pnpm dev
 ```
 
 ## Available Commands
 
-- `bun run build` - Build Apps and Packages
-- `bun run check` - Run Biome's Formatter and Linter
-- `bun run check:fix` - Auto-fix Issues with Biome
-- `bun run clean` - Clean Dependencies and Build Artifacts
-- `bun run clean:workspaces` - Clean **ALL** Dependencies and Build Artifacts
-- `bun run dev` - Start a Development Server
-- `bun run lint:ws` - Lint Workspace with Sherif
-- `bun run start` - Start Apps in Production
-- `bun run typecheck` - Run Type Checks
+- `pnpm build` - Build Apps and Packages
+- `pnpm check` - Run Biome's Formatter and Linter
+- `pnpm check:fix` - Auto-fix Issues with Biome
+- `pnpm clean` - Clean Dependencies and Build Artifacts
+- `pnpm clean:workspaces` - Clean **ALL** Dependencies and Build Artifacts
+- `pnpm dev` - Start a Development Server
+- `pnpm lint:ws` - Lint Workspace with Sherif
+- `pnpm start` - Start Apps in Production
+- `pnpm typecheck` - Run Type Checks
 
 ## Code Style
 
@@ -98,8 +100,8 @@ export function MyComponent({
 We use [Vitest](https://vitest.dev) for testing. To run tests:
 
 ```bash
-bun run test        # Run Tests
-bun run test:watch  # Run Tests in Watch Mode
+pnpm test        # Run Tests
+pnpm test:watch  # Run Tests in Watch Mode
 ```
 
 When writing tests:
@@ -112,7 +114,7 @@ When writing tests:
 
 For debugging applications:
 
-1. Start the development server with `bun run dev`
+1. Start the development server with `pnpm dev`
 2. Use your browser's dev tools for frontend debugging
 3. Add `console.log()` statements for quick debugging (remove before committing)
 
