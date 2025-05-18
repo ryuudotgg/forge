@@ -18,7 +18,7 @@ cd forge
 ### 3. Install Dependencies
 
 ```bash
-bun install
+pnpm install
 ```
 
 ### 4. Create a Branch
@@ -48,7 +48,7 @@ For detailed information about our contribution process, including PR guidelines
 ## Notable Features
 
 - 🏗️ **Type Safety** - Full type-safety with strict type checking
-- 📦 **Bun** - Fast, disk-efficient package management
+- 📦 **PNPM** - Fast, disk-efficient package management
 - 🏃 **Turborepo** - High-performance build system
 - 📝 **Biome** - Fast and consistent code style
 - 🧪 **Vitest** - Testing framework

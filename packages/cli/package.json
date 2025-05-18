@@ -1,0 +1,55 @@
+{
+	"name": "@ryuujs/forge",
+	"version": "0.1.0",
+	"description": "An all-in-one starter for your next big thing.",
+	"keywords": [
+		"forge"
+	],
+	"homepage": "https://forge.ryuu.gg",
+	"bugs": {
+		"url": "https://github.com/ryuudotgg/forge/issues",
+		"email": "contact@ryuu.gg"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ryuudotgg/forge.git",
+		"directory": "packages/cli"
+	},
+	"funding": {
+		"type": "github",
+		"url": "https://github.com/sponsors/ryuudotgg"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "Ryuu",
+		"email": "me@ryuu.gg",
+		"url": "https://ryuu.gg"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"default": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"bin": "./dist/index.js",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"check": "biome check",
+		"clean": "git clean -xdf .turbo .cache dist node_modules",
+		"dev": "tsdown --watch",
+		"start": "node ./dist/index.js",
+		"typecheck": "tsc"
+	},
+	"devDependencies": {
+		"@ryuujs/biome": "workspace:*",
+		"@ryuujs/tsconfig": "workspace:*",
+		"tsdown": "^0.11.11",
+		"typescript": "5.8.3"
+	}
+}
