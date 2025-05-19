@@ -28,6 +28,19 @@ importers:
         version: 5.8.3
 
   packages/cli:
+    dependencies:
+      '@clack/core':
+        specifier: 1.0.0-alpha.0
+        version: 1.0.0-alpha.0
+      '@clack/prompts':
+        specifier: 1.0.0-alpha.0
+        version: 1.0.0-alpha.0
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
+      zod:
+        specifier: ^3.24.4
+        version: 3.24.4
     devDependencies:
       '@ryuujs/biome':
         specifier: workspace:*
@@ -131,6 +144,12 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
+
+  '@clack/core@1.0.0-alpha.0':
+    resolution: {integrity: sha512-Cp/bPW/pMUCkJ7Lr8VFixvFrlnJ4tQPDHqfTNQ51z50qwX1fSIAstQLfel2NquVHqbfjyrUkBsal8OJRBPJVjw==}
+
+  '@clack/prompts@1.0.0-alpha.0':
+    resolution: {integrity: sha512-Aem7r4U2A4jdOh0PIv51Ugi+4vDgzJjGVMnuPUNVVHDGhFHEO//u6F/JY6NsZQFtXrd7ZmfePSiipikr/e5wWg==}
 
   '@commitlint/cli@19.8.1':
     resolution: {integrity: sha512-LXUdNIkspyxrlV6VDHWBmCZRtkEVRpBKxi2Gtw3J54cGWhLCTouVD/Q6ZSaSvd2YaDObWK8mDjrz3TIKtaQMAA==}
@@ -723,6 +742,9 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  sisteransi@1.0.5:
+    resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
+
   split2@4.2.0:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
     engines: {node: '>= 10.x'}
@@ -840,6 +862,9 @@ packages:
     resolution: {integrity: sha512-AyeEbWOu/TAXdxlV9wmGcR0+yh2j3vYPGOECcIj2S7MkrLyC7ne+oye2BKTItt0ii2PHk4cDy+95+LshzbXnGg==}
     engines: {node: '>=12.20'}
 
+  zod@3.24.4:
+    resolution: {integrity: sha512-OdqJE9UDRPwWsrHjLN2F8bPxvwJBK22EHLWtanu0LSYr5YqzsaaW3RMgmjwr8Rypg5k+meEJdSPXJZXE/yqOMg==}
+
 snapshots:
 
   '@babel/code-frame@7.27.1':
@@ -904,7 +929,22 @@ snapshots:
   '@biomejs/cli-win32-x64@2.0.0-beta.4':
     optional: true
 
+<<<<<<< Updated upstream
   '@commitlint/cli@19.8.1(@types/node@22.15.19)(typescript@5.8.3)':
+=======
+  '@clack/core@1.0.0-alpha.0':
+    dependencies:
+      picocolors: 1.1.1
+      sisteransi: 1.0.5
+
+  '@clack/prompts@1.0.0-alpha.0':
+    dependencies:
+      '@clack/core': 1.0.0-alpha.0
+      picocolors: 1.1.1
+      sisteransi: 1.0.5
+
+  '@commitlint/cli@19.8.1(@types/node@22.15.18)(typescript@5.8.3)':
+>>>>>>> Stashed changes
     dependencies:
       '@commitlint/format': 19.8.1
       '@commitlint/lint': 19.8.1
@@ -1449,6 +1489,8 @@ snapshots:
 
   semver@7.7.2: {}
 
+  sisteransi@1.0.5: {}
+
   split2@4.2.0: {}
 
   string-width@4.2.3:
@@ -1559,3 +1601,5 @@ snapshots:
       yargs-parser: 21.1.1
 
   yocto-queue@1.2.1: {}
+
+  zod@3.24.4: {}

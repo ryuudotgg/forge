@@ -28,8 +28,8 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"default": "./dist/index.js",
-			"types": "./dist/index.d.ts"
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
 		}
 	},
 	"main": "./dist/index.js",
@@ -45,6 +45,12 @@
 		"dev": "tsdown --watch",
 		"start": "node ./dist/index.js",
 		"typecheck": "tsc"
+	},
+	"dependencies": {
+		"@clack/core": "1.0.0-alpha.0",
+		"@clack/prompts": "1.0.0-alpha.0",
+		"picocolors": "^1.1.1",
+		"zod": "^3.24.4"
 	},
 	"devDependencies": {
 		"@ryuujs/biome": "workspace:*",
