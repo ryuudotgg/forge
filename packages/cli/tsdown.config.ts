@@ -1,18 +1,17 @@
 import { defineConfig } from "tsdown";
 
+const isDev = process.env.npm_lifecycle_event === "dev";
+
 export default defineConfig({
-	entry: ["./src/index.ts"],
+	entry: ["./src/**/*.ts"],
 	outDir: "dist",
 
 	format: "esm",
 	platform: "node",
 	target: "esnext",
 
-	dts: {
-		sourcemap: true,
-		compilerOptions: { isolatedDeclarations: true },
-	},
+	dts: false,
 
-	minify: true,
+	minify: !isDev,
 	treeshake: true,
 });
