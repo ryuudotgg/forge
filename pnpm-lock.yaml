@@ -39,8 +39,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.1
       zod:
-        specifier: ^3.24.4
-        version: 3.24.4
+        specifier: ^3.25.7
+        version: 3.25.7
     devDependencies:
       '@ryuujs/biome':
         specifier: workspace:*
@@ -862,8 +862,8 @@ packages:
     resolution: {integrity: sha512-AyeEbWOu/TAXdxlV9wmGcR0+yh2j3vYPGOECcIj2S7MkrLyC7ne+oye2BKTItt0ii2PHk4cDy+95+LshzbXnGg==}
     engines: {node: '>=12.20'}
 
-  zod@3.24.4:
-    resolution: {integrity: sha512-OdqJE9UDRPwWsrHjLN2F8bPxvwJBK22EHLWtanu0LSYr5YqzsaaW3RMgmjwr8Rypg5k+meEJdSPXJZXE/yqOMg==}
+  zod@3.25.7:
+    resolution: {integrity: sha512-YGdT1cVRmKkOg6Sq7vY7IkxdphySKnXhaUmFI4r4FcuFVNgpCb9tZfNwXbT6BPjD5oz0nubFsoo9pIqKrDcCvg==}
 
 snapshots:
 
@@ -929,9 +929,6 @@ snapshots:
   '@biomejs/cli-win32-x64@2.0.0-beta.4':
     optional: true
 
-<<<<<<< Updated upstream
-  '@commitlint/cli@19.8.1(@types/node@22.15.19)(typescript@5.8.3)':
-=======
   '@clack/core@1.0.0-alpha.0':
     dependencies:
       picocolors: 1.1.1
@@ -943,8 +940,7 @@ snapshots:
       picocolors: 1.1.1
       sisteransi: 1.0.5
 
-  '@commitlint/cli@19.8.1(@types/node@22.15.18)(typescript@5.8.3)':
->>>>>>> Stashed changes
+  '@commitlint/cli@19.8.1(@types/node@22.15.19)(typescript@5.8.3)':
     dependencies:
       '@commitlint/format': 19.8.1
       '@commitlint/lint': 19.8.1
@@ -1602,4 +1598,4 @@ snapshots:
 
   yocto-queue@1.2.1: {}
 
-  zod@3.24.4: {}
+  zod@3.25.7: {}
