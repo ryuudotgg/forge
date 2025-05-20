@@ -1,14 +1,15 @@
 {
-  "name": "@ryuujs/biome",
-  "version": "0.1.0",
-  "private": true,
-  "files": [
-    "*.json"
-  ],
-  "scripts": {
-    "clean": "git clean -xdf .turbo node_modules"
-  },
-  "dependencies": {
-    "@biomejs/biome": "2.0.0-beta.5"
-  }
+	"name": "@ryuujs/biome",
+	"version": "0.1.0",
+	"private": true,
+	"exports": {
+		".": "./base/biome.jsonc",
+		"./nextjs": "./nextjs/biome.jsonc"
+	},
+	"scripts": {
+		"clean": "git clean -xdf .turbo node_modules"
+	},
+	"dependencies": {
+		"@biomejs/biome": "2.0.0-beta.5"
+	}
 }
