@@ -1,7 +1,7 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const pathSchema = z
-	.string({ required_error: "You need to provide a path." })
+	.string({ error: "You need to provide a path." })
 	.trim()
-	.min(1, "You need to provide a path.")
-	.regex(/^(\.\/.*|\.)$/, "You need to provide a relative path.");
+	.min(1, { error: "You need to provide a path." })
+	.regex(/^(\.\/.*|\.)$/, { error: "You need to provide a relative path." });
