@@ -50,7 +50,7 @@
 		"@clack/core": "1.0.0-alpha.0",
 		"@clack/prompts": "1.0.0-alpha.0",
 		"picocolors": "^1.1.1",
-		"zod": "^3.25.17"
+		"zod": "^3.25.20"
 	},
 	"devDependencies": {
 		"@ryuujs/biome": "workspace:*",
