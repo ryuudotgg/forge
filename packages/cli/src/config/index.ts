@@ -8,12 +8,12 @@ export function getUnsafeConfig(): Partial<Config> {
 }
 
 export function validateConfig(): Config {
-	const result = configSchema.safeParse(config);
-
-	if (result.error)
+	try {
+		return configSchema.parse(config);
+	} catch (error) {
+		console.log(error);
 		cancel("Your fire went out unexpectedly. (It's not you, it's us.)", 1);
-
-	return result.data;
+	}
 }
 
 export function setConfig(newConfig: Partial<Config>) {
