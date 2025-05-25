@@ -6,7 +6,7 @@ try {
 
 	const prompts = await fs.readdir(path.join(import.meta.dirname, "./prompts"));
 	const validPrompts = prompts
-		.filter((file) => /^\d+-[a-zA-Z0-9]+\.(js|ts)$/.test(file))
+		.filter((file) => /^\d+-[a-zA-Z0-9-]+\.(js|ts)$/.test(file))
 		.sort((a, b) => {
 			const numA = Number(a.split("-")[0] || "0") || 0;
 			const numB = Number(b.split("-")[0] || "0") || 0;
