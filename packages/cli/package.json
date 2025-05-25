@@ -55,7 +55,7 @@
 	"devDependencies": {
 		"@ryuujs/biome": "workspace:*",
 		"@ryuujs/tsconfig": "workspace:*",
-		"tsdown": "^0.12.2",
+		"tsdown": "^0.12.3",
 		"typescript": "5.8.3"
 	}
 }
