@@ -32,17 +32,17 @@ catalogs:
 
   # ===== NODE.JS ENVIRONMENT =====
   node:
+    # CLI Framework
     "@clack/prompts": 1.0.0-alpha.0
-
-  # ===== FRONTEND CORE =====
-  prod:
     "@clack/core": 1.0.0-alpha.0
+
+    # Color Utilities
     picocolors: ^1.1.1
 
   # ===== UTILITIES =====
   utils:
     # Validation
-    zod: ^3.25.28
+    zod: ^3.25.30
 
 onlyBuiltDependencies:
   - lefthook

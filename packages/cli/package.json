@@ -47,9 +47,9 @@
 		"typecheck": "tsc"
 	},
 	"dependencies": {
-		"@clack/core": "catalog:prod",
+		"@clack/core": "catalog:node",
 		"@clack/prompts": "catalog:node",
-		"picocolors": "catalog:prod",
+		"picocolors": "catalog:node",
 		"zod": "catalog:utils"
 	},
 	"devDependencies": {
