@@ -1,7 +1,8 @@
 {
-  "recommendations": [
-    "biomejs.biome",
-    "bradlc.vscode-tailwindcss",
-    "yoavbls.pretty-ts-errors"
-  ]
+	"recommendations": [
+		"antfu.pnpm-catalog-lens",
+		"biomejs.biome",
+		"bradlc.vscode-tailwindcss",
+		"yoavbls.pretty-ts-errors"
+	]
 }

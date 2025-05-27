@@ -3,11 +3,46 @@ packages:
   - packages/*
   - tooling/*
 
-catalog:
-  "@types/node": ^22.15.21
-  "@biomejs/biome": 2.0.0-beta.5
+catalogs:
+  # ===== BUILD TOOLS =====
+  build:
+    tsdown: ^0.12.3
 
-  typescript: 5.8.3
+  # ===== DEVELOPMENT TOOLS =====
+  dev:
+    # Git Hooks & Development Workflow
+    lefthook: ^1.11.13
+    
+    # TypeScript & Compilation
+    typescript: 5.8.3
+
+  # ===== LINTING & FORMATTING =====
+  lint:
+    # Biome (ESLint/Prettier Alternative)
+    "@biomejs/biome": 2.0.0-beta.5
+    
+    # Commit Linting
+    "@commitlint/cli": ^19.8.1
+    "@commitlint/config-conventional": ^19.8.1
+    "@commitlint/types": ^19.8.1
+
+  # ===== MONOREPO =====
+  monorepo:
+    turbo: ^2.5.3
+
+  # ===== NODE.JS ENVIRONMENT =====
+  node:
+    # CLI Framework
+    "@clack/prompts": 1.0.0-alpha.0
+    "@clack/core": 1.0.0-alpha.0
+
+    # Color Utilities
+    picocolors: ^1.1.1
+
+  # ===== UTILITIES =====
+  utils:
+    # Validation
+    zod: ^3.25.30
 
 onlyBuiltDependencies:
   - lefthook

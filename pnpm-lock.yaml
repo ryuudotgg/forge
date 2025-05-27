@@ -4,42 +4,82 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  build:
+    tsdown:
+      specifier: ^0.12.3
+      version: 0.12.3
+  dev:
+    lefthook:
+      specifier: ^1.11.13
+      version: 1.11.13
+    typescript:
+      specifier: 5.8.3
+      version: 5.8.3
+  lint:
+    '@biomejs/biome':
+      specifier: 2.0.0-beta.5
+      version: 2.0.0-beta.5
+    '@commitlint/cli':
+      specifier: ^19.8.1
+      version: 19.8.1
+    '@commitlint/config-conventional':
+      specifier: ^19.8.1
+      version: 19.8.1
+    '@commitlint/types':
+      specifier: ^19.8.1
+      version: 19.8.1
+  node:
+    '@clack/core':
+      specifier: 1.0.0-alpha.0
+      version: 1.0.0-alpha.0
+    '@clack/prompts':
+      specifier: 1.0.0-alpha.0
+      version: 1.0.0-alpha.0
+    picocolors:
+      specifier: ^1.1.1
+      version: 1.1.1
+  utils:
+    zod:
+      specifier: ^3.25.30
+      version: 3.25.30
+
 importers:
 
   .:
     devDependencies:
       '@commitlint/cli':
-        specifier: ^19.8.1
+        specifier: catalog:lint
         version: 19.8.1(@types/node@22.15.21)(typescript@5.8.3)
       '@commitlint/config-conventional':
-        specifier: ^19.8.1
+        specifier: catalog:lint
         version: 19.8.1
       '@commitlint/types':
-        specifier: ^19.8.1
+        specifier: catalog:lint
         version: 19.8.1
       lefthook:
-        specifier: ^1.11.13
+        specifier: catalog:dev
         version: 1.11.13
       turbo:
         specifier: ^2.5.3
         version: 2.5.3
       typescript:
-        specifier: 5.8.3
+        specifier: catalog:dev
         version: 5.8.3
 
   packages/cli:
     dependencies:
       '@clack/core':
-        specifier: 1.0.0-alpha.0
+        specifier: catalog:node
         version: 1.0.0-alpha.0
       '@clack/prompts':
-        specifier: 1.0.0-alpha.0
+        specifier: catalog:node
         version: 1.0.0-alpha.0
       picocolors:
-        specifier: ^1.1.1
+        specifier: catalog:node
         version: 1.1.1
       zod:
-        specifier: ^3.25.30
+        specifier: catalog:utils
         version: 3.25.30
     devDependencies:
       '@ryuujs/biome':
@@ -49,16 +89,16 @@ importers:
         specifier: workspace:*
         version: link:../../tooling/typescript
       tsdown:
-        specifier: ^0.12.3
+        specifier: catalog:build
         version: 0.12.3(typescript@5.8.3)
       typescript:
-        specifier: 5.8.3
+        specifier: catalog:dev
         version: 5.8.3
 
   tooling/biome:
     dependencies:
       '@biomejs/biome':
-        specifier: 2.0.0-beta.5
+        specifier: catalog:lint
         version: 2.0.0-beta.5
 
   tooling/github: {}
