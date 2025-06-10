@@ -28,7 +28,7 @@ async function getName(): Promise<void> {
 			const nameResult = nameSchema.safeParse(value);
 			if (nameResult.error) return nameResult.error.issues[0]?.message;
 
-			const slugResult = slugSchema.safeParse(slugify(value));
+			const slugResult = slugSchema.safeParse(slugify(nameResult.data));
 			if (slugResult.error) return slugResult.error.issues[0]?.message;
 		},
 	});
