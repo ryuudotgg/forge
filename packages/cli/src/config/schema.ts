@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 
 import { nameSchema, slugSchema } from "../prompts/1-name";
 import { pathSchema } from "../prompts/2-path";

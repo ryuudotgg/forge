@@ -1,5 +1,5 @@
 import { isCancel, text } from "@clack/prompts";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { getUnsafeConfig, setConfig } from "../config";
 import { cancel } from "../utils/cancel";
 
