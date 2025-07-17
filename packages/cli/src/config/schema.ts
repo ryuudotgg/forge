@@ -1,6 +1,14 @@
 import { z } from "zod";
 
 import { nameSchema, slugSchema } from "../prompts/1-name";
+import { pathSchema } from "../prompts/2-path";
+import { platformsSchema } from "../prompts/3-platforms";
+import { webSchema } from "../prompts/4-web";
+import { desktopSchema } from "../prompts/5-desktop";
+import { mobileSchema } from "../prompts/6-mobile";
+import { backendSchema } from "../prompts/7-backend";
+import { rpcSchema } from "../prompts/8-rpc";
+import { publicRPCSchema } from "../prompts/9-rpc-public";
 import { orpcContractsSchema } from "../prompts/10-orpc-contracts";
 import { databaseSchema } from "../prompts/11-database";
 import { ormSchema } from "../prompts/12-orm";
@@ -11,16 +19,8 @@ import { authenticationSchema } from "../prompts/16-authentication";
 import { authenticationCustomUISchema } from "../prompts/17-authentication-custom-ui";
 import { tailwindEcosystemSchema } from "../prompts/18-tailwind";
 import { styleFrameworkSchema } from "../prompts/19-style-framework";
-import { pathSchema } from "../prompts/2-path";
 import { nativeStyleFrameworkSchema } from "../prompts/20-native-style-framework copy";
 import { proceedToAddonsSchema } from "../prompts/21-proceed-to-addons";
-import { platformsSchema } from "../prompts/3-platforms";
-import { webSchema } from "../prompts/4-web";
-import { desktopSchema } from "../prompts/5-desktop";
-import { mobileSchema } from "../prompts/6-mobile";
-import { backendSchema } from "../prompts/7-backend";
-import { rpcSchema } from "../prompts/8-rpc";
-import { publicRPCSchema } from "../prompts/9-rpc-public";
 
 const baseSchema = z.object({
 	name: nameSchema,
