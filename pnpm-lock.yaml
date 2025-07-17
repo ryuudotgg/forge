@@ -11,7 +11,7 @@ catalogs:
       version: 0.12.9
   dev:
     lefthook:
-      specifier: ^1.12.0
+      specifier: ^1.12.2
       version: 1.12.2
     typescript:
       specifier: 5.8.3
