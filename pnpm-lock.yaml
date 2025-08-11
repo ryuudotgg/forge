@@ -41,7 +41,7 @@ catalogs:
       version: 1.1.1
   utils:
     zod:
-      specifier: ^4.0.5
+      specifier: ^4.0.17
       version: 4.0.17
 
 importers:
