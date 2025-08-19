@@ -31,8 +31,8 @@ catalogs:
       version: 19.8.1
   node:
     '@clack/core':
-      specifier: 1.0.0-alpha.1
-      version: 1.0.0-alpha.1
+      specifier: 1.0.0-alpha.4
+      version: 1.0.0-alpha.4
     '@clack/prompts':
       specifier: 1.0.0-alpha.1
       version: 1.0.0-alpha.1
@@ -71,7 +71,7 @@ importers:
     dependencies:
       '@clack/core':
         specifier: catalog:node
-        version: 1.0.0-alpha.1
+        version: 1.0.0-alpha.4
       '@clack/prompts':
         specifier: catalog:node
         version: 1.0.0-alpha.1
@@ -187,6 +187,9 @@ packages:
 
   '@clack/core@1.0.0-alpha.1':
     resolution: {integrity: sha512-rFbCU83JnN7l3W1nfgCqqme4ZZvTTgsiKQ6FM0l+r0P+o2eJpExcocBUWUIwnDzL76Aca9VhUdWmB2MbUv+Qyg==}
+
+  '@clack/core@1.0.0-alpha.4':
+    resolution: {integrity: sha512-VCtU+vjyKPMSakVrB9q1bOnXN7QW/w4+YQDQCOF59GrzydW+169i0fVx/qzRRXJgt8KGj/pZZ/JxXroFZIDByg==}
 
   '@clack/prompts@1.0.0-alpha.1':
     resolution: {integrity: sha512-07MNT0OsxjKOcyVfX8KhXBhJiyUbDP1vuIAcHc+nx5v93MJO23pX3X/k3bWz6T3rpM9dgWPq90i4Jq7gZAyMbw==}
@@ -979,6 +982,11 @@ snapshots:
     optional: true
 
   '@clack/core@1.0.0-alpha.1':
+    dependencies:
+      picocolors: 1.1.1
+      sisteransi: 1.0.5
+
+  '@clack/core@1.0.0-alpha.4':
     dependencies:
       picocolors: 1.1.1
       sisteransi: 1.0.5
