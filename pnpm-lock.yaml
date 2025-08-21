@@ -34,8 +34,8 @@ catalogs:
       specifier: 1.0.0-alpha.4
       version: 1.0.0-alpha.4
     '@clack/prompts':
-      specifier: 1.0.0-alpha.1
-      version: 1.0.0-alpha.1
+      specifier: 1.0.0-alpha.4
+      version: 1.0.0-alpha.4
     picocolors:
       specifier: ^1.1.1
       version: 1.1.1
@@ -74,7 +74,7 @@ importers:
         version: 1.0.0-alpha.4
       '@clack/prompts':
         specifier: catalog:node
-        version: 1.0.0-alpha.1
+        version: 1.0.0-alpha.4
       picocolors:
         specifier: catalog:node
         version: 1.1.1
@@ -185,14 +185,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@clack/core@1.0.0-alpha.1':
-    resolution: {integrity: sha512-rFbCU83JnN7l3W1nfgCqqme4ZZvTTgsiKQ6FM0l+r0P+o2eJpExcocBUWUIwnDzL76Aca9VhUdWmB2MbUv+Qyg==}
-
   '@clack/core@1.0.0-alpha.4':
     resolution: {integrity: sha512-VCtU+vjyKPMSakVrB9q1bOnXN7QW/w4+YQDQCOF59GrzydW+169i0fVx/qzRRXJgt8KGj/pZZ/JxXroFZIDByg==}
 
-  '@clack/prompts@1.0.0-alpha.1':
-    resolution: {integrity: sha512-07MNT0OsxjKOcyVfX8KhXBhJiyUbDP1vuIAcHc+nx5v93MJO23pX3X/k3bWz6T3rpM9dgWPq90i4Jq7gZAyMbw==}
+  '@clack/prompts@1.0.0-alpha.4':
+    resolution: {integrity: sha512-KnmtDF2xQGoI5AlBme9akHtvCRV0RKAARUXHBQO2tMwnY8B08/4zPWigT7uLK25UPrMCEqnyQPkKRjNdhPbf8g==}
 
   '@commitlint/cli@19.8.1':
     resolution: {integrity: sha512-LXUdNIkspyxrlV6VDHWBmCZRtkEVRpBKxi2Gtw3J54cGWhLCTouVD/Q6ZSaSvd2YaDObWK8mDjrz3TIKtaQMAA==}
@@ -981,19 +978,14 @@ snapshots:
   '@biomejs/cli-win32-x64@2.2.0':
     optional: true
 
-  '@clack/core@1.0.0-alpha.1':
-    dependencies:
-      picocolors: 1.1.1
-      sisteransi: 1.0.5
-
   '@clack/core@1.0.0-alpha.4':
     dependencies:
       picocolors: 1.1.1
       sisteransi: 1.0.5
 
-  '@clack/prompts@1.0.0-alpha.1':
+  '@clack/prompts@1.0.0-alpha.4':
     dependencies:
-      '@clack/core': 1.0.0-alpha.1
+      '@clack/core': 1.0.0-alpha.4
       picocolors: 1.1.1
       sisteransi: 1.0.5
 
