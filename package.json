@@ -1,7 +1,7 @@
 {
 	"name": "forge",
 	"private": true,
-	"packageManager": "pnpm@10.15.0",
+	"packageManager": "pnpm@10.19.0",
 	"workspaces": [
 		"apps/*",
 		"packages/*",
@@ -29,6 +29,6 @@
 	},
 	"engines": {
 		"node": "22.21.0",
-		"pnpm": "^10.15.0"
+		"pnpm": "^10.19.0"
 	}
 }
