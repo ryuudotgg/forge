@@ -6,7 +6,7 @@ packages:
 catalogs:
   # ===== BUILD TOOLS =====
   build:
-    tsdown: ^0.15.9
+    tsdown: ^0.15.12
 
   # ===== DEVELOPMENT TOOLS =====
   dev:
