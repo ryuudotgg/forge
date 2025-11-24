@@ -31,8 +31,8 @@ catalogs:
       version: 20.0.0
   node:
     '@clack/core':
-      specifier: 1.0.0-alpha.6
-      version: 1.0.0-alpha.6
+      specifier: 1.0.0-alpha.7
+      version: 1.0.0-alpha.7
     '@clack/prompts':
       specifier: 1.0.0-alpha.6
       version: 1.0.0-alpha.6
@@ -71,7 +71,7 @@ importers:
     dependencies:
       '@clack/core':
         specifier: catalog:node
-        version: 1.0.0-alpha.6
+        version: 1.0.0-alpha.7
       '@clack/prompts':
         specifier: catalog:node
         version: 1.0.0-alpha.6
@@ -187,6 +187,9 @@ packages:
 
   '@clack/core@1.0.0-alpha.6':
     resolution: {integrity: sha512-eG5P45+oShFG17u9I1DJzLkXYB1hpUgTLi32EfsMjSHLEqJUR8BOBCVFkdbUX2g08eh/HCi6UxNGpPhaac1LAA==}
+
+  '@clack/core@1.0.0-alpha.7':
+    resolution: {integrity: sha512-3vdh6Ar09D14rVxJZIm3VQJkU+ZOKKT5I5cC0cOVazy70CNyYYjiwRj9unwalhESndgxx6bGc/m6Hhs4EKF5XQ==}
 
   '@clack/prompts@1.0.0-alpha.6':
     resolution: {integrity: sha512-75NCtYOgDHVBE2nLdKPTDYOaESxO0GLAKC7INREp5VbS988Xua1u+588VaGlcvXiLc/kSwc25Cd+4PeTSpY6QQ==}
@@ -1010,6 +1013,11 @@ snapshots:
     optional: true
 
   '@clack/core@1.0.0-alpha.6':
+    dependencies:
+      picocolors: 1.1.1
+      sisteransi: 1.0.5
+
+  '@clack/core@1.0.0-alpha.7':
     dependencies:
       picocolors: 1.1.1
       sisteransi: 1.0.5
