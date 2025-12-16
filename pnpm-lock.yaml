@@ -41,8 +41,8 @@ catalogs:
       version: 1.1.1
   utils:
     zod:
-      specifier: ^4.1.12
-      version: 4.1.12
+      specifier: ^4.2.1
+      version: 4.2.1
 
 importers:
 
@@ -80,7 +80,7 @@ importers:
         version: 1.1.1
       zod:
         specifier: catalog:utils
-        version: 4.1.12
+        version: 4.2.1
     devDependencies:
       '@ryuujs/biome':
         specifier: workspace:*
@@ -942,8 +942,8 @@ packages:
     resolution: {integrity: sha512-4LCcse/U2MHZ63HAJVE+v71o7yOdIe4cZ70Wpf8D/IyjDKYQLV5GD46B+hSTjJsvV5PztjvHoU580EftxjDZFQ==}
     engines: {node: '>=12.20'}
 
-  zod@4.1.12:
-    resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
+  zod@4.2.1:
+    resolution: {integrity: sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==}
 
 snapshots:
 
@@ -1698,4 +1698,4 @@ snapshots:
 
   yocto-queue@1.2.2: {}
 
-  zod@4.1.12: {}
+  zod@4.2.1: {}
