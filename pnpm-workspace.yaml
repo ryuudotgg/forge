@@ -11,7 +11,7 @@ catalogs:
   # ===== DEVELOPMENT TOOLS =====
   dev:
     # Git Hooks & Development Workflow
-    lefthook: ^2.0.2
+    lefthook: ^2.0.13
     
     # TypeScript & Compilation
     typescript: 5.9.3
