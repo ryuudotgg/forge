@@ -42,7 +42,7 @@ catalogs:
   # ===== UTILITIES =====
   utils:
     # Validation
-    zod: ^4.3.5
+    zod: ^4.3.6
 
 onlyBuiltDependencies:
   - lefthook
