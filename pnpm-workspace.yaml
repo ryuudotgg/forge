@@ -28,7 +28,7 @@ catalogs:
 
   # ===== MONOREPO =====
   monorepo:
-    turbo: ^2.8.1
+    turbo: ^2.8.10
 
   # ===== NODE.JS ENVIRONMENT =====
   node:
