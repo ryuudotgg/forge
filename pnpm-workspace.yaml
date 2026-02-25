@@ -34,7 +34,7 @@ catalogs:
   node:
     # CLI Framework
     "@clack/prompts": 1.0.1
-    "@clack/core": 1.0.0-alpha.7
+    "@clack/core": 1.0.1
 
     # Color Utilities
     picocolors: ^1.1.1
