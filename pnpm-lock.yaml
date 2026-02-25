@@ -7,7 +7,7 @@ settings:
 catalogs:
   build:
     tsdown:
-      specifier: ^0.20.1
+      specifier: ^0.20.3
       version: 0.20.3
   dev:
     lefthook:
