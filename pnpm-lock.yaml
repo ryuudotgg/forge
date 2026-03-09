@@ -31,8 +31,8 @@ catalogs:
       version: 20.4.3
   node:
     '@clack/core':
-      specifier: 1.0.0-alpha.7
-      version: 1.0.0-alpha.7
+      specifier: 1.1.0
+      version: 1.1.0
     '@clack/prompts':
       specifier: 1.0.1
       version: 1.0.1
@@ -71,7 +71,7 @@ importers:
     dependencies:
       '@clack/core':
         specifier: catalog:node
-        version: 1.0.0-alpha.7
+        version: 1.1.0
       '@clack/prompts':
         specifier: catalog:node
         version: 1.0.1
@@ -193,11 +193,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@clack/core@1.0.0-alpha.7':
-    resolution: {integrity: sha512-3vdh6Ar09D14rVxJZIm3VQJkU+ZOKKT5I5cC0cOVazy70CNyYYjiwRj9unwalhESndgxx6bGc/m6Hhs4EKF5XQ==}
-
   '@clack/core@1.0.1':
     resolution: {integrity: sha512-WKeyK3NOBwDOzagPR5H08rFk9D/WuN705yEbuZvKqlkmoLM2woKtXb10OO2k1NoSU4SFG947i2/SCYh+2u5e4g==}
+
+  '@clack/core@1.1.0':
+    resolution: {integrity: sha512-SVcm4Dqm2ukn64/8Gub2wnlA5nS2iWJyCkdNHcvNHPIeBTGojpdJ+9cZKwLfmqy7irD4N5qLteSilJlE0WLAtA==}
 
   '@clack/prompts@1.0.1':
     resolution: {integrity: sha512-/42G73JkuYdyWZ6m8d/CJtBrGl1Hegyc7Fy78m5Ob+jF85TOUmLR5XLce/U3LxYAw0kJ8CT5aI99RIvPHcGp/Q==}
@@ -1070,14 +1070,13 @@ snapshots:
   '@biomejs/cli-win32-x64@2.4.4':
     optional: true
 
-  '@clack/core@1.0.0-alpha.7':
+  '@clack/core@1.0.1':
     dependencies:
       picocolors: 1.1.1
       sisteransi: 1.0.5
 
-  '@clack/core@1.0.1':
+  '@clack/core@1.1.0':
     dependencies:
-      picocolors: 1.1.1
       sisteransi: 1.0.5
 
   '@clack/prompts@1.0.1':
