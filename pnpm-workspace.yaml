@@ -14,7 +14,7 @@ catalogs:
     lefthook: ^2.1.4
     
     # TypeScript & Compilation
-    typescript: 5.9.3
+    typescript: 6.0.2
 
   # ===== LINTING & FORMATTING =====
   lint:
