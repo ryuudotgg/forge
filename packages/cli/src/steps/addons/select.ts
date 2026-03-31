@@ -1,17 +1,17 @@
 import { confirm, isCancel } from "@clack/prompts";
 import { cancel } from "../../utils/cancel";
-import { defineStep } from "../types";
+import { defineStep, SKIP } from "../types";
 
 const proceedToAddonsStep = defineStep<boolean>({
 	id: "proceedToAddons",
 	group: "addons",
 	schema: null,
-	configKey: "proceedToAddons",
+	configKey: null,
 
 	shouldRun: () => true,
 
 	async execute(_config, interactive) {
-		if (!interactive) return false;
+		if (!interactive) return SKIP;
 
 		const proceedToAddons = await confirm({
 			message: "Do you want to continue selecting addons?",
