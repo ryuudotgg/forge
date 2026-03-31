@@ -51,6 +51,9 @@ importers:
 
   .:
     devDependencies:
+      '@biomejs/biome':
+        specifier: catalog:lint
+        version: 2.4.10
       '@commitlint/cli':
         specifier: catalog:lint
         version: 20.5.0(@types/node@25.5.0)(conventional-commits-parser@6.4.0)(typescript@6.0.2)
@@ -85,9 +88,6 @@ importers:
         specifier: catalog:utils
         version: 4.3.6
     devDependencies:
-      '@ryuujs/biome':
-        specifier: workspace:*
-        version: link:../../tooling/biome
       '@ryuujs/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript
@@ -100,12 +100,6 @@ importers:
       typescript:
         specifier: catalog:dev
         version: 6.0.2
-
-  tooling/biome:
-    dependencies:
-      '@biomejs/biome':
-        specifier: catalog:lint
-        version: 2.4.10
 
   tooling/github: {}
 

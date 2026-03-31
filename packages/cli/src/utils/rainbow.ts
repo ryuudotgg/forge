@@ -1,8 +1,5 @@
 import color from "picocolors";
 
-/**
- * It'll generate rainbow-colored text.
- */
 export function rainbow(text: string): string {
 	const colors = [
 		color.red,

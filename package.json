@@ -20,6 +20,7 @@
 		"typecheck": "turbo run typecheck"
 	},
 	"devDependencies": {
+		"@biomejs/biome": "catalog:lint",
 		"@commitlint/cli": "catalog:lint",
 		"@commitlint/config-conventional": "catalog:lint",
 		"@commitlint/types": "catalog:lint",

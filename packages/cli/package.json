@@ -28,13 +28,13 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.ts",
-			"default": "./dist/index.js"
+			"types": "./dist/index.d.mts",
+			"default": "./dist/index.mjs"
 		}
 	},
-	"main": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"bin": "./dist/index.js",
+	"main": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"bin": "./dist/index.mjs",
 	"files": [
 		"dist"
 	],
@@ -43,7 +43,7 @@
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache dist node_modules",
 		"dev": "tsdown --watch",
-		"start": "node ./dist/index.js",
+		"start": "node ./dist/index.mjs",
 		"typecheck": "tsc"
 	},
 	"dependencies": {
@@ -53,7 +53,6 @@
 		"zod": "catalog:utils"
 	},
 	"devDependencies": {
-		"@ryuujs/biome": "workspace:*",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"tsdown": "catalog:build",
