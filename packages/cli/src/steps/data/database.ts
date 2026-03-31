@@ -1,14 +1,16 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
 const databaseOptions = ["MySQL", "PostgreSQL", "SQLite", "None"] as const;
-export const databaseSchema = z.enum(
-	databaseOptions.filter((database) => database !== "None"),
+type ValidDatabase = Exclude<(typeof databaseOptions)[number], "None">;
+const validDatabases = databaseOptions.filter(
+	(x): x is ValidDatabase => x !== "None",
 );
+export const databaseSchema = Schema.Literal(...validDatabases);
 
-const databaseStep = defineStep<z.infer<typeof databaseSchema>>({
+const databaseStep = defineStep<typeof databaseSchema.Type>({
 	id: "database",
 	group: "data",
 	schema: databaseSchema,
@@ -18,12 +20,12 @@ const databaseStep = defineStep<z.infer<typeof databaseSchema>>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing =
-				typeof config.database === "string" ? config.database : undefined;
+			if (config.database) {
+				const result = Schema.decodeUnknownEither(databaseSchema)(
+					config.database,
+				);
 
-			if (existing) {
-				const result = databaseSchema.safeParse(existing);
-				if (result.success) return result.data;
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;

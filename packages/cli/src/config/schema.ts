@@ -1,65 +1,71 @@
-import { z } from "zod";
+import { Schema } from "effect";
 import type { Step } from "../steps/types";
 
+type ContextFreeField =
+	| Schema.Schema.AnyNoContext
+	| Schema.PropertySignature<
+			Schema.PropertySignature.Token,
+			Schema.Schema.Type<Schema.Schema.AnyNoContext>,
+			PropertyKey,
+			Schema.PropertySignature.Token,
+			Schema.Schema.Encoded<Schema.Schema.AnyNoContext>,
+			boolean,
+			never
+	  >;
+
 export function assembleSchema(steps: Step[]) {
-	const shape: Record<string, z.ZodType> = {};
+	const fields: Record<string, ContextFreeField> = {};
 
 	for (const step of steps) {
 		if (step.configKey === null && step.schemaShape) {
 			for (const [key, schema] of Object.entries(step.schemaShape))
-				shape[key] = schema;
+				fields[key] = schema;
 		} else if (step.schema) {
 			const key = step.configKey ?? step.id;
 
-			if (key === "tailwindEcosystem") shape[key] = step.schema.default(false);
-			else shape[key] = step.schema.optional();
+			if (step.schemaDefault)
+				fields[key] = Schema.optionalWith(step.schema, {
+					default: step.schemaDefault,
+				});
+			else fields[key] = Schema.optional(step.schema);
 		}
 	}
 
-	return z
-		.object(shape)
-		.superRefine((data, ctx) => {
+	return Schema.Struct(fields).pipe(
+		// biome-ignore lint/suspicious/useIterableCallbackReturn: Schema.filter, not Array.filter
+		Schema.filter((data) => {
 			const platforms = Array.isArray(data.platforms)
 				? data.platforms
 				: undefined;
 
 			if (platforms?.includes("Web") && !data.web)
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					message: "A web framework wasn't selected.",
-				});
+				return "A web framework wasn't selected.";
 
 			if (platforms?.includes("Desktop") && !data.desktop)
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					message: "A desktop framework wasn't selected.",
-				});
+				return "A desktop framework wasn't selected.";
 
 			if (platforms?.includes("Mobile") && !data.mobile)
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					message: "A mobile framework wasn't selected.",
-				});
-		})
-		.transform((data) => {
-			const {
-				mobile,
-				tailwindEcosystem,
-				styleFramework,
-				nativeStyleFramework,
-			} = data;
-
-			if (tailwindEcosystem === false)
-				if (
-					(mobile &&
-						(!styleFramework || styleFramework === "Tailwind CSS") &&
-						nativeStyleFramework === "NativeWind") ||
-					(!mobile && styleFramework === "Tailwind CSS")
-				)
-					return { ...data, tailwindEcosystem: true };
-
-			return data;
-		});
+				return "A mobile framework wasn't selected.";
+		}),
+	);
 }
 
-export type Config = z.infer<ReturnType<typeof assembleSchema>>;
+export function applyConfigDefaults<T extends Record<string, unknown>>(
+	data: T,
+): T {
+	const { mobile, tailwindEcosystem, styleFramework, nativeStyleFramework } =
+		data;
+
+	if (tailwindEcosystem === false)
+		if (
+			(mobile &&
+				(!styleFramework || styleFramework === "Tailwind CSS") &&
+				nativeStyleFramework === "NativeWind") ||
+			(!mobile && styleFramework === "Tailwind CSS")
+		)
+			return { ...data, tailwindEcosystem: true };
+
+	return data;
+}
+
+export type Config = ReturnType<typeof assembleSchema>["Type"];

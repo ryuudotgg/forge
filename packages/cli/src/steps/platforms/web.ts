@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
@@ -10,9 +10,9 @@ const webOptions = [
 	"TanStack Start",
 ] as const;
 
-export const webSchema = z.enum(webOptions);
+export const webSchema = Schema.Literal(...webOptions);
 
-const webStep = defineStep<z.infer<typeof webSchema>>({
+const webStep = defineStep<typeof webSchema.Type>({
 	id: "web",
 	group: "platforms",
 	schema: webSchema,
@@ -20,16 +20,13 @@ const webStep = defineStep<z.infer<typeof webSchema>>({
 
 	dependencies: ["platforms"],
 
-	shouldRun: (config) =>
-		Array.isArray(config.platforms) && config.platforms.includes("Web"),
+	shouldRun: (config) => !!config.platforms?.includes("Web"),
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing = typeof config.web === "string" ? config.web : undefined;
-
-			if (existing) {
-				const result = webSchema.safeParse(existing);
-				if (result.success) return result.data;
+			if (config.web) {
+				const result = Schema.decodeUnknownEither(webSchema)(config.web);
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return "Next.js";

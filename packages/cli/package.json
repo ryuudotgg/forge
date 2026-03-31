@@ -43,16 +43,20 @@
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache dist node_modules",
 		"dev": "tsdown --watch",
+		"prepare": "effect-language-service patch --dir ../../node_modules/typescript",
 		"start": "node ./dist/index.mjs",
 		"typecheck": "tsc"
 	},
 	"dependencies": {
 		"@clack/core": "catalog:node",
 		"@clack/prompts": "catalog:node",
-		"picocolors": "catalog:node",
-		"zod": "catalog:utils"
+		"@effect/platform": "catalog:effect",
+		"@effect/platform-node": "catalog:effect",
+		"effect": "catalog:effect",
+		"picocolors": "catalog:node"
 	},
 	"devDependencies": {
+		"@effect/language-service": "^0.84.2",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"tsdown": "catalog:build",

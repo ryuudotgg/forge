@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { z } from "zod";
+import { Either, Schema } from "effect";
+import { ArrayFormatter } from "effect/ParseResult";
 import { buildFlagOverrides, getParseArgsOptions } from "./cli";
 import { orchestrate } from "./orchestrator";
 import { presets } from "./presets";
@@ -47,11 +48,30 @@ try {
 	}
 
 	if (values.config && typeof values.config === "string") {
-		const fileConfig = z
-			.record(z.string(), z.unknown())
-			.parse(JSON.parse(readFileSync(values.config, "utf-8")));
+		const configSchema = Schema.Record({
+			key: Schema.String,
+			value: Schema.Unknown,
+		});
 
-		initialConfig = { ...initialConfig, ...fileConfig };
+		const configResult = Schema.decodeUnknownEither(configSchema)(
+			JSON.parse(readFileSync(values.config, "utf-8")),
+		);
+
+		if (Either.isLeft(configResult)) {
+			const issues = ArrayFormatter.formatErrorSync(configResult.left);
+			console.error("Invalid Config File:");
+
+			for (const issue of issues)
+				console.error(
+					issue.path.length > 0
+						? `  ${issue.path.join(".")}: ${issue.message}`
+						: `  ${issue.message}`,
+				);
+
+			process.exit(1);
+		}
+
+		initialConfig = { ...initialConfig, ...configResult.right };
 	}
 
 	initialConfig = { ...initialConfig, ...buildFlagOverrides(values) };

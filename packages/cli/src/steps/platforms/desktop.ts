@@ -1,12 +1,12 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
 const desktopOptions = ["Tauri", "Electron"] as const;
-export const desktopSchema = z.enum(desktopOptions);
+export const desktopSchema = Schema.Literal(...desktopOptions);
 
-const desktopStep = defineStep<z.infer<typeof desktopSchema>>({
+const desktopStep = defineStep<typeof desktopSchema.Type>({
 	id: "desktop",
 	group: "platforms",
 	schema: desktopSchema,
@@ -14,17 +14,15 @@ const desktopStep = defineStep<z.infer<typeof desktopSchema>>({
 
 	dependencies: ["platforms"],
 
-	shouldRun: (config) =>
-		Array.isArray(config.platforms) && config.platforms.includes("Desktop"),
+	shouldRun: (config) => !!config.platforms?.includes("Desktop"),
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing =
-				typeof config.desktop === "string" ? config.desktop : undefined;
-
-			if (existing) {
-				const result = desktopSchema.safeParse(existing);
-				if (result.success) return result.data;
+			if (config.desktop) {
+				const result = Schema.decodeUnknownEither(desktopSchema)(
+					config.desktop,
+				);
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return "Tauri";

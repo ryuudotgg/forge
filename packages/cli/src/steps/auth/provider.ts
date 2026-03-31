@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
@@ -11,11 +11,16 @@ const authenticationOptions = [
 	"None",
 ] as const;
 
-export const authenticationSchema = z.enum(
-	authenticationOptions.filter((authentication) => authentication !== "None"),
+type ValidAuthentication = Exclude<
+	(typeof authenticationOptions)[number],
+	"None"
+>;
+const validAuthentications = authenticationOptions.filter(
+	(x): x is ValidAuthentication => x !== "None",
 );
+export const authenticationSchema = Schema.Literal(...validAuthentications);
 
-const authenticationStep = defineStep<z.infer<typeof authenticationSchema>>({
+const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 	id: "authentication",
 	group: "auth",
 	schema: authenticationSchema,
@@ -25,14 +30,12 @@ const authenticationStep = defineStep<z.infer<typeof authenticationSchema>>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing =
-				typeof config.authentication === "string"
-					? config.authentication
-					: undefined;
+			if (config.authentication) {
+				const result = Schema.decodeUnknownEither(authenticationSchema)(
+					config.authentication,
+				);
 
-			if (existing) {
-				const result = authenticationSchema.safeParse(existing);
-				if (result.success) return result.data;
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;

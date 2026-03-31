@@ -1,15 +1,20 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { stripNulls } from "../../utils/strip-nulls";
 import { defineStep, SKIP } from "../types";
 
 const styleFrameworkOptions = ["Tailwind CSS", "UnoCSS", "None"] as const;
-export const styleFrameworkSchema = z.enum(
-	styleFrameworkOptions.filter((framework) => framework !== "None"),
+type ValidStyleFramework = Exclude<
+	(typeof styleFrameworkOptions)[number],
+	"None"
+>;
+const validStyleFrameworks = styleFrameworkOptions.filter(
+	(x): x is ValidStyleFramework => x !== "None",
 );
+export const styleFrameworkSchema = Schema.Literal(...validStyleFrameworks);
 
-const styleFrameworkStep = defineStep<z.infer<typeof styleFrameworkSchema>>({
+const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 	id: "styleFramework",
 	group: "style",
 	schema: styleFrameworkSchema,
@@ -23,14 +28,12 @@ const styleFrameworkStep = defineStep<z.infer<typeof styleFrameworkSchema>>({
 		if (config.tailwindEcosystem === true) return "Tailwind CSS";
 
 		if (!interactive) {
-			const existing =
-				typeof config.styleFramework === "string"
-					? config.styleFramework
-					: undefined;
+			if (config.styleFramework) {
+				const result = Schema.decodeUnknownEither(styleFrameworkSchema)(
+					config.styleFramework,
+				);
 
-			if (existing) {
-				const result = styleFrameworkSchema.safeParse(existing);
-				if (result.success) return result.data;
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;

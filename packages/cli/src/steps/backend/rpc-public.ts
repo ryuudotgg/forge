@@ -1,9 +1,9 @@
 import { confirm, isCancel } from "@clack/prompts";
-import { z } from "zod";
+import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
-export const publicRPCSchema = z.boolean();
+export const publicRPCSchema = Schema.Boolean;
 
 export default defineStep<boolean>({
 	id: "rpcPublic",

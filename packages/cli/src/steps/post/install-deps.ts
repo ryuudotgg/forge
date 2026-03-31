@@ -11,10 +11,7 @@ const installDepsStep = defineStep({
 	shouldRun: () => true,
 
 	async execute(config, interactive) {
-		const pm =
-			typeof config.packageManager === "string"
-				? config.packageManager
-				: "pnpm";
+		const pm = config.packageManager ?? "pnpm";
 
 		if (!interactive) {
 			// TODO: Run `${pm} install`

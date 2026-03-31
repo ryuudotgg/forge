@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
@@ -10,12 +10,19 @@ const nativeStyleFrameworkOptions = [
 	"None",
 ] as const;
 
-export const nativeStyleFrameworkSchema = z.enum(
-	nativeStyleFrameworkOptions.filter((framework) => framework !== "None"),
+type ValidNativeStyleFramework = Exclude<
+	(typeof nativeStyleFrameworkOptions)[number],
+	"None"
+>;
+const validNativeStyleFrameworks = nativeStyleFrameworkOptions.filter(
+	(x): x is ValidNativeStyleFramework => x !== "None",
+);
+export const nativeStyleFrameworkSchema = Schema.Literal(
+	...validNativeStyleFrameworks,
 );
 
 const nativeStyleFrameworkStep = defineStep<
-	z.infer<typeof nativeStyleFrameworkSchema>
+	typeof nativeStyleFrameworkSchema.Type
 >({
 	id: "nativeStyleFramework",
 	group: "style",
@@ -30,14 +37,12 @@ const nativeStyleFrameworkStep = defineStep<
 		if (config.tailwindEcosystem === true) return "NativeWind";
 
 		if (!interactive) {
-			const existing =
-				typeof config.nativeStyleFramework === "string"
-					? config.nativeStyleFramework
-					: undefined;
+			if (config.nativeStyleFramework) {
+				const result = Schema.decodeUnknownEither(nativeStyleFrameworkSchema)(
+					config.nativeStyleFramework,
+				);
 
-			if (existing) {
-				const result = nativeStyleFrameworkSchema.safeParse(existing);
-				if (result.success) return result.data;
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;

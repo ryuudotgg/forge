@@ -1,23 +1,23 @@
 import { confirm, isCancel } from "@clack/prompts";
-import { z } from "zod";
+import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const tailwindEcosystemSchema = z.boolean();
+export const tailwindEcosystemSchema = Schema.Boolean;
 
 const tailwindEcosystemStep = defineStep<boolean>({
 	id: "tailwindEcosystem",
 	group: "style",
 	schema: tailwindEcosystemSchema,
+	schemaDefault: () => false,
 	configKey: "tailwindEcosystem",
 
 	shouldRun: (config) => !!(config.web || config.desktop) && !!config.mobile,
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing = config.tailwindEcosystem;
-
-			if (typeof existing === "boolean") return existing;
+			if (config.tailwindEcosystem !== undefined)
+				return config.tailwindEcosystem;
 
 			return SKIP;
 		}

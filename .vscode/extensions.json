@@ -3,6 +3,7 @@
 		"antfu.pnpm-catalog-lens",
 		"biomejs.biome",
 		"bradlc.vscode-tailwindcss",
+		"effectful-tech.effect-vscode",
 		"yoavbls.pretty-ts-errors"
 	]
 }
