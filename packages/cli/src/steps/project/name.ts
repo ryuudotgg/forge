@@ -1,19 +1,18 @@
 import { isCancel, text } from "@clack/prompts";
 import { Either, Schema } from "effect";
+import { ArrayFormatter } from "effect/ParseResult";
 import { cancel } from "../../utils/cancel";
 import { slugify } from "../../utils/slugify";
 import { defineStep, SKIP } from "../types";
 
-export const nameSchema = Schema.String.pipe(
-	Schema.trimmed(),
+export const nameSchema = Schema.Trim.pipe(
 	Schema.minLength(1, { message: () => "You need to provide a name." }),
 	Schema.maxLength(15, {
 		message: () => "It must be less than 15 characters.",
 	}),
 );
 
-export const slugSchema = Schema.String.pipe(
-	Schema.trimmed(),
+export const slugSchema = Schema.Trim.pipe(
 	Schema.minLength(1, { message: () => "We couldn't generate a slug." }),
 	Schema.maxLength(15, {
 		message: () => "Your slug must be less than 15 characters.",
@@ -54,6 +53,7 @@ const nameStep = defineStep<{ name: string; slug: string }>({
 
 				const slug = slugify(nameResult.right);
 				const slugResult = Schema.decodeUnknownEither(slugSchema)(slug);
+
 				if (Either.isLeft(slugResult)) return SKIP;
 
 				return { name: nameResult.right, slug: slugResult.right };
@@ -67,12 +67,19 @@ const nameStep = defineStep<{ name: string; slug: string }>({
 			placeholder: "eg. Acme",
 			validate: (value) => {
 				const nameResult = Schema.decodeUnknownEither(nameSchema)(value);
-				if (Either.isLeft(nameResult)) return nameResult.left.message;
+				if (Either.isLeft(nameResult)) {
+					const issues = ArrayFormatter.formatErrorSync(nameResult.left);
+					return issues[0]?.message;
+				}
 
 				const slugResult = Schema.decodeUnknownEither(slugSchema)(
 					slugify(nameResult.right),
 				);
-				if (Either.isLeft(slugResult)) return slugResult.left.message;
+
+				if (Either.isLeft(slugResult)) {
+					const issues = ArrayFormatter.formatErrorSync(slugResult.left);
+					return issues[0]?.message;
+				}
 			},
 		});
 
