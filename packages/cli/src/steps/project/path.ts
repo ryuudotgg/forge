@@ -25,6 +25,7 @@ const pathStep = defineStep<string>({
 		if (!interactive) {
 			const existing =
 				typeof config.path === "string" ? config.path : undefined;
+
 			const value = existing ?? `./${slug}`;
 
 			const result = pathSchema.safeParse(value);
@@ -33,12 +34,14 @@ const pathStep = defineStep<string>({
 			return result.data;
 		}
 
+		const defaultValue = `./${slug}`;
+
 		const path = await text({
 			message: "Where do you want us to create your project?",
-			defaultValue: `./${slug}`,
-			placeholder: `./${slug}`,
+			defaultValue,
+			placeholder: defaultValue,
 			validate: (value) => {
-				const result = pathSchema.safeParse(value);
+				const result = pathSchema.safeParse(value || defaultValue);
 				if (result.error) return result.error.issues[0]?.message;
 			},
 		});
