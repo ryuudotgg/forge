@@ -1,1 +1,1 @@
-export { assembleSchema, type Config } from "./schema";
+export { applyConfigDefaults, assembleSchema, type Config } from "./schema";

@@ -1,13 +1,15 @@
 import { isCancel, text } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const pathSchema = z
-	.string({ error: "You need to provide a path." })
-	.trim()
-	.min(1, { error: "You need to provide a path." })
-	.regex(/^(\.\/.*|\.)$/, { error: "You need to provide a relative path." });
+export const pathSchema = Schema.String.pipe(
+	Schema.trimmed(),
+	Schema.minLength(1, { message: () => "You need to provide a path." }),
+	Schema.pattern(/^(\.\/.*|\.)$/, {
+		message: () => "You need to provide a relative path.",
+	}),
+);
 
 const pathStep = defineStep<string>({
 	id: "path",
@@ -20,18 +22,15 @@ const pathStep = defineStep<string>({
 	shouldRun: () => true,
 
 	async execute(config, interactive) {
-		const slug = typeof config.slug === "string" ? config.slug : "my-app";
+		const slug = config.slug ?? "my-app";
 
 		if (!interactive) {
-			const existing =
-				typeof config.path === "string" ? config.path : undefined;
+			const value = config.path ?? `./${slug}`;
 
-			const value = existing ?? `./${slug}`;
+			const result = Schema.decodeUnknownEither(pathSchema)(value);
+			if (Either.isLeft(result)) return SKIP;
 
-			const result = pathSchema.safeParse(value);
-			if (!result.success) return SKIP;
-
-			return result.data;
+			return result.right;
 		}
 
 		const defaultValue = `./${slug}`;
@@ -41,8 +40,10 @@ const pathStep = defineStep<string>({
 			defaultValue,
 			placeholder: defaultValue,
 			validate: (value) => {
-				const result = pathSchema.safeParse(value || defaultValue);
-				if (result.error) return result.error.issues[0]?.message;
+				const result = Schema.decodeUnknownEither(pathSchema)(
+					value || defaultValue,
+				);
+				if (Either.isLeft(result)) return result.left.message;
 			},
 		});
 

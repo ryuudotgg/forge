@@ -1,15 +1,17 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
 const linterOptions = ["Biome", "Oxc", "ESLint + Prettier", "None"] as const;
 
-export const linterSchema = z.enum(
-	linterOptions.filter((linter) => linter !== "None"),
+type ValidLinter = Exclude<(typeof linterOptions)[number], "None">;
+
+export const linterSchema = Schema.Literal(
+	...linterOptions.filter((linter): linter is ValidLinter => linter !== "None"),
 );
 
-const linterStep = defineStep<z.infer<typeof linterSchema>>({
+const linterStep = defineStep<typeof linterSchema.Type>({
 	id: "linter",
 	group: "project",
 	schema: linterSchema,
@@ -19,12 +21,9 @@ const linterStep = defineStep<z.infer<typeof linterSchema>>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing =
-				typeof config.linter === "string" ? config.linter : undefined;
-
-			if (existing) {
-				const result = linterSchema.safeParse(existing);
-				if (result.success) return result.data;
+			if (config.linter) {
+				const result = Schema.decodeUnknownEither(linterSchema)(config.linter);
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;

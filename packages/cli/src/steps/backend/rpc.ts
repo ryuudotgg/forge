@@ -1,13 +1,19 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
 const rpcOptions = ["tRPC", "oRPC", "None"] as const;
 
-export const rpcSchema = z.enum(rpcOptions.filter((r) => r !== "None"));
+type ValidRPC = Exclude<(typeof rpcOptions)[number], "None">;
 
-type RPC = z.infer<typeof rpcSchema>;
+const filteredRpcOptions = rpcOptions.filter(
+	(r): r is ValidRPC => r !== "None",
+);
+
+export const rpcSchema = Schema.Literal(...filteredRpcOptions);
+
+type RPC = typeof rpcSchema.Type;
 
 export default defineStep<RPC>({
 	id: "rpc",
@@ -21,7 +27,7 @@ export default defineStep<RPC>({
 	async execute(config, interactive): Promise<RPC | Skip> {
 		if (!interactive) return SKIP;
 
-		const web = typeof config.web === "string" ? config.web : undefined;
+		const web = config.web;
 
 		const rpc = await select({
 			message: web

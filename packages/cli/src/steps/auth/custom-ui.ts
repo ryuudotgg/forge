@@ -1,9 +1,9 @@
 import { confirm, isCancel } from "@clack/prompts";
-import { z } from "zod";
+import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const authenticationCustomUISchema = z.boolean();
+export const authenticationCustomUISchema = Schema.Boolean;
 
 const authenticationCustomUIStep = defineStep<boolean>({
 	id: "authenticationCustomUI",
@@ -18,8 +18,8 @@ const authenticationCustomUIStep = defineStep<boolean>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing = config.authenticationCustomUI;
-			if (typeof existing === "boolean") return existing;
+			if (config.authenticationCustomUI !== undefined)
+				return config.authenticationCustomUI;
 
 			return SKIP;
 		}

@@ -1,4 +1,10 @@
-import { assembleSchema, type Config } from "./config/schema";
+import { Either, Schema } from "effect";
+import { ArrayFormatter } from "effect/ParseResult";
+import {
+	applyConfigDefaults,
+	assembleSchema,
+	type Config,
+} from "./config/schema";
 import type { PartialConfig, Step } from "./steps/types";
 import { SKIP } from "./steps/types";
 
@@ -34,5 +40,21 @@ export async function orchestrate(
 		else config[key] = result;
 	}
 
-	return assembleSchema(steps).parse(config);
+	const schema = assembleSchema(steps);
+	const result = Schema.decodeUnknownEither(schema)(config);
+
+	if (Either.isLeft(result)) {
+		const issues = ArrayFormatter.formatErrorSync(result.left);
+		const message = issues
+			.map((i) =>
+				i.path.length > 0
+					? `  ${i.path.join(".")}: ${i.message}`
+					: `  ${i.message}`,
+			)
+			.join("\n");
+
+		throw new Error(`Invalid Configuration:\n${message}`);
+	}
+
+	return applyConfigDefaults(result.right);
 }

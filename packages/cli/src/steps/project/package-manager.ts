@@ -1,14 +1,14 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
-import { defineStep } from "../types";
+import { defineStep, type PartialConfig } from "../types";
 
 const packageManagerOptions = ["pnpm", "bun", "yarn", "npm"] as const;
-export const packageManagerSchema = z.enum(packageManagerOptions);
+export const packageManagerSchema = Schema.Literal(...packageManagerOptions);
 
 function getSmartDefault(
-	runtime: string | undefined,
-): z.infer<typeof packageManagerSchema> {
+	runtime: PartialConfig["runtime"],
+): typeof packageManagerSchema.Type {
 	switch (runtime) {
 		case "Bun":
 			return "bun";
@@ -21,7 +21,7 @@ function getSmartDefault(
 	}
 }
 
-const packageManagerStep = defineStep<z.infer<typeof packageManagerSchema>>({
+const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
 	id: "packageManager",
 	group: "project",
 	schema: packageManagerSchema,
@@ -32,19 +32,15 @@ const packageManagerStep = defineStep<z.infer<typeof packageManagerSchema>>({
 	shouldRun: () => true,
 
 	async execute(config, interactive) {
-		const runtime =
-			typeof config.runtime === "string" ? config.runtime : undefined;
-		const smartDefault = getSmartDefault(runtime);
+		const smartDefault = getSmartDefault(config.runtime);
 
 		if (!interactive) {
-			const existing =
-				typeof config.packageManager === "string"
-					? config.packageManager
-					: undefined;
+			if (config.packageManager) {
+				const result = Schema.decodeUnknownEither(packageManagerSchema)(
+					config.packageManager,
+				);
 
-			if (existing) {
-				const result = packageManagerSchema.safeParse(existing);
-				if (result.success) return result.data;
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return smartDefault;

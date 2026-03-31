@@ -1,18 +1,21 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const managedProviderSchema = z.enum([
+export const managedProviderSchema = Schema.Literal(
 	"PlanetScale",
 	"Neon",
 	"Nile",
 	"Supabase",
 	"Prisma Postgres",
 	"Turso",
-]);
+);
 
-const managedProviderStep = defineStep<z.infer<typeof managedProviderSchema>>({
+type ManagedProvider = typeof managedProviderSchema.Type;
+type ProviderOption = ManagedProvider | "None";
+
+const managedProviderStep = defineStep<ManagedProvider>({
 	id: "managedProvider",
 	group: "data",
 	schema: managedProviderSchema,
@@ -24,20 +27,18 @@ const managedProviderStep = defineStep<z.infer<typeof managedProviderSchema>>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing =
-				typeof config.managedProvider === "string"
-					? config.managedProvider
-					: undefined;
+			if (config.managedProvider) {
+				const result = Schema.decodeUnknownEither(managedProviderSchema)(
+					config.managedProvider,
+				);
 
-			if (existing) {
-				const result = managedProviderSchema.safeParse(existing);
-				if (result.success) return result.data;
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;
 		}
 
-		let options: string[];
+		let options: ProviderOption[];
 		let message: string;
 
 		switch (config.database) {
@@ -48,14 +49,16 @@ const managedProviderStep = defineStep<z.infer<typeof managedProviderSchema>>({
 			}
 
 			case "PostgreSQL": {
-				options = [
+				const pgOptions: ProviderOption[] = [
 					"PlanetScale",
 					"Neon",
 					"Nile",
 					"Supabase",
 					"Prisma Postgres",
 					"None",
-				].filter(
+				];
+
+				options = pgOptions.filter(
 					(option) => config.orm === "Prisma" || option !== "Prisma Postgres",
 				);
 
@@ -85,10 +88,7 @@ const managedProviderStep = defineStep<z.infer<typeof managedProviderSchema>>({
 		if (isCancel(provider)) cancel();
 		if (provider === "None") return SKIP;
 
-		const result = managedProviderSchema.safeParse(provider);
-		if (!result.success) return SKIP;
-
-		return result.data;
+		return provider;
 	},
 });
 

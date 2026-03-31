@@ -1,15 +1,14 @@
 import { isCancel, multiselect } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
 const platformOptions = ["Web", "Desktop", "Mobile"] as const;
-export const platformsSchema = z.tuple(
-	[z.enum(platformOptions)],
-	z.enum(platformOptions),
+export const platformsSchema = Schema.NonEmptyArray(
+	Schema.Literal(...platformOptions),
 );
 
-type Platforms = z.infer<typeof platformsSchema>;
+type Platforms = typeof platformsSchema.Type;
 
 const platformsStep = defineStep<Platforms>({
 	id: "platforms",
@@ -21,11 +20,12 @@ const platformsStep = defineStep<Platforms>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing = config.platforms;
+			if (config.platforms) {
+				const result = Schema.decodeUnknownEither(platformsSchema)(
+					config.platforms,
+				);
 
-			if (Array.isArray(existing)) {
-				const result = platformsSchema.safeParse(existing);
-				if (result.success) return result.data;
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;
@@ -43,10 +43,10 @@ const platformsStep = defineStep<Platforms>({
 
 		if (isCancel(platforms)) cancel();
 
-		const result = platformsSchema.safeParse(platforms);
-		if (!result.success) return SKIP;
+		const result = Schema.decodeUnknownEither(platformsSchema)(platforms);
+		if (Either.isLeft(result)) return SKIP;
 
-		return result.data;
+		return result.right;
 	},
 });
 

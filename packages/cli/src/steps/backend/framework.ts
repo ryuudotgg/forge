@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
@@ -14,9 +14,15 @@ const backendOptions = [
 	"None",
 ] as const;
 
-export const backendSchema = z.enum(backendOptions.filter((b) => b !== "None"));
+type ValidBackend = Exclude<(typeof backendOptions)[number], "None">;
 
-type Backend = z.infer<typeof backendSchema>;
+const filteredBackendOptions = backendOptions.filter(
+	(b): b is ValidBackend => b !== "None",
+);
+
+export const backendSchema = Schema.Literal(...filteredBackendOptions);
+
+type Backend = typeof backendSchema.Type;
 
 export default defineStep<Backend>({
 	id: "backend",
@@ -28,7 +34,7 @@ export default defineStep<Backend>({
 	async execute(config, interactive): Promise<Backend | Skip> {
 		if (!interactive) return SKIP;
 
-		const web = typeof config.web === "string" ? config.web : undefined;
+		const web = config.web;
 
 		const backend = await select({
 			message: "What is your preferred backend framework?",

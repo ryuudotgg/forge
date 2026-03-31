@@ -1,12 +1,14 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
 const ormOptions = ["Drizzle ORM", "Prisma", "None"] as const;
-export const ormSchema = z.enum(ormOptions.filter((orm) => orm !== "None"));
+type ValidOrm = Exclude<(typeof ormOptions)[number], "None">;
+const validOrms = ormOptions.filter((x): x is ValidOrm => x !== "None");
+export const ormSchema = Schema.Literal(...validOrms);
 
-const ormStep = defineStep<z.infer<typeof ormSchema>>({
+const ormStep = defineStep<typeof ormSchema.Type>({
 	id: "orm",
 	group: "data",
 	schema: ormSchema,
@@ -18,11 +20,9 @@ const ormStep = defineStep<z.infer<typeof ormSchema>>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing = typeof config.orm === "string" ? config.orm : undefined;
-
-			if (existing) {
-				const result = ormSchema.safeParse(existing);
-				if (result.success) return result.data;
+			if (config.orm) {
+				const result = Schema.decodeUnknownEither(ormSchema)(config.orm);
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;

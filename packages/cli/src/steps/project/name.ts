@@ -1,24 +1,28 @@
 import { isCancel, text } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { slugify } from "../../utils/slugify";
 import { defineStep, SKIP } from "../types";
 
-export const nameSchema = z
-	.string({ error: "You need to provide a name." })
-	.trim()
-	.min(1, { error: "You need to provide a name." })
-	.max(15, { error: "It must be less than 15 characters." });
+export const nameSchema = Schema.String.pipe(
+	Schema.trimmed(),
+	Schema.minLength(1, { message: () => "You need to provide a name." }),
+	Schema.maxLength(15, {
+		message: () => "It must be less than 15 characters.",
+	}),
+);
 
-export const slugSchema = z
-	.string({ error: "We couldn't generate a slug." })
-	.trim()
-	.min(1, { error: "We couldn't generate a slug." })
-	.max(15, { error: "Your slug must be less than 15 characters." })
-	.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-		error:
+export const slugSchema = Schema.String.pipe(
+	Schema.trimmed(),
+	Schema.minLength(1, { message: () => "We couldn't generate a slug." }),
+	Schema.maxLength(15, {
+		message: () => "Your slug must be less than 15 characters.",
+	}),
+	Schema.pattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
+		message: () =>
 			"We couldn't generate a valid slug. Try again with a different name.",
-	});
+	}),
+);
 
 const nameStep = defineStep<{ name: string; slug: string }>({
 	id: "name",
@@ -34,30 +38,25 @@ const nameStep = defineStep<{ name: string; slug: string }>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existingName =
-				typeof config.name === "string" ? config.name : undefined;
-			const existingSlug =
-				typeof config.slug === "string" ? config.slug : undefined;
+			if (config.name && config.slug) {
+				const nameResult = Schema.decodeUnknownEither(nameSchema)(config.name);
+				if (Either.isLeft(nameResult)) return SKIP;
 
-			if (existingName && existingSlug) {
-				const nameResult = nameSchema.safeParse(existingName);
-				if (!nameResult.success) return SKIP;
+				const slugResult = Schema.decodeUnknownEither(slugSchema)(config.slug);
+				if (Either.isLeft(slugResult)) return SKIP;
 
-				const slugResult = slugSchema.safeParse(existingSlug);
-				if (!slugResult.success) return SKIP;
-
-				return { name: nameResult.data, slug: slugResult.data };
+				return { name: nameResult.right, slug: slugResult.right };
 			}
 
-			if (existingName) {
-				const nameResult = nameSchema.safeParse(existingName);
-				if (!nameResult.success) return SKIP;
+			if (config.name) {
+				const nameResult = Schema.decodeUnknownEither(nameSchema)(config.name);
+				if (Either.isLeft(nameResult)) return SKIP;
 
-				const slug = slugify(nameResult.data);
-				const slugResult = slugSchema.safeParse(slug);
-				if (!slugResult.success) return SKIP;
+				const slug = slugify(nameResult.right);
+				const slugResult = Schema.decodeUnknownEither(slugSchema)(slug);
+				if (Either.isLeft(slugResult)) return SKIP;
 
-				return { name: nameResult.data, slug: slugResult.data };
+				return { name: nameResult.right, slug: slugResult.right };
 			}
 
 			return SKIP;
@@ -67,11 +66,13 @@ const nameStep = defineStep<{ name: string; slug: string }>({
 			message: "What is the name of your project?",
 			placeholder: "eg. Acme",
 			validate: (value) => {
-				const nameResult = nameSchema.safeParse(value);
-				if (nameResult.error) return nameResult.error.issues[0]?.message;
+				const nameResult = Schema.decodeUnknownEither(nameSchema)(value);
+				if (Either.isLeft(nameResult)) return nameResult.left.message;
 
-				const slugResult = slugSchema.safeParse(slugify(nameResult.data));
-				if (slugResult.error) return slugResult.error.issues[0]?.message;
+				const slugResult = Schema.decodeUnknownEither(slugSchema)(
+					slugify(nameResult.right),
+				);
+				if (Either.isLeft(slugResult)) return slugResult.left.message;
 			},
 		});
 

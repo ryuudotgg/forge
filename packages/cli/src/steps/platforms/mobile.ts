@@ -1,12 +1,12 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
 const mobileOptions = ["Expo", "React Native"] as const;
-export const mobileSchema = z.enum(mobileOptions);
+export const mobileSchema = Schema.Literal(...mobileOptions);
 
-const mobileStep = defineStep<z.infer<typeof mobileSchema>>({
+const mobileStep = defineStep<typeof mobileSchema.Type>({
 	id: "mobile",
 	group: "platforms",
 	schema: mobileSchema,
@@ -14,17 +14,13 @@ const mobileStep = defineStep<z.infer<typeof mobileSchema>>({
 
 	dependencies: ["platforms"],
 
-	shouldRun: (config) =>
-		Array.isArray(config.platforms) && config.platforms.includes("Mobile"),
+	shouldRun: (config) => !!config.platforms?.includes("Mobile"),
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing =
-				typeof config.mobile === "string" ? config.mobile : undefined;
-
-			if (existing) {
-				const result = mobileSchema.safeParse(existing);
-				if (result.success) return result.data;
+			if (config.mobile) {
+				const result = Schema.decodeUnknownEither(mobileSchema)(config.mobile);
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return "Expo";

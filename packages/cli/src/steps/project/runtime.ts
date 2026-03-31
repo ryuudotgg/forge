@@ -1,12 +1,12 @@
 import { isCancel, select } from "@clack/prompts";
-import { z } from "zod";
+import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
 const runtimeOptions = ["Node.js", "Bun", "Deno"] as const;
-export const runtimeSchema = z.enum(runtimeOptions);
+export const runtimeSchema = Schema.Literal(...runtimeOptions);
 
-const runtimeStep = defineStep<z.infer<typeof runtimeSchema>>({
+const runtimeStep = defineStep<typeof runtimeSchema.Type>({
 	id: "runtime",
 	group: "project",
 	schema: runtimeSchema,
@@ -16,12 +16,11 @@ const runtimeStep = defineStep<z.infer<typeof runtimeSchema>>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			const existing =
-				typeof config.runtime === "string" ? config.runtime : undefined;
-
-			if (existing) {
-				const result = runtimeSchema.safeParse(existing);
-				if (result.success) return result.data;
+			if (config.runtime) {
+				const result = Schema.decodeUnknownEither(runtimeSchema)(
+					config.runtime,
+				);
+				if (Either.isRight(result)) return result.right;
 			}
 
 			return "Node.js";
