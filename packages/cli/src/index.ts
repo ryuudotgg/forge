@@ -1,23 +1,63 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import { readFileSync } from "node:fs";
+import { parseArgs } from "node:util";
+import { z } from "zod";
+import { buildFlagOverrides, getParseArgsOptions } from "./cli";
+import { orchestrate } from "./orchestrator";
+import { presets } from "./presets";
+import { steps } from "./steps";
+import type { PartialConfig } from "./steps/types";
+import { printHelp } from "./utils/help";
+
+const { values } = parseArgs({
+	options: getParseArgsOptions(),
+	strict: false,
+});
+
+if (values.help) {
+	printHelp();
+	process.exit(0);
+}
+
+if (values.version) {
+	const { version } = await import("../package.json", {
+		with: { type: "json" },
+	});
+
+	console.log(`Forge v${version}`);
+	process.exit(0);
+}
 
 try {
 	console.log();
 
-	const prompts = await fs.readdir(path.join(import.meta.dirname, "./prompts"));
-	const validPrompts = prompts
-		.filter((file) => /^\d+-[a-zA-Z0-9-]+\.(js|ts)$/.test(file))
-		.sort((a, b) => {
-			const numA = Number(a.split("-")[0] || "0") || 0;
-			const numB = Number(b.split("-")[0] || "0") || 0;
+	let initialConfig: PartialConfig = {};
 
-			return numA - numB;
-		});
+	if (values.preset) {
+		const presetName = values.preset;
 
-	for (const prompt of validPrompts) {
-		const module = await import(`./prompts/${prompt}`);
-		await module.default?.();
+		if (typeof presetName !== "string" || !(presetName in presets)) {
+			console.error(
+				`Unknown Preset: ${presetName}. Available: ${Object.keys(presets).join(", ")}`,
+			);
+
+			process.exit(1);
+		}
+
+		initialConfig = { ...presets[presetName] };
 	}
+
+	if (values.config && typeof values.config === "string") {
+		const fileConfig = z
+			.record(z.string(), z.unknown())
+			.parse(JSON.parse(readFileSync(values.config, "utf-8")));
+
+		initialConfig = { ...initialConfig, ...fileConfig };
+	}
+
+	initialConfig = { ...initialConfig, ...buildFlagOverrides(values) };
+
+	const interactive = !values.config;
+	await orchestrate(steps, { initialConfig, interactive });
 
 	console.log();
 } catch (error) {

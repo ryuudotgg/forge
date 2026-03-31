@@ -1,89 +1,65 @@
 import { z } from "zod";
+import type { Step } from "../steps/types";
 
-import { nameSchema, slugSchema } from "../prompts/1-name";
-import { pathSchema } from "../prompts/2-path";
-import { platformsSchema } from "../prompts/3-platforms";
-import { webSchema } from "../prompts/4-web";
-import { desktopSchema } from "../prompts/5-desktop";
-import { mobileSchema } from "../prompts/6-mobile";
-import { backendSchema } from "../prompts/7-backend";
-import { rpcSchema } from "../prompts/8-rpc";
-import { publicRPCSchema } from "../prompts/9-rpc-public";
-import { orpcContractsSchema } from "../prompts/10-orpc-contracts";
-import { databaseSchema } from "../prompts/11-database";
-import { ormSchema } from "../prompts/12-orm";
-import { managedMySQLSchema } from "../prompts/13-managed-mysql";
-import { managedPostgreSQLSchema } from "../prompts/14-managed-postgresql";
-import { managedSQLiteSchema } from "../prompts/15-managed-sqlite";
-import { authenticationSchema } from "../prompts/16-authentication";
-import { authenticationCustomUISchema } from "../prompts/17-authentication-custom-ui";
-import { tailwindEcosystemSchema } from "../prompts/18-tailwind";
-import { styleFrameworkSchema } from "../prompts/19-style-framework";
-import { nativeStyleFrameworkSchema } from "../prompts/20-native-style-framework copy";
-import { proceedToAddonsSchema } from "../prompts/21-proceed-to-addons";
+export function assembleSchema(steps: Step[]) {
+	const shape: Record<string, z.ZodType> = {};
 
-const baseSchema = z.object({
-	name: nameSchema,
-	slug: slugSchema,
-	path: pathSchema,
+	for (const step of steps) {
+		if (step.configKey === null && step.schemaShape) {
+			for (const [key, schema] of Object.entries(step.schemaShape))
+				shape[key] = schema;
+		} else if (step.schema) {
+			const key = step.configKey ?? step.id;
 
-	platforms: platformsSchema,
+			if (key === "tailwindEcosystem") shape[key] = step.schema.default(false);
+			else shape[key] = step.schema.optional();
+		}
+	}
 
-	web: webSchema.optional(),
-	desktop: desktopSchema.optional(),
-	mobile: mobileSchema.optional(),
+	return z
+		.object(shape)
+		.superRefine((data, ctx) => {
+			const platforms = Array.isArray(data.platforms)
+				? data.platforms
+				: undefined;
 
-	backend: backendSchema.optional(),
+			if (platforms?.includes("Web") && !data.web)
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "A web framework wasn't selected.",
+				});
 
-	rpc: rpcSchema.optional(),
-	rpcPublic: publicRPCSchema.optional(),
-	orpcContracts: orpcContractsSchema.optional(),
+			if (platforms?.includes("Desktop") && !data.desktop)
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "A desktop framework wasn't selected.",
+				});
 
-	database: databaseSchema.optional(),
-	orm: ormSchema.optional(),
+			if (platforms?.includes("Mobile") && !data.mobile)
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "A mobile framework wasn't selected.",
+				});
+		})
+		.transform((data) => {
+			const {
+				mobile,
+				tailwindEcosystem,
+				styleFramework,
+				nativeStyleFramework,
+			} = data;
 
-	managedMySQL: managedMySQLSchema.optional(),
-	managedPostgreSQL: managedPostgreSQLSchema.optional(),
-	managedSQLite: managedSQLiteSchema.optional(),
+			if (tailwindEcosystem === false)
+				if (
+					(mobile &&
+						(!styleFramework || styleFramework === "Tailwind CSS") &&
+						nativeStyleFramework === "NativeWind") ||
+					(!mobile && styleFramework === "Tailwind CSS")
+				)
+					return { ...data, tailwindEcosystem: true };
 
-	authentication: authenticationSchema.optional(),
-	authenticationCustomUI: authenticationCustomUISchema.optional(),
+			return data;
+		});
+}
 
-	tailwindEcosystem: tailwindEcosystemSchema.default(false),
-
-	styleFramework: styleFrameworkSchema.optional(),
-	nativeStyleFramework: nativeStyleFrameworkSchema.optional(),
-
-	proceedToAddons: proceedToAddonsSchema.optional(),
-});
-
-export const configSchema = baseSchema
-	.refine(({ platforms, web, desktop, mobile }) => {
-		if (platforms?.includes("Web") && !web)
-			return "A web framework wasn't selected.";
-
-		if (platforms?.includes("Desktop") && !desktop)
-			return "A desktop framework wasn't selected.";
-
-		if (platforms?.includes("Mobile") && !mobile)
-			return "A mobile framework wasn't selected.";
-
-		return true;
-	})
-	.transform((data): z.infer<typeof baseSchema> => {
-		const { mobile, tailwindEcosystem, styleFramework, nativeStyleFramework } =
-			data;
-
-		if (tailwindEcosystem === false)
-			if (
-				(mobile &&
-					(!styleFramework || styleFramework === "Tailwind CSS") &&
-					nativeStyleFramework === "NativeWind") ||
-				(!mobile && styleFramework === "Tailwind CSS")
-			)
-				return { ...data, tailwindEcosystem: true };
-
-		return data;
-	});
-
-export type Config = z.infer<typeof configSchema>;
+export type Config = z.infer<ReturnType<typeof assembleSchema>>;
