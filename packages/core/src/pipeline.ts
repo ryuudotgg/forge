@@ -74,7 +74,7 @@ function buildLockfile(resolved: ReadonlyArray<ResolvedFile>) {
 			};
 		}
 
-		return { files } satisfies Lockfile.Lockfile;
+		return { files, tombstones: [] } satisfies Lockfile.Lockfile;
 	});
 }
 

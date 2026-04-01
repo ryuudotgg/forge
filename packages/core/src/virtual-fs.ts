@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { AggregateConflictError, ConflictError } from "./errors";
+import { AggregateConflictError, ConflictError, ParseError } from "./errors";
 import { deepMerge, mergeJson } from "./merge/json";
 import { appendLines } from "./merge/lines";
 import type {
@@ -104,59 +104,68 @@ export function resolve(vfs: VirtualFs) {
 }
 
 function resolveFileOperations(sourced: ReadonlyArray<SourcedOperation>) {
-	return Effect.sync(() => {
-		let content = "";
+	const path = sourced[0]?.operation.path ?? "unknown";
 
-		const creates: CreateFile[] = [];
-		const merges: MergeJson[] = [];
-		const appends: AppendLines[] = [];
-		const deps: AddDependencies[] = [];
-		const scripts: AddScripts[] = [];
+	return Effect.try({
+		try: () => {
+			let content = "";
 
-		for (const { operation } of sourced)
-			switch (operation._tag) {
-				case "CreateFile":
-					creates.push(operation);
-					break;
+			const creates: CreateFile[] = [];
+			const merges: MergeJson[] = [];
+			const appends: AppendLines[] = [];
+			const deps: AddDependencies[] = [];
+			const scripts: AddScripts[] = [];
 
-				case "MergeJson":
-					merges.push(operation);
-					break;
+			for (const { operation } of sourced)
+				switch (operation._tag) {
+					case "CreateFile":
+						creates.push(operation);
+						break;
 
-				case "AppendLines":
-					appends.push(operation);
-					break;
+					case "MergeJson":
+						merges.push(operation);
+						break;
 
-				case "AddDependencies":
-					deps.push(operation);
-					break;
+					case "AppendLines":
+						appends.push(operation);
+						break;
 
-				case "AddScripts":
-					scripts.push(operation);
-					break;
+					case "AddDependencies":
+						deps.push(operation);
+						break;
+
+					case "AddScripts":
+						scripts.push(operation);
+						break;
+				}
+
+			const lastCreate = creates[creates.length - 1];
+			if (lastCreate) content = lastCreate.content;
+
+			if (merges.length > 0 || deps.length > 0 || scripts.length > 0) {
+				let json: Record<string, unknown> = content ? parseJson(content) : {};
+
+				for (const merge of merges)
+					json = mergeJson(json, merge.value, merge.strategy);
+
+				if (deps.length > 0) json = applyDependencies(json, deps);
+				if (scripts.length > 0) json = applyScripts(json, scripts);
+
+				content = `${JSON.stringify(json, null, "\t")}\n`;
 			}
 
-		const lastCreate = creates[creates.length - 1];
-		if (lastCreate) content = lastCreate.content;
+			if (appends.length > 0) {
+				for (const append of appends)
+					content = appendLines(content, append.lines, append.section);
+			}
 
-		if (merges.length > 0 || deps.length > 0 || scripts.length > 0) {
-			let json: Record<string, unknown> = content ? parseJson(content) : {};
-
-			for (const merge of merges)
-				json = mergeJson(json, merge.value, merge.strategy);
-
-			if (deps.length > 0) json = applyDependencies(json, deps);
-			if (scripts.length > 0) json = applyScripts(json, scripts);
-
-			content = `${JSON.stringify(json, null, "\t")}\n`;
-		}
-
-		if (appends.length > 0) {
-			for (const append of appends)
-				content = appendLines(content, append.lines, append.section);
-		}
-
-		return content;
+			return content;
+		},
+		catch: (error) =>
+			new ParseError({
+				filePath: path,
+				message: `Failed to Resolve File Operations: ${String(error)}`,
+			}),
 	});
 }
 
@@ -183,7 +192,8 @@ function applyDependencies(
 					? (result[section] as Record<string, unknown>)
 					: {};
 
-			result[section] = { ...existing, [dep.name]: dep.version };
+			const value = dep.catalog ? `catalog:${dep.catalog}` : dep.version;
+			result[section] = { ...existing, [dep.name]: value };
 		}
 
 	return result;

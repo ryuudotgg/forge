@@ -134,7 +134,11 @@ export function reconcile<Config extends Record<string, unknown>>(
 
 		const items: PlanItem[] = [];
 
+		const tombstones = new Set<string>(lockfile.tombstones);
+
 		for (const file of incoming.resolved) {
+			if (tombstones.has(file.path)) continue;
+
 			const lockEntry = lockfile.files[file.path];
 
 			if (!lockEntry) {
@@ -244,6 +248,7 @@ export function applyPlan(
 			FilePath,
 			{ content: string; generators: ReadonlyArray<string> }
 		>();
+		const newTombstones = new Set<string>(oldLockfile.tombstones);
 
 		const incomingGenerators = new Map(
 			plan.incomingResolved.map((f) => [f.path, f.generators]),
@@ -285,6 +290,8 @@ export function applyPlan(
 						yield* fs.makeDirectory(dir, { recursive: true });
 						yield* fs.writeFileString(fullPath, content);
 						written.set(item.path, { content, generators });
+					} else if (item._tag === "UserDeleted") {
+						newTombstones.add(item.path);
 					} else {
 						const exists = yield* fs.exists(fullPath);
 						if (exists) {
@@ -315,7 +322,10 @@ export function applyPlan(
 			};
 		}
 
-		const lockfile: Lockfile.Lockfile = { files: lockfileEntries };
+		const lockfile: Lockfile.Lockfile = {
+			files: lockfileEntries,
+			tombstones: [...newTombstones],
+		};
 
 		yield* Lockfile.write(projectRoot, lockfile);
 		yield* ManifestMod.write(projectRoot, plan.manifest);
