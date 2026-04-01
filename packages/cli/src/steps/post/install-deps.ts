@@ -1,6 +1,34 @@
 import { confirm, isCancel } from "@clack/prompts";
+import { Command } from "@effect/platform";
+import { NodeContext } from "@effect/platform-node";
+import { Effect, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
+
+class InstallError extends Schema.TaggedError<InstallError>()("InstallError", {
+	pm: Schema.String,
+	exitCode: Schema.Number,
+	message: Schema.String,
+}) {}
+
+function installDeps(pm: string, dir: string) {
+	return Effect.gen(function* () {
+		const code = yield* Command.exitCode(
+			Command.make(pm, "install").pipe(
+				Command.workingDirectory(dir),
+				Command.stdout("inherit"),
+				Command.stderr("inherit"),
+			),
+		);
+
+		if (code !== 0)
+			return yield* new InstallError({
+				pm,
+				exitCode: code,
+				message: `Install Failed: ${pm} Exited With Code ${code}`,
+			});
+	}).pipe(Effect.provide(NodeContext.layer));
+}
 
 const installDepsStep = defineStep({
 	id: "installDeps",
@@ -11,23 +39,24 @@ const installDepsStep = defineStep({
 	shouldRun: () => true,
 
 	async execute(config, interactive) {
-		const pm = config.packageManager ?? "pnpm";
+		const pm = String(config.packageManager ?? "pnpm");
+		const dir = String(config.path);
 
 		if (!interactive) {
-			// TODO: Run `${pm} install`
+			await Effect.runPromise(installDeps(pm, dir));
 			return SKIP;
 		}
 
-		const install = await confirm({
+		const shouldInstall = await confirm({
 			message: `Do you want to install dependencies with ${pm}?`,
 			active: "Yes",
 			inactive: "No",
 		});
 
-		if (isCancel(install)) cancel();
-		if (!install) return SKIP;
+		if (isCancel(shouldInstall)) cancel();
+		if (!shouldInstall) return SKIP;
 
-		// TODO: Run `${pm} install`
+		await Effect.runPromise(installDeps(pm, dir));
 	},
 });
 
