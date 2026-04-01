@@ -67,11 +67,16 @@ export function appendLines(
 	return serializeSections(sections);
 }
 
+export interface LineMergeResult {
+	readonly merged: string;
+	readonly conflicts: ReadonlyArray<string>;
+}
+
 export function threeWayMergeLines(
 	base: string,
 	current: string,
 	incoming: string,
-): string {
+): LineMergeResult {
 	const baseSet = new Set(base.split("\n").filter((l) => l.trim() !== ""));
 
 	const currentSet = new Set(
@@ -89,7 +94,24 @@ export function threeWayMergeLines(
 		(l) => baseSet.has(l) && !userDeleted.has(l),
 	);
 
-	const merged = new Set([...baseKept, ...userAdded, ...incomingAdded]);
+	const userKeptIncomingDeleted = [...baseSet].filter(
+		(l) => currentSet.has(l) && !incomingSet.has(l),
+	);
 
-	return [...merged].join("\n").concat("\n");
+	const merged = new Set([
+		...baseKept,
+		...userAdded,
+		...incomingAdded,
+		...userKeptIncomingDeleted,
+	]);
+
+	const conflicts: string[] = [];
+	for (const line of userKeptIncomingDeleted) {
+		conflicts.push(line);
+	}
+
+	return {
+		merged: [...merged].join("\n").concat("\n"),
+		conflicts,
+	};
 }

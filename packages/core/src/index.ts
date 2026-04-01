@@ -33,6 +33,7 @@ export {
 	write as writeManifest,
 } from "./manifest";
 export { deepMerge, mergeJson, threeWayMergeJson } from "./merge/json";
+export type { LineMergeResult } from "./merge/lines";
 export { appendLines, threeWayMergeLines } from "./merge/lines";
 export type {
 	AddDependencies,

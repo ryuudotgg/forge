@@ -1,5 +1,6 @@
 import { FileSystem } from "@effect/platform";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import { ReconcileError } from "./errors";
 import type { Generator } from "./generator";
 import * as Lockfile from "./lockfile";
 import type { Manifest } from "./manifest";
@@ -12,10 +13,6 @@ import { hashContent, topologicalSort, validateExclusivity } from "./pipeline";
 import { resolve } from "./registry";
 import type { ResolvedFile } from "./virtual-fs";
 import * as VFS from "./virtual-fs";
-
-// ---------------------------------------------------------------------------
-// Plan item types
-// ---------------------------------------------------------------------------
 
 export interface WriteItem {
 	readonly _tag: "Write";
@@ -64,10 +61,6 @@ export interface ReconcilePlan {
 	readonly incomingResolved: ReadonlyArray<ResolvedFile>;
 }
 
-// ---------------------------------------------------------------------------
-// Resolution types for conflicts
-// ---------------------------------------------------------------------------
-
 export interface AcceptIncoming {
 	readonly _tag: "AcceptIncoming";
 }
@@ -101,13 +94,10 @@ export interface ResolvedConflict {
 	readonly resolution: ConflictResolution;
 }
 
-// ---------------------------------------------------------------------------
-// reconcile — compute a plan by diffing old vs new generator output
-// ---------------------------------------------------------------------------
-
 export interface ReconcileOptions<Config extends Record<string, unknown>> {
 	readonly projectRoot: string;
 	readonly newConfig: Config;
+	readonly configSchema: Schema.Schema<Config>;
 	readonly newGenerators: ReadonlyArray<Generator<Config>>;
 	readonly baseGenerators: ReadonlyArray<Generator<Config>> | null;
 }
@@ -121,7 +111,17 @@ export function reconcile<Config extends Record<string, unknown>>(
 
 		const manifest = yield* ManifestMod.read(projectRoot);
 		const lockfile = yield* Lockfile.read(projectRoot);
-		const baseConfig = manifest.config as Config;
+		const baseConfig = yield* Schema.decodeUnknown(options.configSchema)(
+			manifest.config,
+		).pipe(
+			Effect.mapError(
+				() =>
+					new ReconcileError({
+						path: ".forge/manifest.json",
+						message: "Stored Config Does Not Match Expected Schema",
+					}),
+			),
+		);
 
 		const incoming = yield* generateResolved(newConfig, newGenerators);
 		const incomingByPath = new Map(incoming.resolved.map((f) => [f.path, f]));
@@ -157,15 +157,12 @@ export function reconcile<Config extends Record<string, unknown>>(
 			const currentContent = yield* fs.readFileString(fullPath);
 			const currentHash = `sha256:${yield* hashContent(currentContent)}`;
 
-			// Layer 1: hash check — user didn't modify, safe to overwrite
 			if (currentHash === lockEntry.hash) {
 				items.push({ _tag: "Write", path: file.path, content: file.content });
 				continue;
 			}
 
-			// User modified the file
 			if (baseByPath) {
-				// Layer 2: online — three-way merge
 				const baseFile = baseByPath.get(file.path);
 				if (baseFile) {
 					const item = mergeFile(
@@ -176,7 +173,6 @@ export function reconcile<Config extends Record<string, unknown>>(
 					);
 					items.push(item);
 				} else {
-					// File wasn't in base output but is in lockfile — generator is new
 					items.push({
 						_tag: "Write",
 						path: file.path,
@@ -184,7 +180,6 @@ export function reconcile<Config extends Record<string, unknown>>(
 					});
 				}
 			} else {
-				// Layer 3: offline — can't compute base
 				items.push({
 					_tag: "OfflineConflict",
 					path: file.path,
@@ -194,7 +189,6 @@ export function reconcile<Config extends Record<string, unknown>>(
 			}
 		}
 
-		// Files in lockfile but not in incoming — generator was removed
 		for (const path of Object.keys(lockfile.files)) {
 			const fp = filePath(path);
 			if (!incomingByPath.has(fp)) items.push({ _tag: "Delete", path: fp });
@@ -217,10 +211,6 @@ export function reconcile<Config extends Record<string, unknown>>(
 	});
 }
 
-// ---------------------------------------------------------------------------
-// applyPlan — write the reconciled plan to disk
-// ---------------------------------------------------------------------------
-
 export function applyPlan(
 	plan: ReconcilePlan,
 	resolutions: ReadonlyArray<ResolvedConflict>,
@@ -228,6 +218,7 @@ export function applyPlan(
 ) {
 	return Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
+		const oldLockfile = yield* Lockfile.read(projectRoot);
 		const resolutionMap = new Map(
 			resolutions.map((r) => [r.path, r.resolution]),
 		);
@@ -278,11 +269,15 @@ export function applyPlan(
 						yield* fs.writeFileString(fullPath, content);
 						written.set(item.path, { content, generators });
 					} else {
-						// KeepCurrent or Skip — file unchanged, still track it
 						const exists = yield* fs.exists(fullPath);
 						if (exists) {
 							const current = yield* fs.readFileString(fullPath);
-							written.set(item.path, { content: current, generators });
+							const oldGenerators =
+								oldLockfile.files[item.path]?.generators ?? [];
+							written.set(item.path, {
+								content: current,
+								generators: oldGenerators,
+							});
 						}
 					}
 					break;
@@ -290,7 +285,6 @@ export function applyPlan(
 			}
 		}
 
-		// Build lockfile from what was actually written
 		const lockfileEntries: Record<
 			string,
 			{ generators: string[]; hash: string }
@@ -312,10 +306,6 @@ export function applyPlan(
 		return { lockfile, manifest: plan.manifest };
 	});
 }
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 function generateResolved<Config extends Record<string, unknown>>(
 	config: Config,
@@ -347,23 +337,21 @@ function mergeFile(
 
 	if (isJson) {
 		try {
-			const baseJson = JSON.parse(stripJsonComments(base)) as Record<
-				string,
-				unknown
-			>;
-			const currentJson = JSON.parse(stripJsonComments(current)) as Record<
-				string,
-				unknown
-			>;
-			const incomingJson = JSON.parse(stripJsonComments(incoming)) as Record<
-				string,
-				unknown
-			>;
+			const baseParsed: unknown = JSON.parse(stripJsonComments(base));
+			const currentParsed: unknown = JSON.parse(stripJsonComments(current));
+			const incomingParsed: unknown = JSON.parse(stripJsonComments(incoming));
+
+			if (
+				!isRecord(baseParsed) ||
+				!isRecord(currentParsed) ||
+				!isRecord(incomingParsed)
+			)
+				throw new TypeError("Expected JSON Object");
 
 			const { merged, conflicts } = threeWayMergeJson(
-				baseJson,
-				currentJson,
-				incomingJson,
+				baseParsed,
+				currentParsed,
+				incomingParsed,
 			);
 
 			const mergedContent = `${JSON.stringify(merged, null, "\t")}\n`;
@@ -380,17 +368,96 @@ function mergeFile(
 				merged: mergedContent,
 				conflictPaths: conflicts,
 			};
-		} catch {
-			// JSON parse failed — fall through to line-based merge
-		}
+		} catch {}
 	}
 
-	const merged = threeWayMergeLines(base, current, incoming);
-	return { _tag: "Write", path, content: merged };
+	const { merged, conflicts } = threeWayMergeLines(base, current, incoming);
+
+	if (conflicts.length === 0) return { _tag: "Write", path, content: merged };
+
+	return {
+		_tag: "MergeConflict",
+		path,
+		base,
+		current,
+		incoming,
+		merged,
+		conflictPaths: conflicts,
+	};
 }
 
 function stripJsonComments(content: string): string {
-	return content.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+	let result = "";
+	let i = 0;
+	const len = content.length;
+
+	while (i < len) {
+		if (content[i] === '"') {
+			result += '"';
+			i++;
+			while (i < len && content[i] !== '"') {
+				if (content[i] === "\\") {
+					result += content[i];
+					i++;
+					if (i < len) {
+						result += content[i];
+						i++;
+					}
+				} else {
+					result += content[i];
+					i++;
+				}
+			}
+			if (i < len) {
+				result += '"';
+				i++;
+			}
+			continue;
+		}
+
+		if (content[i] === "/" && i + 1 < len && content[i + 1] === "/") {
+			while (i < len && content[i] !== "\n") i++;
+			continue;
+		}
+
+		if (content[i] === "/" && i + 1 < len && content[i + 1] === "*") {
+			i += 2;
+			while (i + 1 < len && !(content[i] === "*" && content[i + 1] === "/"))
+				i++;
+			if (i + 1 < len) i += 2;
+			continue;
+		}
+
+		result += content[i];
+		i++;
+	}
+
+	return result;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const MAX_BACKUP_ATTEMPTS = 100;
+
+function findBackupPath(fs: FileSystem.FileSystem, originalPath: string) {
+	return Effect.gen(function* () {
+		const lastDot = originalPath.lastIndexOf(".");
+		const base = lastDot > 0 ? originalPath.slice(0, lastDot) : originalPath;
+		const ext = lastDot > 0 ? originalPath.slice(lastDot) : "";
+
+		for (let n = 1; n <= MAX_BACKUP_ATTEMPTS; n++) {
+			const candidate = `${base}.old${String(n)}${ext}`;
+			const exists = yield* fs.exists(candidate);
+			if (!exists) return candidate;
+		}
+
+		return yield* new ReconcileError({
+			path: originalPath,
+			message: `Exceeded Maximum Backup Attempts (${String(MAX_BACKUP_ATTEMPTS)})`,
+		});
+	});
 }
 
 function resolveConflictContent(
@@ -412,7 +479,6 @@ function resolveConflictContent(
 				return resolution.content;
 
 			case "Overwrite": {
-				// Backup current file before overwriting
 				const exists = yield* fs.exists(fullPath);
 				if (exists) {
 					const backupPath = yield* findBackupPath(fs, fullPath);
@@ -421,22 +487,6 @@ function resolveConflictContent(
 				}
 				return item.incoming;
 			}
-		}
-	});
-}
-
-function findBackupPath(fs: FileSystem.FileSystem, originalPath: string) {
-	return Effect.gen(function* () {
-		const lastDot = originalPath.lastIndexOf(".");
-		const base = lastDot > 0 ? originalPath.slice(0, lastDot) : originalPath;
-		const ext = lastDot > 0 ? originalPath.slice(lastDot) : "";
-
-		let n = 1;
-		while (true) {
-			const candidate = `${base}.old${String(n)}${ext}`;
-			const exists = yield* fs.exists(candidate);
-			if (!exists) return candidate;
-			n++;
 		}
 	});
 }

@@ -17,11 +17,16 @@ const generateStep = defineStep({
 		const projectRoot = String(config.path ?? ".");
 		const forgeConfig: ForgeConfig = config;
 
-		await Effect.runPromise(
-			run(forgeConfig, generators, projectRoot).pipe(
-				Effect.provide(NodeContext.layer),
-			),
-		);
+		try {
+			await Effect.runPromise(
+				run(forgeConfig, generators, projectRoot).pipe(
+					Effect.provide(NodeContext.layer),
+				),
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`Generation Failed: ${message}`);
+		}
 
 		return SKIP;
 	},
