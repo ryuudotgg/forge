@@ -138,7 +138,24 @@ export function reconcile<Config extends Record<string, unknown>>(
 			const lockEntry = lockfile.files[file.path];
 
 			if (!lockEntry) {
-				items.push({ _tag: "Write", path: file.path, content: file.content });
+				const fullNewPath = `${projectRoot}/${file.path}`;
+				const existsOnDisk = yield* fs.exists(fullNewPath);
+
+				if (existsOnDisk) {
+					const currentContent = yield* fs.readFileString(fullNewPath);
+					items.push({
+						_tag: "OfflineConflict",
+						path: file.path,
+						current: currentContent,
+						incoming: file.content,
+					});
+				} else {
+					items.push({
+						_tag: "Write",
+						path: file.path,
+						content: file.content,
+					});
+				}
 				continue;
 			}
 

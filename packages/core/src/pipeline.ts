@@ -30,7 +30,7 @@ export function run<Config extends Record<string, unknown>>(
 
 		yield* applyToDisk(resolved, projectRoot);
 
-		const lockfile = yield* buildLockfile(resolved, projectRoot);
+		const lockfile = yield* buildLockfile(resolved);
 		yield* Lockfile.write(projectRoot, lockfile);
 
 		const manifest: Manifest = {
@@ -62,10 +62,7 @@ function applyToDisk(
 	});
 }
 
-function buildLockfile(
-	resolved: ReadonlyArray<ResolvedFile>,
-	_projectRoot: string,
-) {
+function buildLockfile(resolved: ReadonlyArray<ResolvedFile>) {
 	return Effect.gen(function* () {
 		const files: Record<string, { generators: string[]; hash: string }> = {};
 
