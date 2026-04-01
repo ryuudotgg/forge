@@ -176,10 +176,14 @@ export function reconcile<Config extends Record<string, unknown>>(
 			}
 
 			const currentContent = yield* fs.readFileString(fullPath);
+
 			const currentHash = `sha256:${yield* hashContent(currentContent)}`;
+			const incomingHash = `sha256:${yield* hashContent(file.content)}`;
 
 			if (currentHash === lockEntry.hash) {
-				items.push({ _tag: "Write", path: file.path, content: file.content });
+				if (incomingHash !== lockEntry.hash)
+					items.push({ _tag: "Write", path: file.path, content: file.content });
+
 				continue;
 			}
 

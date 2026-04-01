@@ -43,9 +43,8 @@ const gitInitStep = defineStep({
 		}
 
 		const shouldInit = await confirm({
-			message:
-				"Do you want to initialize a git repository? (required for smart updates via forge add)",
-			active: "Yes (Recommended)",
+			message: "Do you want to initialize a Git Repository?",
+			active: "Yes & Modify Message (Recommended)",
 			inactive: "No",
 		});
 
@@ -53,7 +52,7 @@ const gitInitStep = defineStep({
 		if (!shouldInit) return SKIP;
 
 		const message = await text({
-			message: "What is the commit message for the initial commit?",
+			message: "What should the commit message be?",
 			defaultValue: DEFAULT_MESSAGE,
 			placeholder: DEFAULT_MESSAGE,
 		});

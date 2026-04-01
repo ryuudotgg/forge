@@ -6,6 +6,7 @@ interface CLIOption {
 
 	short?: string;
 	configKey?: string;
+	isValueList?: boolean;
 }
 
 export type OptionKey = keyof typeof options;
@@ -16,30 +17,35 @@ interface CLISection {
 }
 
 export const options = {
-	help: { type: "boolean", short: "h", description: "Show this help message" },
-	version: { type: "boolean", short: "v", description: "Show version" },
+	help: { type: "boolean", short: "h", description: "You're looking at it!" },
+	version: {
+		type: "boolean",
+		short: "v",
+		description: "Returns the current version of Forge.",
+	},
 
 	config: {
 		type: "string",
 		short: "c",
-		description: "Load config from JSON (non-interactive)",
+		description: "Use a JSON Config File.",
 	},
 
 	preset: {
 		type: "string",
 		short: "p",
-		description: "Use a preset (saas, api-only, fullstack)",
+		description: "saas, api-only, fullstack",
+		isValueList: true,
 	},
 
 	name: {
 		type: "string",
-		description: "Project name",
+		description: "A name for the project.",
 		configKey: "name",
 	},
 
 	path: {
 		type: "string",
-		description: "Project path",
+		description: "Where you want the project to be created.",
 		configKey: "path",
 	},
 
@@ -132,12 +138,17 @@ export const options = {
 		description: "NativeWind, Tamagui, Unistyles",
 		configKey: "nativeStyleFramework",
 	},
+
+	"accept-incoming": {
+		type: "boolean",
+		description: "Accept all incoming changes on conflicts.",
+	},
 } as const satisfies Record<string, CLIOption>;
 
 export const sections: CLISection[] = [
 	{
 		title: "Options",
-		keys: ["config", "preset", "help", "version"],
+		keys: ["config", "preset", "accept-incoming", "help", "version"],
 	},
 	{
 		title: "Field Overrides",
