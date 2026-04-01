@@ -1,7 +1,7 @@
 {
-	"name": "@ryuujs/forge",
+	"name": "@ryuujs/generators",
 	"version": "0.1.0",
-	"description": "An all-in-one starter for your next big thing.",
+	"description": "Built-in generators for Forge.",
 	"keywords": [
 		"forge"
 	],
@@ -13,7 +13,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/ryuudotgg/forge.git",
-		"directory": "packages/cli"
+		"directory": "packages/generators"
 	},
 	"funding": {
 		"type": "github",
@@ -34,7 +34,6 @@
 	},
 	"main": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
-	"bin": "./dist/index.mjs",
 	"files": [
 		"dist"
 	],
@@ -43,22 +42,13 @@
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache dist node_modules",
 		"dev": "tsdown --watch",
-		"prepare": "effect-language-service patch --dir ../../node_modules/typescript",
-		"start": "node ./dist/index.mjs",
 		"typecheck": "tsc"
 	},
 	"dependencies": {
-		"@clack/core": "catalog:node",
-		"@clack/prompts": "catalog:node",
-		"@effect/platform": "catalog:effect",
-		"@effect/platform-node": "catalog:effect",
 		"@ryuujs/core": "workspace:*",
-		"@ryuujs/generators": "workspace:*",
-		"effect": "catalog:effect",
-		"picocolors": "catalog:node"
+		"effect": "catalog:effect"
 	},
 	"devDependencies": {
-		"@effect/language-service": "^0.84.2",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"tsdown": "catalog:build",

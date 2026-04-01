@@ -1,4 +1,4 @@
-import type { FilePath } from "./Operations";
+import type { FilePath } from "./operations";
 
 export interface UserModified {
 	readonly _tag: "UserModified";

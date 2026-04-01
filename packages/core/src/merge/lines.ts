@@ -67,29 +67,147 @@ export function appendLines(
 	return serializeSections(sections);
 }
 
+export interface LineMergeResult {
+	readonly merged: string;
+	readonly conflicts: ReadonlyArray<string>;
+}
+
 export function threeWayMergeLines(
 	base: string,
 	current: string,
 	incoming: string,
-): string {
-	const baseSet = new Set(base.split("\n").filter((l) => l.trim() !== ""));
+): LineMergeResult {
+	const baseLines = splitLines(base);
+	const currentLines = splitLines(current);
+	const incomingLines = splitLines(incoming);
 
-	const currentSet = new Set(
-		current.split("\n").filter((l) => l.trim() !== ""),
+	const matchesCurrent = lcsMatchPairs(baseLines, currentLines);
+	const matchesIncoming = lcsMatchPairs(baseLines, incomingLines);
+
+	const currentMatchedBase = new Set(matchesCurrent.map(([b]) => b));
+	const incomingMatchedBase = new Set(matchesIncoming.map(([b]) => b));
+
+	const stableSet = new Set<number>();
+	for (const b of currentMatchedBase)
+		if (incomingMatchedBase.has(b)) stableSet.add(b);
+
+	const stablePositions = [...stableSet].sort((a, b) => a - b);
+
+	const baseToCurrent = new Map<number, number>();
+	for (const [b, c] of matchesCurrent)
+		if (stableSet.has(b)) baseToCurrent.set(b, c);
+
+	const baseToIncoming = new Map<number, number>();
+	for (const [b, c] of matchesIncoming)
+		if (stableSet.has(b)) baseToIncoming.set(b, c);
+
+	const merged: string[] = [];
+	const conflicts: string[] = [];
+
+	let prevBase = 0;
+	let prevCurrent = 0;
+	let prevIncoming = 0;
+
+	for (const anchor of [...stablePositions, -1]) {
+		const baseEnd = anchor === -1 ? baseLines.length : anchor;
+
+		const currentEnd =
+			anchor === -1
+				? currentLines.length
+				: (baseToCurrent.get(anchor) ?? currentLines.length);
+
+		const incomingEnd =
+			anchor === -1
+				? incomingLines.length
+				: (baseToIncoming.get(anchor) ?? incomingLines.length);
+
+		const baseSeg = baseLines.slice(prevBase, baseEnd);
+		const currentSeg = currentLines.slice(prevCurrent, currentEnd);
+		const incomingSeg = incomingLines.slice(prevIncoming, incomingEnd);
+
+		if (linesEqual(currentSeg, incomingSeg)) merged.push(...currentSeg);
+		else if (linesEqual(baseSeg, currentSeg)) merged.push(...incomingSeg);
+		else if (linesEqual(baseSeg, incomingSeg)) merged.push(...currentSeg);
+		else {
+			merged.push(...incomingSeg);
+			conflicts.push(
+				baseSeg.length > 0 ? baseSeg.join(", ") : "concurrent insertion",
+			);
+		}
+
+		if (anchor !== -1) {
+			const line = baseLines[anchor];
+			if (line !== undefined) merged.push(line);
+		}
+
+		prevBase = baseEnd + (anchor === -1 ? 0 : 1);
+		prevCurrent = currentEnd + (anchor === -1 ? 0 : 1);
+		prevIncoming = incomingEnd + (anchor === -1 ? 0 : 1);
+	}
+
+	return {
+		merged: merged.join("\n").concat("\n"),
+		conflicts,
+	};
+}
+
+function splitLines(content: string): string[] {
+	const lines = content.split("\n");
+	if (lines.at(-1) === "") lines.pop();
+
+	return lines;
+}
+
+function linesEqual(
+	a: ReadonlyArray<string>,
+	b: ReadonlyArray<string>,
+): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+
+	return true;
+}
+
+function lcsMatchPairs(
+	a: ReadonlyArray<string>,
+	b: ReadonlyArray<string>,
+): Array<[number, number]> {
+	const m = a.length;
+	const n = b.length;
+	const dp: number[][] = Array.from({ length: m + 1 }, () =>
+		new Array<number>(n + 1).fill(0),
 	);
 
-	const incomingSet = new Set(
-		incoming.split("\n").filter((l) => l.trim() !== ""),
-	);
+	for (let i = 1; i <= m; i++) {
+		const row = dp[i];
+		const prevRow = dp[i - 1];
 
-	const userAdded = [...currentSet].filter((l) => !baseSet.has(l));
-	const userDeleted = new Set([...baseSet].filter((l) => !currentSet.has(l)));
-	const incomingAdded = [...incomingSet].filter((l) => !baseSet.has(l));
-	const baseKept = [...incomingSet].filter(
-		(l) => baseSet.has(l) && !userDeleted.has(l),
-	);
+		if (!row || !prevRow) continue;
 
-	const merged = new Set([...baseKept, ...userAdded, ...incomingAdded]);
+		for (let j = 1; j <= n; j++) {
+			if (a[i - 1] === b[j - 1]) row[j] = (prevRow[j - 1] ?? 0) + 1;
+			else row[j] = Math.max(prevRow[j] ?? 0, row[j - 1] ?? 0);
+		}
+	}
 
-	return [...merged].join("\n").concat("\n");
+	const pairs: Array<[number, number]> = [];
+
+	let i = m;
+	let j = n;
+
+	while (i > 0 && j > 0) {
+		const row = dp[i];
+		const prevRow = dp[i - 1];
+
+		if (!row || !prevRow) break;
+
+		if (a[i - 1] === b[j - 1]) {
+			pairs.unshift([i - 1, j - 1]);
+			i--;
+			j--;
+		} else if ((prevRow[j] ?? 0) >= (row[j - 1] ?? 0)) i--;
+		else j--;
+	}
+
+	return pairs;
 }

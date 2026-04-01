@@ -1,13 +1,13 @@
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
-import { CyclicDependencyError } from "./Errors";
-import type { Generator } from "./Generator";
-import * as Lockfile from "./Lockfile";
-import type { Manifest } from "./Manifest";
-import * as ManifestMod from "./Manifest";
-import { resolve } from "./Registry";
-import type { ResolvedFile } from "./VirtualFs";
-import * as VFS from "./VirtualFs";
+import { CyclicDependencyError, ExclusiveCategoryError } from "./errors";
+import type { Generator } from "./generator";
+import * as Lockfile from "./lockfile";
+import type { Manifest } from "./manifest";
+import * as ManifestMod from "./manifest";
+import { resolve } from "./registry";
+import type { ResolvedFile } from "./virtual-fs";
+import * as VFS from "./virtual-fs";
 
 export function run<Config extends Record<string, unknown>>(
 	config: Config,
@@ -16,6 +16,8 @@ export function run<Config extends Record<string, unknown>>(
 ) {
 	return Effect.gen(function* () {
 		const applicable = resolve(config, generators);
+		yield* validateExclusivity(applicable);
+
 		const ordered = yield* topologicalSort(applicable);
 
 		let vfs = VFS.empty();
@@ -28,14 +30,13 @@ export function run<Config extends Record<string, unknown>>(
 
 		yield* applyToDisk(resolved, projectRoot);
 
-		const lockfile = yield* buildLockfile(resolved, projectRoot);
+		const lockfile = yield* buildLockfile(resolved);
 		yield* Lockfile.write(projectRoot, lockfile);
 
 		const manifest: Manifest = {
 			version: 1,
 			config,
 			generators: ordered.map((g) => ({ id: g.id, version: g.version })),
-			commitRef: null,
 		};
 
 		yield* ManifestMod.write(projectRoot, manifest);
@@ -61,10 +62,7 @@ function applyToDisk(
 	});
 }
 
-function buildLockfile(
-	resolved: ReadonlyArray<ResolvedFile>,
-	_projectRoot: string,
-) {
+function buildLockfile(resolved: ReadonlyArray<ResolvedFile>) {
 	return Effect.gen(function* () {
 		const files: Record<string, { generators: string[]; hash: string }> = {};
 
@@ -76,11 +74,11 @@ function buildLockfile(
 			};
 		}
 
-		return { files } satisfies Lockfile.Lockfile;
+		return { files, tombstones: [] } satisfies Lockfile.Lockfile;
 	});
 }
 
-function hashContent(content: string) {
+export function hashContent(content: string) {
 	return Effect.gen(function* () {
 		const encoder = new TextEncoder();
 
@@ -92,6 +90,31 @@ function hashContent(content: string) {
 		return Array.from(new Uint8Array(buffer))
 			.map((b) => b.toString(16).padStart(2, "0"))
 			.join("");
+	});
+}
+
+export function validateExclusivity<Config>(
+	generators: ReadonlyArray<Generator<Config>>,
+) {
+	return Effect.gen(function* () {
+		const exclusiveByCategory = new Map<string, string[]>();
+
+		for (const gen of generators) {
+			if (!gen.exclusive) continue;
+
+			const existing = exclusiveByCategory.get(gen.category) ?? [];
+			existing.push(gen.id);
+
+			exclusiveByCategory.set(gen.category, existing);
+		}
+
+		for (const [category, ids] of exclusiveByCategory)
+			if (ids.length > 1)
+				return yield* new ExclusiveCategoryError({
+					category,
+					generators: ids,
+					message: `Multiple Exclusive Generators In Category "${category}": ${ids.join(", ")}`,
+				});
 	});
 }
 

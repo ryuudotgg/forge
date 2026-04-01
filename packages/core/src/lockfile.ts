@@ -1,6 +1,6 @@
 import { FileSystem } from "@effect/platform";
 import { Effect, Schema } from "effect";
-import { ParseError } from "./Errors";
+import { ParseError } from "./errors";
 
 const FileRecord = Schema.Struct({
 	generators: Schema.Array(Schema.String),
@@ -9,6 +9,9 @@ const FileRecord = Schema.Struct({
 
 export const LockfileSchema = Schema.Struct({
 	files: Schema.Record({ key: Schema.String, value: FileRecord }),
+	tombstones: Schema.optionalWith(Schema.Array(Schema.String), {
+		default: () => [],
+	}),
 });
 
 export type Lockfile = typeof LockfileSchema.Type;
@@ -26,7 +29,7 @@ export function read(projectRoot: string) {
 		const path = lockfilePath(projectRoot);
 		const exists = yield* fs.exists(path);
 
-		if (!exists) return { files: {} } satisfies Lockfile;
+		if (!exists) return { files: {}, tombstones: [] } satisfies Lockfile;
 
 		const raw = yield* fs.readFileString(path);
 		const parsed = yield* Effect.try({

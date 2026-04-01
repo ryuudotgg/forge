@@ -1,6 +1,6 @@
 import { FileSystem } from "@effect/platform";
 import { Effect, Schema } from "effect";
-import { ManifestNotFoundError, ParseError } from "./Errors";
+import { ManifestNotFoundError, ParseError } from "./errors";
 
 const GeneratorRecord = Schema.Struct({
 	id: Schema.String,
@@ -11,7 +11,6 @@ export const ManifestSchema = Schema.Struct({
 	version: Schema.Literal(1),
 	config: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
 	generators: Schema.Array(GeneratorRecord),
-	commitRef: Schema.NullOr(Schema.String),
 });
 
 export type Manifest = typeof ManifestSchema.Type;

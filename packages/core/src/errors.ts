@@ -47,7 +47,24 @@ export class ManifestNotFoundError extends Schema.TaggedError<ManifestNotFoundEr
 	},
 ) {}
 
+export class ExclusiveCategoryError extends Schema.TaggedError<ExclusiveCategoryError>()(
+	"ExclusiveCategoryError",
+	{
+		category: Schema.String,
+		generators: Schema.Array(Schema.String),
+		message: Schema.String,
+	},
+) {}
+
 export class ParseError extends Schema.TaggedError<ParseError>()("ParseError", {
 	filePath: Schema.String,
 	message: Schema.String,
 }) {}
+
+export class ReconcileError extends Schema.TaggedError<ReconcileError>()(
+	"ReconcileError",
+	{
+		path: Schema.String,
+		message: Schema.String,
+	},
+) {}
