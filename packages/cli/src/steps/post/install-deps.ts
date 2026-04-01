@@ -1,18 +1,33 @@
 import { confirm, isCancel } from "@clack/prompts";
 import { Command } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
+class InstallError extends Schema.TaggedError<InstallError>()("InstallError", {
+	pm: Schema.String,
+	exitCode: Schema.Number,
+	message: Schema.String,
+}) {}
+
 function installDeps(pm: string, dir: string) {
-	return Command.exitCode(
-		Command.make(pm, "install").pipe(
-			Command.workingDirectory(dir),
-			Command.stdout("inherit"),
-			Command.stderr("inherit"),
-		),
-	).pipe(Effect.provide(NodeContext.layer));
+	return Effect.gen(function* () {
+		const code = yield* Command.exitCode(
+			Command.make(pm, "install").pipe(
+				Command.workingDirectory(dir),
+				Command.stdout("inherit"),
+				Command.stderr("inherit"),
+			),
+		);
+
+		if (code !== 0)
+			return yield* new InstallError({
+				pm,
+				exitCode: code,
+				message: `Install Failed: ${pm} Exited With Code ${code}`,
+			});
+	}).pipe(Effect.provide(NodeContext.layer));
 }
 
 const installDepsStep = defineStep({

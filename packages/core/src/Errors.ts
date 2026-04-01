@@ -25,6 +25,20 @@ export class CyclicDependencyError extends Schema.TaggedError<CyclicDependencyEr
 	},
 ) {}
 
+export class AggregateConflictError extends Schema.TaggedError<AggregateConflictError>()(
+	"AggregateConflictError",
+	{
+		conflicts: Schema.Array(
+			Schema.Struct({
+				path: Schema.String,
+				generators: Schema.Array(Schema.String),
+				message: Schema.String,
+			}),
+		),
+		message: Schema.String,
+	},
+) {}
+
 export class ManifestNotFoundError extends Schema.TaggedError<ManifestNotFoundError>()(
 	"ManifestNotFoundError",
 	{
@@ -32,3 +46,8 @@ export class ManifestNotFoundError extends Schema.TaggedError<ManifestNotFoundEr
 		message: Schema.String,
 	},
 ) {}
+
+export class ParseError extends Schema.TaggedError<ParseError>()("ParseError", {
+	filePath: Schema.String,
+	message: Schema.String,
+}) {}

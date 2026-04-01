@@ -1,6 +1,6 @@
 import { FileSystem } from "@effect/platform";
 import { Effect, Schema } from "effect";
-import { ManifestNotFoundError } from "./Errors";
+import { ManifestNotFoundError, ParseError } from "./Errors";
 
 const GeneratorRecord = Schema.Struct({
 	id: Schema.String,
@@ -32,11 +32,20 @@ export function read(projectRoot: string) {
 		if (!exists)
 			return yield* new ManifestNotFoundError({
 				projectRoot,
-				message: `No manifest found at ${path}`,
+				message: `No Manifest Found at ${path}`,
 			});
 
 		const raw = yield* fs.readFileString(path);
-		return yield* Schema.decodeUnknown(ManifestSchema)(JSON.parse(raw));
+		const parsed = yield* Effect.try({
+			try: () => JSON.parse(raw) as unknown,
+			catch: (e) =>
+				new ParseError({
+					filePath: path,
+					message: `Failed to Parse Manifest: ${String(e)}`,
+				}),
+		});
+
+		return yield* Schema.decodeUnknown(ManifestSchema)(parsed);
 	});
 }
 

@@ -1,8 +1,9 @@
 import { FileSystem } from "@effect/platform";
 import { Effect, Schema } from "effect";
+import { ParseError } from "./Errors";
 
 const FileRecord = Schema.Struct({
-	generatorId: Schema.String,
+	generators: Schema.Array(Schema.String),
 	hash: Schema.String,
 });
 
@@ -28,7 +29,16 @@ export function read(projectRoot: string) {
 		if (!exists) return { files: {} } satisfies Lockfile;
 
 		const raw = yield* fs.readFileString(path);
-		return yield* Schema.decodeUnknown(LockfileSchema)(JSON.parse(raw));
+		const parsed = yield* Effect.try({
+			try: () => JSON.parse(raw) as unknown,
+			catch: (e) =>
+				new ParseError({
+					filePath: path,
+					message: `Failed to Parse Lockfile: ${String(e)}`,
+				}),
+		});
+
+		return yield* Schema.decodeUnknown(LockfileSchema)(parsed);
 	});
 }
 

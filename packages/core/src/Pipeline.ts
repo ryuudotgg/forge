@@ -66,12 +66,12 @@ function buildLockfile(
 	_projectRoot: string,
 ) {
 	return Effect.gen(function* () {
-		const files: Record<string, { generatorId: string; hash: string }> = {};
+		const files: Record<string, { generators: string[]; hash: string }> = {};
 
 		for (const file of resolved) {
 			const hash = yield* hashContent(file.content);
 			files[file.path] = {
-				generatorId: file.generators[0] ?? "unknown",
+				generators: [...file.generators],
 				hash: `sha256:${hash}`,
 			};
 		}
@@ -143,7 +143,7 @@ export function topologicalSort<Config>(
 
 			return yield* new CyclicDependencyError({
 				cycle: remaining,
-				message: `Cyclic Dependency: ${remaining.join(", ")}`,
+				message: `Cyclic Dependency Detected: ${remaining.join(", ")}`,
 			});
 		}
 

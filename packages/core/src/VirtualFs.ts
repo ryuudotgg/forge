@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { ConflictError } from "./Errors";
+import { AggregateConflictError, ConflictError } from "./Errors";
 import { deepMerge, mergeJson } from "./merge/json";
 import { appendLines } from "./merge/lines";
 import type {
@@ -72,7 +72,7 @@ export function detectConflicts(vfs: VirtualFs) {
 					new ConflictError({
 						path,
 						generators: creates.map((c) => c.generatorId),
-						message: `We found multiple generators creating ${path} without overwrite.`,
+						message: `Multiple Generators Create ${path} Without Overwrite`,
 					}),
 				);
 		}
@@ -85,8 +85,11 @@ export function resolve(vfs: VirtualFs) {
 	return Effect.gen(function* () {
 		const conflicts = yield* detectConflicts(vfs);
 
-		const firstConflict = conflicts[0];
-		if (firstConflict) return yield* firstConflict;
+		if (conflicts.length > 0)
+			return yield* new AggregateConflictError({
+				conflicts,
+				message: conflicts.map((c) => c.message).join("\n"),
+			});
 
 		const resolved: ResolvedFile[] = [];
 

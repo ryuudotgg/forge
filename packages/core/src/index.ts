@@ -9,10 +9,12 @@ export type {
 	UserModified,
 } from "./Conflicts";
 export {
+	AggregateConflictError,
 	ConflictError,
 	CyclicDependencyError,
 	GeneratorError,
 	ManifestNotFoundError,
+	ParseError,
 } from "./Errors";
 export type { Generator } from "./Generator";
 export { defineGenerator } from "./Generator";

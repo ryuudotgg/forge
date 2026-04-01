@@ -83,8 +83,11 @@ export function threeWayMergeLines(
 	);
 
 	const userAdded = [...currentSet].filter((l) => !baseSet.has(l));
+	const userDeleted = new Set([...baseSet].filter((l) => !currentSet.has(l)));
 	const incomingAdded = [...incomingSet].filter((l) => !baseSet.has(l));
-	const baseKept = [...incomingSet].filter((l) => baseSet.has(l));
+	const baseKept = [...incomingSet].filter(
+		(l) => baseSet.has(l) && !userDeleted.has(l),
+	);
 
 	const merged = new Set([...baseKept, ...userAdded, ...incomingAdded]);
 
