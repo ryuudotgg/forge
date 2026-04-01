@@ -1,4 +1,4 @@
-import type { Generator } from "./Generator";
+import type { Generator } from "./generator";
 
 export function resolve<Config>(
 	config: Config,

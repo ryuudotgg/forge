@@ -1,5 +1,9 @@
+import { NodeContext } from "@effect/platform-node";
+import { run } from "@ryuujs/core";
+import { type ForgeConfig, generators } from "@ryuujs/generators";
+import { Effect } from "effect";
 import type { PartialConfig } from "./types";
-import { defineStep } from "./types";
+import { defineStep, SKIP } from "./types";
 
 const generateStep = defineStep({
 	id: "generate",
@@ -9,8 +13,17 @@ const generateStep = defineStep({
 
 	shouldRun: () => true,
 
-	async execute(_config: PartialConfig) {
-		// TODO: Implement
+	async execute(config: PartialConfig) {
+		const projectRoot = String(config.path ?? ".");
+		const forgeConfig: ForgeConfig = config;
+
+		await Effect.runPromise(
+			run(forgeConfig, generators, projectRoot).pipe(
+				Effect.provide(NodeContext.layer),
+			),
+		);
+
+		return SKIP;
 	},
 });
 

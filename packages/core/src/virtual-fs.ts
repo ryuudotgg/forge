@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { AggregateConflictError, ConflictError } from "./Errors";
+import { AggregateConflictError, ConflictError } from "./errors";
 import { deepMerge, mergeJson } from "./merge/json";
 import { appendLines } from "./merge/lines";
 import type {
@@ -10,7 +10,7 @@ import type {
 	FileOperation,
 	FilePath,
 	MergeJson,
-} from "./Operations";
+} from "./operations";
 
 interface SourcedOperation {
 	readonly generatorId: string;

@@ -1,6 +1,6 @@
 import { FileSystem } from "@effect/platform";
 import { Effect, Schema } from "effect";
-import { ParseError } from "./Errors";
+import { ParseError } from "./errors";
 
 const FileRecord = Schema.Struct({
 	generators: Schema.Array(Schema.String),

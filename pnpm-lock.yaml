@@ -93,6 +93,12 @@ importers:
       '@effect/platform-node':
         specifier: catalog:effect
         version: 0.106.0(@effect/cluster@0.58.0(@effect/platform@0.96.0(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(@effect/workflow@0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(@effect/platform@0.96.0(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0))(effect@3.21.0))(@effect/platform@0.96.0(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+      '@ryuujs/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ryuujs/generators':
+        specifier: workspace:*
+        version: link:../generators
       effect:
         specifier: catalog:effect
         version: 3.21.0
@@ -128,6 +134,28 @@ importers:
       '@effect/language-service':
         specifier: ^0.84.2
         version: 0.84.2
+      '@ryuujs/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@types/node':
+        specifier: catalog:dev
+        version: 24.12.0
+      tsdown:
+        specifier: catalog:build
+        version: 0.21.7(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(typescript@6.0.2)
+      typescript:
+        specifier: catalog:dev
+        version: 6.0.2
+
+  packages/generators:
+    dependencies:
+      '@ryuujs/core':
+        specifier: workspace:*
+        version: link:../core
+      effect:
+        specifier: catalog:effect
+        version: 3.21.0
+    devDependencies:
       '@ryuujs/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript

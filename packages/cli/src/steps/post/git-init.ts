@@ -1,11 +1,13 @@
-import { confirm, isCancel } from "@clack/prompts";
+import { confirm, isCancel, text } from "@clack/prompts";
 import { Command } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
 import { Effect } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-function gitInit(dir: string) {
+const DEFAULT_MESSAGE = "chore: initialize repository via forge";
+
+function gitInit(dir: string, message: string) {
 	return Effect.gen(function* () {
 		yield* Command.string(
 			Command.make("git", "init").pipe(Command.workingDirectory(dir)),
@@ -13,6 +15,14 @@ function gitInit(dir: string) {
 		yield* Command.string(
 			Command.make("git", "add", "-A").pipe(Command.workingDirectory(dir)),
 		);
+
+		const sha = yield* Command.string(
+			Command.make("git", "commit", "-m", message).pipe(
+				Command.workingDirectory(dir),
+			),
+		);
+
+		return sha.trim();
 	}).pipe(Effect.provide(NodeContext.layer));
 }
 
@@ -28,20 +38,29 @@ const gitInitStep = defineStep({
 		const dir = String(config.path);
 
 		if (!interactive) {
-			await Effect.runPromise(gitInit(dir));
+			await Effect.runPromise(gitInit(dir, DEFAULT_MESSAGE));
 			return SKIP;
 		}
 
 		const shouldInit = await confirm({
-			message: "Do you want to initialize a git repository?",
-			active: "Yes",
+			message:
+				"Do you want to initialize a git repository? (required for smart updates via forge add)",
+			active: "Yes (Recommended)",
 			inactive: "No",
 		});
 
 		if (isCancel(shouldInit)) cancel();
 		if (!shouldInit) return SKIP;
 
-		await Effect.runPromise(gitInit(dir));
+		const message = await text({
+			message: "What is the commit message for the initial commit?",
+			defaultValue: DEFAULT_MESSAGE,
+			placeholder: DEFAULT_MESSAGE,
+		});
+
+		if (isCancel(message)) cancel();
+
+		await Effect.runPromise(gitInit(dir, message || DEFAULT_MESSAGE));
 	},
 });
 
