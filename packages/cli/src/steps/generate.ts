@@ -9,10 +9,8 @@ const generateStep = defineStep({
 
 	shouldRun: () => true,
 
-	async execute(config: PartialConfig) {
-		console.log(config);
-
-		// TODO: Generate the Project
+	async execute(_config: PartialConfig) {
+		// TODO: Implement
 	},
 });
 

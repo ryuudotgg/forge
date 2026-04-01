@@ -55,6 +55,12 @@ export const options = {
 		configKey: "packageManager",
 	},
 
+	catalogs: {
+		type: "string",
+		description: "Flat, Scoped (pnpm only)",
+		configKey: "catalogs",
+	},
+
 	linter: {
 		type: "string",
 		description: "Biome, Oxc, ESLint + Prettier",
@@ -140,6 +146,7 @@ export const sections: CLISection[] = [
 			"path",
 			"runtime",
 			"package-manager",
+			"catalogs",
 			"linter",
 			"web",
 			"desktop",

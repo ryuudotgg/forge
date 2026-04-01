@@ -1,0 +1,59 @@
+{
+	"name": "@ryuujs/core",
+	"version": "0.1.0",
+	"description": "A collection of core utilities for Forge.",
+	"keywords": [
+		"forge"
+	],
+	"homepage": "https://forge.ryuu.gg",
+	"bugs": {
+		"url": "https://github.com/ryuudotgg/forge/issues",
+		"email": "contact@ryuu.gg"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ryuudotgg/forge.git",
+		"directory": "packages/core"
+	},
+	"funding": {
+		"type": "github",
+		"url": "https://github.com/sponsors/ryuudotgg"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "Ryuu",
+		"email": "me@ryuu.gg",
+		"url": "https://ryuu.gg"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"default": "./dist/index.mjs"
+		}
+	},
+	"main": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"check": "biome check",
+		"clean": "git clean -xdf .turbo .cache dist node_modules",
+		"dev": "tsdown --watch",
+		"prepare": "effect-language-service patch --dir ../../node_modules/typescript",
+		"typecheck": "tsc"
+	},
+	"dependencies": {
+		"@effect/platform": "catalog:effect",
+		"effect": "catalog:effect"
+	},
+	"devDependencies": {
+		"@effect/language-service": "^0.84.2",
+		"@ryuujs/tsconfig": "workspace:*",
+		"@types/node": "catalog:dev",
+		"tsdown": "catalog:build",
+		"typescript": "catalog:dev"
+	}
+}

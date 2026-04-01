@@ -13,4 +13,5 @@ export const saas: PartialConfig = {
 	linter: "Biome",
 	runtime: "Node.js",
 	packageManager: "pnpm",
+	catalogs: "Scoped",
 };

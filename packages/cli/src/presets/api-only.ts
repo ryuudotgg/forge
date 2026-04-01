@@ -10,4 +10,5 @@ export const apiOnly: PartialConfig = {
 	linter: "Biome",
 	runtime: "Node.js",
 	packageManager: "pnpm",
+	catalogs: "Scoped",
 };

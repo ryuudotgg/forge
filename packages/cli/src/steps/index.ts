@@ -17,6 +17,7 @@ import platformSelect from "./platforms/select";
 import web from "./platforms/web";
 import gitInit from "./post/git-init";
 import installDeps from "./post/install-deps";
+import catalogs from "./project/catalogs";
 import linter from "./project/linter";
 import name from "./project/name";
 import packageManager from "./project/package-manager";
@@ -34,6 +35,7 @@ export const steps: Step[] = [
 	path,
 	runtime,
 	packageManager,
+	catalogs,
 	linter,
 
 	platformSelect,
