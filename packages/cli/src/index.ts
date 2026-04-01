@@ -1,12 +1,7 @@
 import { parseArgs } from "node:util";
 import { version } from "../package.json" with { type: "json" };
 import { getParseArgsOptions } from "./cli";
-import {
-	defaultCommand,
-	type SubcommandDef,
-	type SubcommandName,
-	subcommands,
-} from "./commands/registry";
+import { defaultCommand, getSubcommand } from "./commands/registry";
 import { printHelp } from "./utils/help";
 
 const { values, positionals } = parseArgs({
@@ -30,10 +25,9 @@ const subcommand = positionals[0];
 try {
 	console.log();
 
-	if (subcommand && subcommand in subcommands) {
-		const cmd: SubcommandDef = subcommands[subcommand as SubcommandName];
+	const cmd = subcommand ? getSubcommand(subcommand) : undefined;
+	if (cmd) {
 		const args = positionals.slice(1);
-
 		if (cmd.arg && args.length === 0) {
 			console.error(`Usage: forge ${subcommand} ${cmd.arg}`);
 			process.exit(1);

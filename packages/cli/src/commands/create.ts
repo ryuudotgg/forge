@@ -29,13 +29,22 @@ export async function runCreate(
 	}
 
 	if (values.config && typeof values.config === "string") {
+		let raw: string;
+
+		try {
+			raw = readFileSync(values.config, "utf-8");
+		} catch {
+			log.error(`We couldn't read the config file at "${values.config}".`);
+			process.exit(1);
+		}
+
 		const configSchema = Schema.Record({
 			key: Schema.String,
 			value: Schema.Unknown,
 		});
 
 		const configResult = Schema.decodeUnknownEither(configSchema)(
-			JSON.parse(readFileSync(values.config, "utf-8")),
+			JSON.parse(raw),
 		);
 
 		if (Either.isLeft(configResult)) {

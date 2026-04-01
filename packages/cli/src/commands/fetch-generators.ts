@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -7,10 +8,6 @@ import type { Generator } from "@ryuujs/core";
 import type { ForgeConfig } from "@ryuujs/generators";
 
 const CACHE_DIR = join(homedir(), ".cache", "forge", "generators");
-
-interface NpmVersionMeta {
-	dist?: { tarball?: string };
-}
 
 export async function fetchBaseGenerators(
 	version: string,
@@ -32,15 +29,23 @@ export async function fetchBaseGenerators(
 
 		if (!metaRes.ok) return null;
 
-		const meta: NpmVersionMeta = (await metaRes.json()) as NpmVersionMeta;
+		const meta: Record<string, unknown> = Object(await metaRes.json());
+		const dist: Record<string, unknown> = Object(meta.dist);
+		const tarballUrl = dist.tarball;
+		const integrity = dist.integrity;
 
-		const tarballUrl = meta.dist?.tarball;
-		if (!tarballUrl) return null;
+		if (typeof tarballUrl !== "string") return null;
 
 		const tarRes = await fetch(tarballUrl);
 		if (!tarRes.ok) return null;
 
 		const buffer = Buffer.from(await tarRes.arrayBuffer());
+
+		if (typeof integrity === "string" && integrity.startsWith("sha512-")) {
+			const digest = createHash("sha512").update(buffer).digest("base64");
+			if (digest !== integrity.slice("sha512-".length)) return null;
+		}
+
 		mkdirSync(versionDir, { recursive: true });
 
 		const tarballPath = join(versionDir, "package.tgz");

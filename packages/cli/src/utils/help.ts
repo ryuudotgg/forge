@@ -45,7 +45,7 @@ function formatFlag(key: OptionKey): string {
 function flagLength(key: OptionKey): number {
 	const opt = options[key];
 
-	const short = "short" in opt ? 4 : 4;
+	const short = 4;
 	const long = `--${key}`.length;
 	const arg = opt.type === "string" ? 8 : 0;
 

@@ -318,12 +318,24 @@ export function applyPlan(
 			{ generators: string[]; hash: string }
 		> = {};
 
-		for (const [path, { content, generators }] of written) {
-			const hash = yield* hashContent(content);
-			lockfileEntries[path] = {
-				generators: [...generators],
-				hash: `sha256:${hash}`,
-			};
+		for (const file of plan.incomingResolved) {
+			const w = written.get(file.path);
+
+			if (w) {
+				const hash = yield* hashContent(w.content);
+				lockfileEntries[file.path] = {
+					generators: [...w.generators],
+					hash: `sha256:${hash}`,
+				};
+			} else {
+				const existing = oldLockfile.files[file.path];
+				if (existing) {
+					lockfileEntries[file.path] = {
+						generators: [...existing.generators],
+						hash: existing.hash,
+					};
+				}
+			}
 		}
 
 		const lockfile: Lockfile.Lockfile = {

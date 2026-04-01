@@ -30,7 +30,10 @@ export const subcommands = {
 		arg: "<generator-id>",
 		async run(positionals, values) {
 			const id = positionals[0];
-			if (!id) process.exit(1);
+			if (!id) {
+				console.error("Usage: forge add <generator-id>");
+				process.exit(1);
+			}
 
 			const { runAdd } = await import("./add");
 			await runAdd(id, values);
@@ -42,7 +45,10 @@ export const subcommands = {
 		arg: "<generator-id>",
 		async run(positionals, values) {
 			const id = positionals[0];
-			if (!id) process.exit(1);
+			if (!id) {
+				console.error("Usage: forge remove <generator-id>");
+				process.exit(1);
+			}
 
 			const { runRemove } = await import("./remove");
 			await runRemove(id, values);
@@ -51,6 +57,13 @@ export const subcommands = {
 } as const satisfies Record<string, SubcommandDef>;
 
 export type SubcommandName = keyof typeof subcommands;
+
+export function getSubcommand(name: string): SubcommandDef | undefined {
+	if (Object.hasOwn(subcommands, name))
+		return subcommands[name as SubcommandName];
+
+	return undefined;
+}
 
 const found = Object.entries<SubcommandDef>(subcommands).find(
 	([, cmd]) => cmd.default,
