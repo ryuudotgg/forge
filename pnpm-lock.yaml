@@ -44,8 +44,8 @@ catalogs:
       version: 20.5.0
   node:
     '@clack/core':
-      specifier: 1.1.0
-      version: 1.1.0
+      specifier: 1.2.0
+      version: 1.2.0
     '@clack/prompts':
       specifier: 1.2.0
       version: 1.2.0
@@ -83,7 +83,7 @@ importers:
     dependencies:
       '@clack/core':
         specifier: catalog:node
-        version: 1.1.0
+        version: 1.2.0
       '@clack/prompts':
         specifier: catalog:node
         version: 1.2.0
@@ -232,9 +232,6 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
-
-  '@clack/core@1.1.0':
-    resolution: {integrity: sha512-SVcm4Dqm2ukn64/8Gub2wnlA5nS2iWJyCkdNHcvNHPIeBTGojpdJ+9cZKwLfmqy7irD4N5qLteSilJlE0WLAtA==}
 
   '@clack/core@1.2.0':
     resolution: {integrity: sha512-qfxof/3T3t9DPU/Rj3OmcFyZInceqj/NVtO9rwIuJqCUgh32gwPjpFQQp/ben07qKlhpwq7GzfWpST4qdJ5Drg==}
@@ -1299,10 +1296,6 @@ snapshots:
 
   '@biomejs/cli-win32-x64@2.4.10':
     optional: true
-
-  '@clack/core@1.1.0':
-    dependencies:
-      sisteransi: 1.0.5
 
   '@clack/core@1.2.0':
     dependencies:
