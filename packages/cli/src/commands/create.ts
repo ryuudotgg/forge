@@ -29,12 +29,15 @@ export async function runCreate(
 	}
 
 	if (values.config && typeof values.config === "string") {
-		let raw: string;
+		let parsed: unknown;
 
 		try {
-			raw = readFileSync(values.config, "utf-8");
+			parsed = JSON.parse(readFileSync(values.config, "utf-8"));
 		} catch {
-			log.error(`We couldn't read the config file at "${values.config}".`);
+			log.error(
+				`We couldn't read or parse the config file at "${values.config}".`,
+			);
+
 			process.exit(1);
 		}
 
@@ -43,9 +46,7 @@ export async function runCreate(
 			value: Schema.Unknown,
 		});
 
-		const configResult = Schema.decodeUnknownEither(configSchema)(
-			JSON.parse(raw),
-		);
+		const configResult = Schema.decodeUnknownEither(configSchema)(parsed);
 
 		if (Either.isLeft(configResult)) {
 			const issues = ArrayFormatter.formatErrorSync(configResult.left);
