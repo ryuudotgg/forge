@@ -1,3 +1,4 @@
+export { CommandProbe } from "./command";
 export type {
 	AppConfig,
 	Config,
@@ -30,6 +31,7 @@ export type { EnvironmentCheck, PackageManager, Runtime } from "./environment";
 export {
 	checkPackageManager,
 	checkRuntime,
+	Environment,
 	packageManagerCommand,
 	packageManagers,
 	runtimeCommand,
@@ -37,6 +39,7 @@ export {
 } from "./environment";
 export {
 	AggregateConflictError,
+	CommandProbeError,
 	ConflictError,
 	CyclicDependencyError,
 	DiscoveryError,
@@ -46,12 +49,15 @@ export {
 	ModuleConfigError,
 	ModuleIdGenerationError,
 	ParseError,
+	PipelineError,
 	StateError,
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
 export type { Generator, GeneratorCategory } from "./generator";
 export { defineGenerator } from "./generator";
+export { decodeJsonString, formatSchemaIssues } from "./json";
+export { CoreLive } from "./layer";
 export {
 	deepMerge,
 	mergeJson,
@@ -71,8 +77,8 @@ export type {
 	MergeJson,
 } from "./operations";
 export { filePath } from "./operations";
-export { run, topologicalSort } from "./pipeline";
-export { resolve as resolveGenerators } from "./registry";
+export { hashContent, Pipeline, run, topologicalSort } from "./pipeline";
+export { Registry, resolve as resolveGenerators } from "./registry";
 export type { Lockfile, Manifest } from "./state";
 export { LockfileSchema, ManifestSchema, State } from "./state";
 export type {
@@ -86,4 +92,5 @@ export {
 	detectConflicts,
 	empty as emptyVfs,
 	resolve as resolveVfs,
+	Vfs,
 } from "./virtual-fs";

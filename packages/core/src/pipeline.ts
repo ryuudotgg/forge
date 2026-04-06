@@ -1,39 +1,17 @@
+import { join } from "node:path";
 import { FileSystem } from "@effect/platform";
-import { Effect } from "effect";
-import { CyclicDependencyError, ExclusiveCategoryError } from "./errors";
+import { Effect, Layer } from "effect";
+import {
+	CyclicDependencyError,
+	ExclusiveCategoryError,
+	PipelineError,
+} from "./errors";
 import type { Generator } from "./generator";
-import { resolve } from "./registry";
+import { Registry } from "./registry";
 import type { ResolvedFile } from "./virtual-fs";
-import * as VFS from "./virtual-fs";
+import { Vfs } from "./virtual-fs";
 
-export function run<Config extends Record<string, unknown>>(
-	config: Config,
-	generators: ReadonlyArray<Generator<Config>>,
-	projectRoot: string,
-) {
-	return Effect.gen(function* () {
-		const applicable = resolve(config, generators);
-		yield* validateExclusivity(applicable);
-
-		const ordered = yield* topologicalSort(applicable);
-
-		let vfs = VFS.empty();
-		for (const generator of ordered) {
-			const ops = yield* generator.generate(config);
-			vfs = VFS.addOperations(vfs, generator.id, ops);
-		}
-
-		const resolved = yield* VFS.resolve(vfs, {
-			onConflict: "accept-incoming",
-		});
-
-		yield* applyToDisk(resolved, projectRoot);
-
-		return { ordered, resolved };
-	});
-}
-
-function applyToDisk(
+function applyResolvedToDisk(
 	resolved: ReadonlyArray<ResolvedFile>,
 	projectRoot: string,
 ) {
@@ -41,28 +19,47 @@ function applyToDisk(
 		const fs = yield* FileSystem.FileSystem;
 
 		for (const file of resolved) {
-			const fullPath = `${projectRoot}/${file.path}`;
+			const fullPath = join(projectRoot, file.path);
 			const dir = fullPath.slice(0, fullPath.lastIndexOf("/"));
 
-			yield* fs.makeDirectory(dir, { recursive: true });
-			yield* fs.writeFileString(fullPath, file.content);
+			yield* fs.makeDirectory(dir, { recursive: true }).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
+						new PipelineError({
+							path: dir,
+							message: "Directory Write Failed",
+						}),
+				),
+			);
+			yield* fs.writeFileString(fullPath, file.content).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
+						new PipelineError({
+							path: fullPath,
+							message: "File Write Failed",
+						}),
+				),
+			);
 		}
 	});
 }
 
+export function run<Config extends Record<string, unknown>>(
+	config: Config,
+	generators: ReadonlyArray<Generator<Config>>,
+	projectRoot: string,
+) {
+	return Effect.flatMap(Pipeline, (pipeline) =>
+		pipeline.run(config, generators, projectRoot),
+	).pipe(Effect.provide(pipelineLayer));
+}
+
 export function hashContent(content: string) {
-	return Effect.gen(function* () {
-		const encoder = new TextEncoder();
-
-		const data = encoder.encode(content);
-		const buffer = yield* Effect.promise(() =>
-			globalThis.crypto.subtle.digest("SHA-256", data),
-		);
-
-		return Array.from(new Uint8Array(buffer))
-			.map((b) => b.toString(16).padStart(2, "0"))
-			.join("");
-	});
+	return Effect.flatMap(Pipeline, (pipeline) =>
+		pipeline.hashContent(content),
+	).pipe(Effect.provide(pipelineLayer));
 }
 
 export function validateExclusivity<Config>(
@@ -145,3 +142,65 @@ export function topologicalSort<Config>(
 		return sorted;
 	});
 }
+
+export class Pipeline extends Effect.Service<Pipeline>()("Pipeline", {
+	effect: Effect.gen(function* () {
+		const registry = yield* Registry;
+		const vfsService = yield* Vfs;
+
+		const run = Effect.fn("Pipeline.run")(function* <
+			Config extends Record<string, unknown>,
+		>(
+			config: Config,
+			generators: ReadonlyArray<Generator<Config>>,
+			projectRoot: string,
+		) {
+			const applicable = yield* registry.resolve(config, generators);
+			yield* validateExclusivity(applicable);
+
+			const ordered = yield* topologicalSort(applicable);
+
+			let vfs = yield* vfsService.empty();
+			for (const generator of ordered) {
+				const ops = yield* generator.generate(config);
+				vfs = yield* vfsService.addOperations(vfs, generator.id, ops);
+			}
+
+			const resolved = yield* vfsService.resolve(vfs, {
+				onConflict: "accept-incoming",
+			});
+
+			yield* applyResolvedToDisk(resolved, projectRoot);
+
+			return { ordered, resolved };
+		});
+
+		const hashContent = Effect.fn("Pipeline.hashContent")(function* (
+			content: string,
+		) {
+			const encoder = new TextEncoder();
+			const data = encoder.encode(content);
+
+			const buffer = yield* Effect.tryPromise({
+				try: () => globalThis.crypto.subtle.digest("SHA-256", data),
+				catch: () =>
+					new PipelineError({
+						path: "content",
+						message: "Content Hash Failed",
+					}),
+			});
+
+			return Array.from(new Uint8Array(buffer))
+				.map((byte) => byte.toString(16).padStart(2, "0"))
+				.join("");
+		});
+
+		return { hashContent, run };
+	}),
+}) {}
+
+const pipelineBaseLayer = Layer.mergeAll(Registry.Default, Vfs.Default);
+
+const pipelineLayer = Pipeline.Default.pipe(
+	Layer.provideMerge(pipelineBaseLayer),
+);

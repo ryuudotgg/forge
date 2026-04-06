@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect, Schema } from "effect";
-import { ArrayFormatter } from "effect/ParseResult";
 import { ModuleIdSchema } from "./config";
-import { ParseError, StateError } from "./errors";
+import { StateError } from "./errors";
 import { formatJson } from "./format/json";
+import { decodeJsonString } from "./json";
 
 const PROJECT_STATE_DIR = ".forge";
 const MANIFEST_FILE = "manifest.json";
@@ -56,16 +56,6 @@ function lockfilePath(projectRoot: string) {
 	return join(projectRoot, PROJECT_STATE_DIR, LOCKFILE_FILE);
 }
 
-function formatSchemaIssues(
-	issues: Parameters<typeof ArrayFormatter.formatErrorSync>[0],
-) {
-	return ArrayFormatter.formatErrorSync(issues).map((issue) =>
-		issue.path.length > 0
-			? `${issue.path.join(".")}: ${issue.message}`
-			: issue.message,
-	);
-}
-
 export class State extends Effect.Service<State>()("State", {
 	accessors: true,
 	effect: Effect.gen(function* () {
@@ -83,27 +73,31 @@ export class State extends Effect.Service<State>()("State", {
 					message: "Manifest Not Found",
 				});
 
-			const raw = yield* fs.readFileString(path);
-			const parsed = yield* Effect.try({
-				try: () => JSON.parse(raw) as unknown,
-				catch: (error) =>
-					new ParseError({
-						filePath: path,
-						message: `Manifest Parse Failed: ${String(error)}`,
-					}),
-			});
-
-			return yield* Schema.decodeUnknown(ManifestSchema)(parsed).pipe(
-				Effect.mapError(
-					(issues) =>
+			const raw = yield* fs.readFileString(path).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
 						new StateError({
 							filePath: path,
-							message: `Invalid Manifest\n${formatSchemaIssues(issues)
-								.map((issue) => `  ${issue}`)
-								.join("\n")}`,
+							message: "Manifest Read Failed",
 						}),
 				),
 			);
+
+			return yield* decodeJsonString(raw, ManifestSchema, {
+				onParseError: (message) =>
+					new StateError({
+						filePath: path,
+						message: `Manifest Parse Failed: ${message}`,
+					}),
+				onValidationError: (issues) =>
+					new StateError({
+						filePath: path,
+						message: `Invalid Manifest\n${issues
+							.map((issue) => `  ${issue}`)
+							.join("\n")}`,
+					}),
+			});
 		});
 
 		const writeManifest = Effect.fn("State.writeManifest")(function* (
@@ -112,11 +106,33 @@ export class State extends Effect.Service<State>()("State", {
 		) {
 			const path = manifestPath(projectRoot);
 
-			yield* fs.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
-				recursive: true,
-			});
+			yield* fs
+				.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
+					recursive: true,
+				})
+				.pipe(
+					Effect.catchTag(
+						"SystemError",
+						() =>
+							new StateError({
+								filePath: path,
+								message: "Manifest Directory Failed",
+							}),
+					),
+				);
 
-			yield* fs.writeFileString(path, formatJson(manifest, { compact: false }));
+			yield* fs
+				.writeFileString(path, formatJson(manifest, { compact: false }))
+				.pipe(
+					Effect.catchTag(
+						"SystemError",
+						() =>
+							new StateError({
+								filePath: path,
+								message: "Manifest Write Failed",
+							}),
+					),
+				);
 		});
 
 		const readLockfile = Effect.fn("State.readLockfile")(function* (
@@ -132,27 +148,31 @@ export class State extends Effect.Service<State>()("State", {
 					provenance: {},
 				} satisfies Lockfile;
 
-			const raw = yield* fs.readFileString(path);
-			const parsed = yield* Effect.try({
-				try: () => JSON.parse(raw) as unknown,
-				catch: (error) =>
-					new ParseError({
-						filePath: path,
-						message: `Lockfile Parse Failed: ${String(error)}`,
-					}),
-			});
-
-			return yield* Schema.decodeUnknown(LockfileSchema)(parsed).pipe(
-				Effect.mapError(
-					(issues) =>
+			const raw = yield* fs.readFileString(path).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
 						new StateError({
 							filePath: path,
-							message: `Invalid Lockfile\n${formatSchemaIssues(issues)
-								.map((issue) => `  ${issue}`)
-								.join("\n")}`,
+							message: "Lockfile Read Failed",
 						}),
 				),
 			);
+
+			return yield* decodeJsonString(raw, LockfileSchema, {
+				onParseError: (message) =>
+					new StateError({
+						filePath: path,
+						message: `Lockfile Parse Failed: ${message}`,
+					}),
+				onValidationError: (issues) =>
+					new StateError({
+						filePath: path,
+						message: `Invalid Lockfile\n${issues
+							.map((issue) => `  ${issue}`)
+							.join("\n")}`,
+					}),
+			});
 		});
 
 		const writeLockfile = Effect.fn("State.writeLockfile")(function* (
@@ -161,11 +181,33 @@ export class State extends Effect.Service<State>()("State", {
 		) {
 			const path = lockfilePath(projectRoot);
 
-			yield* fs.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
-				recursive: true,
-			});
+			yield* fs
+				.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
+					recursive: true,
+				})
+				.pipe(
+					Effect.catchTag(
+						"SystemError",
+						() =>
+							new StateError({
+								filePath: path,
+								message: "Lockfile Directory Failed",
+							}),
+					),
+				);
 
-			yield* fs.writeFileString(path, formatJson(lockfile, { compact: false }));
+			yield* fs
+				.writeFileString(path, formatJson(lockfile, { compact: false }))
+				.pipe(
+					Effect.catchTag(
+						"SystemError",
+						() =>
+							new StateError({
+								filePath: path,
+								message: "Lockfile Write Failed",
+							}),
+					),
+				);
 		});
 
 		const isManagedProject = Effect.fn("State.isManagedProject")(function* (
@@ -177,15 +219,15 @@ export class State extends Effect.Service<State>()("State", {
 			const manifestExists = yield* fs.exists(manifestPath(projectRoot));
 			if (!manifestExists) return false;
 
-			const raw = yield* fs.readFileString(manifestPath(projectRoot));
-			const parsed = yield* Effect.try({
-				try: () => JSON.parse(raw) as unknown,
-				catch: () => null,
-			});
+			const raw = yield* fs
+				.readFileString(manifestPath(projectRoot))
+				.pipe(Effect.catchTag("SystemError", () => Effect.succeed("")));
+			if (raw === "") return false;
 
-			if (parsed === null) return false;
-
-			return yield* Schema.decodeUnknown(ManifestSchema)(parsed).pipe(
+			return yield* decodeJsonString(raw, ManifestSchema, {
+				onParseError: () => false,
+				onValidationError: () => false,
+			}).pipe(
 				Effect.as(true),
 				Effect.catchAll(() => Effect.succeed(false)),
 			);

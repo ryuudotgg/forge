@@ -24,11 +24,11 @@ export interface VirtualFs {
 	readonly operations: Map<FilePath, SourcedOperation[]>;
 }
 
-export function empty(): VirtualFs {
+function createVirtualFs(): VirtualFs {
 	return { operations: new Map() };
 }
 
-export function addOperations(
+function addVfsOperations(
 	vfs: VirtualFs,
 	generatorId: string,
 	ops: ReadonlyArray<FileOperation>,
@@ -62,7 +62,7 @@ export interface ResolvedFile {
 	readonly generators: ReadonlyArray<string>;
 }
 
-export function detectConflicts(vfs: VirtualFs) {
+function detectVfsConflicts(vfs: VirtualFs) {
 	return Effect.gen(function* () {
 		const errors: ConflictError[] = [];
 
@@ -93,12 +93,12 @@ export interface ResolveOptions {
 	readonly onConflict?: ConflictStrategy;
 }
 
-export function resolve(vfs: VirtualFs, options?: ResolveOptions) {
+function resolveVirtualFs(vfs: VirtualFs, options?: ResolveOptions) {
 	const strategy = options?.onConflict ?? "error";
 
 	return Effect.gen(function* () {
 		if (strategy === "error") {
-			const conflicts = yield* detectConflicts(vfs);
+			const conflicts = yield* detectVfsConflicts(vfs);
 
 			if (conflicts.length > 0)
 				return yield* new AggregateConflictError({
@@ -117,6 +117,41 @@ export function resolve(vfs: VirtualFs, options?: ResolveOptions) {
 
 		return resolved;
 	});
+}
+
+export class Vfs extends Effect.Service<Vfs>()("Vfs", {
+	accessors: true,
+	effect: Effect.succeed({
+		empty: () => Effect.sync(createVirtualFs),
+		addOperations: (
+			vfs: VirtualFs,
+			generatorId: string,
+			ops: ReadonlyArray<FileOperation>,
+		) => Effect.sync(() => addVfsOperations(vfs, generatorId, ops)),
+		detectConflicts: (vfs: VirtualFs) => detectVfsConflicts(vfs),
+		resolve: (vfs: VirtualFs, options?: ResolveOptions) =>
+			resolveVirtualFs(vfs, options),
+	}),
+}) {}
+
+export function empty(): VirtualFs {
+	return createVirtualFs();
+}
+
+export function addOperations(
+	vfs: VirtualFs,
+	generatorId: string,
+	ops: ReadonlyArray<FileOperation>,
+): VirtualFs {
+	return addVfsOperations(vfs, generatorId, ops);
+}
+
+export function detectConflicts(vfs: VirtualFs) {
+	return detectVfsConflicts(vfs);
+}
+
+export function resolve(vfs: VirtualFs, options?: ResolveOptions) {
+	return resolveVirtualFs(vfs, options);
 }
 
 function resolveFileOperations(

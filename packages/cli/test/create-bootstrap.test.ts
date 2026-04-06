@@ -2,9 +2,10 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
+	CoreLive,
 	filePath,
 	type Generator,
 	type ResolvedFile,
@@ -16,6 +17,8 @@ import { failLifecycleCommand } from "../src/commands/lifecycle";
 interface TestConfig extends Record<string, unknown> {
 	readonly style?: string;
 }
+
+const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 function makeGenerator(id: string): Generator<TestConfig> {
 	return {
@@ -103,15 +106,17 @@ describe("project bootstrap", () => {
 				ordered,
 				projectRoot: directory,
 				resolved,
-			}).pipe(Effect.provide(NodeContext.layer), Effect.runPromise);
+			}).pipe(Effect.provide(coreLayer), Effect.runPromise);
 
 			const manifest = await readJson<{
 				version: number;
-				modules: Record<string, {}>;
+				modules: Record<string, object>;
 			}>(join(directory, ".forge/manifest.json"));
+
 			const lockfile = await readJson<{ version: number }>(
 				join(directory, ".forge/lock.json"),
 			);
+
 			const appConfig = await readJson<{
 				id: string;
 				type: string;
@@ -119,6 +124,7 @@ describe("project bootstrap", () => {
 				template: { id: string; version: number };
 				slots: Record<string, string>;
 			}>(join(directory, "apps/web/forge.json"));
+
 			const uiConfig = await readJson<{
 				id: string;
 				type: string;
@@ -130,9 +136,11 @@ describe("project bootstrap", () => {
 
 			expect(manifest.version).toBe(1);
 			expect(lockfile.version).toBe(1);
+
 			expect(Object.keys(manifest.modules)).toEqual(
 				expect.arrayContaining([appConfig.id, uiConfig.id]),
 			);
+
 			expect(appConfig.type).toBe("app");
 			expect(appConfig.framework).toBe("nextjs");
 			expect(appConfig.template).toEqual({ id: "base", version: 1 });
@@ -140,23 +148,29 @@ describe("project bootstrap", () => {
 				layout: "app/layout.tsx",
 				page: "app/page.tsx",
 			});
+
 			expect(uiConfig.type).toBe("package");
 			expect(uiConfig.packageType).toBe("library");
+
 			expect(uiConfig.capabilities).toEqual(
 				expect.arrayContaining(["react", "tailwind", "ui"]),
 			);
+
 			expect(uiConfig.slots).toMatchObject({
 				globalsCss: "src/styles/globals.css",
 				postcssConfig: "postcss.config.mjs",
 				themeCss: "src/styles/theme.css",
 				utils: "src/lib/utils.ts",
 			});
+
 			expect(appConfig.id).toMatch(/^[a-z]{5}$/);
 			expect(uiConfig.id).toMatch(/^[a-z]{5}$/);
 			expect(appConfig.id).not.toBe(uiConfig.id);
+
 			expect(await pathExists(join(directory, ".forge/forge.lock"))).toBe(
 				false,
 			);
+
 			expect(
 				JSON.parse(
 					await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
@@ -188,8 +202,9 @@ describe("project bootstrap", () => {
 			await expect(failLifecycleCommand(directory, "add")).rejects.toThrow(
 				"exit:1",
 			);
+
 			expect(errorLog).toHaveBeenCalledWith(
-				expect.stringContaining(`The "add" command isn't implemented yet`),
+				expect.stringContaining(`We haven't implemented "add" yet`),
 			);
 
 			exit.mockRestore();

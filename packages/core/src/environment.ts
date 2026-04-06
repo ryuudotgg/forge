@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+import { Effect, Layer } from "effect";
+import { CommandProbe } from "./command";
 
 export const runtimes = {
 	node: { displayName: "Node.js", minimumMajor: 22 },
@@ -54,7 +55,7 @@ function detectRuntime(): { id: RuntimeId; version: string } {
 	return { id: "node", version: process.versions.node };
 }
 
-export function checkRuntime(): EnvironmentCheck {
+function checkCurrentRuntime(): EnvironmentCheck {
 	const { id, version } = detectRuntime();
 	const { displayName, minimumMajor } = runtimes[id];
 	const major = Number(version.split(".")[0]);
@@ -68,19 +69,12 @@ export function checkRuntime(): EnvironmentCheck {
 	return { ok: true, message: `${displayName} v${version}` };
 }
 
-export function checkPackageManager(pm: PackageManager): EnvironmentCheck {
+function buildPackageManagerCheck(
+	pm: PackageManager,
+	version: string,
+): EnvironmentCheck {
 	const cmd = pmCommandMap[pm];
 	const { displayName, minimumMajor } = packageManagers[cmd];
-
-	let version: string;
-	try {
-		version = execFileSync(cmd, ["--version"], { encoding: "utf-8" }).trim();
-	} catch {
-		return {
-			ok: false,
-			message: `You don't have ${displayName} installed, please install it and try again.`,
-		};
-	}
 
 	const major = Number(version.split(".")[0]);
 	if (major < minimumMajor)
@@ -90,4 +84,43 @@ export function checkPackageManager(pm: PackageManager): EnvironmentCheck {
 		};
 
 	return { ok: true, message: `${displayName} v${version}` };
+}
+
+export class Environment extends Effect.Service<Environment>()("Environment", {
+	accessors: true,
+	effect: Effect.succeed({
+		checkRuntime: () => Effect.sync(checkCurrentRuntime),
+		checkPackageManager: (pm: PackageManager) => {
+			const displayName = packageManagers[pmCommandMap[pm]].displayName;
+
+			return CommandProbe.readVersion(packageManagerCommand(pm)).pipe(
+				Effect.map((version) => buildPackageManagerCheck(pm, version)),
+				Effect.catchTag("CommandProbeError", () =>
+					Effect.succeed<EnvironmentCheck>({
+						ok: false,
+						message: `You don't have ${displayName} installed, please install it and try again.`,
+					}),
+				),
+			);
+		},
+		readPackageManagerVersion: (pm: PackageManager) =>
+			CommandProbe.readVersion(packageManagerCommand(pm)),
+	}),
+}) {}
+
+const environmentLayer = Layer.mergeAll(
+	CommandProbe.Default,
+	Environment.Default,
+);
+
+export function checkRuntime(): EnvironmentCheck {
+	return Effect.runSync(
+		Environment.checkRuntime().pipe(Effect.provide(environmentLayer)),
+	);
+}
+
+export function checkPackageManager(pm: PackageManager): EnvironmentCheck {
+	return Effect.runSync(
+		Environment.checkPackageManager(pm).pipe(Effect.provide(environmentLayer)),
+	);
 }
