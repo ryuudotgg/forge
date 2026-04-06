@@ -73,7 +73,7 @@ importers:
         specifier: catalog:dev
         version: 2.1.4
       turbo:
-        specifier: ^2.9.3
+        specifier: ^2.9.4
         version: 2.9.4
       typescript:
         specifier: catalog:dev
