@@ -51,3 +51,18 @@ jobs:
 
       - name: Type Check
         run: pnpm typecheck
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Test
+        run: pnpm test
