@@ -74,7 +74,7 @@ importers:
         version: 2.1.4
       turbo:
         specifier: ^2.9.3
-        version: 2.9.3
+        version: 2.9.4
       typescript:
         specifier: catalog:dev
         version: 6.0.2
@@ -120,7 +120,7 @@ importers:
         version: 24.12.0
       tsdown:
         specifier: catalog:build
-        version: 0.21.7(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(typescript@6.0.2)
+        version: 0.21.7(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(typescript@6.0.2)
       typescript:
         specifier: catalog:dev
         version: 6.0.2
@@ -145,7 +145,7 @@ importers:
         version: 24.12.0
       tsdown:
         specifier: catalog:build
-        version: 0.21.7(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(typescript@6.0.2)
+        version: 0.21.7(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(typescript@6.0.2)
       typescript:
         specifier: catalog:dev
         version: 6.0.2
@@ -167,7 +167,7 @@ importers:
         version: 24.12.0
       tsdown:
         specifier: catalog:build
-        version: 0.21.7(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(typescript@6.0.2)
+        version: 0.21.7(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(typescript@6.0.2)
       typescript:
         specifier: catalog:dev
         version: 6.0.2
@@ -421,14 +421,14 @@ packages:
       '@effect/rpc': ^0.75.0
       effect: ^3.21.0
 
-  '@emnapi/core@1.9.1':
-    resolution: {integrity: sha512-mukuNALVsoix/w1BJwFzwXBN/dHeejQtuVzcDsfOEsdpCumXb/E9j8w11h5S54tT1xhifGfbbSm/ICrObRb3KA==}
+  '@emnapi/core@1.9.2':
+    resolution: {integrity: sha512-UC+ZhH3XtczQYfOlu3lNEkdW/p4dsJ1r/bP7H8+rhao3TTTMO1ATq/4DdIi23XuGoFY+Cz0JmCbdVl0hz9jZcA==}
 
-  '@emnapi/runtime@1.9.1':
-    resolution: {integrity: sha512-VYi5+ZVLhpgK4hQ0TAjiQiZ6ol0oe4mBx7mVv7IflsiEp0OWoVsp/+f9Vc1hOhE0TtkORVrI1GvzyreqpgWtkA==}
+  '@emnapi/runtime@1.9.2':
+    resolution: {integrity: sha512-3U4+MIWHImeyu1wnmVygh5WlgfYDtyf0k8AbLhMFxOipihf6nrWC4syIm/SwEeec0mNSafiiNnMJwbza/Is6Lw==}
 
-  '@emnapi/wasi-threads@1.2.0':
-    resolution: {integrity: sha512-N10dEJNSsUx41Z6pZsXU8FjPjpBEplgH24sfkmITrBED1/U2Esum9F3lfLrMjKHHjmi557zQn7kR9R+XWXu5Rg==}
+  '@emnapi/wasi-threads@1.2.1':
+    resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
 
   '@esbuild/aix-ppc64@0.27.7':
     resolution: {integrity: sha512-EKX3Qwmhz1eMdEJokhALr0YiD0lhQNwDqkPYyPhiSwKrh7/4KRjQc04sZ8db+5DVVnZ1LmbNDI1uAMPEUBnQPg==}
@@ -976,33 +976,33 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@turbo/darwin-64@2.9.3':
-    resolution: {integrity: sha512-P8foouaP+y/p+hhEGBoZpzMbpVvUMwPjDpcy6wN7EYfvvyISD1USuV27qWkczecihwuPJzQ1lDBuL8ERcavTyg==}
+  '@turbo/darwin-64@2.9.4':
+    resolution: {integrity: sha512-ZSlPqJ5Vqg/wgVw8P3AOVCIosnbBilOxLq7TMz3MN/9U46DUYfdG2jtfevNDufyxyrg98pcPs/GBgDRaaids6g==}
     cpu: [x64]
     os: [darwin]
 
-  '@turbo/darwin-arm64@2.9.3':
-    resolution: {integrity: sha512-SIzEkvtNdzdI50FJDaIQ6kQGqgSSdFPcdn0wqmmONN6iGKjy6hsT+EH99GP65FsfV7DLZTh2NmtTIRl2kdoz5Q==}
+  '@turbo/darwin-arm64@2.9.4':
+    resolution: {integrity: sha512-9cjTWe4OiNlFMSRggPNh+TJlRs7MS5FWrHc96MOzft5vESWjjpvaadYPv5ykDW7b45mVHOF2U/W+48LoX9USWw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@turbo/linux-64@2.9.3':
-    resolution: {integrity: sha512-pLRwFmcHHNBvsCySLS6OFabr/07kDT2pxEt/k6eBf/3asiVQZKJ7Rk88AafQx2aYA641qek4RsXvYO3JYpiBug==}
+  '@turbo/linux-64@2.9.4':
+    resolution: {integrity: sha512-Cl1GjxqBXQ+r9KKowmXG+lhD1gclLp48/SE7NxL//66iaMytRw0uiphWGOkccD92iPiRjHLRUaA9lOTtgr5OCA==}
     cpu: [x64]
     os: [linux]
 
-  '@turbo/linux-arm64@2.9.3':
-    resolution: {integrity: sha512-gy6ApUroC2Nzv+qjGtE/uPNkhHAFU4c8God+zd5Aiv9L9uBgHlxVJpHT3XWl5xwlJZ2KWuMrlHTaS5kmNB+q1Q==}
+  '@turbo/linux-arm64@2.9.4':
+    resolution: {integrity: sha512-j2hPAKVmGNN2EsKigEWD+43y9m7zaPhNAs6ptsyfq0u7evHHBAXAwOfv86OEMg/gvC+pwGip0i1CIm1bR1vYug==}
     cpu: [arm64]
     os: [linux]
 
-  '@turbo/windows-64@2.9.3':
-    resolution: {integrity: sha512-d0YelTX6hAsB7kIEtGB3PzIzSfAg3yDoUlHwuwJc3adBXUsyUIs0YLG+1NNtuhcDOUGnWQeKUoJ2pGWvbpRj7w==}
+  '@turbo/windows-64@2.9.4':
+    resolution: {integrity: sha512-1jWPjCe9ZRmsDTXE7uzqfySNQspnUx0g6caqvwps+k/sc+fm9hC/4zRQKlXZLbVmP3Xxp601Ju71boegHdnYGw==}
     cpu: [x64]
     os: [win32]
 
-  '@turbo/windows-arm64@2.9.3':
-    resolution: {integrity: sha512-/08CwpKJl3oRY8nOlh2YgilZVJDHsr60XTNxRhuDeuFXONpUZ5X+Nv65izbG/xBew9qxcJFbDX9/sAmAX+ITcQ==}
+  '@turbo/windows-arm64@2.9.4':
+    resolution: {integrity: sha512-dlko15TQVu/BFYmIY018Y3covWMRQlUgAkD+OOk+Rokcfj6VY02Vv4mCfT/Zns6B4q8jGbOd6IZhnCFYsE8Viw==}
     cpu: [arm64]
     os: [win32]
 
@@ -1165,8 +1165,8 @@ packages:
     resolution: {integrity: sha512-h5k/5U50IJJFpzfL6nO9jaaumfjO/f2NjK/oYB2Djzm4p9L+3T9qWpZqZ2hAbLPuuYq9wrU08WQyBTL5GbPk5Q==}
     engines: {node: '>=6'}
 
-  defu@6.1.4:
-    resolution: {integrity: sha512-mEQCMmwJu317oSz8CwdIOdwf3xMif1ttiM8LTufzc3g6kR+9Pe236twL8j3IYT1F7GfRgGcW6MWxzZjLIkuHIg==}
+  defu@6.1.6:
+    resolution: {integrity: sha512-f8mefEW4WIVg4LckePx3mALjQSPQgFlg9U8yaPdlsbdYcHQyj9n2zL2LJEA52smeYxOvmd/nB7TpMtHGMTHcug==}
 
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
@@ -1636,8 +1636,8 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
-  turbo@2.9.3:
-    resolution: {integrity: sha512-J/VUvsGRykPb9R8Kh8dHVBOqioDexLk9BhLCU/ZybRR+HN9UR3cURdazFvNgMDt9zPP8TF6K73Z+tplfmi0PqQ==}
+  turbo@2.9.4:
+    resolution: {integrity: sha512-wZ/kMcZCuK5oEp7sXSSo/5fzKjP9I2EhoiarZjyCm2Ixk0WxFrC/h0gF3686eHHINoFQOOSWgB/pGfvkR8rkgQ==}
     hasBin: true
 
   typescript@6.0.2:
@@ -1654,8 +1654,8 @@ packages:
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
-  undici@7.24.6:
-    resolution: {integrity: sha512-Xi4agocCbRzt0yYMZGMA6ApD7gvtUFaxm4ZmeacWI4cZxaF6C+8I8QfofC20NAePiB/IcvZmzkJ7XPa471AEtA==}
+  undici@7.24.7:
+    resolution: {integrity: sha512-H/nlJ/h0ggGC+uRL3ovD+G0i4bqhvsDOpbDv7At5eFLlj2b41L8QliGbnl2H7SnDiYhENphh1tQFJZf+MyfLsQ==}
     engines: {node: '>=20.18.1'}
 
   unrun@0.2.34:
@@ -2019,7 +2019,7 @@ snapshots:
       '@effect/sql': 0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0))(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0)
       effect: 3.21.0
       mime: 3.0.0
-      undici: 7.24.6
+      undici: 7.24.7
       ws: 8.20.0
     transitivePeerDependencies:
       - bufferutil
@@ -2052,18 +2052,18 @@ snapshots:
       '@effect/rpc': 0.75.0(@effect/platform@0.96.0(effect@3.21.0))(effect@3.21.0)
       effect: 3.21.0
 
-  '@emnapi/core@1.9.1':
+  '@emnapi/core@1.9.2':
     dependencies:
-      '@emnapi/wasi-threads': 1.2.0
+      '@emnapi/wasi-threads': 1.2.1
       tslib: 2.8.1
     optional: true
 
-  '@emnapi/runtime@1.9.1':
+  '@emnapi/runtime@1.9.2':
     dependencies:
       tslib: 2.8.1
     optional: true
 
-  '@emnapi/wasi-threads@1.2.0':
+  '@emnapi/wasi-threads@1.2.1':
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -2178,10 +2178,10 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@napi-rs/wasm-runtime@1.1.2(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)':
+  '@napi-rs/wasm-runtime@1.1.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)':
     dependencies:
-      '@emnapi/core': 1.9.1
-      '@emnapi/runtime': 1.9.1
+      '@emnapi/core': 1.9.2
+      '@emnapi/runtime': 1.9.2
       '@tybys/wasm-util': 0.10.1
     optional: true
 
@@ -2287,9 +2287,9 @@ snapshots:
   '@rolldown/binding-openharmony-arm64@1.0.0-rc.12':
     optional: true
 
-  '@rolldown/binding-wasm32-wasi@1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)':
+  '@rolldown/binding-wasm32-wasi@1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)':
     dependencies:
-      '@napi-rs/wasm-runtime': 1.1.2(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)
+      '@napi-rs/wasm-runtime': 1.1.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -2386,22 +2386,22 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@turbo/darwin-64@2.9.3':
+  '@turbo/darwin-64@2.9.4':
     optional: true
 
-  '@turbo/darwin-arm64@2.9.3':
+  '@turbo/darwin-arm64@2.9.4':
     optional: true
 
-  '@turbo/linux-64@2.9.3':
+  '@turbo/linux-64@2.9.4':
     optional: true
 
-  '@turbo/linux-arm64@2.9.3':
+  '@turbo/linux-arm64@2.9.4':
     optional: true
 
-  '@turbo/windows-64@2.9.3':
+  '@turbo/windows-64@2.9.4':
     optional: true
 
-  '@turbo/windows-arm64@2.9.3':
+  '@turbo/windows-arm64@2.9.4':
     optional: true
 
   '@tybys/wasm-util@0.10.1':
@@ -2567,7 +2567,7 @@ snapshots:
 
   deep-eql@5.0.2: {}
 
-  defu@6.1.4: {}
+  defu@6.1.6: {}
 
   detect-libc@2.1.2: {}
 
@@ -2860,7 +2860,7 @@ snapshots:
 
   resolve-pkg-maps@1.0.0: {}
 
-  rolldown-plugin-dts@0.23.2(rolldown@1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1))(typescript@6.0.2):
+  rolldown-plugin-dts@0.23.2(rolldown@1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2))(typescript@6.0.2):
     dependencies:
       '@babel/generator': 8.0.0-rc.3
       '@babel/helper-validator-identifier': 8.0.0-rc.3
@@ -2872,13 +2872,13 @@ snapshots:
       get-tsconfig: 4.13.7
       obug: 2.1.1
       picomatch: 4.0.4
-      rolldown: 1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)
+      rolldown: 1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
     optionalDependencies:
       typescript: 6.0.2
     transitivePeerDependencies:
       - oxc-resolver
 
-  rolldown@1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1):
+  rolldown@1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2):
     dependencies:
       '@oxc-project/types': 0.122.0
       '@rolldown/pluginutils': 1.0.0-rc.12
@@ -2895,7 +2895,7 @@ snapshots:
       '@rolldown/binding-linux-x64-gnu': 1.0.0-rc.12
       '@rolldown/binding-linux-x64-musl': 1.0.0-rc.12
       '@rolldown/binding-openharmony-arm64': 1.0.0-rc.12
-      '@rolldown/binding-wasm32-wasi': 1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)
+      '@rolldown/binding-wasm32-wasi': 1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
       '@rolldown/binding-win32-arm64-msvc': 1.0.0-rc.12
       '@rolldown/binding-win32-x64-msvc': 1.0.0-rc.12
     transitivePeerDependencies:
@@ -2978,24 +2978,24 @@ snapshots:
 
   tree-kill@1.2.2: {}
 
-  tsdown@0.21.7(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(typescript@6.0.2):
+  tsdown@0.21.7(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(typescript@6.0.2):
     dependencies:
       ansis: 4.2.0
       cac: 7.0.0
-      defu: 6.1.4
+      defu: 6.1.6
       empathic: 2.0.0
       hookable: 6.1.0
       import-without-cache: 0.2.5
       obug: 2.1.1
       picomatch: 4.0.4
-      rolldown: 1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)
-      rolldown-plugin-dts: 0.23.2(rolldown@1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1))(typescript@6.0.2)
+      rolldown: 1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
+      rolldown-plugin-dts: 0.23.2(rolldown@1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2))(typescript@6.0.2)
       semver: 7.7.4
       tinyexec: 1.0.4
       tinyglobby: 0.2.15
       tree-kill: 1.2.2
       unconfig-core: 7.5.0
-      unrun: 0.2.34(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)
+      unrun: 0.2.34(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
     optionalDependencies:
       typescript: 6.0.2
     transitivePeerDependencies:
@@ -3010,14 +3010,14 @@ snapshots:
   tslib@2.8.1:
     optional: true
 
-  turbo@2.9.3:
+  turbo@2.9.4:
     optionalDependencies:
-      '@turbo/darwin-64': 2.9.3
-      '@turbo/darwin-arm64': 2.9.3
-      '@turbo/linux-64': 2.9.3
-      '@turbo/linux-arm64': 2.9.3
-      '@turbo/windows-64': 2.9.3
-      '@turbo/windows-arm64': 2.9.3
+      '@turbo/darwin-64': 2.9.4
+      '@turbo/darwin-arm64': 2.9.4
+      '@turbo/linux-64': 2.9.4
+      '@turbo/linux-arm64': 2.9.4
+      '@turbo/windows-64': 2.9.4
+      '@turbo/windows-arm64': 2.9.4
 
   typescript@6.0.2: {}
 
@@ -3030,11 +3030,11 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici@7.24.6: {}
+  undici@7.24.7: {}
 
-  unrun@0.2.34(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1):
+  unrun@0.2.34(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2):
     dependencies:
-      rolldown: 1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)
+      rolldown: 1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'

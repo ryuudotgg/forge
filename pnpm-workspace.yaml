@@ -53,3 +53,4 @@ onlyBuiltDependencies:
   - "@parcel/watcher"
   - msgpackr-extract
   - lefthook
+  - esbuild
