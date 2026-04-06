@@ -1,9 +1,17 @@
-import { isCancel, select } from "@clack/prompts";
+import { isCancel, log, select } from "@clack/prompts";
+import {
+	checkPackageManager,
+	type PackageManager,
+	packageManagers,
+} from "@ryuujs/core";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, type PartialConfig } from "../types";
 
-const packageManagerOptions = ["pnpm", "bun", "yarn", "npm"] as const;
+const packageManagerOptions = Object.values(packageManagers).map(
+	(p) => p.displayName,
+) as PackageManager[];
+
 export const packageManagerSchema = Schema.Literal(...packageManagerOptions);
 
 function getSmartDefault(
@@ -11,7 +19,7 @@ function getSmartDefault(
 ): typeof packageManagerSchema.Type {
 	switch (runtime) {
 		case "Bun":
-			return "bun";
+			return "Bun";
 
 		case "Deno":
 			return "pnpm";
@@ -40,9 +48,8 @@ const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
 					config.packageManager,
 				);
 
-				if (Either.isRight(result)) return result.right;
+				return Either.isRight(result) ? result.right : smartDefault;
 			}
-
 			return smartDefault;
 		}
 
@@ -55,6 +62,12 @@ const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
 		});
 
 		if (isCancel(packageManager)) cancel();
+
+		const check = checkPackageManager(packageManager);
+		if (!check.ok) {
+			log.error(check.message);
+			process.exit(1);
+		}
 
 		return packageManager;
 	},

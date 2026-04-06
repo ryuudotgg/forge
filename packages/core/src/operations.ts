@@ -9,7 +9,12 @@ export interface CreateFile {
 	readonly _tag: "CreateFile";
 	readonly path: FilePath;
 	readonly content: string;
-	readonly overwrite: boolean;
+}
+
+export interface CreateJson {
+	readonly _tag: "CreateJson";
+	readonly path: FilePath;
+	readonly value: Record<string, unknown>;
 }
 
 export interface MergeJson {
@@ -24,6 +29,7 @@ export interface AppendLines {
 	readonly path: FilePath;
 	readonly lines: ReadonlyArray<string>;
 	readonly section?: string;
+	readonly position?: "start" | "end";
 }
 
 export interface Dependency {
@@ -47,6 +53,7 @@ export interface AddScripts {
 
 export type FileOperation =
 	| CreateFile
+	| CreateJson
 	| MergeJson
 	| AppendLines
 	| AddDependencies

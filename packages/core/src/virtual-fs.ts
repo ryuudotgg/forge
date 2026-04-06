@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { AggregateConflictError, ConflictError, ParseError } from "./errors";
+import { formatJson } from "./format/json";
 import { deepMerge, mergeJson } from "./merge/json";
 import { appendLines } from "./merge/lines";
 import type {
@@ -7,10 +8,12 @@ import type {
 	AddScripts,
 	AppendLines,
 	CreateFile,
+	CreateJson,
 	FileOperation,
 	FilePath,
 	MergeJson,
 } from "./operations";
+import { sortPackageJson } from "./sort/package-json";
 
 interface SourcedOperation {
 	readonly generatorId: string;
@@ -44,6 +47,7 @@ export function addOperations(
 function getOperationPath(op: FileOperation): FilePath {
 	switch (op._tag) {
 		case "CreateFile":
+		case "CreateJson":
 		case "MergeJson":
 		case "AppendLines":
 		case "AddDependencies":
@@ -64,7 +68,9 @@ export function detectConflicts(vfs: VirtualFs) {
 
 		for (const [path, sourced] of vfs.operations) {
 			const creates = sourced.filter(
-				(s) => s.operation._tag === "CreateFile" && !s.operation.overwrite,
+				(s) =>
+					s.operation._tag === "CreateFile" ||
+					s.operation._tag === "CreateJson",
 			);
 
 			if (creates.length > 1)
@@ -72,7 +78,7 @@ export function detectConflicts(vfs: VirtualFs) {
 					new ConflictError({
 						path,
 						generators: creates.map((c) => c.generatorId),
-						message: `Multiple Generators Create ${path} Without Overwrite`,
+						message: "File Conflict",
 					}),
 				);
 		}
@@ -81,21 +87,31 @@ export function detectConflicts(vfs: VirtualFs) {
 	});
 }
 
-export function resolve(vfs: VirtualFs) {
-	return Effect.gen(function* () {
-		const conflicts = yield* detectConflicts(vfs);
+export type ConflictStrategy = "error" | "accept-incoming" | "accept-current";
 
-		if (conflicts.length > 0)
-			return yield* new AggregateConflictError({
-				conflicts,
-				message: conflicts.map((c) => c.message).join("\n"),
-			});
+export interface ResolveOptions {
+	readonly onConflict?: ConflictStrategy;
+}
+
+export function resolve(vfs: VirtualFs, options?: ResolveOptions) {
+	const strategy = options?.onConflict ?? "error";
+
+	return Effect.gen(function* () {
+		if (strategy === "error") {
+			const conflicts = yield* detectConflicts(vfs);
+
+			if (conflicts.length > 0)
+				return yield* new AggregateConflictError({
+					conflicts,
+					message: conflicts.map((c) => c.message).join("\n"),
+				});
+		}
 
 		const resolved: ResolvedFile[] = [];
 
 		for (const [path, sourced] of vfs.operations) {
 			const generators = [...new Set(sourced.map((s) => s.generatorId))];
-			const content = yield* resolveFileOperations(sourced);
+			const content = yield* resolveFileOperations(sourced, strategy);
 			resolved.push({ path, content, generators });
 		}
 
@@ -103,23 +119,34 @@ export function resolve(vfs: VirtualFs) {
 	});
 }
 
-function resolveFileOperations(sourced: ReadonlyArray<SourcedOperation>) {
+function resolveFileOperations(
+	sourced: ReadonlyArray<SourcedOperation>,
+	strategy: ConflictStrategy,
+) {
 	const path = sourced[0]?.operation.path ?? "unknown";
 
 	return Effect.try({
 		try: () => {
 			let content = "";
+			let json: Record<string, unknown> | null = null;
 
 			const creates: CreateFile[] = [];
+			const jsonCreates: CreateJson[] = [];
+
 			const merges: MergeJson[] = [];
 			const appends: AppendLines[] = [];
-			const deps: AddDependencies[] = [];
+
 			const scripts: AddScripts[] = [];
+			const deps: AddDependencies[] = [];
 
 			for (const { operation } of sourced)
 				switch (operation._tag) {
 					case "CreateFile":
 						creates.push(operation);
+						break;
+
+					case "CreateJson":
+						jsonCreates.push(operation);
 						break;
 
 					case "MergeJson":
@@ -139,32 +166,55 @@ function resolveFileOperations(sourced: ReadonlyArray<SourcedOperation>) {
 						break;
 				}
 
-			const lastCreate = creates[creates.length - 1];
-			if (lastCreate) content = lastCreate.content;
+			const pickCreate =
+				strategy === "accept-current"
+					? creates[0]
+					: creates[creates.length - 1];
 
-			if (merges.length > 0 || deps.length > 0 || scripts.length > 0) {
-				let json: Record<string, unknown> = content ? parseJson(content) : {};
+			const pickJsonCreate =
+				strategy === "accept-current"
+					? jsonCreates[0]
+					: jsonCreates[jsonCreates.length - 1];
+
+			if (pickJsonCreate) json = { ...pickJsonCreate.value };
+			if (pickCreate) content = pickCreate.content;
+
+			const hasJsonOps =
+				json !== null ||
+				merges.length > 0 ||
+				deps.length > 0 ||
+				scripts.length > 0;
+
+			if (hasJsonOps) {
+				if (!json) json = content ? parseJson(content) : {};
 
 				for (const merge of merges)
 					json = mergeJson(json, merge.value, merge.strategy);
 
-				if (deps.length > 0) json = applyDependencies(json, deps);
 				if (scripts.length > 0) json = applyScripts(json, scripts);
+				if (deps.length > 0) json = applyDependencies(json, deps);
 
-				content = `${JSON.stringify(json, null, "\t")}\n`;
+				if (path.endsWith("package.json")) json = sortPackageJson(json);
+
+				const compact = !path.endsWith("package.json");
+				content = formatJson(json, { compact });
 			}
 
-			if (appends.length > 0) {
+			if (appends.length > 0)
 				for (const append of appends)
-					content = appendLines(content, append.lines, append.section);
-			}
+					content = appendLines(
+						content,
+						append.lines,
+						append.section,
+						append.position,
+					);
 
 			return content;
 		},
 		catch: (error) =>
 			new ParseError({
 				filePath: path,
-				message: `Failed to Resolve File Operations: ${String(error)}`,
+				message: `File Resolution Failed: ${String(error)}`,
 			}),
 	});
 }

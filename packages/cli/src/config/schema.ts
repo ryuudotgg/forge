@@ -50,22 +50,4 @@ export function assembleSchema(steps: Step[]) {
 	);
 }
 
-export function applyConfigDefaults<T extends Record<string, unknown>>(
-	data: T,
-): T {
-	const { mobile, tailwindEcosystem, styleFramework, nativeStyleFramework } =
-		data;
-
-	if (tailwindEcosystem === false)
-		if (
-			(mobile &&
-				(!styleFramework || styleFramework === "Tailwind CSS") &&
-				nativeStyleFramework === "NativeWind") ||
-			(!mobile && styleFramework === "Tailwind CSS")
-		)
-			return { ...data, tailwindEcosystem: true };
-
-	return data;
-}
-
 export type Config = ReturnType<typeof assembleSchema>["Type"];

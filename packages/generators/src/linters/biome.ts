@@ -25,37 +25,32 @@ function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
 
 	return [
 		{
-			_tag: "CreateFile",
+			_tag: "CreateJson",
 			path: filePath("biome.jsonc"),
-			content: `${JSON.stringify(
-				{
-					$schema: "./node_modules/@biomejs/biome/configuration_schema.json",
-					files: {
-						includes: ["**/*", ...excludes.map((e) => `!${e}`)],
-					},
-					formatter: {
-						enabled: true,
-						indentStyle: "tab",
-						lineEnding: "lf",
-						lineWidth: 80,
-					},
-					linter: {
-						enabled: true,
-						rules: { recommended: true },
-					},
-					assist: {
-						enabled: true,
-						actions: {
-							source: {
-								organizeImports: "on",
-							},
+			value: {
+				$schema: "./node_modules/@biomejs/biome/configuration_schema.json",
+				files: {
+					includes: ["**/*", ...excludes.map((e) => `!${e}`)],
+				},
+				formatter: {
+					enabled: true,
+					indentStyle: "tab",
+					lineEnding: "lf",
+					lineWidth: 80,
+				},
+				linter: {
+					enabled: true,
+					rules: { recommended: true },
+				},
+				assist: {
+					enabled: true,
+					actions: {
+						source: {
+							organizeImports: "on",
 						},
 					},
 				},
-				null,
-				"\t",
-			)}\n`,
-			overwrite: false,
+			},
 		},
 		{
 			_tag: "AddDependencies",

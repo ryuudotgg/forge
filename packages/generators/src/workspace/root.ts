@@ -1,5 +1,11 @@
+import { execFileSync } from "node:child_process";
 import type { FileOperation } from "@ryuujs/core";
-import { defineGenerator, filePath } from "@ryuujs/core";
+import {
+	defineGenerator,
+	filePath,
+	packageManagerCommand,
+	runtimeCommand,
+} from "@ryuujs/core";
 import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
@@ -19,21 +25,42 @@ export default defineGenerator<ForgeConfig>({
 
 function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
 	const slug = config.slug ?? "my-app";
+
+	const rt = config.runtime ?? "Node.js";
+	const rtCmd = runtimeCommand(rt);
+
+	const rtVersion = execFileSync(rtCmd, ["--version"], {
+		encoding: "utf-8",
+	})
+		.trim()
+		.replace(/^v/, "");
+
 	const pm = config.packageManager ?? "pnpm";
+	const pmCmd = packageManagerCommand(pm);
+
+	const pmVersion = execFileSync(pmCmd, ["--version"], {
+		encoding: "utf-8",
+	})
+		.trim()
+		.replace(/^v/, "");
 
 	const packageJson: Record<string, unknown> = {
 		name: slug,
 		private: true,
+		packageManager: `${pmCmd}@${pmVersion}`,
+		engines: {
+			[rtCmd]: rtVersion,
+			[pmCmd]: `^${pmVersion}`,
+		},
 	};
 
-	if (pm !== "pnpm") packageJson.workspaces = ["apps/*", "packages/*"];
+	if (pmCmd !== "pnpm") packageJson.workspaces = ["apps/*", "packages/*"];
 
 	return [
 		{
-			_tag: "CreateFile",
+			_tag: "CreateJson",
 			path: filePath("package.json"),
-			content: `${JSON.stringify(packageJson, null, "\t")}\n`,
-			overwrite: false,
+			value: packageJson,
 		},
 		{
 			_tag: "AddDependencies",
@@ -51,33 +78,28 @@ function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
 			},
 		},
 		{
-			_tag: "CreateFile",
+			_tag: "CreateJson",
 			path: filePath("turbo.json"),
-			content: `${JSON.stringify(
-				{
-					$schema: "https://turborepo.com/schema.json",
-					tasks: {
-						build: {
-							dependsOn: ["^build"],
-							outputs: ["dist/**", ".next/**", "!.next/cache/**"],
-						},
-						check: {
-							dependsOn: ["^build"],
-						},
-						dev: {
-							cache: false,
-							persistent: true,
-						},
-						typecheck: {
-							dependsOn: ["^build"],
-							outputs: [".cache/tsbuildinfo.json"],
-						},
+			value: {
+				$schema: "https://turborepo.com/schema.json",
+				tasks: {
+					build: {
+						dependsOn: ["^build"],
+						outputs: ["dist/**", ".next/**", "!.next/cache/**"],
+					},
+					check: {
+						dependsOn: ["^build"],
+					},
+					dev: {
+						cache: false,
+						persistent: true,
+					},
+					typecheck: {
+						dependsOn: ["^build"],
+						outputs: [".cache/tsbuildinfo.json"],
 					},
 				},
-				null,
-				"\t",
-			)}\n`,
-			overwrite: false,
+			},
 		},
 	];
 }

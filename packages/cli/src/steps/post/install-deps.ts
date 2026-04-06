@@ -1,6 +1,7 @@
-import { confirm, isCancel } from "@clack/prompts";
+import { confirm, isCancel, spinner } from "@clack/prompts";
 import { Command } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
+import { type PackageManager, packageManagerCommand } from "@ryuujs/core";
 import { Effect, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
@@ -11,13 +12,17 @@ class InstallError extends Schema.TaggedError<InstallError>()("InstallError", {
 	message: Schema.String,
 }) {}
 
-function installDeps(pm: string, dir: string) {
+function installDeps(
+	pm: PackageManager,
+	cmd: ReturnType<typeof packageManagerCommand>,
+	dir: string,
+) {
 	return Effect.gen(function* () {
 		const code = yield* Command.exitCode(
-			Command.make(pm, "install").pipe(
+			Command.make(cmd, "install").pipe(
 				Command.workingDirectory(dir),
-				Command.stdout("inherit"),
-				Command.stderr("inherit"),
+				Command.stdout("pipe"),
+				Command.stderr("pipe"),
 			),
 		);
 
@@ -39,11 +44,17 @@ const installDepsStep = defineStep({
 	shouldRun: () => true,
 
 	async execute(config, interactive) {
-		const pm = String(config.packageManager ?? "pnpm");
+		const pm = config.packageManager ?? "pnpm";
+		const cmd = packageManagerCommand(pm);
 		const dir = String(config.path);
 
 		if (!interactive) {
-			await Effect.runPromise(installDeps(pm, dir));
+			const s = spinner();
+
+			s.start("We're installing your dependencies...");
+			await Effect.runPromise(installDeps(pm, cmd, dir));
+			s.stop("We've installed your dependencies!");
+
 			return SKIP;
 		}
 
@@ -56,7 +67,11 @@ const installDepsStep = defineStep({
 		if (isCancel(shouldInstall)) cancel();
 		if (!shouldInstall) return SKIP;
 
-		await Effect.runPromise(installDeps(pm, dir));
+		const s = spinner();
+
+		s.start("We're installing your dependencies...");
+		await Effect.runPromise(installDeps(pm, cmd, dir));
+		s.stop("We've installed your dependencies!");
 	},
 });
 

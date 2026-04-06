@@ -2,6 +2,7 @@ import { NodeContext } from "@effect/platform-node";
 import { run } from "@ryuujs/core";
 import { type ForgeConfig, generators } from "@ryuujs/generators";
 import { Effect } from "effect";
+import { bootstrapProject } from "../bootstrap/project";
 import type { PartialConfig } from "./types";
 import { defineStep, SKIP } from "./types";
 
@@ -18,10 +19,18 @@ const generateStep = defineStep({
 		const forgeConfig: ForgeConfig = config;
 
 		try {
-			await Effect.runPromise(
+			const result = await Effect.runPromise(
 				run(forgeConfig, generators, projectRoot).pipe(
 					Effect.provide(NodeContext.layer),
 				),
+			);
+			await Effect.runPromise(
+				bootstrapProject({
+					config: forgeConfig,
+					ordered: result.ordered,
+					projectRoot,
+					resolved: result.resolved,
+				}).pipe(Effect.provide(NodeContext.layer)),
 			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

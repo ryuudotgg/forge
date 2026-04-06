@@ -37,6 +37,7 @@ export function appendLines(
 	existing: string,
 	lines: ReadonlyArray<string>,
 	section?: string,
+	position: "start" | "end" = "end",
 ): string {
 	const sections = parseSections(existing);
 
@@ -49,6 +50,19 @@ export function appendLines(
 			for (const line of lines)
 				if (!existingSet.has(line)) found.lines.push(line);
 		} else sections.push({ header, lines: [...lines] });
+	} else if (position === "start") {
+		const target =
+			sections.find((s) => s.header === "") ??
+			(() => {
+				const s: Section = { header: "", lines: [] };
+				sections.unshift(s);
+
+				return s;
+			})();
+
+		const existingSet = new Set(target.lines);
+		const toAdd = lines.filter((line) => !existingSet.has(line));
+		target.lines.unshift(...toAdd);
 	} else {
 		const target =
 			sections.find((s) => s.header === "") ??

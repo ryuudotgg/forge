@@ -6,7 +6,7 @@ import orpcContracts from "./backend/orpc-contracts";
 import rpc from "./backend/rpc";
 import rpcPublic from "./backend/rpc-public";
 import database from "./data/database";
-import managedProvider from "./data/managed-provider";
+import databaseProvider from "./data/database-provider";
 import orm from "./data/orm";
 import generate from "./generate";
 import intro from "./intro";
@@ -24,7 +24,6 @@ import packageManager from "./project/package-manager";
 import path from "./project/path";
 import runtime from "./project/runtime";
 import nativeStyleFramework from "./style/native-framework";
-import tailwindEcosystem from "./style/tailwind-ecosystem";
 import webStyleFramework from "./style/web-framework";
 import type { Step } from "./types";
 
@@ -50,12 +49,11 @@ export const steps: Step[] = [
 
 	database,
 	orm,
-	managedProvider,
+	databaseProvider,
 
 	authProvider,
 	authCustomUI,
 
-	tailwindEcosystem,
 	webStyleFramework,
 	nativeStyleFramework,
 
@@ -63,8 +61,8 @@ export const steps: Step[] = [
 
 	generate,
 
-	gitInit,
 	installDeps,
+	gitInit,
 
 	outro,
 ];

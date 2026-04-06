@@ -18,19 +18,15 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 	id: "styleFramework",
 	group: "style",
 	schema: styleFrameworkSchema,
-	configKey: "styleFramework",
-
-	dependencies: ["tailwindEcosystem"],
+	configKey: "style",
 
 	shouldRun: (config) => !!(config.web || config.desktop),
 
 	async execute(config, interactive) {
-		if (config.tailwindEcosystem === true) return "Tailwind CSS";
-
 		if (!interactive) {
-			if (config.styleFramework) {
+			if (config.style) {
 				const result = Schema.decodeUnknownEither(styleFrameworkSchema)(
-					config.styleFramework,
+					config.style,
 				);
 
 				if (Either.isRight(result)) return result.right;

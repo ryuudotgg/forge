@@ -3,7 +3,7 @@ import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const managedProviderSchema = Schema.Literal(
+export const databaseProviderSchema = Schema.Literal(
 	"PlanetScale",
 	"Neon",
 	"Nile",
@@ -12,14 +12,14 @@ export const managedProviderSchema = Schema.Literal(
 	"Turso",
 );
 
-type ManagedProvider = typeof managedProviderSchema.Type;
-type ProviderOption = ManagedProvider | "None";
+type DatabaseProvider = typeof databaseProviderSchema.Type;
+type ProviderOption = DatabaseProvider | "None";
 
-const managedProviderStep = defineStep<ManagedProvider>({
-	id: "managedProvider",
+const databaseProviderStep = defineStep<DatabaseProvider>({
+	id: "databaseProvider",
 	group: "data",
-	schema: managedProviderSchema,
-	configKey: "managedProvider",
+	schema: databaseProviderSchema,
+	configKey: "databaseProvider",
 
 	dependencies: ["database", "orm"],
 
@@ -27,9 +27,9 @@ const managedProviderStep = defineStep<ManagedProvider>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			if (config.managedProvider) {
-				const result = Schema.decodeUnknownEither(managedProviderSchema)(
-					config.managedProvider,
+			if (config.databaseProvider) {
+				const result = Schema.decodeUnknownEither(databaseProviderSchema)(
+					config.databaseProvider,
 				);
 
 				if (Either.isRight(result)) return result.right;
@@ -92,4 +92,4 @@ const managedProviderStep = defineStep<ManagedProvider>({
 	},
 });
 
-export default managedProviderStep;
+export default databaseProviderStep;
