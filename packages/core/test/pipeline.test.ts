@@ -7,6 +7,7 @@ import {
 	emptyVfs,
 	filePath,
 	type Generator,
+	hashContent,
 	Pipeline,
 	Vfs,
 	type VirtualFs,
@@ -147,6 +148,14 @@ describe("pipeline and vfs", () => {
 			Effect.flatMap(Pipeline, (pipeline) =>
 				pipeline.hashContent("forge"),
 			).pipe(Effect.provide(coreLayer)),
+		);
+
+		expect(hash).toMatch(/^[a-f0-9]{64}$/);
+	});
+
+	it("hashes content through the exported pipeline helper", async () => {
+		const hash = await Effect.runPromise(
+			hashContent("forge").pipe(Effect.provide(coreLayer)),
 		);
 
 		expect(hash).toMatch(/^[a-f0-9]{64}$/);

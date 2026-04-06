@@ -59,7 +59,7 @@ export function run<Config extends Record<string, unknown>>(
 export function hashContent(content: string) {
 	return Effect.flatMap(Pipeline, (pipeline) =>
 		pipeline.hashContent(content),
-	).pipe(Effect.provide(Pipeline.Default));
+	).pipe(Effect.provide(pipelineLayer));
 }
 
 export function validateExclusivity<Config>(

@@ -1,13 +1,7 @@
 import { join } from "node:path";
 import { FileSystem } from "@effect/platform";
 import type { Generator, ResolvedFile } from "@ryuujs/core";
-import {
-	ConfigStore,
-	CoreLive,
-	type Lockfile,
-	type Manifest,
-	State,
-} from "@ryuujs/core";
+import { ConfigStore, type Lockfile, type Manifest, State } from "@ryuujs/core";
 import type { ForgeConfig } from "@ryuujs/generators";
 import { Effect } from "effect";
 
@@ -141,5 +135,5 @@ export function bootstrapProject(context: BootstrapContext) {
 		const legacyLockPath = join(projectRoot, LEGACY_LOCKFILE_PATH);
 		const legacyLockExists = yield* fs.exists(legacyLockPath);
 		if (legacyLockExists) yield* fs.remove(legacyLockPath);
-	}).pipe(Effect.provide(CoreLive));
+	});
 }

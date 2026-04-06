@@ -2,9 +2,10 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
+	CoreLive,
 	filePath,
 	type Generator,
 	type ResolvedFile,
@@ -16,6 +17,8 @@ import { failLifecycleCommand } from "../src/commands/lifecycle";
 interface TestConfig extends Record<string, unknown> {
 	readonly style?: string;
 }
+
+const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 function makeGenerator(id: string): Generator<TestConfig> {
 	return {
@@ -103,7 +106,7 @@ describe("project bootstrap", () => {
 				ordered,
 				projectRoot: directory,
 				resolved,
-			}).pipe(Effect.provide(NodeContext.layer), Effect.runPromise);
+			}).pipe(Effect.provide(coreLayer), Effect.runPromise);
 
 			const manifest = await readJson<{
 				version: number;
