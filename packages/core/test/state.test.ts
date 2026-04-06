@@ -3,12 +3,16 @@ import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
-import { ConfigStore, type Lockfile, type Manifest, State } from "../src/index";
+import {
+	ConfigStore,
+	CoreLive,
+	type Lockfile,
+	type Manifest,
+	State,
+} from "../src/index";
 import { readJson, withTempDir, writeJson } from "./harness";
 
-const projectLayer = Layer.mergeAll(ConfigStore.Default, State.Default).pipe(
-	Layer.provideMerge(NodeContext.layer),
-);
+const projectLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 describe("project state", () => {
 	it("generates opaque alphabetic module ids", async () => {
@@ -73,6 +77,7 @@ describe("project state", () => {
 				modules: { abcde: {} },
 				installs: [],
 			};
+
 			const lockfile: Lockfile = {
 				version: 1,
 				resolutions: {},

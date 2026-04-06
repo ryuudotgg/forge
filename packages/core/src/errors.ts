@@ -5,6 +5,15 @@ export class GeneratorError extends Schema.TaggedError<GeneratorError>()(
 	{ generatorId: Schema.String, message: Schema.String },
 ) {}
 
+export class CommandProbeError extends Schema.TaggedError<CommandProbeError>()(
+	"CommandProbeError",
+	{
+		command: Schema.String,
+		message: Schema.String,
+		detail: Schema.String,
+	},
+) {}
+
 export class ConflictError extends Schema.TaggedError<ConflictError>()(
 	"ConflictError",
 	{
@@ -74,5 +83,10 @@ export class StateError extends Schema.TaggedError<StateError>()("StateError", {
 
 export class DiscoveryError extends Schema.TaggedError<DiscoveryError>()(
 	"DiscoveryError",
+	{ path: Schema.String, message: Schema.String },
+) {}
+
+export class PipelineError extends Schema.TaggedError<PipelineError>()(
+	"PipelineError",
 	{ path: Schema.String, message: Schema.String },
 ) {}

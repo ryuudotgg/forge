@@ -1,15 +1,14 @@
 import { dirname, join, relative } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect, Schema } from "effect";
-import { ArrayFormatter } from "effect/ParseResult";
 import {
 	DiscoveryError,
 	DuplicateModuleIdError,
 	ModuleConfigError,
 	ModuleIdGenerationError,
-	ParseError,
 } from "./errors";
 import { formatJson } from "./format/json";
+import { decodeJsonString } from "./json";
 
 const MODULE_CONFIG_FILE = "forge.json";
 
@@ -85,16 +84,6 @@ function moduleConfigPath(moduleRoot: string) {
 	return join(moduleRoot, MODULE_CONFIG_FILE);
 }
 
-function formatSchemaIssues(
-	issues: Parameters<typeof ArrayFormatter.formatErrorSync>[0],
-) {
-	return ArrayFormatter.formatErrorSync(issues).map((issue) =>
-		issue.path.length > 0
-			? `${issue.path.join(".")}: ${issue.message}`
-			: issue.message,
-	);
-}
-
 function randomModuleId() {
 	const values = crypto.getRandomValues(new Uint32Array(MODULE_ID_LENGTH));
 	return values.reduce((result, value) => {
@@ -112,28 +101,28 @@ function normalizeRelativePath(projectRoot: string, path: string) {
 function maybeReadPackageName(
 	fs: FileSystem.FileSystem,
 	moduleRoot: string,
-): Effect.Effect<string | undefined, unknown> {
+): Effect.Effect<string | undefined> {
 	return Effect.gen(function* () {
 		const packageJsonPath = join(moduleRoot, "package.json");
-		const exists = yield* fs.exists(packageJsonPath);
+		const exists = yield* fs
+			.exists(packageJsonPath)
+			.pipe(Effect.catchAll(() => Effect.succeed(false)));
 
 		if (!exists) return undefined;
 
 		const raw = yield* fs
 			.readFileString(packageJsonPath)
-			.pipe(Effect.catchTag("SystemError", () => Effect.succeed("")));
+			.pipe(Effect.catchAll(() => Effect.succeed("")));
 
 		if (raw === "") return undefined;
 
-		try {
-			const parsed: unknown = JSON.parse(raw);
-			if (typeof parsed === "object" && parsed !== null) {
-				const candidate = Reflect.get(parsed, "name");
-				if (typeof candidate === "string") return candidate;
-			}
-		} catch {}
+		const parsed = yield* decodeJsonString(
+			raw,
+			Schema.Struct({ name: Schema.optional(Schema.String) }),
+			{ onParseError: () => undefined, onValidationError: () => undefined },
+		).pipe(Effect.catchAll(() => Effect.void));
 
-		return undefined;
+		return parsed?.name;
 	});
 }
 
@@ -186,27 +175,32 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 					message: "Module Config Not Found",
 				});
 
-			const raw = yield* fs.readFileString(path);
-			const parsed = yield* Effect.try({
-				try: () => JSON.parse(raw) as unknown,
-				catch: (error) =>
-					new ParseError({
-						filePath: path,
-						message: `Module Config Parse Failed: ${String(error)}`,
-					}),
-			});
-
-			return yield* Schema.decodeUnknown(ConfigSchema)(parsed).pipe(
-				Effect.mapError(
-					(issues) =>
+			const raw = yield* fs.readFileString(path).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
 						new ModuleConfigError({
 							filePath: path,
-							message: `Invalid Module Config\n${formatSchemaIssues(issues)
-								.map((issue) => `  ${issue}`)
-								.join("\n")}`,
+							message: "Module Config Read Failed",
 						}),
 				),
 			);
+
+			return yield* decodeJsonString(raw, ConfigSchema, {
+				onParseError: (message) =>
+					new ModuleConfigError({
+						filePath: path,
+						message: `Module Config Parse Failed: ${message}`,
+					}),
+
+				onValidationError: (issues) =>
+					new ModuleConfigError({
+						filePath: path,
+						message: `Invalid Module Config\n${issues
+							.map((issue) => `  ${issue}`)
+							.join("\n")}`,
+					}),
+			});
 		});
 
 		const write = Effect.fn("ConfigStore.write")(function* (
@@ -216,8 +210,29 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 			const path = moduleConfigPath(moduleRoot);
 			const dir = dirname(path);
 
-			yield* fs.makeDirectory(dir, { recursive: true });
-			yield* fs.writeFileString(path, formatJson(config, { compact: false }));
+			yield* fs.makeDirectory(dir, { recursive: true }).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
+						new ModuleConfigError({
+							filePath: path,
+							message: "Module Config Directory Failed",
+						}),
+				),
+			);
+
+			yield* fs
+				.writeFileString(path, formatJson(config, { compact: false }))
+				.pipe(
+					Effect.catchTag(
+						"SystemError",
+						() =>
+							new ModuleConfigError({
+								filePath: path,
+								message: "Module Config Write Failed",
+							}),
+					),
+				);
 		});
 
 		const discover = Effect.fn("ConfigStore.discover")(function* (

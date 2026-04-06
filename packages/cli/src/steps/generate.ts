@@ -1,7 +1,7 @@
 import { NodeContext } from "@effect/platform-node";
-import { run } from "@ryuujs/core";
+import { CoreLive, run } from "@ryuujs/core";
 import { type ForgeConfig, generators } from "@ryuujs/generators";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { bootstrapProject } from "../bootstrap/project";
 import type { PartialConfig } from "./types";
 import { defineStep, SKIP } from "./types";
@@ -18,10 +18,12 @@ const generateStep = defineStep({
 		const projectRoot = String(config.path ?? ".");
 		const forgeConfig: ForgeConfig = config;
 
+		const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+
 		try {
 			const result = await Effect.runPromise(
 				run(forgeConfig, generators, projectRoot).pipe(
-					Effect.provide(NodeContext.layer),
+					Effect.provide(coreLayer),
 				),
 			);
 			await Effect.runPromise(
@@ -30,7 +32,7 @@ const generateStep = defineStep({
 					ordered: result.ordered,
 					projectRoot,
 					resolved: result.resolved,
-				}).pipe(Effect.provide(NodeContext.layer)),
+				}).pipe(Effect.provide(coreLayer)),
 			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

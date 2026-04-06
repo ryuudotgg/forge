@@ -1,10 +1,10 @@
 import { log } from "@clack/prompts";
 import { NodeContext } from "@effect/platform-node";
-import { State } from "@ryuujs/core";
+import { CoreLive, State } from "@ryuujs/core";
 import { Effect, Layer } from "effect";
 
 function lifecycleUnavailableMessage(command: string) {
-	return `We haven't implemented "${command}" yet for the current Forge architecture. Right now, Phase 1 only supports creating new projects.`;
+	return `We haven't implemented "${command}" yet for the current Forge architecture.`;
 }
 
 function unmanagedProjectMessage(command: string) {
@@ -15,10 +15,9 @@ export async function failLifecycleCommand(
 	projectRoot: string,
 	command: string,
 ) {
+	const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 	const isManagedProject = await Effect.runPromise(
-		State.isManagedProject(projectRoot).pipe(
-			Effect.provide(Layer.provideMerge(State.Default, NodeContext.layer)),
-		),
+		State.isManagedProject(projectRoot).pipe(Effect.provide(coreLayer)),
 	);
 
 	log.error(
