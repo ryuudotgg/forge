@@ -6,7 +6,7 @@ export const apiOnly: PartialConfig = {
 	rpcPublic: true,
 	database: "PostgreSQL",
 	orm: "Drizzle ORM",
-	managedProvider: "Neon",
+	databaseProvider: "Neon",
 	linter: "Biome",
 	runtime: "Node.js",
 	packageManager: "pnpm",

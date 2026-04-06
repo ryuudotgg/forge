@@ -5,7 +5,7 @@ export { orpcContractsSchema as orpcContracts } from "./backend/orpc-contracts";
 export { rpcSchema as rpc } from "./backend/rpc";
 export { publicRPCSchema as rpcPublic } from "./backend/rpc-public";
 export { databaseSchema as database } from "./data/database";
-export { managedProviderSchema as managedProvider } from "./data/managed-provider";
+export { databaseProviderSchema as databaseProvider } from "./data/database-provider";
 export { ormSchema as orm } from "./data/orm";
 export { desktopSchema as desktop } from "./platforms/desktop";
 export { mobileSchema as mobile } from "./platforms/mobile";
@@ -18,5 +18,4 @@ export { packageManagerSchema as packageManager } from "./project/package-manage
 export { pathSchema as path } from "./project/path";
 export { runtimeSchema as runtime } from "./project/runtime";
 export { nativeStyleFrameworkSchema as nativeStyleFramework } from "./style/native-framework";
-export { tailwindEcosystemSchema as tailwindEcosystem } from "./style/tailwind-ecosystem";
 export { styleFrameworkSchema as styleFramework } from "./style/web-framework";

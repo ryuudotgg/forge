@@ -12,6 +12,7 @@ export type GeneratorCategory =
 	| "database"
 	| "auth"
 	| "style"
+	| "ui"
 	| "runtime"
 	| "packageManager"
 	| "addon";

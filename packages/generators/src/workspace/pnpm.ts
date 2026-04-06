@@ -19,7 +19,6 @@ export default defineGenerator<ForgeConfig>({
 				_tag: "CreateFile",
 				path: filePath("pnpm-workspace.yaml"),
 				content: "packages:\n  - apps/*\n  - packages/*\n",
-				overwrite: false,
 			},
 		]),
 });

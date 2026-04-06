@@ -29,13 +29,9 @@ const nativeStyleFrameworkStep = defineStep<
 	schema: nativeStyleFrameworkSchema,
 	configKey: "nativeStyleFramework",
 
-	dependencies: ["tailwindEcosystem"],
-
 	shouldRun: (config) => !!config.mobile,
 
 	async execute(config, interactive) {
-		if (config.tailwindEcosystem === true) return "NativeWind";
-
 		if (!interactive) {
 			if (config.nativeStyleFramework) {
 				const result = Schema.decodeUnknownEither(nativeStyleFrameworkSchema)(

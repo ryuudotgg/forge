@@ -57,7 +57,7 @@ export const options = {
 
 	"package-manager": {
 		type: "string",
-		description: "pnpm, npm, yarn, bun",
+		description: "pnpm, npm, Yarn, Bun",
 		configKey: "packageManager",
 	},
 
@@ -121,16 +121,16 @@ export const options = {
 		configKey: "authentication",
 	},
 
-	"managed-provider": {
+	"database-provider": {
 		type: "string",
 		description: "PlanetScale, Neon, Turso, etc.",
-		configKey: "managedProvider",
+		configKey: "databaseProvider",
 	},
 
 	style: {
 		type: "string",
 		description: "Tailwind CSS, UnoCSS",
-		configKey: "styleFramework",
+		configKey: "style",
 	},
 
 	"native-style": {
@@ -167,7 +167,7 @@ export const sections: CLISection[] = [
 			"database",
 			"orm",
 			"auth",
-			"managed-provider",
+			"database-provider",
 			"style",
 			"native-style",
 		],

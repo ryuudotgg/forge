@@ -1,8 +1,15 @@
 import { parseArgs } from "node:util";
+import { checkRuntime } from "@ryuujs/core";
 import { version } from "../package.json" with { type: "json" };
 import { getParseArgsOptions } from "./cli";
 import { defaultCommand, getSubcommand } from "./commands/registry";
 import { printHelp } from "./utils/help";
+
+const runtimeCheck = checkRuntime();
+if (!runtimeCheck.ok) {
+	console.error(runtimeCheck.message);
+	process.exit(1);
+}
 
 const { values, positionals } = parseArgs({
 	options: getParseArgsOptions(),

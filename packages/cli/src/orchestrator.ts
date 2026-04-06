@@ -1,10 +1,6 @@
 import { Either, Schema } from "effect";
 import { ArrayFormatter } from "effect/ParseResult";
-import {
-	applyConfigDefaults,
-	assembleSchema,
-	type Config,
-} from "./config/schema";
+import { assembleSchema, type Config } from "./config/schema";
 import type { PartialConfig, Step } from "./steps/types";
 import { SKIP } from "./steps/types";
 
@@ -56,5 +52,5 @@ export async function orchestrate(
 		throw new Error(`Invalid Configuration:\n${message}`);
 	}
 
-	return applyConfigDefaults(result.right);
+	return result.right;
 }

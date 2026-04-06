@@ -2,10 +2,7 @@ import { Schema } from "effect";
 
 export class GeneratorError extends Schema.TaggedError<GeneratorError>()(
 	"GeneratorError",
-	{
-		generatorId: Schema.String,
-		message: Schema.String,
-	},
+	{ generatorId: Schema.String, message: Schema.String },
 ) {}
 
 export class ConflictError extends Schema.TaggedError<ConflictError>()(
@@ -19,10 +16,7 @@ export class ConflictError extends Schema.TaggedError<ConflictError>()(
 
 export class CyclicDependencyError extends Schema.TaggedError<CyclicDependencyError>()(
 	"CyclicDependencyError",
-	{
-		cycle: Schema.Array(Schema.String),
-		message: Schema.String,
-	},
+	{ cycle: Schema.Array(Schema.String), message: Schema.String },
 ) {}
 
 export class AggregateConflictError extends Schema.TaggedError<AggregateConflictError>()(
@@ -35,14 +29,6 @@ export class AggregateConflictError extends Schema.TaggedError<AggregateConflict
 				message: Schema.String,
 			}),
 		),
-		message: Schema.String,
-	},
-) {}
-
-export class ManifestNotFoundError extends Schema.TaggedError<ManifestNotFoundError>()(
-	"ManifestNotFoundError",
-	{
-		projectRoot: Schema.String,
 		message: Schema.String,
 	},
 ) {}
@@ -61,10 +47,32 @@ export class ParseError extends Schema.TaggedError<ParseError>()("ParseError", {
 	message: Schema.String,
 }) {}
 
-export class ReconcileError extends Schema.TaggedError<ReconcileError>()(
-	"ReconcileError",
+export class ModuleConfigError extends Schema.TaggedError<ModuleConfigError>()(
+	"ModuleConfigError",
+	{ filePath: Schema.String, message: Schema.String },
+) {}
+
+export class DuplicateModuleIdError extends Schema.TaggedError<DuplicateModuleIdError>()(
+	"DuplicateModuleIdError",
 	{
-		path: Schema.String,
+		moduleId: Schema.String,
+		firstPath: Schema.String,
+		secondPath: Schema.String,
 		message: Schema.String,
 	},
+) {}
+
+export class ModuleIdGenerationError extends Schema.TaggedError<ModuleIdGenerationError>()(
+	"ModuleIdGenerationError",
+	{ message: Schema.String },
+) {}
+
+export class StateError extends Schema.TaggedError<StateError>()("StateError", {
+	filePath: Schema.String,
+	message: Schema.String,
+}) {}
+
+export class DiscoveryError extends Schema.TaggedError<DiscoveryError>()(
+	"DiscoveryError",
+	{ path: Schema.String, message: Schema.String },
 ) {}
