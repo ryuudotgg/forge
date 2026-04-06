@@ -3,6 +3,7 @@ import type { FileOperation } from "@ryuujs/core";
 import {
 	defineGenerator,
 	filePath,
+	GeneratorError,
 	packageManagerCommand,
 	runtimeCommand,
 } from "@ryuujs/core";
@@ -20,29 +21,34 @@ export default defineGenerator<ForgeConfig>({
 
 	appliesTo: () => true,
 
-	generate: (config) => Effect.succeed(buildOperations(config)),
+	generate: (config) =>
+		Effect.gen(function* () {
+			return buildOperations(
+				config,
+				yield* readCommandVersion(
+					"workspace/root",
+					runtimeCommand(config.runtime ?? "Node.js"),
+				),
+				yield* readCommandVersion(
+					"workspace/root",
+					packageManagerCommand(config.packageManager ?? "pnpm"),
+				),
+			);
+		}),
 });
 
-function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
+function buildOperations(
+	config: ForgeConfig,
+	rtVersion: string,
+	pmVersion: string,
+): ReadonlyArray<FileOperation> {
 	const slug = config.slug ?? "my-app";
 
 	const rt = config.runtime ?? "Node.js";
 	const rtCmd = runtimeCommand(rt);
 
-	const rtVersion = execFileSync(rtCmd, ["--version"], {
-		encoding: "utf-8",
-	})
-		.trim()
-		.replace(/^v/, "");
-
 	const pm = config.packageManager ?? "pnpm";
 	const pmCmd = packageManagerCommand(pm);
-
-	const pmVersion = execFileSync(pmCmd, ["--version"], {
-		encoding: "utf-8",
-	})
-		.trim()
-		.replace(/^v/, "");
 
 	const packageJson: Record<string, unknown> = {
 		name: slug,
@@ -102,4 +108,22 @@ function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
 			},
 		},
 	];
+}
+
+function readCommandVersion(
+	generatorId: string,
+	command: string,
+): Effect.Effect<string, GeneratorError> {
+	return Effect.try({
+		try: () =>
+			execFileSync(command, ["--version"], { encoding: "utf-8" })
+				.trim()
+				.replace(/^v/, ""),
+
+		catch: (error) =>
+			new GeneratorError({
+				generatorId,
+				message: `Command Version Probe Failed: ${command} ${(error as Error).message}`,
+			}),
+	});
 }
