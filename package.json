@@ -28,7 +28,7 @@
 		"lefthook": "catalog:dev",
 		"turbo": "^2.9.3",
 		"typescript": "catalog:dev",
-		"vitest": "^3.2.4"
+		"vitest": "catalog:dev"
 	},
 	"packageManager": "pnpm@10.33.0",
 	"engines": {
