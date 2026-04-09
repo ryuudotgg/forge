@@ -513,10 +513,7 @@ function templateMatches<Config>(
 	expected: TemplateRef,
 	template: TemplateDefinition<Config>,
 ): boolean {
-	return (
-		expected.id === template.id &&
-		(expected.version === undefined || expected.version === template.version)
-	);
+	return expected.id === template.id && expected.version === template.version;
 }
 
 function frameworkHasRequiredSlots(
