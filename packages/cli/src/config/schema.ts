@@ -32,19 +32,19 @@ export function assembleSchema(steps: Step[]) {
 	}
 
 	return Schema.Struct(fields).pipe(
-		// biome-ignore lint/suspicious/useIterableCallbackReturn: Schema.filter, not Array.filter
+		// biome-ignore lint/suspicious/useIterableCallbackReturn: this is not Array.filter
 		Schema.filter((data) => {
 			const platforms = Array.isArray(data.platforms)
 				? data.platforms
 				: undefined;
 
-			if (platforms?.includes("Web") && !data.web)
+			if (platforms?.includes("web") && !data.web)
 				return "A web framework wasn't selected.";
 
-			if (platforms?.includes("Desktop") && !data.desktop)
+			if (platforms?.includes("desktop") && !data.desktop)
 				return "A desktop framework wasn't selected.";
 
-			if (platforms?.includes("Mobile") && !data.mobile)
+			if (platforms?.includes("mobile") && !data.mobile)
 				return "A mobile framework wasn't selected.";
 		}),
 	);

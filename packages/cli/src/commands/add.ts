@@ -5,6 +5,6 @@ export async function runAdd(
 	generatorId: string,
 	_values: Record<string, string | boolean | undefined>,
 ) {
-	intro(`Adding ${generatorId}...`);
+	intro(`We're forging "${generatorId}"...`);
 	await failLifecycleCommand(".", "add");
 }

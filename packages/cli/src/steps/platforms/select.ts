@@ -1,16 +1,18 @@
 import { isCancel, multiselect } from "@clack/prompts";
+import {
+	type Platform,
+	platforms as platformChoices,
+} from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const platformOptions = ["Web", "Desktop", "Mobile"] as const;
+const platformIds = platformChoices.ids as [Platform, ...Platform[]];
 export const platformsSchema = Schema.NonEmptyArray(
-	Schema.Literal(...platformOptions),
+	Schema.Literal(...platformIds),
 );
 
-type Platforms = typeof platformsSchema.Type;
-
-const platformsStep = defineStep<Platforms>({
+const platformsStep = defineStep<typeof platformsSchema.Type>({
 	id: "platforms",
 	group: "platforms",
 	schema: platformsSchema,
@@ -20,30 +22,33 @@ const platformsStep = defineStep<Platforms>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			if (config.platforms) {
-				const result = Schema.decodeUnknownEither(platformsSchema)(
-					config.platforms,
-				);
+			if (Array.isArray(config.platforms)) {
+				const normalized = config.platforms
+					.map((platform) => platformChoices.normalize(platform))
+					.filter((platform): platform is Platform => platform !== undefined);
 
+				const result = Schema.decodeUnknownEither(platformsSchema)(normalized);
 				if (Either.isRight(result)) return result.right;
 			}
 
 			return SKIP;
 		}
 
-		const platforms = await multiselect({
+		const selectedPlatforms = await multiselect({
 			message: "What platforms do you want to support?",
 			required: true,
 
-			options: platformOptions.map((platform) => ({
-				label: platform,
+			options: platformChoices.ids.map((platform) => ({
+				label: platformChoices.label(platform),
 				value: platform,
 			})),
 		});
 
-		if (isCancel(platforms)) cancel();
+		if (isCancel(selectedPlatforms)) cancel();
 
-		const result = Schema.decodeUnknownEither(platformsSchema)(platforms);
+		const result =
+			Schema.decodeUnknownEither(platformsSchema)(selectedPlatforms);
+
 		if (Either.isLeft(result)) return SKIP;
 
 		return result.right;

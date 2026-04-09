@@ -1,14 +1,14 @@
 import type { PartialConfig } from "../steps/types";
 
 export const apiOnly: PartialConfig = {
-	backend: "Hono",
-	rpc: "oRPC",
+	backend: "hono",
+	rpc: "orpc",
 	rpcPublic: true,
-	database: "PostgreSQL",
-	orm: "Drizzle ORM",
-	databaseProvider: "Neon",
-	linter: "Biome",
+	database: "postgresql",
+	orm: "drizzle",
+	databaseProvider: "neon",
+	linter: "biome",
 	runtime: "Node.js",
 	packageManager: "pnpm",
-	catalogs: "Scoped",
+	catalogs: "scoped",
 };

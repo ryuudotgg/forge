@@ -1,16 +1,11 @@
 import { isCancel, select } from "@clack/prompts";
+import { type WebFramework, webFrameworks } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
-const webOptions = [
-	"Next.js",
-	"React Router",
-	"TanStack Router",
-	"TanStack Start",
-] as const;
-
-export const webSchema = Schema.Literal(...webOptions);
+const webIds = webFrameworks.ids as [WebFramework, ...WebFramework[]];
+export const webSchema = Schema.Literal(...webIds);
 
 const webStep = defineStep<typeof webSchema.Type>({
 	id: "web",
@@ -20,22 +15,26 @@ const webStep = defineStep<typeof webSchema.Type>({
 
 	dependencies: ["platforms"],
 
-	shouldRun: (config) => !!config.platforms?.includes("Web"),
+	shouldRun: (config) => !!config.platforms?.includes("web"),
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			if (config.web) {
-				const result = Schema.decodeUnknownEither(webSchema)(config.web);
+			const normalized = webFrameworks.normalize(config.web);
+			if (normalized) {
+				const result = Schema.decodeUnknownEither(webSchema)(normalized);
 				if (Either.isRight(result)) return result.right;
 			}
 
-			return "Next.js";
+			return "nextjs";
 		}
 
 		const web = await select({
 			message: "What is your preferred web framework?",
-			options: webOptions.map((option, index) => ({
-				label: index === 0 ? `${option} (Recommended)` : option,
+			options: webFrameworks.ids.map((option, index) => ({
+				label:
+					index === 0
+						? `${webFrameworks.label(option)} (Recommended)`
+						: webFrameworks.label(option),
 				value: option,
 			})),
 		});

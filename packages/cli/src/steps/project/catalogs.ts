@@ -1,14 +1,15 @@
 import { isCancel, select } from "@clack/prompts";
+import { catalogs as catalogChoices } from "@ryuujs/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
-const catalogOptions = ["Flat", "Scoped", "None"] as const;
+const catalogOptions = [...catalogChoices.ids, "none"] as const;
 
-type ValidCatalogs = Exclude<(typeof catalogOptions)[number], "None">;
+type ValidCatalogs = Exclude<(typeof catalogOptions)[number], "none">;
 
 const filteredOptions = catalogOptions.filter(
-	(c): c is ValidCatalogs => c !== "None",
+	(c): c is ValidCatalogs => c !== "none",
 );
 
 export const catalogsSchema = Schema.Literal(...filteredOptions);
@@ -33,25 +34,25 @@ export default defineStep<Catalogs>({
 
 			options: [
 				{
-					label: "Flat",
-					value: "Flat" as const,
+					label: catalogChoices.label("flat"),
+					value: "flat" as const,
 					hint: "single shared catalog for all deps",
 				},
 				{
-					label: "Scoped",
-					value: "Scoped" as const,
+					label: catalogChoices.label("scoped"),
+					value: "scoped" as const,
 					hint: "grouped catalogs (catalog:dev, catalog:lint, ...)",
 				},
 				{
 					label: "None",
-					value: "None" as const,
+					value: "none" as const,
 					hint: "no catalogs, inline version strings",
 				},
 			],
 		});
 
 		if (isCancel(catalogs)) cancel();
-		if (catalogs === "None") return SKIP;
+		if (catalogs === "none") return SKIP;
 
 		return catalogs;
 	},

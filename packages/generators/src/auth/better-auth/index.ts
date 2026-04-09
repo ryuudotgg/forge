@@ -1,44 +1,40 @@
-import type { FileOperation } from "@ryuujs/core";
-import { defineGenerator, filePath } from "@ryuujs/core";
-import { Effect } from "effect";
+import { defineAddon, dependencies, envEntries, filePath } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { templateFiles } from "../../template";
 
-export default defineGenerator<ForgeConfig>({
-	id: "auth/better-auth",
-	name: "better-auth",
+const betterAuth = defineAddon<ForgeConfig, "better-auth", "nextjs">({
+	id: "better-auth",
+	name: "Better Auth",
 	version: "0.1.0",
 	category: "auth",
 	exclusive: true,
-	dependencies: ["frameworks/nextjs", "orm/drizzle"],
-
-	appliesTo: (config) => config.auth === "better-auth",
-
-	generate: () => Effect.succeed(buildOperations()),
+	dependencies: [
+		{ id: "nextjs/base", type: "template" },
+		{ id: "drizzle", type: "addon" },
+	],
+	targetMode: "single",
+	compatibility: {
+		app: {
+			frameworks: ["nextjs"],
+			requiredSlots: ["auth", "authClient"],
+		},
+	},
+	when: (config) => config.authentication === "better-auth",
+	contribute: () => [
+		...templateFiles("auth/better-auth", "apps/web"),
+		dependencies(filePath("apps/web/package.json"), [
+			{ ...deps.betterAuth, type: "dependencies" },
+		]),
+		envEntries(filePath("apps/web/.env"), "Auth", [
+			"BETTER_AUTH_SECRET=",
+			"BETTER_AUTH_URL=http://localhost:3000",
+		]),
+		envEntries(filePath("apps/web/.env.example"), "Auth", [
+			"BETTER_AUTH_SECRET=",
+			"BETTER_AUTH_URL=http://localhost:3000",
+		]),
+	],
 });
 
-function buildOperations(): ReadonlyArray<FileOperation> {
-	const templates = templateFiles("auth/better-auth", "apps/web");
-
-	return [
-		...templates,
-		{
-			_tag: "AddDependencies",
-			path: filePath("apps/web/package.json"),
-			dependencies: [{ ...deps.betterAuth, type: "dependencies" }],
-		},
-		{
-			_tag: "AppendLines",
-			path: filePath("apps/web/.env"),
-			lines: ["BETTER_AUTH_SECRET=", "BETTER_AUTH_URL=http://localhost:3000"],
-			section: "Auth",
-		},
-		{
-			_tag: "AppendLines",
-			path: filePath("apps/web/.env.example"),
-			lines: ["BETTER_AUTH_SECRET=", "BETTER_AUTH_URL=http://localhost:3000"],
-			section: "Auth",
-		},
-	];
-}
+export default betterAuth;

@@ -1,12 +1,11 @@
 import { isCancel, select } from "@clack/prompts";
+import { type Orm, orms } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const ormOptions = ["Drizzle ORM", "Prisma", "None"] as const;
-type ValidOrm = Exclude<(typeof ormOptions)[number], "None">;
-const validOrms = ormOptions.filter((x): x is ValidOrm => x !== "None");
-export const ormSchema = Schema.Literal(...validOrms);
+const ormIds = orms.ids as [Orm, ...Orm[]];
+export const ormSchema = Schema.Literal(...ormIds);
 
 const ormStep = defineStep<typeof ormSchema.Type>({
 	id: "orm",
@@ -20,8 +19,9 @@ const ormStep = defineStep<typeof ormSchema.Type>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			if (config.orm) {
-				const result = Schema.decodeUnknownEither(ormSchema)(config.orm);
+			const normalized = orms.normalize(config.orm);
+			if (normalized) {
+				const result = Schema.decodeUnknownEither(ormSchema)(normalized);
 				if (Either.isRight(result)) return result.right;
 			}
 
@@ -30,14 +30,17 @@ const ormStep = defineStep<typeof ormSchema.Type>({
 
 		const orm = await select({
 			message: "What is your preferred ORM?",
-			options: ormOptions.map((option) => ({
-				label: option,
-				value: option,
-			})),
+			options: [
+				...orms.ids.map((option) => ({
+					label: orms.label(option),
+					value: option,
+				})),
+				{ label: "None", value: "none" as const },
+			],
 		});
 
 		if (isCancel(orm)) cancel();
-		if (orm === "None") return SKIP;
+		if (orm === "none") return SKIP;
 
 		return orm;
 	},

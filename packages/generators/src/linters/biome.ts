@@ -1,36 +1,26 @@
-import type { FileOperation } from "@ryuujs/core";
-import { defineGenerator, filePath } from "@ryuujs/core";
-import { Effect } from "effect";
+import { defineAddon, dependencies, filePath, jsonFile } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 
-export default defineGenerator<ForgeConfig>({
-	id: "linters/biome",
+const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
+	id: "biome",
 	name: "Biome",
 	version: "0.1.0",
 	category: "linter",
 	exclusive: true,
-	dependencies: [],
+	targetMode: "single",
+	when: (config) => config.linter === "biome",
+	contribute: ({ config }) => {
+		const excludes = ["**/dist", "**/.turbo", "**/.cache"];
 
-	appliesTo: (config) => config.linter === "Biome",
+		if (config.web === "nextjs") excludes.push("**/.next");
+		if (config.mobile === "expo") excludes.push("**/.expo");
 
-	generate: (config) => Effect.succeed(buildOperations(config)),
-});
-
-function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
-	const excludes = ["**/dist", "**/.turbo", "**/.cache"];
-
-	if (config.web === "Next.js") excludes.push("**/.next");
-	if (config.mobile === "Expo") excludes.push("**/.expo");
-
-	return [
-		{
-			_tag: "CreateJson",
-			path: filePath("biome.jsonc"),
-			value: {
+		return [
+			jsonFile(filePath("biome.jsonc"), {
 				$schema: "./node_modules/@biomejs/biome/configuration_schema.json",
 				files: {
-					includes: ["**/*", ...excludes.map((e) => `!${e}`)],
+					includes: ["**/*", ...excludes.map((entry) => `!${entry}`)],
 				},
 				formatter: {
 					enabled: true,
@@ -50,12 +40,12 @@ function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
 						},
 					},
 				},
-			},
-		},
-		{
-			_tag: "AddDependencies",
-			path: filePath("package.json"),
-			dependencies: [{ ...deps.biome, type: "devDependencies" }],
-		},
-	];
-}
+			}),
+			dependencies(filePath("package.json"), [
+				{ ...deps.biome, type: "devDependencies" },
+			]),
+		];
+	},
+});
+
+export default biome;

@@ -1,6 +1,6 @@
 import { NodeContext } from "@effect/platform-node";
-import { CoreLive, run } from "@ryuujs/core";
-import { type ForgeConfig, generators } from "@ryuujs/generators";
+import { CoreLive, type Generator, run } from "@ryuujs/core";
+import { type ForgeConfig, resolveBuiltins } from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
 import { bootstrapProject } from "../bootstrap/project";
 import type { PartialConfig } from "./types";
@@ -21,11 +21,17 @@ const generateStep = defineStep({
 		const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 		try {
+			const generators: ReadonlyArray<Generator<ForgeConfig>> =
+				await Effect.runPromise(
+					resolveBuiltins(forgeConfig).pipe(Effect.provide(coreLayer)),
+				);
+
 			const result = await Effect.runPromise(
 				run(forgeConfig, generators, projectRoot).pipe(
 					Effect.provide(coreLayer),
 				),
 			);
+
 			await Effect.runPromise(
 				bootstrapProject({
 					config: forgeConfig,

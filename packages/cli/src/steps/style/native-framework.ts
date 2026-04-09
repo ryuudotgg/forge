@@ -1,21 +1,20 @@
 import { isCancel, select } from "@clack/prompts";
+import { mobileFrameworks, nativeStyleFrameworks } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
 const nativeStyleFrameworkOptions = [
-	"NativeWind",
-	"Tamagui",
-	"Unistyles",
-	"None",
+	...nativeStyleFrameworks.ids,
+	"none",
 ] as const;
 
 type ValidNativeStyleFramework = Exclude<
 	(typeof nativeStyleFrameworkOptions)[number],
-	"None"
+	"none"
 >;
 const validNativeStyleFrameworks = nativeStyleFrameworkOptions.filter(
-	(x): x is ValidNativeStyleFramework => x !== "None",
+	(x): x is ValidNativeStyleFramework => x !== "none",
 );
 export const nativeStyleFrameworkSchema = Schema.Literal(
 	...validNativeStyleFrameworks,
@@ -45,15 +44,15 @@ const nativeStyleFrameworkStep = defineStep<
 		}
 
 		const nativeStyleFramework = await select({
-			message: `Which styling framework do you want to use for ${config.mobile}?`,
+			message: `Which styling framework do you want to use for ${config.mobile ? mobileFrameworks.label(config.mobile) : "mobile"}?`,
 			options: nativeStyleFrameworkOptions.map((option) => ({
-				label: option,
+				label: option === "none" ? "None" : nativeStyleFrameworks.label(option),
 				value: option,
 			})),
 		});
 
 		if (isCancel(nativeStyleFramework)) cancel();
-		if (nativeStyleFramework === "None") return SKIP;
+		if (nativeStyleFramework === "none") return SKIP;
 
 		return nativeStyleFramework;
 	},

@@ -1,4 +1,5 @@
 import { confirm, isCancel } from "@clack/prompts";
+import { authenticationProviders } from "@ryuujs/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
@@ -14,7 +15,7 @@ const authenticationCustomUIStep = defineStep<boolean>({
 	dependencies: ["authentication"],
 
 	shouldRun: (config) =>
-		config.authentication === "WorkOS" || config.authentication === "Clerk",
+		config.authentication === "workos" || config.authentication === "clerk",
 
 	async execute(config, interactive) {
 		if (!interactive) {
@@ -25,7 +26,7 @@ const authenticationCustomUIStep = defineStep<boolean>({
 		}
 
 		const authenticationCustomUI = await confirm({
-			message: `Do you want a custom UI for ${config.authentication}?`,
+			message: `Do you want a custom UI for ${config.authentication ? authenticationProviders.label(config.authentication) : "this provider"}?`,
 			active: "Yes",
 			inactive: "No",
 		});

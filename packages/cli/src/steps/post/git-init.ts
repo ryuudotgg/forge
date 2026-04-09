@@ -12,6 +12,7 @@ function gitInit(dir: string, message: string) {
 		yield* Command.string(
 			Command.make("git", "init").pipe(Command.workingDirectory(dir)),
 		);
+
 		yield* Command.string(
 			Command.make("git", "add", "-A").pipe(Command.workingDirectory(dir)),
 		);

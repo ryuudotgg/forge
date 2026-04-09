@@ -1,52 +1,32 @@
-import type { FileOperation } from "@ryuujs/core";
-import { defineGenerator, filePath } from "@ryuujs/core";
-import { Effect } from "effect";
+import { defineAddon, filePath, lines } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 
-export default defineGenerator<ForgeConfig>({
-	id: "tooling/gitignore",
+const gitignore = defineAddon<ForgeConfig, "gitignore">({
+	id: "gitignore",
 	name: ".gitignore",
 	version: "0.1.0",
 	category: "tooling",
 	exclusive: false,
-	dependencies: [],
+	targetMode: "single",
+	when: () => true,
+	contribute: ({ config }) => {
+		const buildLines = ["dist/", ".turbo/", ".cache/"];
+		if (config.web === "nextjs") buildLines.push(".next/");
+		if (config.mobile) buildLines.push(".expo/");
 
-	appliesTo: () => true,
-
-	generate: (config) => Effect.succeed(buildOperations(config)),
+		return [
+			lines(filePath(".gitignore"), ["node_modules/"], {
+				section: "Dependencies",
+			}),
+			lines(filePath(".gitignore"), buildLines, { section: "Build" }),
+			lines(filePath(".gitignore"), [".env", ".env.local", ".env*.local"], {
+				section: "Environment",
+			}),
+			lines(filePath(".gitignore"), [".DS_Store", "Thumbs.db"], {
+				section: "OS",
+			}),
+		];
+	},
 });
 
-function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
-	const path = filePath(".gitignore");
-
-	const buildLines = ["dist/", ".turbo/", ".cache/"];
-	if (config.web === "Next.js") buildLines.push(".next/");
-	if (config.mobile) buildLines.push(".expo/");
-
-	return [
-		{
-			_tag: "AppendLines",
-			path,
-			lines: ["node_modules/"],
-			section: "Dependencies",
-		},
-		{
-			_tag: "AppendLines",
-			path,
-			lines: buildLines,
-			section: "Build",
-		},
-		{
-			_tag: "AppendLines",
-			path,
-			lines: [".env", ".env.local", ".env*.local"],
-			section: "Environment",
-		},
-		{
-			_tag: "AppendLines",
-			path,
-			lines: [".DS_Store", "Thumbs.db"],
-			section: "OS",
-		},
-	];
-}
+export default gitignore;

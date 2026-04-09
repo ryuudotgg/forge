@@ -43,6 +43,7 @@ const pathStep = defineStep<string>({
 				const result = Schema.decodeUnknownEither(pathSchema)(
 					value || defaultValue,
 				);
+
 				if (Either.isLeft(result)) {
 					const issues = ArrayFormatter.formatErrorSync(result.left);
 					return issues[0]?.message;
