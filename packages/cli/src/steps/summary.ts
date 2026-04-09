@@ -4,7 +4,6 @@ import { CoreLive, Planner } from "@ryuujs/core";
 import {
 	builtins,
 	type ForgeConfig,
-	getCatalogEntry,
 	listVisibleAddons,
 } from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
@@ -66,13 +65,7 @@ const summaryStep = defineStep({
 
 			if (moduleRoots.length > 0)
 				lines.push(formatLine("Modules", moduleRoots.join(", ")));
-		} catch {
-			const catalogTemplate = template
-				? getCatalogEntry(template.id)
-				: undefined;
-			if (catalogTemplate?.kind === "template")
-				lines[1] = formatLine("Template", catalogTemplate.name);
-		}
+		} catch {}
 
 		note(lines.join("\n"), "Forge Plan");
 		return SKIP;

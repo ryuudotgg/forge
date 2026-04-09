@@ -207,8 +207,10 @@ function addonEntry(addon: AddonDefinition<ForgeConfig>): AddonCatalogEntry {
 	const frameworks = addon.compatibility?.app?.frameworks;
 	const capabilities = addon.compatibility?.package?.capabilities;
 	const requiredSlots = [
-		...(addon.compatibility?.app?.requiredSlots ?? []),
-		...(addon.compatibility?.package?.requiredSlots ?? []),
+		...new Set([
+			...(addon.compatibility?.app?.requiredSlots ?? []),
+			...(addon.compatibility?.package?.requiredSlots ?? []),
+		]),
 	] as ReadonlyArray<ManagedSurfaceName>;
 
 	return {

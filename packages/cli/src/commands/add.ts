@@ -15,7 +15,6 @@ import {
 	type AddonCatalogEntry,
 	builtins,
 	type ForgeConfig,
-	getCatalogEntry,
 	listVisibleAddons,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
@@ -73,10 +72,6 @@ function mergeInstallRecord(
 }
 
 function resolveAddon(id: string) {
-	const catalogEntry = getCatalogEntry(id);
-	if (catalogEntry?.kind === "addon")
-		return builtins.addons.find((entry) => entry.id === catalogEntry.id);
-
 	return builtins.addons.find((entry) => entry.id === id);
 }
 
