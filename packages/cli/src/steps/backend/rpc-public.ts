@@ -21,6 +21,7 @@ export default defineStep<boolean>({
 			message: "Do you want your API to be publicly available?",
 			active: "Yes (OpenAPI Specification)",
 			inactive: "No",
+			initialValue: false,
 		});
 
 		if (isCancel(rpcPublic)) cancel();

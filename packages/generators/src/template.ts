@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CreateFile } from "@ryuujs/core";
-import { filePath } from "@ryuujs/core";
+import type { Contribution } from "@ryuujs/core";
+import { filePath, textFile } from "@ryuujs/core";
 import { Array as Arr, pipe } from "effect";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,18 +26,17 @@ function collectFiles(dir: string): ReadonlyArray<string> {
 export function templateFiles(
 	templatePath: string,
 	outputPrefix: string,
-): ReadonlyArray<CreateFile> {
+): ReadonlyArray<Contribution> {
 	const templateDir = join(TEMPLATE_DIR, templatePath);
 	const files = collectFiles(templateDir);
 
 	return pipe(
 		files,
-		Arr.map(
-			(file): CreateFile => ({
-				_tag: "CreateFile",
-				path: filePath(`${outputPrefix}/${relative(templateDir, file)}`),
-				content: readFileSync(file, "utf-8"),
-			}),
+		Arr.map((file) =>
+			textFile(
+				filePath(`${outputPrefix}/${relative(templateDir, file)}`),
+				readFileSync(file, "utf-8"),
+			),
 		),
 	);
 }

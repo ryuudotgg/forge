@@ -14,19 +14,18 @@ function buildCommandEntries(): HelpEntry[] {
 	for (const [name, cmd] of Object.entries<SubcommandDef>(subcommands)) {
 		const label = cmd.default ? "forge" : `forge ${name}`;
 
-		if (cmd.arg) {
+		if (cmd.arg)
 			entries.push({
 				label: `${color.cyan(label)} ${color.dim(cmd.arg)}`,
 				rawLen: label.length + 1 + cmd.arg.length,
 				description: cmd.description,
 			});
-		} else {
+		else
 			entries.push({
 				label: color.cyan(label),
 				rawLen: label.length,
 				description: cmd.description,
 			});
-		}
 	}
 
 	return entries;

@@ -1,46 +1,51 @@
 import { isCancel, select } from "@clack/prompts";
+import {
+	type RpcProvider,
+	rpcProviders,
+	webFrameworks,
+} from "@ryuujs/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
-const rpcOptions = ["tRPC", "oRPC", "None"] as const;
+const rpcIds = rpcProviders.ids as [RpcProvider, ...RpcProvider[]];
+export const rpcSchema = Schema.Literal(...rpcIds);
 
-type ValidRPC = Exclude<(typeof rpcOptions)[number], "None">;
-
-const filteredRpcOptions = rpcOptions.filter(
-	(r): r is ValidRPC => r !== "None",
-);
-
-export const rpcSchema = Schema.Literal(...filteredRpcOptions);
-
-type RPC = typeof rpcSchema.Type;
-
-export default defineStep<RPC>({
+export default defineStep<typeof rpcSchema.Type>({
 	id: "rpc",
 	group: "backend",
 	schema: rpcSchema,
+	configKey: "rpc",
 
 	dependencies: ["backend"],
 
-	shouldRun: (config) => !!config.backend && config.backend !== "Convex",
+	shouldRun: (config) => !!config.backend && config.backend !== "convex",
 
-	async execute(config, interactive): Promise<RPC | Skip> {
-		if (!interactive) return SKIP;
+	async execute(config, interactive): Promise<typeof rpcSchema.Type | Skip> {
+		if (!interactive) {
+			const normalized = rpcProviders.normalize(config.rpc);
+			if (normalized) return normalized;
+
+			return SKIP;
+		}
 
 		const web = config.web;
 
 		const rpc = await select({
 			message: web
-				? `Do you want to use an RPC API with ${web}?`
+				? `Do you want to use an RPC API with ${webFrameworks.label(web)}?`
 				: "Do you want to use an RPC API?",
-			options: rpcOptions.map((r) => ({
-				label: r,
-				value: r,
-			})),
+			options: [
+				...rpcProviders.ids.map((rpcProvider) => ({
+					label: rpcProviders.label(rpcProvider),
+					value: rpcProvider,
+				})),
+				{ label: "None", value: "none" as const },
+			],
 		});
 
 		if (isCancel(rpc)) cancel();
-		if (rpc === "None") return SKIP;
+		if (rpc === "none") return SKIP;
 
 		return rpc;
 	},

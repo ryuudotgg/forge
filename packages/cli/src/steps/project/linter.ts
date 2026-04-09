@@ -1,15 +1,11 @@
 import { isCancel, select } from "@clack/prompts";
+import { type Linter, linters } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const linterOptions = ["Biome", "Oxc", "ESLint + Prettier", "None"] as const;
-
-type ValidLinter = Exclude<(typeof linterOptions)[number], "None">;
-
-export const linterSchema = Schema.Literal(
-	...linterOptions.filter((linter): linter is ValidLinter => linter !== "None"),
-);
+const linterIds = linters.ids as [Linter, ...Linter[]];
+export const linterSchema = Schema.Literal(...linterIds);
 
 const linterStep = defineStep<typeof linterSchema.Type>({
 	id: "linter",
@@ -21,8 +17,9 @@ const linterStep = defineStep<typeof linterSchema.Type>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			if (config.linter) {
-				const result = Schema.decodeUnknownEither(linterSchema)(config.linter);
+			const normalized = linters.normalize(config.linter);
+			if (normalized) {
+				const result = Schema.decodeUnknownEither(linterSchema)(normalized);
 				if (Either.isRight(result)) return result.right;
 			}
 
@@ -31,14 +28,17 @@ const linterStep = defineStep<typeof linterSchema.Type>({
 
 		const linter = await select({
 			message: "What is your preferred linter/formatter?",
-			options: linterOptions.map((option) => ({
-				label: option,
-				value: option,
-			})),
+			options: [
+				...linters.ids.map((option) => ({
+					label: linters.label(option),
+					value: option,
+				})),
+				{ label: "None", value: "none" as const },
+			],
 		});
 
 		if (isCancel(linter)) cancel();
-		if (linter === "None") return SKIP;
+		if (linter === "none") return SKIP;
 
 		return linter;
 	},

@@ -12,7 +12,7 @@ export default defineStep<boolean>({
 
 	dependencies: ["rpc"],
 
-	shouldRun: (config) => config.rpc === "oRPC",
+	shouldRun: (config) => config.rpc === "orpc",
 
 	async execute(_config, interactive): Promise<boolean | Skip> {
 		if (!interactive) return SKIP;

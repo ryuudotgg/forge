@@ -1,9 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
+import { mobileFrameworks } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
-const mobileOptions = ["Expo", "React Native"] as const;
+const mobileOptions = mobileFrameworks.ids;
 export const mobileSchema = Schema.Literal(...mobileOptions);
 
 const mobileStep = defineStep<typeof mobileSchema.Type>({
@@ -14,7 +15,7 @@ const mobileStep = defineStep<typeof mobileSchema.Type>({
 
 	dependencies: ["platforms"],
 
-	shouldRun: (config) => !!config.platforms?.includes("Mobile"),
+	shouldRun: (config) => !!config.platforms?.includes("mobile"),
 
 	async execute(config, interactive) {
 		if (!interactive) {
@@ -23,13 +24,16 @@ const mobileStep = defineStep<typeof mobileSchema.Type>({
 				if (Either.isRight(result)) return result.right;
 			}
 
-			return "Expo";
+			return "expo";
 		}
 
 		const mobile = await select({
 			message: "What is your preferred mobile framework?",
 			options: mobileOptions.map((option, index) => ({
-				label: index === 0 ? `${option} (Recommended)` : option,
+				label:
+					index === 0
+						? `${mobileFrameworks.label(option)} (Recommended)`
+						: mobileFrameworks.label(option),
 				value: option,
 			})),
 		});

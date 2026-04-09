@@ -1,32 +1,28 @@
-import type { FileOperation } from "@ryuujs/core";
-import { defineGenerator, filePath } from "@ryuujs/core";
-import { Effect } from "effect";
+import { defineAddon, dependencies, filePath, jsonFile } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 import { templateFiles } from "../template";
 
-export default defineGenerator<ForgeConfig>({
+const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 	id: "ui",
 	name: "UI Package",
 	version: "0.1.0",
 	category: "ui",
 	exclusive: true,
-	dependencies: ["tooling/typescript"],
+	dependencies: [{ id: "typescript", type: "addon" }],
+	targetMode: "single",
+	compatibility: {
+		app: {
+			frameworks: ["nextjs"],
+			requiredSlots: ["layout"],
+		},
+	},
+	when: (config) => !!config.web,
+	contribute: ({ config }) => {
+		const slug = config.slug ?? "my-app";
 
-	appliesTo: (config) => !!config.web,
-
-	generate: (config) => Effect.succeed(buildOperations(config)),
-});
-
-function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
-	const slug = config.slug ?? "my-app";
-	const templates = templateFiles("ui", "packages/ui");
-
-	return [
-		{
-			_tag: "CreateJson",
-			path: filePath("packages/ui/package.json"),
-			value: {
+		return [
+			jsonFile(filePath("packages/ui/package.json"), {
 				name: `@${slug}/ui`,
 				version: "0.1.0",
 				private: true,
@@ -39,12 +35,8 @@ function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
 					"./components/*": "./src/components/*.tsx",
 					"./hooks/*": "./src/hooks/*.ts",
 				},
-			},
-		},
-		{
-			_tag: "CreateJson",
-			path: filePath("packages/ui/tsconfig.json"),
-			value: {
+			}),
+			jsonFile(filePath("packages/ui/tsconfig.json"), {
 				extends: "../../tsconfig.json",
 				compilerOptions: {
 					jsx: "preserve",
@@ -53,13 +45,13 @@ function buildOperations(config: ForgeConfig): ReadonlyArray<FileOperation> {
 				},
 				include: ["./src", "./*.ts"],
 				exclude: ["node_modules"],
-			},
-		},
-		...templates,
-		{
-			_tag: "AddDependencies",
-			path: filePath("packages/ui/package.json"),
-			dependencies: [{ ...deps.clsx, type: "dependencies" }],
-		},
-	];
-}
+			}),
+			...templateFiles("ui", "packages/ui"),
+			dependencies(filePath("packages/ui/package.json"), [
+				{ ...deps.clsx, type: "dependencies" },
+			]),
+		];
+	},
+});
+
+export default ui;

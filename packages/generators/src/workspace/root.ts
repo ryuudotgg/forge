@@ -1,129 +1,118 @@
-import { execFileSync } from "node:child_process";
-import type { FileOperation } from "@ryuujs/core";
 import {
-	defineGenerator,
+	CommandProbe,
+	defineAddon,
+	dependencies,
 	filePath,
 	GeneratorError,
+	jsonFile,
 	packageManagerCommand,
 	runtimeCommand,
+	scripts,
 } from "@ryuujs/core";
 import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 
-export default defineGenerator<ForgeConfig>({
-	id: "workspace/root",
+const root = defineAddon<ForgeConfig, "root">({
+	id: "root",
 	name: "Root Workspace",
 	version: "0.1.0",
 	category: "workspace",
 	exclusive: true,
-	dependencies: [],
-
-	appliesTo: () => true,
-
-	generate: (config) =>
+	targetMode: "single",
+	when: () => true,
+	contribute: ({ config }) =>
 		Effect.gen(function* () {
-			return buildOperations(
-				config,
-				yield* readCommandVersion(
-					"workspace/root",
-					runtimeCommand(config.runtime ?? "Node.js"),
-				),
-				yield* readCommandVersion(
-					"workspace/root",
-					packageManagerCommand(config.packageManager ?? "pnpm"),
+			const runtime = config.runtime ?? "Node.js";
+			const packageManager = config.packageManager ?? "pnpm";
+			const runtimeCommandName = runtimeCommand(runtime);
+			const packageManagerCommandName = packageManagerCommand(packageManager);
+
+			const runtimeVersion = yield* CommandProbe.readVersion(
+				runtimeCommandName,
+			).pipe(
+				Effect.mapError(
+					(error) =>
+						new GeneratorError({
+							generatorId: "root",
+							message: `Command Version Probe Failed: ${runtimeCommandName} ${error.detail}`,
+						}),
 				),
 			);
+			const packageManagerVersion = yield* CommandProbe.readVersion(
+				packageManagerCommandName,
+			).pipe(
+				Effect.mapError(
+					(error) =>
+						new GeneratorError({
+							generatorId: "root",
+							message: `Command Version Probe Failed: ${packageManagerCommandName} ${error.detail}`,
+						}),
+				),
+			);
+
+			return buildContributions(config, runtimeVersion, packageManagerVersion);
 		}),
 });
 
-function buildOperations(
+function buildContributions(
 	config: ForgeConfig,
-	rtVersion: string,
-	pmVersion: string,
-): ReadonlyArray<FileOperation> {
+	runtimeVersion: string,
+	packageManagerVersion: string,
+) {
 	const slug = config.slug ?? "my-app";
 
-	const rt = config.runtime ?? "Node.js";
-	const rtCmd = runtimeCommand(rt);
+	const runtime = config.runtime ?? "Node.js";
+	const runtimeCommandName = runtimeCommand(runtime);
 
-	const pm = config.packageManager ?? "pnpm";
-	const pmCmd = packageManagerCommand(pm);
+	const packageManager = config.packageManager ?? "pnpm";
+	const packageManagerCommandName = packageManagerCommand(packageManager);
 
 	const packageJson: Record<string, unknown> = {
 		name: slug,
 		private: true,
-		packageManager: `${pmCmd}@${pmVersion}`,
+		packageManager: `${packageManagerCommandName}@${packageManagerVersion}`,
 		engines: {
-			[rtCmd]: rtVersion,
-			[pmCmd]: `^${pmVersion}`,
+			[runtimeCommandName]: runtimeVersion,
+			[packageManagerCommandName]: `^${packageManagerVersion}`,
 		},
 	};
 
-	if (pmCmd !== "pnpm") packageJson.workspaces = ["apps/*", "packages/*"];
+	if (packageManagerCommandName !== "pnpm")
+		packageJson.workspaces = ["apps/*", "packages/*"];
 
 	return [
-		{
-			_tag: "CreateJson",
-			path: filePath("package.json"),
-			value: packageJson,
-		},
-		{
-			_tag: "AddDependencies",
-			path: filePath("package.json"),
-			dependencies: [{ ...deps.turbo, type: "devDependencies" }],
-		},
-		{
-			_tag: "AddScripts",
-			path: filePath("package.json"),
-			scripts: {
-				build: "turbo run build",
-				check: "turbo run check --continue",
-				dev: "turbo run dev",
-				typecheck: "turbo run typecheck",
-			},
-		},
-		{
-			_tag: "CreateJson",
-			path: filePath("turbo.json"),
-			value: {
-				$schema: "https://turborepo.com/schema.json",
-				tasks: {
-					build: {
-						dependsOn: ["^build"],
-						outputs: ["dist/**", ".next/**", "!.next/cache/**"],
-					},
-					check: {
-						dependsOn: ["^build"],
-					},
-					dev: {
-						cache: false,
-						persistent: true,
-					},
-					typecheck: {
-						dependsOn: ["^build"],
-						outputs: [".cache/tsbuildinfo.json"],
-					},
+		jsonFile(filePath("package.json"), packageJson),
+		dependencies(filePath("package.json"), [
+			{ ...deps.turbo, type: "devDependencies" },
+		]),
+		scripts(filePath("package.json"), {
+			build: "turbo run build",
+			check: "turbo run check --continue",
+			dev: "turbo run dev",
+			typecheck: "turbo run typecheck",
+		}),
+		jsonFile(filePath("turbo.json"), {
+			$schema: "https://turborepo.com/schema.json",
+			tasks: {
+				build: {
+					dependsOn: ["^build"],
+					outputs: ["dist/**", ".next/**", "!.next/cache/**"],
+				},
+				check: {
+					dependsOn: ["^build"],
+				},
+				dev: {
+					cache: false,
+					persistent: true,
+				},
+				typecheck: {
+					dependsOn: ["^build"],
+					outputs: [".cache/tsbuildinfo.json"],
 				},
 			},
-		},
+		}),
 	];
 }
 
-function readCommandVersion(
-	generatorId: string,
-	command: string,
-): Effect.Effect<string, GeneratorError> {
-	return Effect.try({
-		try: () =>
-			execFileSync(command, ["--version"], { encoding: "utf-8" })
-				.trim()
-				.replace(/^v/, ""),
-
-		catch: (error) =>
-			new GeneratorError({
-				generatorId,
-				message: `Command Version Probe Failed: ${command} ${(error as Error).message}`,
-			}),
-	});
-}
+export default root;

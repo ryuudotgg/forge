@@ -2,25 +2,22 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
-import { describe, expect, it, vi } from "vitest";
 import {
 	CoreLive,
 	filePath,
 	type Generator,
 	type ResolvedFile,
-} from "../../core/src/index";
-import { readJson, withTempDir } from "../../core/test/harness";
+} from "@ryuujs/core";
+import type { ForgeConfig } from "@ryuujs/generators";
+import { Effect, Layer } from "effect";
+import { describe, expect, it, vi } from "vitest";
 import { bootstrapProject } from "../src/bootstrap/project";
 import { failLifecycleCommand } from "../src/commands/lifecycle";
-
-interface TestConfig extends Record<string, unknown> {
-	readonly style?: string;
-}
+import { readJson, withTempDir } from "./harness";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
-function makeGenerator(id: string): Generator<TestConfig> {
+function makeGenerator(id: string): Generator<ForgeConfig> {
 	return {
 		id,
 		name: id,
@@ -45,11 +42,11 @@ async function pathExists(path: string) {
 describe("project bootstrap", () => {
 	it("writes root state and module metadata after generation", async () => {
 		await withTempDir("create-bootstrap", async (directory) => {
-			const config: TestConfig = { style: "Tailwind CSS" };
+			const config: ForgeConfig = { style: "tailwind", web: "nextjs" };
 			const ordered = [
 				makeGenerator("frameworks/nextjs"),
 				makeGenerator("ui"),
-			] satisfies ReadonlyArray<Generator<TestConfig>>;
+			] satisfies ReadonlyArray<Generator<ForgeConfig>>;
 			const resolved = [
 				{
 					content: "",

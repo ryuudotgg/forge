@@ -1,4 +1,5 @@
 import type { Effect } from "effect";
+import type { CommandProbe } from "./command";
 import type { GeneratorError } from "./errors";
 import type { FileOperation } from "./operations";
 
@@ -27,7 +28,11 @@ export interface Generator<Config> {
 	readonly appliesTo: (config: Config) => boolean;
 	readonly generate: (
 		config: Config,
-	) => Effect.Effect<ReadonlyArray<FileOperation>, GeneratorError>;
+	) => Effect.Effect<
+		ReadonlyArray<FileOperation>,
+		GeneratorError,
+		CommandProbe
+	>;
 }
 
 export function defineGenerator<Config>(

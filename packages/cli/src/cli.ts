@@ -81,7 +81,7 @@ export const options = {
 
 	desktop: {
 		type: "string",
-		description: "Tauri, Electron",
+		description: "Electron, Tauri",
 		configKey: "desktop",
 	},
 

@@ -1,24 +1,21 @@
-import { defineGenerator, filePath } from "@ryuujs/core";
-import { Effect } from "effect";
+import { defineAddon, filePath, textFile } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 
-export default defineGenerator<ForgeConfig>({
-	id: "workspace/pnpm",
+const pnpm = defineAddon<ForgeConfig, "pnpm">({
+	id: "pnpm",
 	name: "pnpm Workspace",
 	version: "0.1.0",
 	category: "packageManager",
 	exclusive: true,
-	dependencies: [],
-
-	appliesTo: (config) =>
+	targetMode: "single",
+	when: (config) =>
 		config.packageManager === "pnpm" || config.packageManager === undefined,
-
-	generate: () =>
-		Effect.succeed([
-			{
-				_tag: "CreateFile",
-				path: filePath("pnpm-workspace.yaml"),
-				content: "packages:\n  - apps/*\n  - packages/*\n",
-			},
-		]),
+	contribute: () => [
+		textFile(
+			filePath("pnpm-workspace.yaml"),
+			"packages:\n  - apps/*\n  - packages/*\n",
+		),
+	],
 });
+
+export default pnpm;

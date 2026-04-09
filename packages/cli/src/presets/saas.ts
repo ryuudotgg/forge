@@ -1,17 +1,17 @@
 import type { PartialConfig } from "../steps/types";
 
 export const saas: PartialConfig = {
-	platforms: ["Web"],
-	web: "Next.js",
-	backend: "Next.js",
-	rpc: "oRPC",
-	database: "PostgreSQL",
-	orm: "Drizzle ORM",
-	databaseProvider: "Neon",
-	authentication: "Better Auth",
-	style: "Tailwind CSS",
-	linter: "Biome",
+	platforms: ["web"],
+	web: "nextjs",
+	backend: "nextjs",
+	rpc: "orpc",
+	database: "postgresql",
+	orm: "drizzle",
+	databaseProvider: "neon",
+	authentication: "better-auth",
+	style: "tailwind",
+	linter: "biome",
 	runtime: "Node.js",
 	packageManager: "pnpm",
-	catalogs: "Scoped",
+	catalogs: "scoped",
 };

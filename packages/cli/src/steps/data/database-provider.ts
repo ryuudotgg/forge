@@ -1,19 +1,13 @@
 import { isCancel, select } from "@clack/prompts";
+import { databaseProviders } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const databaseProviderSchema = Schema.Literal(
-	"PlanetScale",
-	"Neon",
-	"Nile",
-	"Supabase",
-	"Prisma Postgres",
-	"Turso",
-);
+export const databaseProviderSchema = Schema.Literal(...databaseProviders.ids);
 
 type DatabaseProvider = typeof databaseProviderSchema.Type;
-type ProviderOption = DatabaseProvider | "None";
+type ProviderOption = DatabaseProvider | "none";
 
 const databaseProviderStep = defineStep<DatabaseProvider>({
 	id: "databaseProvider",
@@ -42,24 +36,24 @@ const databaseProviderStep = defineStep<DatabaseProvider>({
 		let message: string;
 
 		switch (config.database) {
-			case "MySQL": {
-				options = ["PlanetScale", "None"];
+			case "mysql": {
+				options = ["planetscale", "none"];
 				message = "Do you want a managed MySQL database?";
 				break;
 			}
 
-			case "PostgreSQL": {
+			case "postgresql": {
 				const pgOptions: ProviderOption[] = [
-					"PlanetScale",
-					"Neon",
-					"Nile",
-					"Supabase",
-					"Prisma Postgres",
-					"None",
+					"planetscale",
+					"neon",
+					"nile",
+					"supabase",
+					"prisma-postgres",
+					"none",
 				];
 
 				options = pgOptions.filter(
-					(option) => config.orm === "Prisma" || option !== "Prisma Postgres",
+					(option) => config.orm === "prisma" || option !== "prisma-postgres",
 				);
 
 				message = "Do you want a managed PostgreSQL database?";
@@ -67,8 +61,8 @@ const databaseProviderStep = defineStep<DatabaseProvider>({
 				break;
 			}
 
-			case "SQLite": {
-				options = ["Turso", "None"];
+			case "sqlite": {
+				options = ["turso", "none"];
 				message = "Do you want a managed SQLite database?";
 				break;
 			}
@@ -80,13 +74,13 @@ const databaseProviderStep = defineStep<DatabaseProvider>({
 		const provider = await select({
 			message,
 			options: options.map((option) => ({
-				label: option,
+				label: option === "none" ? "None" : databaseProviders.label(option),
 				value: option,
 			})),
 		});
 
 		if (isCancel(provider)) cancel();
-		if (provider === "None") return SKIP;
+		if (provider === "none") return SKIP;
 
 		return provider;
 	},

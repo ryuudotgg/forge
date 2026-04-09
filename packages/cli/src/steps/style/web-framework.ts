@@ -1,18 +1,21 @@
 import { isCancel, select } from "@clack/prompts";
+import {
+	desktopFrameworks,
+	type StyleFramework,
+	styleFrameworks,
+	webFrameworks,
+} from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { stripNulls } from "../../utils/strip-nulls";
 import { defineStep, SKIP } from "../types";
 
-const styleFrameworkOptions = ["Tailwind CSS", "UnoCSS", "None"] as const;
-type ValidStyleFramework = Exclude<
-	(typeof styleFrameworkOptions)[number],
-	"None"
->;
-const validStyleFrameworks = styleFrameworkOptions.filter(
-	(x): x is ValidStyleFramework => x !== "None",
-);
-export const styleFrameworkSchema = Schema.Literal(...validStyleFrameworks);
+const styleFrameworkIds = styleFrameworks.ids as [
+	StyleFramework,
+	...StyleFramework[],
+];
+
+export const styleFrameworkSchema = Schema.Literal(...styleFrameworkIds);
 
 const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 	id: "styleFramework",
@@ -24,10 +27,10 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			if (config.style) {
-				const result = Schema.decodeUnknownEither(styleFrameworkSchema)(
-					config.style,
-				);
+			const normalized = styleFrameworks.normalize(config.style);
+			if (normalized) {
+				const result =
+					Schema.decodeUnknownEither(styleFrameworkSchema)(normalized);
 
 				if (Either.isRight(result)) return result.right;
 			}
@@ -36,15 +39,21 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 		}
 
 		const styleFramework = await select({
-			message: `Which styling framework do you want to use for ${stripNulls([config.web, config.desktop]).join(" and ")}?`,
-			options: styleFrameworkOptions.map((option) => ({
-				label: option,
-				value: option,
-			})),
+			message: `Which styling framework do you want to use for ${stripNulls([
+				config.web ? webFrameworks.label(config.web) : null,
+				config.desktop ? desktopFrameworks.label(config.desktop) : null,
+			]).join(" and ")}?`,
+			options: [
+				...styleFrameworks.ids.map((option) => ({
+					label: styleFrameworks.label(option),
+					value: option,
+				})),
+				{ label: "None", value: "none" as const },
+			],
 		});
 
 		if (isCancel(styleFramework)) cancel();
-		if (styleFramework === "None") return SKIP;
+		if (styleFramework === "none") return SKIP;
 
 		return styleFramework;
 	},
