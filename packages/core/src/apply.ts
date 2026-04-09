@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { ApplyError } from "./errors";
@@ -139,9 +139,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 			for (const file of writesToApply) {
 				const fullPath = join(projectRoot, file.path);
-				const separatorIndex = fullPath.lastIndexOf("/");
-				const directory =
-					separatorIndex >= 0 ? fullPath.slice(0, separatorIndex) : projectRoot;
+				const directory = dirname(fullPath);
 
 				yield* fs.makeDirectory(directory, { recursive: true }).pipe(
 					Effect.catchTag(

@@ -139,19 +139,24 @@ function mergeEnsuredModule(
 	ensured: EnsureModuleContribution,
 	moduleId: ModuleId,
 	definitionId: string,
-): ManagedModuleRecord {
+): Effect.Effect<ManagedModuleRecord, PlannerError> {
 	const nextConfig = ensured.module;
 
 	if (!existing)
-		return {
+		return Effect.succeed({
 			config: { ...nextConfig, id: moduleId } as Config,
 			definitionIds: [definitionId],
 			id: moduleId,
 			root: ensured.root,
-		};
+		});
 
 	if (existing.config.type !== nextConfig.type)
-		throw new Error("Ensured Module Type Conflict");
+		return Effect.fail(
+			new PlannerError({
+				path: ensured.root,
+				message: "Ensured Module Type Conflict",
+			}),
+		);
 
 	if (existing.config.type === "app" && nextConfig.type === "app") {
 		if (
@@ -159,9 +164,14 @@ function mergeEnsuredModule(
 			existing.config.template.id !== nextConfig.template.id ||
 			existing.config.template.version !== nextConfig.template.version
 		)
-			throw new Error("Ensured App Module Conflict");
+			return Effect.fail(
+				new PlannerError({
+					path: ensured.root,
+					message: "Ensured App Module Conflict",
+				}),
+			);
 
-		return {
+		return Effect.succeed({
 			config: {
 				...nextConfig,
 				id: existing.id,
@@ -171,7 +181,7 @@ function mergeEnsuredModule(
 			definitionIds: [...new Set([...existing.definitionIds, definitionId])],
 			id: existing.id,
 			root: existing.root,
-		};
+		});
 	}
 
 	if (existing.config.type === "package" && nextConfig.type === "package") {
@@ -180,9 +190,14 @@ function mergeEnsuredModule(
 			existing.config.template.id !== nextConfig.template.id ||
 			existing.config.template.version !== nextConfig.template.version
 		)
-			throw new Error("Ensured Package Module Conflict");
+			return Effect.fail(
+				new PlannerError({
+					path: ensured.root,
+					message: "Ensured Package Module Conflict",
+				}),
+			);
 
-		return {
+		return Effect.succeed({
 			config: {
 				...nextConfig,
 				capabilities: [
@@ -198,10 +213,15 @@ function mergeEnsuredModule(
 			definitionIds: [...new Set([...existing.definitionIds, definitionId])],
 			id: existing.id,
 			root: existing.root,
-		};
+		});
 	}
 
-	throw new Error("Ensured Module Conflict");
+	return Effect.fail(
+		new PlannerError({
+			path: ensured.root,
+			message: "Ensured Module Conflict",
+		}),
+	);
 }
 
 function normalizeContributionResult<ConfigValue>(
@@ -462,7 +482,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							: yield* configStore.generateId(usedIds);
 
 						usedIds.add(moduleId);
-						const merged = mergeEnsuredModule(
+						const merged = yield* mergeEnsuredModule(
 							existing,
 							contribution,
 							moduleId,
