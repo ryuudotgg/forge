@@ -1,13 +1,14 @@
 import {
 	defineAddon,
-	dependencies,
-	envEntries,
-	filePath,
-	scripts,
+	leafTextFile,
+	selectedModuleTarget,
+	surfaceDependencies,
+	surfaceLines,
+	surfaceScripts,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
-import { templateFiles } from "../../template";
+import { readTemplate } from "../../template";
 
 const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	id: "drizzle",
@@ -25,22 +26,38 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	},
 	when: (config) => config.orm === "drizzle",
 	contribute: () => [
-		...templateFiles("orm/drizzle", "apps/web"),
-		dependencies(filePath("apps/web/package.json"), [
+		leafTextFile(
+			selectedModuleTarget(),
+			"drizzle.config.ts",
+			readTemplate("orm/drizzle/drizzle.config.ts"),
+		),
+		leafTextFile(
+			selectedModuleTarget(),
+			"src/db/index.ts",
+			readTemplate("orm/drizzle/src/db/index.ts"),
+		),
+		leafTextFile(
+			selectedModuleTarget(),
+			"src/db/schema.ts",
+			readTemplate("orm/drizzle/src/db/schema.ts"),
+		),
+		surfaceDependencies(selectedModuleTarget(), "packageJson", [
 			{ ...deps.drizzleOrm, type: "dependencies" },
 			{ ...deps.neonServerless, type: "dependencies" },
 			{ ...deps.drizzleKit, type: "devDependencies" },
 		]),
-		scripts(filePath("apps/web/package.json"), {
+		surfaceScripts(selectedModuleTarget(), "packageJson", {
 			"db:generate": "drizzle-kit generate",
 			"db:migrate": "drizzle-kit migrate",
 			"db:push": "drizzle-kit push",
 			"db:studio": "drizzle-kit studio",
 		}),
-		envEntries(filePath("apps/web/.env"), "Database", ["DATABASE_URL="]),
-		envEntries(filePath("apps/web/.env.example"), "Database", [
-			"DATABASE_URL=",
-		]),
+		surfaceLines(selectedModuleTarget(), "env", ["DATABASE_URL="], {
+			section: "Database",
+		}),
+		surfaceLines(selectedModuleTarget(), "envExample", ["DATABASE_URL="], {
+			section: "Database",
+		}),
 	],
 });
 

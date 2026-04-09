@@ -45,6 +45,7 @@
 		"dev": "tsdown --watch",
 		"prepare": "effect-language-service patch --dir ../../node_modules/typescript",
 		"start": "node ./dist/index.mjs",
+		"test": "vitest run test",
 		"typecheck": "tsc"
 	},
 	"dependencies": {

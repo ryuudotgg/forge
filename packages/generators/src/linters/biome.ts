@@ -1,4 +1,9 @@
-import { defineAddon, dependencies, filePath, jsonFile } from "@ryuujs/core";
+import {
+	defineAddon,
+	projectTarget,
+	surfaceDependencies,
+	surfaceJson,
+} from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 
@@ -17,7 +22,7 @@ const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 		if (config.mobile === "expo") excludes.push("**/.expo");
 
 		return [
-			jsonFile(filePath("biome.jsonc"), {
+			surfaceJson(projectTarget(), "biomeConfig", {
 				$schema: "./node_modules/@biomejs/biome/configuration_schema.json",
 				files: {
 					includes: ["**/*", ...excludes.map((entry) => `!${entry}`)],
@@ -41,7 +46,7 @@ const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 					},
 				},
 			}),
-			dependencies(filePath("package.json"), [
+			surfaceDependencies(projectTarget(), "rootPackageJson", [
 				{ ...deps.biome, type: "devDependencies" },
 			]),
 		];

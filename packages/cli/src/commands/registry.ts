@@ -18,7 +18,7 @@ export const subcommands = {
 	},
 
 	update: {
-		description: "Update your project. (Coming Soon)",
+		description: "Update your project to the latest version!",
 		async run(_positionals, values) {
 			const { runUpdate } = await import("./update");
 			await runUpdate(values);
@@ -26,7 +26,7 @@ export const subcommands = {
 	},
 
 	add: {
-		description: "Add to your project. (Coming Soon)",
+		description: "Add a new generator to your project!",
 		arg: "<generator-id>",
 		async run(positionals, values) {
 			const id = positionals[0];
@@ -41,7 +41,7 @@ export const subcommands = {
 	},
 
 	remove: {
-		description: "Remove from your project. (Coming Soon)",
+		description: "Remove a generator from your project.",
 		arg: "<generator-id>",
 		async run(positionals, values) {
 			const id = positionals[0];

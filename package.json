@@ -16,7 +16,7 @@
 		"postinstall": "pnpm lint:ws",
 		"lint:ws": "pnpm dlx sherif@latest",
 		"start": "turbo run start --continue",
-		"test": "pnpm --filter @ryuujs/core build && vitest run",
+		"test": "turbo run test --continue",
 		"test:watch": "vitest",
 		"typecheck": "turbo run typecheck"
 	},

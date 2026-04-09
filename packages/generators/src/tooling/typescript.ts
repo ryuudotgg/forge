@@ -1,4 +1,9 @@
-import { defineAddon, dependencies, filePath, jsonFile } from "@ryuujs/core";
+import {
+	defineAddon,
+	projectTarget,
+	surfaceDependencies,
+	surfaceJson,
+} from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 
@@ -11,7 +16,7 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 	targetMode: "single",
 	when: () => true,
 	contribute: () => [
-		jsonFile(filePath("tsconfig.json"), {
+		surfaceJson(projectTarget(), "rootTsconfig", {
 			$schema: "https://json.schemastore.org/tsconfig",
 			compilerOptions: {
 				target: "ES2022",
@@ -34,7 +39,7 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 			},
 			exclude: ["node_modules", "dist", ".next", ".turbo"],
 		}),
-		dependencies(filePath("package.json"), [
+		surfaceDependencies(projectTarget(), "rootPackageJson", [
 			{ ...deps.typescript, type: "devDependencies" },
 		]),
 	],

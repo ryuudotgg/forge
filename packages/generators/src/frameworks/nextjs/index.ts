@@ -1,16 +1,18 @@
 import {
 	defineFramework,
 	defineTemplate,
-	dependencies,
+	ensureAppModule,
+	ensuredModuleTarget,
 	type FrameworkDefinition,
-	filePath,
-	jsonFile,
-	scripts,
+	surfaceDependencies,
+	surfaceJson,
+	surfaceScripts,
+	surfaceText,
 	type TemplateDefinition,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
-import { interpolate, templateFiles } from "../../template";
+import { interpolate, readTemplate } from "../../template";
 
 export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	id: "nextjs",
@@ -43,19 +45,38 @@ function buildContributions(config: ForgeConfig) {
 	const projectName = config.name ?? slug;
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
-	const templates = templateFiles("frameworks/nextjs", "apps/web").map(
-		(entry) =>
-			entry._tag === "TextFileContribution"
-				? {
-						...entry,
-						content: interpolate(entry.content, vars),
-					}
-				: entry,
-	);
-
 	return [
-		...templates,
-		jsonFile(filePath("apps/web/tsconfig.json"), {
+		ensureAppModule("web", "apps/web", {
+			framework: "nextjs",
+			template: { id: "base", version: 1 },
+			slots: {
+				layout: "app/layout.tsx",
+				page: "app/page.tsx",
+				api: "app/api",
+				trpc: "src/trpc",
+				db: "src/db",
+				auth: "src/lib/auth.ts",
+				authClient: "src/lib/auth-client.ts",
+			},
+		}),
+		surfaceText(
+			ensuredModuleTarget("web"),
+			"layout",
+			interpolate(readTemplate("frameworks/nextjs/app/layout.tsx"), vars),
+			{ priority: 0 },
+		),
+		surfaceText(
+			ensuredModuleTarget("web"),
+			"page",
+			interpolate(readTemplate("frameworks/nextjs/app/page.tsx"), vars),
+			{ priority: 0 },
+		),
+		surfaceText(
+			ensuredModuleTarget("web"),
+			"frameworkConfig",
+			readTemplate("frameworks/nextjs/next.config.ts"),
+		),
+		surfaceJson(ensuredModuleTarget("web"), "tsconfig", {
 			extends: "../../tsconfig.json",
 			compilerOptions: {
 				jsx: "preserve",
@@ -66,7 +87,7 @@ function buildContributions(config: ForgeConfig) {
 			include: ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
 			exclude: ["node_modules"],
 		}),
-		dependencies(filePath("apps/web/package.json"), [
+		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
 			{
 				name: `@${slug}/ui`,
 				version: "workspace:*",
@@ -78,12 +99,12 @@ function buildContributions(config: ForgeConfig) {
 			{ ...deps.typesReact, type: "devDependencies" },
 			{ ...deps.typesReactDom, type: "devDependencies" },
 		]),
-		scripts(filePath("apps/web/package.json"), {
+		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
 			dev: "next dev",
 			build: "next build",
 			start: "next start",
 		}),
-		jsonFile(filePath("apps/web/package.json"), {
+		surfaceJson(ensuredModuleTarget("web"), "packageJson", {
 			name: `@${slug}/web`,
 			version: "0.1.0",
 			private: true,

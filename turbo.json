@@ -36,6 +36,10 @@
 			"cache": false,
 			"persistent": true
 		},
+		"test": {
+			"dependsOn": ["^build"],
+			"outputs": []
+		},
 		"typecheck": {
 			"dependsOn": ["^build"],
 			"outputs": [".cache/tsbuildinfo.json"]

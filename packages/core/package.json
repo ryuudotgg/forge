@@ -43,6 +43,7 @@
 		"clean": "git clean -xdf .turbo .cache dist node_modules",
 		"dev": "tsdown --watch",
 		"prepare": "effect-language-service patch --dir ../../node_modules/typescript",
+		"test": "vitest run test",
 		"typecheck": "tsc"
 	},
 	"dependencies": {

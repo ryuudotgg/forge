@@ -1,4 +1,11 @@
-import { defineAddon, dependencies, filePath, textFile } from "@ryuujs/core";
+import {
+	defineAddon,
+	moduleCapabilities,
+	selectedModuleTarget,
+	surfaceDependencies,
+	surfaceText,
+	templateModuleTarget,
+} from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { interpolate, readTemplate } from "../../template";
@@ -23,24 +30,31 @@ const tailwind = defineAddon<ForgeConfig, "tailwind", "nextjs">({
 		const vars = { SLUG: slug, PROJECT_NAME: config.name ?? slug };
 
 		return [
-			textFile(
-				filePath("apps/web/app/layout.tsx"),
+			surfaceText(
+				selectedModuleTarget(),
+				"layout",
 				interpolate(readTemplate("style/tailwind/layout.tsx"), vars),
+				{ priority: 1 },
 			),
-			textFile(
-				filePath("packages/ui/postcss.config.mjs"),
+			surfaceText(
+				templateModuleTarget("ui", 1),
+				"postcssConfig",
 				readTemplate("style/tailwind/postcss.config.mjs"),
 			),
-			textFile(
-				filePath("packages/ui/src/styles/theme.css"),
+			surfaceText(
+				templateModuleTarget("ui", 1),
+				"themeCss",
 				readTemplate("style/tailwind/theme.css"),
 			),
-			textFile(
-				filePath("packages/ui/src/lib/utils.ts"),
+			surfaceText(
+				templateModuleTarget("ui", 1),
+				"utils",
 				readTemplate("style/tailwind/utils.ts"),
+				{ priority: 1 },
 			),
-			textFile(
-				filePath("packages/ui/src/styles/globals.css"),
+			surfaceText(
+				templateModuleTarget("ui", 1),
+				"globalsCss",
 				[
 					'@import "tailwindcss";',
 					'@import "./theme.css";',
@@ -60,14 +74,16 @@ const tailwind = defineAddon<ForgeConfig, "tailwind", "nextjs">({
 					"}",
 					"",
 				].join("\n"),
+				{ priority: 1 },
 			),
-			dependencies(filePath("packages/ui/package.json"), [
+			moduleCapabilities(templateModuleTarget("ui", 1), ["tailwind"]),
+			surfaceDependencies(templateModuleTarget("ui", 1), "packageJson", [
 				{ ...deps.tailwindcss, type: "devDependencies" },
 				{ ...deps.tailwindPostcss, type: "devDependencies" },
 				{ ...deps.postcss, type: "devDependencies" },
 				{ ...deps.tailwindMerge, type: "dependencies" },
 			]),
-			dependencies(filePath("apps/web/package.json"), [
+			surfaceDependencies(selectedModuleTarget(), "packageJson", [
 				{ ...deps.tailwindcss, type: "devDependencies" },
 				{ ...deps.postcss, type: "devDependencies" },
 			]),

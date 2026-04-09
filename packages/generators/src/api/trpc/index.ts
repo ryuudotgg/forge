@@ -1,7 +1,12 @@
-import { defineAddon, dependencies, filePath } from "@ryuujs/core";
+import {
+	defineAddon,
+	leafTextFile,
+	selectedModuleTarget,
+	surfaceDependencies,
+} from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
-import { templateFiles } from "../../template";
+import { readTemplate } from "../../template";
 
 const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 	id: "trpc",
@@ -23,8 +28,42 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 	},
 	when: (config) => config.rpc === "trpc",
 	contribute: () => [
-		...templateFiles("api/trpc", "apps/web"),
-		dependencies(filePath("apps/web/package.json"), [
+		leafTextFile(
+			selectedModuleTarget(),
+			"app/api/trpc/[trpc]/route.ts",
+			readTemplate("api/trpc/app/api/trpc/[trpc]/route.ts"),
+		),
+		leafTextFile(
+			selectedModuleTarget(),
+			"src/trpc/index.ts",
+			readTemplate("api/trpc/src/trpc/index.ts"),
+		),
+		leafTextFile(
+			selectedModuleTarget(),
+			"src/trpc/query-client.ts",
+			readTemplate("api/trpc/src/trpc/query-client.ts"),
+		),
+		leafTextFile(
+			selectedModuleTarget(),
+			"src/trpc/react.tsx",
+			readTemplate("api/trpc/src/trpc/react.tsx"),
+		),
+		leafTextFile(
+			selectedModuleTarget(),
+			"src/trpc/root.ts",
+			readTemplate("api/trpc/src/trpc/root.ts"),
+		),
+		leafTextFile(
+			selectedModuleTarget(),
+			"src/trpc/server.tsx",
+			readTemplate("api/trpc/src/trpc/server.tsx"),
+		),
+		leafTextFile(
+			selectedModuleTarget(),
+			"src/trpc/trpc.ts",
+			readTemplate("api/trpc/src/trpc/trpc.ts"),
+		),
+		surfaceDependencies(selectedModuleTarget(), "packageJson", [
 			{ ...deps.trpcServer, type: "dependencies" },
 			{ ...deps.trpcClient, type: "dependencies" },
 			{ ...deps.trpcReactQuery, type: "dependencies" },

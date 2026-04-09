@@ -1,139 +1,97 @@
-import { constants } from "node:fs";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
-import {
-	CoreLive,
-	filePath,
-	type Generator,
-	type ResolvedFile,
-} from "@ryuujs/core";
-import type { ForgeConfig } from "@ryuujs/generators";
+import { Apply, CoreLive, Planner, State } from "@ryuujs/core";
+import { builtins, type ForgeConfig } from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
-import { describe, expect, it, vi } from "vitest";
-import { bootstrapProject } from "../src/bootstrap/project";
-import { failLifecycleCommand } from "../src/commands/lifecycle";
+import { describe, expect, it } from "vitest";
 import { readJson, withTempDir } from "./harness";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
-function makeGenerator(id: string): Generator<ForgeConfig> {
-	return {
-		id,
-		name: id,
-		version: "0.0.0-test",
-		category: "addon",
-		exclusive: false,
-		dependencies: [],
-		appliesTo: () => true,
-		generate: () => Effect.succeed([]),
-	};
-}
-
 async function pathExists(path: string) {
 	try {
-		await access(path, constants.F_OK);
+		await access(path);
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-describe("project bootstrap", () => {
-	it("writes root state and module metadata after generation", async () => {
-		await withTempDir("create-bootstrap", async (directory) => {
-			const config: ForgeConfig = { style: "tailwind", web: "nextjs" };
-			const ordered = [
-				makeGenerator("frameworks/nextjs"),
-				makeGenerator("ui"),
-			] satisfies ReadonlyArray<Generator<ForgeConfig>>;
-			const resolved = [
-				{
-					content: "",
-					generators: ["frameworks/nextjs"],
-					path: filePath("apps/web/app/layout.tsx"),
-				},
-				{
-					content: "",
-					generators: ["frameworks/nextjs"],
-					path: filePath("apps/web/app/page.tsx"),
-				},
-				{
-					content: "",
-					generators: ["frameworks/nextjs"],
-					path: filePath("apps/web/app/api/health/route.ts"),
-				},
-				{
-					content: "",
-					generators: ["ui"],
-					path: filePath("packages/ui/src/styles/globals.css"),
-				},
-				{
-					content: "",
-					generators: ["ui"],
-					path: filePath("packages/ui/src/styles/theme.css"),
-				},
-				{
-					content: "",
-					generators: ["ui"],
-					path: filePath("packages/ui/src/lib/utils.ts"),
-				},
-				{
-					content: "",
-					generators: ["ui"],
-					path: filePath("packages/ui/postcss.config.mjs"),
-				},
-			] satisfies ReadonlyArray<ResolvedFile>;
+describe("planner-backed create", () => {
+	it("writes root state and module metadata from planner output", async () => {
+		await withTempDir("planner-create", async (directory) => {
+			const config: ForgeConfig = {
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				runtime: "Node.js",
+				slug: "acme",
+				style: "tailwind",
+				web: "nextjs",
+			};
 
-			await mkdir(join(directory, "apps/web"), { recursive: true });
-			await mkdir(join(directory, "packages/ui"), { recursive: true });
-			await writeFile(
-				join(directory, "apps/web/package.json"),
-				JSON.stringify({ name: "@acme/web" }),
-				"utf-8",
-			);
-			await writeFile(
-				join(directory, "packages/ui/package.json"),
-				JSON.stringify({ name: "@acme/ui" }),
-				"utf-8",
+			const plan = await Effect.runPromise(
+				Effect.flatMap(Planner, (planner) =>
+					planner.planCreate(directory, config, builtins),
+				).pipe(Effect.provide(coreLayer)),
 			);
 
-			await bootstrapProject({
-				config,
-				ordered,
-				projectRoot: directory,
-				resolved,
-			}).pipe(Effect.provide(coreLayer), Effect.runPromise);
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: plan.lockfile,
+					manifest: plan.manifest,
+					removals: plan.removals,
+					writes: plan.writes.map((write) => ({
+						content: write.content,
+						path: write.path,
+					})),
+				}).pipe(Effect.provide(coreLayer)),
+			);
 
 			const manifest = await readJson<{
-				version: number;
+				config: Record<string, unknown>;
+				installs: Array<{ definitionId: string; targets: unknown[] }>;
 				modules: Record<string, object>;
 			}>(join(directory, ".forge/manifest.json"));
 
-			const lockfile = await readJson<{ version: number }>(
-				join(directory, ".forge/lock.json"),
-			);
+			const lockfile = await readJson<{
+				provenance: {
+					artifacts: Record<string, unknown>;
+				};
+			}>(join(directory, ".forge/lock.json"));
 
 			const appConfig = await readJson<{
-				id: string;
-				type: string;
 				framework: string;
-				template: { id: string; version: number };
+				id: string;
 				slots: Record<string, string>;
+				template: { id: string; version: number };
+				type: string;
 			}>(join(directory, "apps/web/forge.json"));
 
 			const uiConfig = await readJson<{
-				id: string;
-				type: string;
-				packageType: string;
 				capabilities: string[];
-				template: { id: string; version: number };
+				id: string;
+				packageType: string;
 				slots: Record<string, string>;
+				template: { id: string; version: number };
+				type: string;
 			}>(join(directory, "packages/ui/forge.json"));
 
-			expect(manifest.version).toBe(1);
-			expect(lockfile.version).toBe(1);
-
+			expect(manifest.config.slug).toBe("acme");
+			expect(manifest.installs.map((install) => install.definitionId)).toEqual(
+				expect.arrayContaining([
+					"root",
+					"pnpm",
+					"typescript",
+					"biome",
+					"ui",
+					"tailwind",
+					"trpc",
+					"drizzle",
+				]),
+			);
 			expect(Object.keys(manifest.modules)).toEqual(
 				expect.arrayContaining([appConfig.id, uiConfig.id]),
 			);
@@ -142,17 +100,19 @@ describe("project bootstrap", () => {
 			expect(appConfig.framework).toBe("nextjs");
 			expect(appConfig.template).toEqual({ id: "base", version: 1 });
 			expect(appConfig.slots).toMatchObject({
+				auth: "src/lib/auth.ts",
+				authClient: "src/lib/auth-client.ts",
+				db: "src/db",
 				layout: "app/layout.tsx",
 				page: "app/page.tsx",
+				trpc: "src/trpc",
 			});
 
 			expect(uiConfig.type).toBe("package");
 			expect(uiConfig.packageType).toBe("library");
-
 			expect(uiConfig.capabilities).toEqual(
 				expect.arrayContaining(["react", "tailwind", "ui"]),
 			);
-
 			expect(uiConfig.slots).toMatchObject({
 				globalsCss: "src/styles/globals.css",
 				postcssConfig: "postcss.config.mjs",
@@ -160,52 +120,72 @@ describe("project bootstrap", () => {
 				utils: "src/lib/utils.ts",
 			});
 
-			expect(appConfig.id).toMatch(/^[a-z]{5}$/);
-			expect(uiConfig.id).toMatch(/^[a-z]{5}$/);
-			expect(appConfig.id).not.toBe(uiConfig.id);
+			expect(await pathExists(join(directory, "apps/web/app/layout.tsx"))).toBe(
+				true,
+			);
+			expect(
+				await pathExists(join(directory, "packages/ui/src/lib/utils.ts")),
+			).toBe(true);
+			expect(await pathExists(join(directory, "pnpm-workspace.yaml"))).toBe(
+				true,
+			);
+			expect(Object.keys(lockfile.provenance.artifacts).length).toBeGreaterThan(
+				0,
+			);
+		});
+	});
 
-			expect(await pathExists(join(directory, ".forge/forge.lock"))).toBe(
-				false,
+	it("can replan from manifest installs without bootstrap heuristics", async () => {
+		await withTempDir("planner-update", async (directory) => {
+			const config: ForgeConfig = {
+				packageManager: "pnpm",
+				runtime: "Node.js",
+				slug: "acme",
+				style: "tailwind",
+				web: "nextjs",
+			};
+
+			const createPlan = await Effect.runPromise(
+				Effect.flatMap(Planner, (planner) =>
+					planner.planCreate(directory, config, builtins),
+				).pipe(Effect.provide(coreLayer)),
 			);
 
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: createPlan.lockfile,
+					manifest: createPlan.manifest,
+					removals: createPlan.removals,
+					writes: createPlan.writes.map((write) => ({
+						content: write.content,
+						path: write.path,
+					})),
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const manifest = await Effect.runPromise(
+				State.readManifest(directory).pipe(Effect.provide(coreLayer)),
+			);
+
+			const updatePlan = await Effect.runPromise(
+				Effect.flatMap(Planner, (planner) =>
+					planner.planInstalled(
+						directory,
+						manifest.config as ForgeConfig,
+						manifest.installs,
+						builtins,
+					),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(
+				updatePlan.writes.some((write) => write.path === "apps/web/forge.json"),
+			).toBe(true);
 			expect(
 				JSON.parse(
 					await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
 				),
-			).toEqual(manifest);
-		});
-	});
-
-	it("fails fast for managed projects in addon lifecycle commands", async () => {
-		await withTempDir("managed-gate", async (directory) => {
-			await mkdir(join(directory, ".forge"), { recursive: true });
-			await writeFile(
-				join(directory, ".forge/lock.json"),
-				JSON.stringify({ version: 1, provenance: {}, resolutions: {} }),
-				"utf-8",
-			);
-
-			const exit = vi.spyOn(process, "exit").mockImplementation(((
-				code?: number,
-			) => {
-				throw new Error(`exit:${String(code ?? 0)}`);
-			}) as never);
-
-			const prompts = await import("@clack/prompts");
-			const errorLog = vi
-				.spyOn(prompts.log, "error")
-				.mockImplementation(() => {});
-
-			await expect(failLifecycleCommand(directory, "add")).rejects.toThrow(
-				"exit:1",
-			);
-
-			expect(errorLog).toHaveBeenCalledWith(
-				expect.stringContaining(`We haven't implemented "add" yet`),
-			);
-
-			exit.mockRestore();
-			errorLog.mockRestore();
+			).toMatchObject({ config: { slug: "acme" } });
 		});
 	});
 });

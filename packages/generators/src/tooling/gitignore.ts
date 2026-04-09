@@ -1,4 +1,4 @@
-import { defineAddon, filePath, lines } from "@ryuujs/core";
+import { defineAddon, projectTarget, surfaceLines } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 
 const gitignore = defineAddon<ForgeConfig, "gitignore">({
@@ -15,14 +15,19 @@ const gitignore = defineAddon<ForgeConfig, "gitignore">({
 		if (config.mobile) buildLines.push(".expo/");
 
 		return [
-			lines(filePath(".gitignore"), ["node_modules/"], {
+			surfaceLines(projectTarget(), "gitignore", ["node_modules/"], {
 				section: "Dependencies",
 			}),
-			lines(filePath(".gitignore"), buildLines, { section: "Build" }),
-			lines(filePath(".gitignore"), [".env", ".env.local", ".env*.local"], {
-				section: "Environment",
+			surfaceLines(projectTarget(), "gitignore", buildLines, {
+				section: "Build",
 			}),
-			lines(filePath(".gitignore"), [".DS_Store", "Thumbs.db"], {
+			surfaceLines(
+				projectTarget(),
+				"gitignore",
+				[".env", ".env.local", ".env*.local"],
+				{ section: "Environment" },
+			),
+			surfaceLines(projectTarget(), "gitignore", [".DS_Store", "Thumbs.db"], {
 				section: "OS",
 			}),
 		];
