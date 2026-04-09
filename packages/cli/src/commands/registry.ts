@@ -3,6 +3,7 @@ export type ParsedValues = Record<string, string | boolean | undefined>;
 export interface SubcommandDef {
 	readonly description: string;
 	readonly arg?: string;
+	readonly argRequired?: boolean;
 	readonly default?: boolean;
 	readonly run: (positionals: string[], values: ParsedValues) => Promise<void>;
 }
@@ -10,7 +11,7 @@ export interface SubcommandDef {
 export const subcommands = {
 	create: {
 		default: true,
-		description: "Use me to forge a new project!",
+		description: "Forge a new project from a framework, template, and addons.",
 		async run(_positionals, values) {
 			const { runCreate } = await import("./create");
 			await runCreate(values);
@@ -18,7 +19,7 @@ export const subcommands = {
 	},
 
 	update: {
-		description: "Update your project to the latest version!",
+		description: "Reconcile your installed addons and templates.",
 		async run(_positionals, values) {
 			const { runUpdate } = await import("./update");
 			await runUpdate(values);
@@ -26,32 +27,20 @@ export const subcommands = {
 	},
 
 	add: {
-		description: "Add a new generator to your project!",
-		arg: "<generator-id>",
+		description: "Add an addon to your project.",
+		arg: "[addon-id]",
 		async run(positionals, values) {
-			const id = positionals[0];
-			if (!id) {
-				console.error("Usage: forge add <generator-id>");
-				process.exit(1);
-			}
-
 			const { runAdd } = await import("./add");
-			await runAdd(id, values);
+			await runAdd(positionals[0], values);
 		},
 	},
 
 	remove: {
-		description: "Remove a generator from your project.",
-		arg: "<generator-id>",
+		description: "Remove an addon from your project.",
+		arg: "[addon-id]",
 		async run(positionals, values) {
-			const id = positionals[0];
-			if (!id) {
-				console.error("Usage: forge remove <generator-id>");
-				process.exit(1);
-			}
-
 			const { runRemove } = await import("./remove");
-			await runRemove(id, values);
+			await runRemove(positionals[0], values);
 		},
 	},
 } as const satisfies Record<string, SubcommandDef>;

@@ -25,6 +25,7 @@ import path from "./project/path";
 import runtime from "./project/runtime";
 import nativeStyleFramework from "./style/native-framework";
 import webStyleFramework from "./style/web-framework";
+import summary from "./summary";
 import type { Step } from "./types";
 
 export const steps: Step[] = [
@@ -59,6 +60,7 @@ export const steps: Step[] = [
 
 	addonSelect,
 
+	summary,
 	generate,
 
 	installDeps,
