@@ -30,7 +30,7 @@ catalogs:
 
   # ===== MONOREPO =====
   monorepo:
-    turbo: ^2.9.3
+    turbo: ^2.9.5
 
   # ===== NODE.JS ENVIRONMENT =====
   node:
