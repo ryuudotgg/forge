@@ -35,7 +35,7 @@ try {
 	const cmd = subcommand ? getSubcommand(subcommand) : undefined;
 	if (cmd) {
 		const args = positionals.slice(1);
-		if (cmd.arg && args.length === 0) {
+		if (cmd.arg && cmd.argRequired && args.length === 0) {
 			console.error(`Usage: forge ${subcommand} ${cmd.arg}`);
 			process.exit(1);
 		}

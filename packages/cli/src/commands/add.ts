@@ -1,6 +1,22 @@
-import { intro, isCancel, log, multiselect, select } from "@clack/prompts";
-import { type InstallRecord, isAddonCompatibleWithModule } from "@ryuujs/core";
-import { builtins } from "@ryuujs/generators";
+import {
+	intro,
+	isCancel,
+	log,
+	multiselect,
+	select,
+	text,
+} from "@clack/prompts";
+import {
+	type AddonDefinition,
+	type InstallRecord,
+	isAddonCompatibleWithModule,
+} from "@ryuujs/core";
+import {
+	type AddonCatalogEntry,
+	builtins,
+	type ForgeConfig,
+	listVisibleAddons,
+} from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
 
@@ -55,25 +71,93 @@ function mergeInstallRecord(
 	}));
 }
 
+function resolveAddon(id: string) {
+	return builtins.addons.find((entry) => entry.id === id);
+}
+
+function matchQuery(entry: AddonCatalogEntry, query: string) {
+	if (query.length === 0) return true;
+
+	const haystack = [
+		entry.id,
+		entry.name,
+		entry.summary,
+		entry.description,
+		...entry.keywords,
+	]
+		.join(" ")
+		.toLowerCase();
+
+	return haystack.includes(query.toLowerCase());
+}
+
+async function promptForAddonId() {
+	const visibleAddons = listVisibleAddons();
+	const query = await text({
+		message: "Search for an addon (leave blank to browse).",
+		placeholder: "tailwind, auth, trpc...",
+	});
+
+	if (isCancel(query)) cancel();
+
+	const filtered = visibleAddons.filter((entry) =>
+		matchQuery(entry, String(query ?? "")),
+	);
+
+	if (filtered.length === 0) {
+		log.error("We couldn't find an addon matching that search.");
+		process.exit(1);
+	}
+
+	if (filtered.length === 1) {
+		const matchedAddon = filtered[0];
+		if (!matchedAddon) {
+			log.error("We couldn't find an addon matching that search.");
+			process.exit(1);
+		}
+
+		return matchedAddon.id;
+	}
+
+	const selectedAddon = await select({
+		message: "Which addon do you want to add?",
+		options: filtered.map((entry) => ({
+			hint: entry.summary,
+			label: entry.name,
+			value: entry.id,
+		})),
+	});
+
+	if (isCancel(selectedAddon)) cancel();
+	return String(selectedAddon);
+}
+
+function buildProjectInstallRecord(
+	addon: AddonDefinition<ForgeConfig>,
+): InstallRecord {
+	return { definitionId: addon.id, targets: [{ kind: "project" }] };
+}
+
 export async function runAdd(
-	generatorId: string,
+	addonId: string | undefined,
 	_values: Record<string, string | boolean | undefined>,
 ) {
-	intro(`We're forging "${generatorId}"...`);
+	const resolvedAddonId = addonId ?? (await promptForAddonId());
+	intro(`We're adding "${resolvedAddonId}"...`);
 
 	const project = await loadManagedProject(".", "add");
-	const addon = builtins.addons.find((entry) => entry.id === generatorId);
+	const addon = resolveAddon(resolvedAddonId);
 
 	if (!addon) {
-		log.error(`We couldn't find the "${generatorId}" addon.`);
+		log.error(`We couldn't find the "${resolvedAddonId}" addon.`);
 		process.exit(1);
 	}
 
 	let record: InstallRecord;
 
-	if (addon.compatibility === undefined)
-		record = { definitionId: addon.id, targets: [{ kind: "project" }] };
-	else if (addon.targetMode === "single") {
+	if (addon.compatibility === undefined) {
+		record = buildProjectInstallRecord(addon);
+	} else {
 		const targets = project.modules.filter((module) =>
 			isAddonCompatibleWithModule(addon, module),
 		);
@@ -94,7 +178,7 @@ export async function runAdd(
 				definitionId: addon.id,
 				targets: [{ kind: "module", moduleId: target.id }],
 			};
-		} else {
+		} else if (addon.targetMode === "single") {
 			const selectedTarget = await select({
 				message: `Where should we add "${addon.name}"?`,
 				options: targets.map((module) => ({
@@ -109,35 +193,26 @@ export async function runAdd(
 				definitionId: addon.id,
 				targets: [{ kind: "module", moduleId: String(selectedTarget) }],
 			};
+		} else {
+			const selectedTargets = await multiselect({
+				message: `Where should we add "${addon.name}"?`,
+				options: targets.map((module) => ({
+					label: moduleLabel(module),
+					value: module.id,
+				})),
+				required: true,
+			});
+
+			if (isCancel(selectedTargets)) cancel();
+
+			record = {
+				definitionId: addon.id,
+				targets: selectedTargets.map((moduleId) => ({
+					kind: "module" as const,
+					moduleId: String(moduleId),
+				})),
+			};
 		}
-	} else {
-		const targets = project.modules.filter((module) =>
-			isAddonCompatibleWithModule(addon, module),
-		);
-
-		if (targets.length === 0) {
-			log.error(`We couldn't find a compatible target for "${addon.name}".`);
-			process.exit(1);
-		}
-
-		const selectedTargets = await multiselect({
-			message: `Where should we add "${addon.name}"?`,
-			options: targets.map((module) => ({
-				label: moduleLabel(module),
-				value: module.id,
-			})),
-			required: true,
-		});
-
-		if (isCancel(selectedTargets)) cancel();
-
-		record = {
-			definitionId: addon.id,
-			targets: selectedTargets.map((moduleId) => ({
-				kind: "module" as const,
-				moduleId: String(moduleId),
-			})),
-		};
 	}
 
 	await applyInstalledPlan(

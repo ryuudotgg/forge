@@ -1,6 +1,10 @@
-import { intro, isCancel, log, multiselect } from "@clack/prompts";
+import { intro, isCancel, log, multiselect, select } from "@clack/prompts";
 import type { InstallRecord } from "@ryuujs/core";
-import { builtins } from "@ryuujs/generators";
+import {
+	builtins,
+	getCatalogEntry,
+	listVisibleAddons,
+} from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
 
@@ -32,30 +36,64 @@ function removeTargets(
 	return targets.length > 0 ? { ...record, targets } : undefined;
 }
 
+async function promptForInstalledAddonId(
+	installs: ReadonlyArray<InstallRecord>,
+) {
+	const installedIds = new Set(installs.map((entry) => entry.definitionId));
+	const installedAddons = listVisibleAddons().filter((entry) =>
+		installedIds.has(entry.id),
+	);
+
+	if (installedAddons.length === 0) {
+		log.error("We couldn't find any installed addons to remove.");
+		process.exit(1);
+	}
+
+	const selectedAddon = await select({
+		message: "Which addon do you want to remove?",
+		options: installedAddons.map((entry) => ({
+			hint: entry.summary,
+			label: entry.name,
+			value: entry.id,
+		})),
+	});
+
+	if (isCancel(selectedAddon)) cancel();
+	return String(selectedAddon);
+}
+
 export async function runRemove(
-	generatorId: string,
+	addonId: string | undefined,
 	_values: Record<string, string | boolean | undefined>,
 ) {
-	intro(`We're removing "${generatorId}"...`);
-
 	const project = await loadManagedProject(".", "remove");
-	const addon = builtins.addons.find((entry) => entry.id === generatorId);
+	const resolvedAddonId =
+		addonId ?? (await promptForInstalledAddonId(project.manifest.installs));
+
+	intro(`We're removing "${resolvedAddonId}"...`);
+
+	const catalogEntry = getCatalogEntry(resolvedAddonId);
+	const addon = builtins.addons.find(
+		(entry) =>
+			entry.id ===
+			(catalogEntry?.kind === "addon" ? catalogEntry.id : resolvedAddonId),
+	);
 	const install = project.manifest.installs.find(
-		(entry) => entry.definitionId === generatorId,
+		(entry) => entry.definitionId === resolvedAddonId,
 	);
 
 	if (!addon || !install) {
-		log.error(`We couldn't find "${generatorId}" in this project.`);
+		log.error(`We couldn't find "${resolvedAddonId}" in this project.`);
 		process.exit(1);
 	}
 
 	let nextInstalls = project.manifest.installs;
 
-	if (install.targets.some((target) => target.kind === "project"))
+	if (install.targets.some((target) => target.kind === "project")) {
 		nextInstalls = nextInstalls.filter(
-			(entry) => entry.definitionId !== generatorId,
+			(entry) => entry.definitionId !== resolvedAddonId,
 		);
-	else {
+	} else {
 		const moduleTargets = install.targets
 			.filter((target) => target.kind === "module")
 			.map((target) => target.moduleId);
@@ -77,7 +115,7 @@ export async function runRemove(
 
 		nextInstalls = nextInstalls
 			.map((entry) =>
-				entry.definitionId === generatorId
+				entry.definitionId === resolvedAddonId
 					? removeTargets(entry, selectedModuleIds)
 					: entry,
 			)
