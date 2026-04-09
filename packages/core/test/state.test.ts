@@ -73,15 +73,14 @@ describe("project state", () => {
 	it("writes and reads project manifest and lockfile", async () => {
 		await withTempDir("state", async (directory) => {
 			const manifest: Manifest = {
-				version: 1,
-				modules: { abcde: {} },
+				config: {},
+				modules: { abcde: { definitionIds: [], root: "apps/web" } },
 				installs: [],
 			};
 
 			const lockfile: Lockfile = {
-				version: 1,
 				resolutions: {},
-				provenance: {},
+				provenance: { artifacts: {} },
 			};
 
 			await Effect.runPromise(

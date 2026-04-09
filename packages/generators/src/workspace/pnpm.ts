@@ -1,4 +1,4 @@
-import { defineAddon, filePath, textFile } from "@ryuujs/core";
+import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 
 const pnpm = defineAddon<ForgeConfig, "pnpm">({
@@ -11,8 +11,9 @@ const pnpm = defineAddon<ForgeConfig, "pnpm">({
 	when: (config) =>
 		config.packageManager === "pnpm" || config.packageManager === undefined,
 	contribute: () => [
-		textFile(
-			filePath("pnpm-workspace.yaml"),
+		leafTextFile(
+			projectTarget(),
+			"pnpm-workspace.yaml",
 			"packages:\n  - apps/*\n  - packages/*\n",
 		),
 	],

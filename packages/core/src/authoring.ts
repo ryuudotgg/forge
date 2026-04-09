@@ -45,9 +45,92 @@ export type AddonId = string;
 export type CapabilityId = string;
 export type TargetMode = "single" | "multiple";
 
+export const projectSurfaceNames = {
+	rootPackageJson: "rootPackageJson",
+	rootTsconfig: "rootTsconfig",
+	workspaceConfig: "workspaceConfig",
+	biomeConfig: "biomeConfig",
+	gitignore: "gitignore",
+} as const;
+
+export type ProjectSurfaceName =
+	(typeof projectSurfaceNames)[keyof typeof projectSurfaceNames];
+
+export const appManagedSurfaceNames = {
+	packageJson: "packageJson",
+	tsconfig: "tsconfig",
+	env: "env",
+	envExample: "envExample",
+	frameworkConfig: "frameworkConfig",
+} as const;
+
+export type AppManagedSurfaceName =
+	(typeof appManagedSurfaceNames)[keyof typeof appManagedSurfaceNames];
+
+export type AppSurfaceName = AppSlotName | AppManagedSurfaceName;
+
+export const packageManagedSurfaceNames = {
+	packageJson: "packageJson",
+	tsconfig: "tsconfig",
+} as const;
+
+export type PackageManagedSurfaceName =
+	(typeof packageManagedSurfaceNames)[keyof typeof packageManagedSurfaceNames];
+
+export type PackageSurfaceName = PackageSlotName | PackageManagedSurfaceName;
+
+export type ManagedSurfaceName =
+	| AppSurfaceName
+	| PackageSurfaceName
+	| ProjectSurfaceName;
+
 export interface TemplateRef<Id extends TemplateId = TemplateId> {
 	readonly id: Id;
 	readonly version: number;
+}
+
+export interface ProjectTarget {
+	readonly _tag: "ProjectTarget";
+}
+
+export interface SelectedModuleTarget {
+	readonly _tag: "SelectedModuleTarget";
+}
+
+export interface EnsuredModuleTarget {
+	readonly _tag: "EnsuredModuleTarget";
+	readonly moduleKey: string;
+}
+
+export interface TemplateModuleTarget<Id extends TemplateId = TemplateId> {
+	readonly _tag: "TemplateModuleTarget";
+	readonly template: TemplateRef<Id>;
+}
+
+export type ModuleTarget =
+	| SelectedModuleTarget
+	| EnsuredModuleTarget
+	| TemplateModuleTarget;
+
+export type TargetRef = ProjectTarget | ModuleTarget;
+
+export function projectTarget(): ProjectTarget {
+	return { _tag: "ProjectTarget" };
+}
+
+export function selectedModuleTarget(): SelectedModuleTarget {
+	return { _tag: "SelectedModuleTarget" };
+}
+
+export function ensuredModuleTarget(moduleKey: string): EnsuredModuleTarget {
+	return { _tag: "EnsuredModuleTarget", moduleKey };
+}
+
+export function templateModuleTarget<Id extends TemplateId>(
+	id: Id,
+	version: number,
+): TemplateModuleTarget<Id> {
+	return { _tag: "TemplateModuleTarget", template: { id, version } };
 }
 
 export interface AppCompatibility<Framework extends FrameworkId = FrameworkId> {
@@ -154,6 +237,75 @@ export interface PackageCapabilityContribution<
 	readonly capabilities: ReadonlyArray<Capability>;
 }
 
+type EnsuredModuleShape = Omit<AppConfig, "id"> | Omit<PackageConfig, "id">;
+
+export interface EnsureModuleContribution {
+	readonly _tag: "EnsureModuleContribution";
+	readonly moduleKey: string;
+	readonly root: string;
+	readonly module: EnsuredModuleShape;
+}
+
+export interface ManagedTextSurfaceContribution {
+	readonly _tag: "ManagedTextSurfaceContribution";
+	readonly target: TargetRef;
+	readonly surface: ManagedSurfaceName;
+	readonly content: string;
+	readonly priority?: number;
+}
+
+export interface ManagedJsonSurfaceContribution {
+	readonly _tag: "ManagedJsonSurfaceContribution";
+	readonly target: TargetRef;
+	readonly surface: ManagedSurfaceName;
+	readonly value: Record<string, unknown>;
+	readonly strategy?: "deep" | "replace";
+}
+
+export interface ManagedLinesSurfaceContribution {
+	readonly _tag: "ManagedLinesSurfaceContribution";
+	readonly target: TargetRef;
+	readonly surface: ManagedSurfaceName;
+	readonly lines: ReadonlyArray<string>;
+	readonly section?: string;
+	readonly position?: "start" | "end";
+}
+
+export interface ManagedDependenciesSurfaceContribution {
+	readonly _tag: "ManagedDependenciesSurfaceContribution";
+	readonly target: TargetRef;
+	readonly surface:
+		| typeof projectSurfaceNames.rootPackageJson
+		| typeof appManagedSurfaceNames.packageJson
+		| typeof packageManagedSurfaceNames.packageJson;
+	readonly dependencies: ReadonlyArray<Dependency>;
+}
+
+export interface ManagedScriptsSurfaceContribution {
+	readonly _tag: "ManagedScriptsSurfaceContribution";
+	readonly target: TargetRef;
+	readonly surface:
+		| typeof projectSurfaceNames.rootPackageJson
+		| typeof appManagedSurfaceNames.packageJson
+		| typeof packageManagedSurfaceNames.packageJson;
+	readonly scripts: Record<string, string>;
+}
+
+export interface ModuleCapabilitiesContribution<
+	Capability extends CapabilityId = CapabilityId,
+> {
+	readonly _tag: "ModuleCapabilitiesContribution";
+	readonly target: ModuleTarget;
+	readonly capabilities: ReadonlyArray<Capability>;
+}
+
+export interface LeafTextFileContribution {
+	readonly _tag: "LeafTextFileContribution";
+	readonly target: TargetRef;
+	readonly path: string;
+	readonly content: string;
+}
+
 export type Contribution<Capability extends CapabilityId = CapabilityId> =
 	| TextFileContribution
 	| JsonFileContribution
@@ -167,7 +319,15 @@ export type Contribution<Capability extends CapabilityId = CapabilityId> =
 	| UtilityExportContribution
 	| DbSchemaContribution
 	| ConfigFragmentContribution
-	| PackageCapabilityContribution<Capability>;
+	| PackageCapabilityContribution<Capability>
+	| EnsureModuleContribution
+	| ManagedTextSurfaceContribution
+	| ManagedJsonSurfaceContribution
+	| ManagedLinesSurfaceContribution
+	| ManagedDependenciesSurfaceContribution
+	| ManagedScriptsSurfaceContribution
+	| ModuleCapabilitiesContribution<Capability>
+	| LeafTextFileContribution;
 
 export function textFile(
 	path: FilePath,
@@ -228,6 +388,132 @@ export function configFragment(
 	strategy: "deep" | "replace" = "deep",
 ): ConfigFragmentContribution {
 	return { _tag: "ConfigFragmentContribution", path, value, strategy };
+}
+
+export function ensureAppModule(
+	moduleKey: string,
+	root: string,
+	module: Omit<AppConfig, "id" | "type">,
+): EnsureModuleContribution {
+	return {
+		_tag: "EnsureModuleContribution",
+		moduleKey,
+		root,
+		module: { ...module, type: "app" },
+	};
+}
+
+export function ensurePackageModule(
+	moduleKey: string,
+	root: string,
+	module: Omit<PackageConfig, "id" | "type">,
+): EnsureModuleContribution {
+	return {
+		_tag: "EnsureModuleContribution",
+		moduleKey,
+		root,
+		module: { ...module, type: "package" },
+	};
+}
+
+export function surfaceText(
+	target: TargetRef,
+	surface: ManagedSurfaceName,
+	content: string,
+	options?: { readonly priority?: number },
+): ManagedTextSurfaceContribution {
+	return {
+		_tag: "ManagedTextSurfaceContribution",
+		target,
+		surface,
+		content,
+		priority: options?.priority,
+	};
+}
+
+export function surfaceJson(
+	target: TargetRef,
+	surface: ManagedSurfaceName,
+	value: Record<string, unknown>,
+	strategy: "deep" | "replace" = "deep",
+): ManagedJsonSurfaceContribution {
+	return {
+		_tag: "ManagedJsonSurfaceContribution",
+		target,
+		surface,
+		value,
+		strategy,
+	};
+}
+
+export function surfaceLines(
+	target: TargetRef,
+	surface: ManagedSurfaceName,
+	items: ReadonlyArray<string>,
+	options?: {
+		readonly position?: "start" | "end";
+		readonly section?: string;
+	},
+): ManagedLinesSurfaceContribution {
+	return {
+		_tag: "ManagedLinesSurfaceContribution",
+		target,
+		surface,
+		lines: items,
+		position: options?.position,
+		section: options?.section,
+	};
+}
+
+export function surfaceDependencies(
+	target: TargetRef,
+	surface:
+		| typeof projectSurfaceNames.rootPackageJson
+		| typeof appManagedSurfaceNames.packageJson
+		| typeof packageManagedSurfaceNames.packageJson,
+	items: ReadonlyArray<Dependency>,
+): ManagedDependenciesSurfaceContribution {
+	return {
+		_tag: "ManagedDependenciesSurfaceContribution",
+		target,
+		surface,
+		dependencies: items,
+	};
+}
+
+export function surfaceScripts(
+	target: TargetRef,
+	surface:
+		| typeof projectSurfaceNames.rootPackageJson
+		| typeof appManagedSurfaceNames.packageJson
+		| typeof packageManagedSurfaceNames.packageJson,
+	items: Record<string, string>,
+): ManagedScriptsSurfaceContribution {
+	return {
+		_tag: "ManagedScriptsSurfaceContribution",
+		target,
+		surface,
+		scripts: items,
+	};
+}
+
+export function moduleCapabilities<Capability extends CapabilityId>(
+	target: ModuleTarget,
+	capabilities: ReadonlyArray<Capability>,
+): ModuleCapabilitiesContribution<Capability> {
+	return {
+		_tag: "ModuleCapabilitiesContribution",
+		target,
+		capabilities,
+	};
+}
+
+export function leafTextFile(
+	target: TargetRef,
+	path: string,
+	content: string,
+): LeafTextFileContribution {
+	return { _tag: "LeafTextFileContribution", target, path, content };
 }
 
 export interface DefinitionContext<Config> {
@@ -496,6 +782,14 @@ function lowerContribution(
 			);
 
 		case "PackageCapabilityContribution":
+		case "EnsureModuleContribution":
+		case "ManagedTextSurfaceContribution":
+		case "ManagedJsonSurfaceContribution":
+		case "ManagedLinesSurfaceContribution":
+		case "ManagedDependenciesSurfaceContribution":
+		case "ManagedScriptsSurfaceContribution":
+		case "ModuleCapabilitiesContribution":
+		case "LeafTextFileContribution":
 			return Effect.succeed([]);
 	}
 }

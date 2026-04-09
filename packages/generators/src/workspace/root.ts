@@ -1,13 +1,13 @@
 import {
 	CommandProbe,
 	defineAddon,
-	dependencies,
-	filePath,
 	GeneratorError,
-	jsonFile,
 	packageManagerCommand,
+	projectTarget,
 	runtimeCommand,
-	scripts,
+	surfaceDependencies,
+	surfaceJson,
+	surfaceScripts,
 } from "@ryuujs/core";
 import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
@@ -24,8 +24,9 @@ const root = defineAddon<ForgeConfig, "root">({
 	contribute: ({ config }) =>
 		Effect.gen(function* () {
 			const runtime = config.runtime ?? "Node.js";
-			const packageManager = config.packageManager ?? "pnpm";
 			const runtimeCommandName = runtimeCommand(runtime);
+
+			const packageManager = config.packageManager ?? "pnpm";
 			const packageManagerCommandName = packageManagerCommand(packageManager);
 
 			const runtimeVersion = yield* CommandProbe.readVersion(
@@ -39,6 +40,7 @@ const root = defineAddon<ForgeConfig, "root">({
 						}),
 				),
 			);
+
 			const packageManagerVersion = yield* CommandProbe.readVersion(
 				packageManagerCommandName,
 			).pipe(
@@ -82,17 +84,17 @@ function buildContributions(
 		packageJson.workspaces = ["apps/*", "packages/*"];
 
 	return [
-		jsonFile(filePath("package.json"), packageJson),
-		dependencies(filePath("package.json"), [
+		surfaceJson(projectTarget(), "rootPackageJson", packageJson),
+		surfaceDependencies(projectTarget(), "rootPackageJson", [
 			{ ...deps.turbo, type: "devDependencies" },
 		]),
-		scripts(filePath("package.json"), {
+		surfaceScripts(projectTarget(), "rootPackageJson", {
 			build: "turbo run build",
 			check: "turbo run check --continue",
 			dev: "turbo run dev",
 			typecheck: "turbo run typecheck",
 		}),
-		jsonFile(filePath("turbo.json"), {
+		surfaceJson(projectTarget(), "workspaceConfig", {
 			$schema: "https://turborepo.com/schema.json",
 			tasks: {
 				build: {

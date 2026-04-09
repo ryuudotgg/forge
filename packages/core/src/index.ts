@@ -1,8 +1,11 @@
+export { Apply } from "./apply";
 export type {
 	AddonDefinition,
 	AddonId,
 	AppCompatibility,
+	AppManagedSurfaceName,
 	AppSlotName,
+	AppSurfaceName,
 	CapabilityId,
 	Compatibility,
 	ConfigFragmentContribution,
@@ -12,14 +15,29 @@ export type {
 	DefinitionRegistry,
 	DependencyContribution,
 	DependencyRef,
+	EnsuredModuleTarget,
+	EnsureModuleContribution,
 	EnvEntriesContribution,
 	FrameworkDefinition,
 	FrameworkId,
 	JsonFileContribution,
+	LeafTextFileContribution,
 	LinesContribution,
+	ManagedDependenciesSurfaceContribution,
+	ManagedJsonSurfaceContribution,
+	ManagedLinesSurfaceContribution,
+	ManagedScriptsSurfaceContribution,
+	ManagedSurfaceName,
+	ManagedTextSurfaceContribution,
+	ModuleCapabilitiesContribution,
+	ModuleTarget,
 	PackageCapabilityContribution,
 	PackageCompatibility,
+	PackageManagedSurfaceName,
 	PackageSlotName,
+	PackageSurfaceName,
+	ProjectSurfaceName,
+	ProjectTarget,
 	ProviderWrapperContribution,
 	RouteHandlerContribution,
 	ScriptContribution,
@@ -31,6 +49,7 @@ export type {
 	UtilityExportContribution,
 } from "./authoring";
 export {
+	appManagedSurfaceNames,
 	appSlotNames,
 	configFragment,
 	defineAddon,
@@ -38,14 +57,29 @@ export {
 	defineRegistry,
 	defineTemplate,
 	dependencies,
+	ensureAppModule,
+	ensuredModuleTarget,
+	ensurePackageModule,
 	envEntries,
 	isAddonCompatibleWithModule,
 	jsonFile,
+	leafTextFile,
 	lines,
 	lowerContributions,
+	moduleCapabilities,
+	packageManagedSurfaceNames,
 	packageSlotNames,
+	projectSurfaceNames,
+	projectTarget,
 	resolveDefinitions,
 	scripts,
+	selectedModuleTarget,
+	surfaceDependencies,
+	surfaceJson,
+	surfaceLines,
+	surfaceScripts,
+	surfaceText,
+	templateModuleTarget,
 	textFile,
 } from "./authoring";
 export { CommandProbe } from "./command";
@@ -89,6 +123,7 @@ export {
 } from "./environment";
 export {
 	AggregateConflictError,
+	ApplyError,
 	CommandProbeError,
 	ConflictError,
 	CyclicDependencyError,
@@ -100,6 +135,8 @@ export {
 	ModuleIdGenerationError,
 	ParseError,
 	PipelineError,
+	PlannerError,
+	RendererError,
 	StateError,
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
@@ -128,9 +165,34 @@ export type {
 } from "./operations";
 export { filePath } from "./operations";
 export { hashContent, Pipeline, run, topologicalSort } from "./pipeline";
+export type { PlannedFile, ProjectPlan } from "./planner";
+export { Planner } from "./planner";
 export { Registry, resolve as resolveGenerators } from "./registry";
-export type { Lockfile, Manifest } from "./state";
-export { LockfileSchema, ManifestSchema, State } from "./state";
+export type {
+	ModuleBucketTarget,
+	ProjectBucketTarget,
+	RenderBucket,
+	RenderedArtifact,
+	SurfaceRenderContribution,
+} from "./renderer";
+export { Renderer } from "./renderer";
+export type {
+	InstallRecord,
+	InstallTarget,
+	Lockfile,
+	Manifest,
+	ModuleRecord,
+	Provenance,
+	ProvenanceArtifact,
+	ProvenanceIndex,
+} from "./state";
+export {
+	buildProvenanceIndex,
+	LockfileSchema,
+	ManifestSchema,
+	ProvenanceSchema,
+	State,
+} from "./state";
 export type {
 	ConflictStrategy,
 	ResolvedFile,

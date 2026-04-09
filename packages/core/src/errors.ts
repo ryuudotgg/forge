@@ -90,3 +90,18 @@ export class PipelineError extends Schema.TaggedError<PipelineError>()(
 	"PipelineError",
 	{ path: Schema.String, message: Schema.String },
 ) {}
+
+export class PlannerError extends Schema.TaggedError<PlannerError>()(
+	"PlannerError",
+	{ path: Schema.String, message: Schema.String },
+) {}
+
+export class RendererError extends Schema.TaggedError<RendererError>()(
+	"RendererError",
+	{ path: Schema.String, message: Schema.String },
+) {}
+
+export class ApplyError extends Schema.TaggedError<ApplyError>()("ApplyError", {
+	path: Schema.String,
+	message: Schema.String,
+}) {}

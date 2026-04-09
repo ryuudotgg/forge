@@ -1,7 +1,14 @@
-import { defineAddon, dependencies, filePath, jsonFile } from "@ryuujs/core";
+import {
+	defineAddon,
+	ensuredModuleTarget,
+	ensurePackageModule,
+	surfaceDependencies,
+	surfaceJson,
+	surfaceText,
+} from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
-import { templateFiles } from "../template";
+import { readTemplate } from "../template";
 
 const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 	id: "ui",
@@ -22,7 +29,20 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 		const slug = config.slug ?? "my-app";
 
 		return [
-			jsonFile(filePath("packages/ui/package.json"), {
+			ensurePackageModule("ui", "packages/ui", {
+				packageType: "library",
+				template: { id: "ui", version: 1 },
+				capabilities: ["react", "ui"],
+				slots: {
+					globalsCss: "src/styles/globals.css",
+					themeCss: "src/styles/theme.css",
+					utils: "src/lib/utils.ts",
+					postcssConfig: "postcss.config.mjs",
+					client: "src/client.ts",
+					provider: "src/provider.tsx",
+				},
+			}),
+			surfaceJson(ensuredModuleTarget("ui"), "packageJson", {
 				name: `@${slug}/ui`,
 				version: "0.1.0",
 				private: true,
@@ -36,7 +56,7 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 					"./hooks/*": "./src/hooks/*.ts",
 				},
 			}),
-			jsonFile(filePath("packages/ui/tsconfig.json"), {
+			surfaceJson(ensuredModuleTarget("ui"), "tsconfig", {
 				extends: "../../tsconfig.json",
 				compilerOptions: {
 					jsx: "preserve",
@@ -46,8 +66,19 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 				include: ["./src", "./*.ts"],
 				exclude: ["node_modules"],
 			}),
-			...templateFiles("ui", "packages/ui"),
-			dependencies(filePath("packages/ui/package.json"), [
+			surfaceText(
+				ensuredModuleTarget("ui"),
+				"globalsCss",
+				readTemplate("ui/src/styles/globals.css"),
+				{ priority: 0 },
+			),
+			surfaceText(
+				ensuredModuleTarget("ui"),
+				"utils",
+				readTemplate("ui/src/lib/utils.ts"),
+				{ priority: 0 },
+			),
+			surfaceDependencies(ensuredModuleTarget("ui"), "packageJson", [
 				{ ...deps.clsx, type: "dependencies" },
 			]),
 		];

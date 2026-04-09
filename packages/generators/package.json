@@ -43,6 +43,7 @@
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache dist node_modules",
 		"dev": "tsdown --watch",
+		"test": "vitest run test",
 		"typecheck": "tsc"
 	},
 	"dependencies": {

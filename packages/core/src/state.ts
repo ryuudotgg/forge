@@ -9,20 +9,67 @@ import { decodeJsonString } from "./json";
 const PROJECT_STATE_DIR = ".forge";
 const MANIFEST_FILE = "manifest.json";
 const LOCKFILE_FILE = "lock.json";
-const PROJECT_STATE_VERSION = 1;
 
-const InstallRecordSchema = Schema.Struct({
-	addonId: Schema.String,
-	moduleIds: Schema.Array(ModuleIdSchema),
+const ModuleRecordSchema = Schema.Struct({
+	root: Schema.optional(Schema.String),
+	definitionIds: Schema.optionalWith(Schema.Array(Schema.String), {
+		default: () => [],
+	}),
 });
 
-const EmptyModuleRecordSchema = Schema.Struct({});
+export type ModuleRecord = typeof ModuleRecordSchema.Type;
+
+const ConfigSnapshotSchema = Schema.Record({
+	key: Schema.String,
+	value: Schema.Unknown,
+});
+
+const InstallTargetSchema = Schema.Union(
+	Schema.Struct({ kind: Schema.Literal("project") }),
+	Schema.Struct({
+		kind: Schema.Literal("module"),
+		moduleId: ModuleIdSchema,
+	}),
+);
+
+export type InstallTarget = typeof InstallTargetSchema.Type;
+
+const InstallRecordSchema = Schema.Struct({
+	definitionId: Schema.String,
+	targets: Schema.Array(InstallTargetSchema),
+});
+
+export type InstallRecord = typeof InstallRecordSchema.Type;
+
+const ProvenanceArtifactKindSchema = Schema.Literal("file", "surface");
+export type ProvenanceArtifactKind = typeof ProvenanceArtifactKindSchema.Type;
+
+const ProvenanceArtifactSchema = Schema.Struct({
+	kind: ProvenanceArtifactKindSchema,
+	target: InstallTargetSchema,
+	definitionIds: Schema.Array(Schema.String),
+	hash: Schema.String,
+	path: Schema.String,
+});
+
+export type ProvenanceArtifact = typeof ProvenanceArtifactSchema.Type;
+
+export const ProvenanceSchema = Schema.Struct({
+	artifacts: Schema.optionalWith(
+		Schema.Record({ key: Schema.String, value: ProvenanceArtifactSchema }),
+		{ default: () => ({}) },
+	),
+});
+
+export type Provenance = typeof ProvenanceSchema.Type;
 
 export const ManifestSchema = Schema.Struct({
-	version: Schema.Literal(PROJECT_STATE_VERSION),
+	config: Schema.optionalWith(ConfigSnapshotSchema, {
+		default: () => ({}),
+	}),
 	modules: Schema.Record({
 		key: ModuleIdSchema,
-		value: EmptyModuleRecordSchema,
+		value: ModuleRecordSchema,
 	}),
 	installs: Schema.optionalWith(Schema.Array(InstallRecordSchema), {
 		default: () => [],
@@ -32,18 +79,11 @@ export const ManifestSchema = Schema.Struct({
 export type Manifest = typeof ManifestSchema.Type;
 
 export const LockfileSchema = Schema.Struct({
-	version: Schema.Literal(PROJECT_STATE_VERSION),
 	resolutions: Schema.optionalWith(
 		Schema.Record({ key: Schema.String, value: Schema.String }),
 		{ default: () => ({}) },
 	),
-	provenance: Schema.optionalWith(
-		Schema.Record({
-			key: ModuleIdSchema,
-			value: Schema.Array(Schema.String),
-		}),
-		{ default: () => ({}) },
-	),
+	provenance: ProvenanceSchema,
 });
 
 export type Lockfile = typeof LockfileSchema.Type;
@@ -54,6 +94,80 @@ function manifestPath(projectRoot: string) {
 
 function lockfilePath(projectRoot: string) {
 	return join(projectRoot, PROJECT_STATE_DIR, LOCKFILE_FILE);
+}
+
+function defaultLockfile(): Lockfile {
+	return {
+		resolutions: {},
+		provenance: { artifacts: {} },
+	};
+}
+
+export interface ProvenanceIndex {
+	readonly byDefinition: Map<string, ReadonlyArray<ProvenanceArtifact>>;
+	readonly byPath: Map<string, ProvenanceArtifact>;
+	readonly byTarget: Map<string, ReadonlyArray<ProvenanceArtifact>>;
+}
+
+function targetKey(target: InstallTarget) {
+	return target.kind === "project" ? "project" : `module:${target.moduleId}`;
+}
+
+export function buildProvenanceIndex(lockfile: Lockfile): ProvenanceIndex {
+	const byDefinition = new Map<string, ProvenanceArtifact[]>();
+	const byPath = new Map<string, ProvenanceArtifact>();
+	const byTarget = new Map<string, ProvenanceArtifact[]>();
+
+	for (const artifact of Object.values(lockfile.provenance.artifacts)) {
+		byPath.set(artifact.path, artifact);
+
+		const bucketKey = targetKey(artifact.target);
+		const targetArtifacts = byTarget.get(bucketKey) ?? [];
+		targetArtifacts.push(artifact);
+		byTarget.set(bucketKey, targetArtifacts);
+
+		for (const definitionId of artifact.definitionIds) {
+			const artifacts = byDefinition.get(definitionId) ?? [];
+			artifacts.push(artifact);
+			byDefinition.set(definitionId, artifacts);
+		}
+	}
+
+	return { byDefinition, byPath, byTarget };
+}
+
+function decodeManifest(raw: string, path: string) {
+	return decodeJsonString(raw, ManifestSchema, {
+		onParseError: (message) =>
+			new StateError({
+				filePath: path,
+				message: `Manifest Parse Failed: ${message}`,
+			}),
+		onValidationError: (issues) =>
+			new StateError({
+				filePath: path,
+				message: `Invalid Manifest\n${issues
+					.map((issue) => `  ${issue}`)
+					.join("\n")}`,
+			}),
+	});
+}
+
+function decodeLockfile(raw: string, path: string) {
+	return decodeJsonString(raw, LockfileSchema, {
+		onParseError: (message) =>
+			new StateError({
+				filePath: path,
+				message: `Lockfile Parse Failed: ${message}`,
+			}),
+		onValidationError: (issues) =>
+			new StateError({
+				filePath: path,
+				message: `Invalid Lockfile\n${issues
+					.map((issue) => `  ${issue}`)
+					.join("\n")}`,
+			}),
+	});
 }
 
 export class State extends Effect.Service<State>()("State", {
@@ -84,20 +198,7 @@ export class State extends Effect.Service<State>()("State", {
 				),
 			);
 
-			return yield* decodeJsonString(raw, ManifestSchema, {
-				onParseError: (message) =>
-					new StateError({
-						filePath: path,
-						message: `Manifest Parse Failed: ${message}`,
-					}),
-				onValidationError: (issues) =>
-					new StateError({
-						filePath: path,
-						message: `Invalid Manifest\n${issues
-							.map((issue) => `  ${issue}`)
-							.join("\n")}`,
-					}),
-			});
+			return yield* decodeManifest(raw, path);
 		});
 
 		const writeManifest = Effect.fn("State.writeManifest")(function* (
@@ -141,12 +242,7 @@ export class State extends Effect.Service<State>()("State", {
 			const path = lockfilePath(projectRoot);
 			const exists = yield* fs.exists(path);
 
-			if (!exists)
-				return {
-					version: PROJECT_STATE_VERSION,
-					resolutions: {},
-					provenance: {},
-				} satisfies Lockfile;
+			if (!exists) return defaultLockfile();
 
 			const raw = yield* fs.readFileString(path).pipe(
 				Effect.catchTag(
@@ -159,20 +255,7 @@ export class State extends Effect.Service<State>()("State", {
 				),
 			);
 
-			return yield* decodeJsonString(raw, LockfileSchema, {
-				onParseError: (message) =>
-					new StateError({
-						filePath: path,
-						message: `Lockfile Parse Failed: ${message}`,
-					}),
-				onValidationError: (issues) =>
-					new StateError({
-						filePath: path,
-						message: `Invalid Lockfile\n${issues
-							.map((issue) => `  ${issue}`)
-							.join("\n")}`,
-					}),
-			});
+			return yield* decodeLockfile(raw, path);
 		});
 
 		const writeLockfile = Effect.fn("State.writeLockfile")(function* (
@@ -224,10 +307,7 @@ export class State extends Effect.Service<State>()("State", {
 				.pipe(Effect.catchTag("SystemError", () => Effect.succeed("")));
 			if (raw === "") return false;
 
-			return yield* decodeJsonString(raw, ManifestSchema, {
-				onParseError: () => false,
-				onValidationError: () => false,
-			}).pipe(
+			return yield* decodeManifest(raw, manifestPath(projectRoot)).pipe(
 				Effect.as(true),
 				Effect.catchAll(() => Effect.succeed(false)),
 			);

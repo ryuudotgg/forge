@@ -1,8 +1,7 @@
 import { NodeContext } from "@effect/platform-node";
-import { CoreLive, type Generator, run } from "@ryuujs/core";
-import { type ForgeConfig, resolveBuiltins } from "@ryuujs/generators";
+import { Apply, CoreLive, Planner } from "@ryuujs/core";
+import { builtins, type ForgeConfig } from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
-import { bootstrapProject } from "../bootstrap/project";
 import type { PartialConfig } from "./types";
 import { defineStep, SKIP } from "./types";
 
@@ -21,23 +20,20 @@ const generateStep = defineStep({
 		const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 		try {
-			const generators: ReadonlyArray<Generator<ForgeConfig>> =
-				await Effect.runPromise(
-					resolveBuiltins(forgeConfig).pipe(Effect.provide(coreLayer)),
-				);
-
-			const result = await Effect.runPromise(
-				run(forgeConfig, generators, projectRoot).pipe(
-					Effect.provide(coreLayer),
-				),
+			const plan = await Effect.runPromise(
+				Effect.flatMap(Planner, (planner) =>
+					planner.planCreate(projectRoot, forgeConfig, builtins),
+				).pipe(Effect.provide(coreLayer)),
 			);
-
 			await Effect.runPromise(
-				bootstrapProject({
-					config: forgeConfig,
-					ordered: result.ordered,
-					projectRoot,
-					resolved: result.resolved,
+				Apply.applyPlan(projectRoot, {
+					lockfile: plan.lockfile,
+					manifest: plan.manifest,
+					removals: plan.removals,
+					writes: plan.writes.map((write) => ({
+						content: write.content,
+						path: write.path,
+					})),
 				}).pipe(Effect.provide(coreLayer)),
 			);
 		} catch (error) {
