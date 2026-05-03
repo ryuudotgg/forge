@@ -26,7 +26,7 @@
 		"@commitlint/config-conventional": "catalog:lint",
 		"@commitlint/types": "catalog:lint",
 		"lefthook": "catalog:dev",
-		"turbo": "^2.9.5",
+		"turbo": "^2.9.8",
 		"typescript": "catalog:dev",
 		"vitest": "catalog:dev"
 	},
