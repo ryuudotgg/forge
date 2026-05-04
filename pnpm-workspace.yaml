@@ -35,7 +35,7 @@ catalogs:
   # ===== NODE.JS ENVIRONMENT =====
   node:
     # CLI Framework
-    "@clack/prompts": 1.2.0
+    "@clack/prompts": 1.3.0
     "@clack/core": 1.2.0
 
     # Color Utilities
