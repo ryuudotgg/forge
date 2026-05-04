@@ -14,7 +14,7 @@ catalogs:
       specifier: 24.12.2
       version: 24.12.2
     lefthook:
-      specifier: ^2.1.5
+      specifier: ^2.1.6
       version: 2.1.6
     typescript:
       specifier: 6.0.2
