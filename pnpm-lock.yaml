@@ -113,7 +113,7 @@ importers:
         version: 1.1.1
     devDependencies:
       '@effect/language-service':
-        specifier: ^0.85.0
+        specifier: ^0.85.1
         version: 0.85.1
       '@ryuujs/tsconfig':
         specifier: workspace:*
@@ -138,7 +138,7 @@ importers:
         version: 3.21.2
     devDependencies:
       '@effect/language-service':
-        specifier: ^0.85.0
+        specifier: ^0.85.1
         version: 0.85.1
       '@ryuujs/tsconfig':
         specifier: workspace:*

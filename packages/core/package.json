@@ -51,7 +51,7 @@
 		"effect": "catalog:effect"
 	},
 	"devDependencies": {
-		"@effect/language-service": "^0.85.0",
+		"@effect/language-service": "^0.85.1",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"tsdown": "catalog:build",
