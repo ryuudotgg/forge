@@ -30,9 +30,9 @@
 		"typescript": "catalog:dev",
 		"vitest": "catalog:dev"
 	},
-	"packageManager": "pnpm@10.33.0",
+	"packageManager": "pnpm@10.33.3",
 	"engines": {
 		"node": "24.15.0",
-		"pnpm": "^10.33.0"
+		"pnpm": "^10.33.3"
 	}
 }
