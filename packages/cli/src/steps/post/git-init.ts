@@ -36,6 +36,8 @@ const gitInitStep = defineStep({
 	shouldRun: () => true,
 
 	async execute(config, interactive) {
+		if (config.gitInit === false) return SKIP;
+
 		const dir = String(config.path);
 
 		if (!interactive) {

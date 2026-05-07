@@ -177,20 +177,21 @@ export type {
 } from "./renderer";
 export { Renderer } from "./renderer";
 export type {
+	ArtifactIndex,
 	InstallRecord,
 	InstallTarget,
 	Lockfile,
+	LockfileArtifact,
+	LockfileArtifactKind,
 	Manifest,
 	ModuleRecord,
-	Provenance,
-	ProvenanceArtifact,
-	ProvenanceIndex,
 } from "./state";
 export {
-	buildProvenanceIndex,
+	buildArtifactIndex,
+	defaultLockfile,
+	defaultManifest,
 	LockfileSchema,
 	ManifestSchema,
-	ProvenanceSchema,
 	State,
 } from "./state";
 export type {

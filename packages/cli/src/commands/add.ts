@@ -13,9 +13,9 @@ import {
 } from "@ryuujs/core";
 import {
 	type AddonCatalogEntry,
-	builtins,
 	type ForgeConfig,
 	listVisibleAddons,
+	loadAddonDefinition,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
@@ -71,10 +71,6 @@ function mergeInstallRecord(
 	}));
 }
 
-function resolveAddon(id: string) {
-	return builtins.addons.find((entry) => entry.id === id);
-}
-
 function matchQuery(entry: AddonCatalogEntry, query: string) {
 	if (query.length === 0) return true;
 
@@ -92,7 +88,7 @@ function matchQuery(entry: AddonCatalogEntry, query: string) {
 }
 
 async function promptForAddonId() {
-	const visibleAddons = listVisibleAddons();
+	const visibleAddons = await listVisibleAddons();
 	const query = await text({
 		message: "Search for an addon (leave blank to browse).",
 		placeholder: "tailwind, auth, trpc...",
@@ -146,7 +142,8 @@ export async function runAdd(
 	intro(`We're adding "${resolvedAddonId}"...`);
 
 	const project = await loadManagedProject(".", "add");
-	const addon = resolveAddon(resolvedAddonId);
+	const loadedAddon = await loadAddonDefinition(resolvedAddonId);
+	const addon = loadedAddon.addon;
 
 	if (!addon) {
 		log.error(`We couldn't find the "${resolvedAddonId}" addon.`);

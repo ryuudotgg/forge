@@ -1,0 +1,16 @@
+{
+	"$schema": "https://turborepo.com/schema.json",
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"outputs": []
+		},
+		"typecheck": {
+			"dependsOn": ["build"]
+		},
+		"test": {
+			"dependsOn": ["build", "@ryuujs/forge#build"],
+			"outputs": []
+		}
+	}
+}

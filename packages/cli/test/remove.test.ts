@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runAdd } from "../src/commands/add";
 import { runRemove } from "../src/commands/remove";
+import { adminModule, appModule, managedProject } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	intro: vi.fn(),
@@ -29,17 +29,7 @@ vi.mock("../src/commands/lifecycle", () => ({
 	loadManagedProject: lifecycleMocks.loadManagedProject,
 }));
 
-const appModule = {
-	framework: "nextjs" as const,
-	id: "abcde",
-	packageName: "@acme/web",
-	root: "apps/web",
-	slots: { layout: "app/layout.tsx" },
-	template: { id: "base", version: 1 },
-	type: "app" as const,
-};
-
-describe("addon lifecycle commands", () => {
+describe("remove command", () => {
 	beforeEach(() => {
 		lifecycleMocks.applyInstalledPlan.mockReset();
 		lifecycleMocks.loadManagedProject.mockReset();
@@ -50,48 +40,18 @@ describe("addon lifecycle commands", () => {
 		promptMocks.text.mockReset();
 	});
 
-	it("searches the curated addon catalog when add is called without an id", async () => {
-		lifecycleMocks.loadManagedProject.mockResolvedValue({
-			config: { slug: "acme", web: "nextjs" },
-			manifest: { config: {}, installs: [], modules: {} },
-			modules: [appModule],
-			projectRoot: ".",
-		});
-		promptMocks.text.mockResolvedValue("tailwind");
-
-		await runAdd(undefined, {});
-
-		expect(promptMocks.text).toHaveBeenCalled();
-		expect(promptMocks.select).not.toHaveBeenCalled();
-		expect(promptMocks.multiselect).not.toHaveBeenCalled();
-		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
-			".",
-			{ slug: "acme", web: "nextjs" },
-			[
-				{
-					definitionId: "tailwind",
-					targets: [{ kind: "module", moduleId: "abcde" }],
-				},
-			],
-		);
-	});
-
-	it("prompts from installed addons when remove is called without an id", async () => {
-		lifecycleMocks.loadManagedProject.mockResolvedValue({
-			config: { slug: "acme", web: "nextjs" },
-			manifest: {
-				config: {},
+	it("prompts from installed addons when called without an id", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
 				installs: [
 					{
 						definitionId: "tailwind",
 						targets: [{ kind: "module", moduleId: "abcde" }],
 					},
 				],
-				modules: {},
-			},
-			modules: [appModule],
-			projectRoot: ".",
-		});
+			}),
+		);
+
 		promptMocks.select.mockResolvedValue("tailwind");
 
 		await runRemove(undefined, {});
@@ -105,17 +65,8 @@ describe("addon lifecycle commands", () => {
 	});
 
 	it("prompts for module targets only when an addon is installed in multiple modules", async () => {
-		const adminModule = {
-			...appModule,
-			id: "fghij",
-			packageName: "@acme/admin",
-			root: "apps/admin",
-		};
-
-		lifecycleMocks.loadManagedProject.mockResolvedValue({
-			config: { slug: "acme", web: "nextjs" },
-			manifest: {
-				config: {},
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
 				installs: [
 					{
 						definitionId: "tailwind",
@@ -125,11 +76,10 @@ describe("addon lifecycle commands", () => {
 						],
 					},
 				],
-				modules: {},
-			},
-			modules: [appModule, adminModule],
-			projectRoot: ".",
-		});
+				modules: [appModule, adminModule],
+			}),
+		);
+
 		promptMocks.multiselect.mockResolvedValue(["abcde"]);
 
 		await runRemove("tailwind", {});

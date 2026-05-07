@@ -2,9 +2,9 @@ import { note } from "@clack/prompts";
 import { NodeContext } from "@effect/platform-node";
 import { CoreLive, Planner } from "@ryuujs/core";
 import {
-	builtins,
 	type ForgeConfig,
 	listVisibleAddons,
+	loadDefinitionRegistry,
 } from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
 import { defineStep, SKIP } from "./types";
@@ -27,15 +27,18 @@ const summaryStep = defineStep({
 		if (!interactive) return SKIP;
 
 		const forgeConfig: ForgeConfig = config;
-		const template = builtins.templates.find((entry) =>
+		const loadedRegistry = await loadDefinitionRegistry();
+		const template = loadedRegistry.registry.templates.find((entry) =>
 			entry.when(forgeConfig),
 		);
 		const framework = template
-			? builtins.frameworks.find((entry) => entry.id === template.framework)
+			? loadedRegistry.registry.frameworks.find(
+					(entry) => entry.id === template.framework,
+				)
 			: undefined;
-		const addons = listVisibleAddons()
+		const addons = (await listVisibleAddons())
 			.filter((entry) =>
-				builtins.addons.some(
+				loadedRegistry.registry.addons.some(
 					(definition) =>
 						definition.id === entry.id && definition.when(forgeConfig),
 				),
@@ -54,7 +57,7 @@ const summaryStep = defineStep({
 					planner.planCreate(
 						String(forgeConfig.path ?? "."),
 						forgeConfig,
-						builtins,
+						loadedRegistry.registry,
 					),
 				).pipe(Effect.provide(coreLayer)),
 			);

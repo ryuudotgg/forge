@@ -44,6 +44,8 @@ const installDepsStep = defineStep({
 	shouldRun: () => true,
 
 	async execute(config, interactive) {
+		if (config.installDeps === false) return SKIP;
+
 		const pm = config.packageManager ?? "pnpm";
 		const cmd = packageManagerCommand(pm);
 		const dir = String(config.path);

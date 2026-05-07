@@ -3,9 +3,10 @@ import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { ApplyError } from "./errors";
 import type { Lockfile, Manifest } from "./state";
-import { buildProvenanceIndex, State } from "./state";
+import { buildArtifactIndex, State } from "./state";
 
 export interface PlannedWrite {
+	readonly artifactId?: string;
 	readonly content: string;
 	readonly path: string;
 }
@@ -47,7 +48,9 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			plan: ApplyPlan,
 		) {
 			const previousLockfile = yield* State.readLockfile(projectRoot);
-			const previousArtifacts = buildProvenanceIndex(previousLockfile).byPath;
+			const previousArtifactIndex = buildArtifactIndex(previousLockfile);
+			const previousArtifacts = previousArtifactIndex.byPath;
+			const previousArtifactsById = previousArtifactIndex.byId;
 			const writesToApply: PlannedWrite[] = [];
 
 			for (const relativePath of plan.removals) {
@@ -105,13 +108,19 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				if (currentHash === nextHash) continue;
 
 				const previousArtifact = previousArtifacts.get(file.path);
+				const movedArtifact =
+					file.artifactId === undefined
+						? undefined
+						: previousArtifactsById.get(file.artifactId);
 				if (!previousArtifact)
-					return yield* new ApplyError({
-						path: file.path,
-						message: "Unmanaged File Exists",
-					});
+					if (!movedArtifact)
+						return yield* new ApplyError({
+							path: file.path,
+							message: "Unmanaged File Exists",
+						});
 
-				if (currentHash !== previousArtifact.hash)
+				const expectedHash = previousArtifact?.hash ?? movedArtifact?.hash;
+				if (expectedHash === undefined || currentHash !== expectedHash)
 					return yield* new ApplyError({
 						path: file.path,
 						message: "Managed File Modified",

@@ -24,13 +24,13 @@ import {
 	type SurfaceRenderContribution,
 } from "./renderer";
 import {
-	buildProvenanceIndex,
+	buildArtifactIndex,
 	type InstallRecord,
 	type InstallTarget,
 	type Lockfile,
+	type LockfileArtifact,
 	type Manifest,
 	type ModuleRecord,
-	type ProvenanceArtifact,
 	State,
 } from "./state";
 import { Vfs } from "./virtual-fs";
@@ -68,6 +68,7 @@ type PlanIntent<ConfigValue> =
 	| PlanIntentInstalled<ConfigValue>;
 
 export interface PlannedFile {
+	readonly artifactId: string;
 	readonly content: string;
 	readonly definitionIds: ReadonlyArray<string>;
 	readonly kind: "file" | "surface";
@@ -83,20 +84,8 @@ export interface ProjectPlan {
 	readonly writes: ReadonlyArray<PlannedFile>;
 }
 
-function isTemplate<ConfigValue>(
-	definition: Definition<ConfigValue>,
-): definition is TemplateDefinition<ConfigValue> {
-	return definition._tag === "TemplateDefinition";
-}
-
 function definitionKey<ConfigValue>(definition: Definition<ConfigValue>) {
 	return `${definition._tag}:${definition.id}`;
-}
-
-function definitionVersion<ConfigValue>(definition: Definition<ConfigValue>) {
-	return isTemplate(definition)
-		? String(definition.version)
-		: definition.version;
 }
 
 function templateMatchesId(templateId: string, moduleTemplateId: string) {
@@ -750,7 +739,6 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 		});
 
 		const buildLockfile = Effect.fn("Planner.buildLockfile")(function* (
-			definitions: ReadonlyArray<Definition<Record<string, unknown>>>,
 			managedModules: ReadonlyArray<ManagedModuleRecord>,
 			renderedSurfaces: ReadonlyArray<RenderedArtifact>,
 			leafFiles: ReadonlyArray<{
@@ -760,7 +748,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				readonly path: ReturnType<typeof filePath>;
 			}>,
 		) {
-			const artifacts: Record<string, ProvenanceArtifact> = {};
+			const artifacts: Record<string, LockfileArtifact> = {};
 
 			for (const artifact of renderedSurfaces) {
 				const hash = yield* hashString(artifact.content);
@@ -774,7 +762,6 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					hash,
 					kind: "surface",
 					path: artifact.path,
-					target: artifact.bucket,
 				};
 			}
 
@@ -788,7 +775,6 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					hash,
 					kind: "file",
 					path,
-					target: { kind: "module", moduleId: module.id },
 				};
 			}
 
@@ -805,19 +791,10 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					hash,
 					kind: "file",
 					path,
-					target: file.bucket,
 				};
 			}
 
-			return {
-				resolutions: Object.fromEntries(
-					definitions.map((definition) => [
-						definition.id,
-						definitionVersion(definition),
-					]),
-				),
-				provenance: { artifacts },
-			} satisfies Lockfile;
+			return { artifacts } satisfies Lockfile;
 		});
 
 		const buildWrites = (
@@ -835,6 +812,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 				for (const module of modules)
 					writes.push({
+						artifactId: `module:${module.id}:file:forge.json`,
 						content: formatJson(module.config, { compact: false }),
 						definitionIds: [module.config.template.id],
 						kind: "file",
@@ -845,6 +823,10 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 				for (const artifact of renderedSurfaces)
 					writes.push({
+						artifactId:
+							artifact.bucket.kind === "project"
+								? `project:surface:${artifact.key}`
+								: `module:${artifact.bucket.moduleId}:surface:${artifact.key}`,
 						content: artifact.content,
 						definitionIds: artifact.definitionIds,
 						kind: "surface",
@@ -858,6 +840,10 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 				for (const file of leafFiles)
 					writes.push({
+						artifactId:
+							file.bucket.kind === "project"
+								? `project:file:${String(file.path)}`
+								: `module:${file.bucket.moduleId}:file:${String(file.path)}`,
 						content: file.content,
 						definitionIds: file.generators,
 						kind: "file",
@@ -882,19 +868,11 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			intent: PlanIntent<ConfigValue>,
 		) {
 			const discovered = yield* configStore.discover(projectRoot);
-			const existingManifest = yield* state.readManifest(projectRoot).pipe(
-				Effect.catchAll(() =>
-					Effect.succeed({
-						config: {},
-						installs: [],
-						modules: {},
-					} satisfies Manifest),
-				),
-			);
+			const existingManifest = yield* state.readManifestOrDefault(projectRoot);
 			const existingLockfile = yield* state.readLockfile(projectRoot);
 
 			const selection =
-				intent._tag === "Create" || intent.installs.length === 0
+				intent._tag === "Create"
 					? yield* resolveCreateSelection(intent.config, registry)
 					: {
 							directAddons: registry.addons.filter((addon) =>
@@ -930,7 +908,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			);
 
 			const defaultCreateInstalls =
-				intent._tag === "Create" || intent.installs.length === 0
+				intent._tag === "Create"
 					? selection.directAddons.map((addon) => ({
 							definitionId: addon.id,
 							targets: buildTargetCandidates(
@@ -995,14 +973,13 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				modules,
 			);
 			const lockfile = yield* buildLockfile(
-				definitions as ReadonlyArray<Definition<Record<string, unknown>>>,
 				modules,
 				renderedSurfaces,
 				leafFiles,
 			);
 
 			const previousPaths = new Set(
-				buildProvenanceIndex(existingLockfile).byPath.keys(),
+				buildArtifactIndex(existingLockfile).byPath.keys(),
 			);
 			const nextPaths = new Set(writes.map((write) => write.path));
 			const removals = [...previousPaths].filter(
@@ -1011,10 +988,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 			return {
 				lockfile,
-				manifest: {
-					...existingManifest,
-					...manifest,
-				},
+				manifest,
 				removals,
 				writes,
 			} satisfies ProjectPlan;

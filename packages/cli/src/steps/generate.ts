@@ -1,6 +1,6 @@
 import { NodeContext } from "@effect/platform-node";
 import { Apply, CoreLive, Planner } from "@ryuujs/core";
-import { builtins, type ForgeConfig } from "@ryuujs/generators";
+import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
 import type { PartialConfig } from "./types";
 import { defineStep, SKIP } from "./types";
@@ -20,17 +20,20 @@ const generateStep = defineStep({
 		const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 		try {
+			const loadedRegistry = await loadDefinitionRegistry();
 			const plan = await Effect.runPromise(
 				Effect.flatMap(Planner, (planner) =>
-					planner.planCreate(projectRoot, forgeConfig, builtins),
+					planner.planCreate(projectRoot, forgeConfig, loadedRegistry.registry),
 				).pipe(Effect.provide(coreLayer)),
 			);
+
 			await Effect.runPromise(
 				Apply.applyPlan(projectRoot, {
 					lockfile: plan.lockfile,
 					manifest: plan.manifest,
 					removals: plan.removals,
 					writes: plan.writes.map((write) => ({
+						artifactId: write.artifactId,
 						content: write.content,
 						path: write.path,
 					})),

@@ -1,9 +1,9 @@
 import { intro, isCancel, log, multiselect, select } from "@clack/prompts";
 import type { InstallRecord } from "@ryuujs/core";
 import {
-	builtins,
 	getCatalogEntry,
 	listVisibleAddons,
+	loadAddonDefinition,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
@@ -40,7 +40,7 @@ async function promptForInstalledAddonId(
 	installs: ReadonlyArray<InstallRecord>,
 ) {
 	const installedIds = new Set(installs.map((entry) => entry.definitionId));
-	const installedAddons = listVisibleAddons().filter((entry) =>
+	const installedAddons = (await listVisibleAddons()).filter((entry) =>
 		installedIds.has(entry.id),
 	);
 
@@ -72,12 +72,14 @@ export async function runRemove(
 
 	intro(`We're removing "${resolvedAddonId}"...`);
 
-	const catalogEntry = getCatalogEntry(resolvedAddonId);
-	const addon = builtins.addons.find(
-		(entry) =>
-			entry.id ===
-			(catalogEntry?.kind === "addon" ? catalogEntry.id : resolvedAddonId),
-	);
+	const catalogEntry = await getCatalogEntry(resolvedAddonId);
+
+	const addon = (
+		await loadAddonDefinition(
+			catalogEntry?.kind === "addon" ? catalogEntry.id : resolvedAddonId,
+		)
+	).addon;
+
 	const install = project.manifest.installs.find(
 		(entry) => entry.definitionId === resolvedAddonId,
 	);
@@ -89,11 +91,11 @@ export async function runRemove(
 
 	let nextInstalls = project.manifest.installs;
 
-	if (install.targets.some((target) => target.kind === "project")) {
+	if (install.targets.some((target) => target.kind === "project"))
 		nextInstalls = nextInstalls.filter(
 			(entry) => entry.definitionId !== resolvedAddonId,
 		);
-	} else {
+	else {
 		const moduleTargets = install.targets
 			.filter((target) => target.kind === "module")
 			.map((target) => target.moduleId);

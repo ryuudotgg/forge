@@ -1,11 +1,6 @@
 {
 	"name": "forge",
 	"private": true,
-	"workspaces": [
-		"apps/*",
-		"packages/*",
-		"tooling/*"
-	],
 	"scripts": {
 		"build": "turbo run build",
 		"check": "turbo run check --continue",
@@ -17,7 +12,6 @@
 		"lint:ws": "pnpm dlx sherif@latest",
 		"start": "turbo run start --continue",
 		"test": "turbo run test --continue",
-		"test:watch": "vitest",
 		"typecheck": "turbo run typecheck"
 	},
 	"devDependencies": {

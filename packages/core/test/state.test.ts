@@ -4,6 +4,7 @@ import { NodeContext } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 import {
+	buildArtifactIndex,
 	ConfigStore,
 	CoreLive,
 	type Lockfile,
@@ -70,37 +71,49 @@ describe("project state", () => {
 		});
 	});
 
-	it("writes and reads project manifest and lockfile", async () => {
+	it("writes and reads manifest and lockfile", async () => {
 		await withTempDir("state", async (directory) => {
 			const manifest: Manifest = {
-				config: {},
-				modules: { abcde: { definitionIds: [], root: "apps/web" } },
-				installs: [],
+				config: { slug: "acme" },
+				installs: [{ definitionId: "root", targets: [{ kind: "project" }] }],
+				modules: {
+					abcde: { definitionIds: ["nextjs/base"], root: "apps/web" },
+				},
 			};
 
 			const lockfile: Lockfile = {
-				resolutions: {},
-				provenance: { artifacts: {} },
+				artifacts: {
+					"project:file:package.json": {
+						definitionIds: ["root"],
+						hash: "abc",
+						kind: "file",
+						path: "package.json",
+					},
+				},
 			};
 
 			await Effect.runPromise(
-				Effect.gen(function* () {
-					yield* State.writeManifest(directory, manifest);
-					yield* State.writeLockfile(directory, lockfile);
-				}).pipe(Effect.provide(projectLayer)),
+				State.writeManifest(directory, manifest).pipe(
+					Effect.provide(projectLayer),
+				),
 			);
 
-			const readBack = await Effect.runPromise(
-				Effect.gen(function* () {
-					return {
-						lockfile: yield* State.readLockfile(directory),
-						manifest: yield* State.readManifest(directory),
-					};
-				}).pipe(Effect.provide(projectLayer)),
+			await Effect.runPromise(
+				State.writeLockfile(directory, lockfile).pipe(
+					Effect.provide(projectLayer),
+				),
 			);
 
-			expect(readBack.manifest).toEqual(manifest);
-			expect(readBack.lockfile).toEqual(lockfile);
+			const readManifest = await Effect.runPromise(
+				State.readManifest(directory).pipe(Effect.provide(projectLayer)),
+			);
+
+			const readLockfile = await Effect.runPromise(
+				State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
+			);
+
+			expect(readManifest).toEqual(manifest);
+			expect(readLockfile).toEqual(lockfile);
 
 			expect(await readJson(join(directory, ".forge/manifest.json"))).toEqual(
 				manifest,
@@ -110,5 +123,25 @@ describe("project state", () => {
 				lockfile,
 			);
 		});
+	});
+
+	it("indexes artifacts by id, path, and definition", () => {
+		const index = buildArtifactIndex({
+			artifacts: {
+				"project:file:package.json": {
+					definitionIds: ["root"],
+					hash: "abc",
+					kind: "file",
+					path: "package.json",
+				},
+			},
+		});
+
+		expect(index.byId.get("project:file:package.json")?.path).toBe(
+			"package.json",
+		);
+
+		expect(index.byPath.get("package.json")?.hash).toBe("abc");
+		expect(index.byDefinition.get("root")?.[0]?.path).toBe("package.json");
 	});
 });

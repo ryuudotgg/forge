@@ -6,6 +6,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
+import type { FirstPartyAddonMetadata } from "../registry/types";
 
 const typescript = defineAddon<ForgeConfig, "typescript">({
 	id: "typescript",
@@ -44,5 +45,17 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 		]),
 	],
 });
+
+export const typescriptMetadata = {
+	description:
+		"Adds the standard TypeScript project scaffolding and managed tsconfig surfaces.",
+	experimental: false,
+	hidden: false,
+	id: "typescript",
+	keywords: ["ts", "tsconfig", "typescript"],
+	kind: "addon",
+	name: "TypeScript",
+	summary: "Add TypeScript project support.",
+} as const satisfies FirstPartyAddonMetadata;
 
 export default typescript;

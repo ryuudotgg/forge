@@ -8,6 +8,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
+import type { FirstPartyAddonMetadata } from "../registry/types";
 import { readTemplate } from "../template";
 
 const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
@@ -84,5 +85,17 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 		];
 	},
 });
+
+export const uiMetadata = {
+	description:
+		"Creates a reusable shared UI package with managed styling and utility surfaces.",
+	experimental: false,
+	hidden: false,
+	id: "ui",
+	keywords: ["components", "design system", "react", "ui"],
+	kind: "addon",
+	name: "UI Package",
+	summary: "Create a shared UI package.",
+} as const satisfies FirstPartyAddonMetadata;
 
 export default ui;

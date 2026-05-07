@@ -3,7 +3,7 @@ import { NodeContext } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 import { Apply, type ApplyError, CoreLive, State } from "../src/index";
-import { withTempDir, writeJson, writeText } from "./harness";
+import { withTempDir, writeText } from "./harness";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
@@ -22,24 +22,15 @@ describe("apply", () => {
 	it("refuses to overwrite a modified managed file", async () => {
 		await withTempDir("apply-overwrite", async (directory) => {
 			await writeText(`${directory}/apps/web/app/layout.tsx`, "user-change\n");
-			await writeJson(`${directory}/.forge/manifest.json`, {
-				config: {},
-				installs: [],
-				modules: {},
-			});
 
 			await Effect.runPromise(
 				State.writeLockfile(directory, {
-					resolutions: {},
-					provenance: {
-						artifacts: {
-							"project:file:apps/web/app/layout.tsx": {
-								definitionIds: ["nextjs/base"],
-								hash: await hashContent("old-managed\n"),
-								kind: "file",
-								path: "apps/web/app/layout.tsx",
-								target: { kind: "project" },
-							},
+					artifacts: {
+						"project:file:apps/web/app/layout.tsx": {
+							definitionIds: ["nextjs/base"],
+							hash: await hashContent("old-managed\n"),
+							kind: "file",
+							path: "apps/web/app/layout.tsx",
 						},
 					},
 				}).pipe(Effect.provide(coreLayer)),
@@ -48,15 +39,8 @@ describe("apply", () => {
 			await expect(
 				Effect.runPromiseExit(
 					Apply.applyPlan(directory, {
-						lockfile: {
-							resolutions: {},
-							provenance: { artifacts: {} },
-						},
-						manifest: {
-							config: {},
-							installs: [],
-							modules: {},
-						},
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
 						removals: [],
 						writes: [
 							{
@@ -89,24 +73,15 @@ describe("apply", () => {
 	it("refuses to remove a modified managed file", async () => {
 		await withTempDir("apply-remove", async (directory) => {
 			await writeText(`${directory}/packages/ui/forge.json`, "{\n}\n");
-			await writeJson(`${directory}/.forge/manifest.json`, {
-				config: {},
-				installs: [],
-				modules: {},
-			});
 
 			await Effect.runPromise(
 				State.writeLockfile(directory, {
-					resolutions: {},
-					provenance: {
-						artifacts: {
-							"project:file:packages/ui/forge.json": {
-								definitionIds: ["ui"],
-								hash: await hashContent('{\n\t"old": true\n}\n'),
-								kind: "file",
-								path: "packages/ui/forge.json",
-								target: { kind: "project" },
-							},
+					artifacts: {
+						"project:file:packages/ui/forge.json": {
+							definitionIds: ["ui"],
+							hash: await hashContent('{\n\t"old": true\n}\n'),
+							kind: "file",
+							path: "packages/ui/forge.json",
 						},
 					},
 				}).pipe(Effect.provide(coreLayer)),
@@ -115,15 +90,8 @@ describe("apply", () => {
 			await expect(
 				Effect.runPromiseExit(
 					Apply.applyPlan(directory, {
-						lockfile: {
-							resolutions: {},
-							provenance: { artifacts: {} },
-						},
-						manifest: {
-							config: {},
-							installs: [],
-							modules: {},
-						},
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
 						removals: ["packages/ui/forge.json"],
 						writes: [],
 					}).pipe(Effect.provide(coreLayer)),

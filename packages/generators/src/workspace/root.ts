@@ -12,6 +12,7 @@ import {
 import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
+import type { FirstPartyAddonMetadata } from "../registry/types";
 
 const root = defineAddon<ForgeConfig, "root">({
 	id: "root",
@@ -56,6 +57,18 @@ const root = defineAddon<ForgeConfig, "root">({
 			return buildContributions(config, runtimeVersion, packageManagerVersion);
 		}),
 });
+
+export const rootMetadata = {
+	description:
+		"Internal project bootstrap metadata and root workspace shaping for managed Forge projects.",
+	experimental: false,
+	hidden: true,
+	id: "root",
+	keywords: ["internal", "root", "workspace"],
+	kind: "addon",
+	name: "Root Workspace",
+	summary: "Internal root project bootstrap.",
+} as const satisfies FirstPartyAddonMetadata;
 
 function buildContributions(
 	config: ForgeConfig,
