@@ -50,8 +50,8 @@ catalogs:
 nodeLinker: hoisted
 linkWorkspacePackages: true
 
-onlyBuiltDependencies:
-  - "@parcel/watcher"
-  - msgpackr-extract
-  - lefthook
-  - esbuild
+allowBuilds:
+  "@parcel/watcher": true
+  msgpackr-extract: true
+  lefthook: true
+  esbuild: true
