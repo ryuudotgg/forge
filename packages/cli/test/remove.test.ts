@@ -96,4 +96,34 @@ describe("remove command", () => {
 			],
 		);
 	});
+
+	it("shows a friendly error when an installed addon id is no longer known", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					installs: [
+						{
+							definitionId: "stale",
+							targets: [{ kind: "module", moduleId: "abcde" }],
+						},
+					],
+				}),
+			);
+
+			await expect(runRemove("stale", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'We couldn\'t find "stale" in this project.',
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
 });

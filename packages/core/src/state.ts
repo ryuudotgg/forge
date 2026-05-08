@@ -292,6 +292,9 @@ export class State extends Effect.Service<State>()("State", {
 		const isManagedProject = Effect.fn("State.isManagedProject")(function* (
 			projectRoot: string,
 		) {
+			const lockfileExists = yield* fs.exists(lockfilePath(projectRoot));
+			if (lockfileExists) return true;
+
 			return yield* fs.exists(manifestPath(projectRoot));
 		});
 

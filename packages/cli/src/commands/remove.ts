@@ -4,6 +4,7 @@ import {
 	getCatalogEntry,
 	listVisibleAddons,
 	loadAddonDefinition,
+	RegistryLoadError,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
@@ -72,21 +73,31 @@ export async function runRemove(
 
 	intro(`We're removing "${resolvedAddonId}"...`);
 
-	const catalogEntry = await getCatalogEntry(resolvedAddonId);
-
-	const addon = (
-		await loadAddonDefinition(
-			catalogEntry?.kind === "addon" ? catalogEntry.id : resolvedAddonId,
-		)
-	).addon;
-
 	const install = project.manifest.installs.find(
 		(entry) => entry.definitionId === resolvedAddonId,
 	);
 
-	if (!addon || !install) {
+	if (!install) {
 		log.error(`We couldn't find "${resolvedAddonId}" in this project.`);
 		process.exit(1);
+	}
+
+	const catalogEntry = await getCatalogEntry(resolvedAddonId);
+	let addon: ReturnType<typeof loadAddonDefinition>["addon"];
+
+	try {
+		addon = (
+			await loadAddonDefinition(
+				catalogEntry?.kind === "addon" ? catalogEntry.id : resolvedAddonId,
+			)
+		).addon;
+	} catch (error) {
+		if (error instanceof RegistryLoadError) {
+			log.error(`We couldn't find "${resolvedAddonId}" in this project.`);
+			process.exit(1);
+		}
+
+		throw error;
 	}
 
 	let nextInstalls = project.manifest.installs;

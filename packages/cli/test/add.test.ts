@@ -83,4 +83,25 @@ describe("add command", () => {
 			],
 		);
 	});
+
+	it("shows a friendly error when the addon id is unknown", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+			await expect(runAdd("missing", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'We couldn\'t find the "missing" addon.',
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
 });

@@ -16,6 +16,7 @@ import {
 	type ForgeConfig,
 	listVisibleAddons,
 	loadAddonDefinition,
+	RegistryLoadError,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
@@ -142,12 +143,17 @@ export async function runAdd(
 	intro(`We're adding "${resolvedAddonId}"...`);
 
 	const project = await loadManagedProject(".", "add");
-	const loadedAddon = await loadAddonDefinition(resolvedAddonId);
-	const addon = loadedAddon.addon;
+	let addon: AddonDefinition<ForgeConfig>;
 
-	if (!addon) {
-		log.error(`We couldn't find the "${resolvedAddonId}" addon.`);
-		process.exit(1);
+	try {
+		addon = (await loadAddonDefinition(resolvedAddonId)).addon;
+	} catch (error) {
+		if (error instanceof RegistryLoadError) {
+			log.error(`We couldn't find the "${resolvedAddonId}" addon.`);
+			process.exit(1);
+		}
+
+		throw error;
 	}
 
 	let record: InstallRecord;

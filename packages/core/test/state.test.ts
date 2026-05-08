@@ -125,6 +125,22 @@ describe("project state", () => {
 		});
 	});
 
+	it("treats lockfile-only projects as managed", async () => {
+		await withTempDir("lockfile-only", async (directory) => {
+			await Effect.runPromise(
+				State.writeLockfile(directory, { artifacts: {} }).pipe(
+					Effect.provide(projectLayer),
+				),
+			);
+
+			const isManaged = await Effect.runPromise(
+				State.isManagedProject(directory).pipe(Effect.provide(projectLayer)),
+			);
+
+			expect(isManaged).toBe(true);
+		});
+	});
+
 	it("indexes artifacts by id, path, and definition", () => {
 		const index = buildArtifactIndex({
 			artifacts: {
