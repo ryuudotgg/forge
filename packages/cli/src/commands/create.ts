@@ -66,6 +66,8 @@ export async function runCreate(
 	}
 
 	initialConfig = { ...initialConfig, ...buildFlagOverrides(values) };
+	if (values["no-install"] === true) initialConfig.installDeps = false;
+	if (values["no-git"] === true) initialConfig.gitInit = false;
 
 	const interactive = !values.config;
 	await orchestrate(steps, { initialConfig, interactive });

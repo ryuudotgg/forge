@@ -6,6 +6,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
+import type { FirstPartyAddonMetadata } from "../registry/types";
 
 const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 	id: "biome",
@@ -52,5 +53,17 @@ const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 		];
 	},
 });
+
+export const biomeMetadata = {
+	description:
+		"Adds Biome formatting and linting configuration to the managed project surfaces.",
+	experimental: false,
+	hidden: false,
+	id: "biome",
+	keywords: ["biome", "formatting", "linting"],
+	kind: "addon",
+	name: "Biome",
+	summary: "Add Biome formatting and linting.",
+} as const satisfies FirstPartyAddonMetadata;
 
 export default biome;

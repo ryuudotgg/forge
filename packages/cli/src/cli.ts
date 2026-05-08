@@ -143,12 +143,30 @@ export const options = {
 		type: "boolean",
 		description: "Accept all incoming changes on conflicts.",
 	},
+
+	"no-install": {
+		type: "boolean",
+		description: "Do not install dependencies.",
+	},
+
+	"no-git": {
+		type: "boolean",
+		description: "Do not initialize a Git repository.",
+	},
 } as const satisfies Record<string, CLIOption>;
 
 export const sections: CLISection[] = [
 	{
 		title: "Options",
-		keys: ["config", "preset", "accept-incoming", "help", "version"],
+		keys: [
+			"config",
+			"preset",
+			"accept-incoming",
+			"no-install",
+			"no-git",
+			"help",
+			"version",
+		],
 	},
 	{
 		title: "Field Overrides",

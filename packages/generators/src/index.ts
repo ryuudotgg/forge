@@ -49,7 +49,17 @@ export {
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
 export { default as biome } from "./linters/biome";
 export { default as drizzle } from "./orm/drizzle";
-export { builtins, resolveBuiltins } from "./registry";
+export {
+	builtins,
+	loadAddonDefinition,
+	loadDefinitionRegistry,
+	RegistryLoadError,
+	resolveBuiltins,
+} from "./registry";
+export type {
+	LoadedAddonDefinition,
+	LoadedDefinitionRegistry,
+} from "./registry/types";
 export { default as tailwind } from "./style/tailwind";
 export { default as gitignore } from "./tooling/gitignore";
 export { default as typescript } from "./tooling/typescript";

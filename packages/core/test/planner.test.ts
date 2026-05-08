@@ -94,7 +94,7 @@ function moduleBucketId(bucket: RenderBucket) {
 
 describe("planner", () => {
 	it("reconstructs legacy empty installs and retracts inactive ensured modules", async () => {
-		await withTempDir("planner-phase4", async (directory) => {
+		await withTempDir("planner-legacy-installs", async (directory) => {
 			const registry = testRegistry();
 			const createConfig: TestConfig = { ui: true, web: "nextjs" };
 			const updateConfig: TestConfig = { web: "nextjs" };
@@ -111,6 +111,7 @@ describe("planner", () => {
 					manifest: createPlan.manifest,
 					removals: createPlan.removals,
 					writes: createPlan.writes.map((write) => ({
+						artifactId: write.artifactId,
 						content: write.content,
 						path: write.path,
 					})),
@@ -131,13 +132,11 @@ describe("planner", () => {
 			if (!uiModuleId) throw new Error("Missing UI Module");
 
 			expect(
-				createPlan.lockfile.provenance.artifacts[
-					`module:${uiModuleId}:file:forge.json`
-				],
+				createPlan.lockfile.artifacts[`module:${uiModuleId}:file:forge.json`],
 			).toBeDefined();
 
 			expect(
-				createPlan.lockfile.provenance.artifacts[
+				createPlan.lockfile.artifacts[
 					`module:${uiModuleId}:file:packages/ui/src/lib/utils.ts`
 				],
 			).toBeDefined();

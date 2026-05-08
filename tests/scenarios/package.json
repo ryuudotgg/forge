@@ -1,0 +1,16 @@
+{
+	"name": "@ryuujs/scenarios",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "biome check",
+		"clean": "git clean -xdf .turbo .cache node_modules",
+		"test": "vitest run --maxWorkers=4",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@ryuujs/tsconfig": "workspace:*",
+		"@types/node": "catalog:dev",
+		"typescript": "catalog:dev"
+	}
+}

@@ -6,6 +6,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { readTemplate } from "../../template";
 
 const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
@@ -72,5 +73,17 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 		]),
 	],
 });
+
+export const trpcMetadata = {
+	description:
+		"Adds tRPC server and client surfaces to compatible Forge application targets.",
+	experimental: false,
+	hidden: false,
+	id: "trpc",
+	keywords: ["api", "rpc", "trpc", "typescript"],
+	kind: "addon",
+	name: "tRPC",
+	summary: "Add tRPC to an app target.",
+} as const satisfies FirstPartyAddonMetadata;
 
 export default trpc;

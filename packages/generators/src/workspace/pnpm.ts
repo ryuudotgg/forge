@@ -1,5 +1,6 @@
 import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
+import type { FirstPartyAddonMetadata } from "../registry/types";
 
 const pnpm = defineAddon<ForgeConfig, "pnpm">({
 	id: "pnpm",
@@ -18,5 +19,17 @@ const pnpm = defineAddon<ForgeConfig, "pnpm">({
 		),
 	],
 });
+
+export const pnpmMetadata = {
+	description:
+		"Configures pnpm workspace behavior and workspace package manager metadata.",
+	experimental: false,
+	hidden: false,
+	id: "pnpm",
+	keywords: ["package manager", "pnpm", "workspace"],
+	kind: "addon",
+	name: "pnpm Workspace",
+	summary: "Set up pnpm workspace support.",
+} as const satisfies FirstPartyAddonMetadata;
 
 export default pnpm;

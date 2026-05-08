@@ -1,9 +1,10 @@
 import { intro, isCancel, log, multiselect, select } from "@clack/prompts";
 import type { InstallRecord } from "@ryuujs/core";
 import {
-	builtins,
 	getCatalogEntry,
 	listVisibleAddons,
+	loadAddonDefinition,
+	RegistryLoadError,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
@@ -40,7 +41,7 @@ async function promptForInstalledAddonId(
 	installs: ReadonlyArray<InstallRecord>,
 ) {
 	const installedIds = new Set(installs.map((entry) => entry.definitionId));
-	const installedAddons = listVisibleAddons().filter((entry) =>
+	const installedAddons = (await listVisibleAddons()).filter((entry) =>
 		installedIds.has(entry.id),
 	);
 
@@ -72,28 +73,40 @@ export async function runRemove(
 
 	intro(`We're removing "${resolvedAddonId}"...`);
 
-	const catalogEntry = getCatalogEntry(resolvedAddonId);
-	const addon = builtins.addons.find(
-		(entry) =>
-			entry.id ===
-			(catalogEntry?.kind === "addon" ? catalogEntry.id : resolvedAddonId),
-	);
 	const install = project.manifest.installs.find(
 		(entry) => entry.definitionId === resolvedAddonId,
 	);
 
-	if (!addon || !install) {
+	if (!install) {
 		log.error(`We couldn't find "${resolvedAddonId}" in this project.`);
 		process.exit(1);
 	}
 
+	const catalogEntry = await getCatalogEntry(resolvedAddonId);
+	let addon: ReturnType<typeof loadAddonDefinition>["addon"];
+
+	try {
+		addon = (
+			await loadAddonDefinition(
+				catalogEntry?.kind === "addon" ? catalogEntry.id : resolvedAddonId,
+			)
+		).addon;
+	} catch (error) {
+		if (error instanceof RegistryLoadError) {
+			log.error(`We couldn't find "${resolvedAddonId}" in this project.`);
+			process.exit(1);
+		}
+
+		throw error;
+	}
+
 	let nextInstalls = project.manifest.installs;
 
-	if (install.targets.some((target) => target.kind === "project")) {
+	if (install.targets.some((target) => target.kind === "project"))
 		nextInstalls = nextInstalls.filter(
 			(entry) => entry.definitionId !== resolvedAddonId,
 		);
-	} else {
+	else {
 		const moduleTargets = install.targets
 			.filter((target) => target.kind === "module")
 			.map((target) => target.moduleId);

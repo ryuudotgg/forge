@@ -8,6 +8,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { readTemplate } from "../../template";
 
 const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
@@ -60,5 +61,17 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 		}),
 	],
 });
+
+export const drizzleMetadata = {
+	description:
+		"Adds Drizzle ORM configuration, schema surfaces, and database tooling to a compatible app.",
+	experimental: false,
+	hidden: false,
+	id: "drizzle",
+	keywords: ["database", "drizzle", "orm", "sql"],
+	kind: "addon",
+	name: "Drizzle",
+	summary: "Add Drizzle ORM support.",
+} as const satisfies FirstPartyAddonMetadata;
 
 export default drizzle;

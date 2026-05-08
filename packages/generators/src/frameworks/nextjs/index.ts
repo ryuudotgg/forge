@@ -12,6 +12,10 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import type {
+	FirstPartyFrameworkMetadata,
+	FirstPartyTemplateMetadata,
+} from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 
 export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
@@ -19,6 +23,18 @@ export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	name: "Next.js",
 	slots: ["layout", "page", "api", "trpc", "db", "auth", "authClient"],
 });
+
+export const nextjsFrameworkMetadata = {
+	description:
+		"Forge's first-party Next.js host framework with managed app surfaces and slot-aware rendering.",
+	experimental: false,
+	hidden: false,
+	id: "nextjs",
+	keywords: ["app", "framework", "next", "react", "web"],
+	kind: "framework",
+	name: "Next.js",
+	summary: "Managed Next.js app host.",
+} as const satisfies FirstPartyFrameworkMetadata;
 
 const nextjsBaseTemplate: TemplateDefinition<
 	ForgeConfig,
@@ -39,6 +55,18 @@ const nextjsBaseTemplate: TemplateDefinition<
 	when: (config) => config.web === "nextjs",
 	contribute: ({ config }) => buildContributions(config),
 });
+
+export const nextjsBaseTemplateMetadata = {
+	description:
+		"A production-ready Next.js base template that composes cleanly with Forge addons.",
+	experimental: false,
+	hidden: false,
+	id: "nextjs/base",
+	keywords: ["base", "next", "starter", "template", "web"],
+	kind: "template",
+	name: "Base",
+	summary: "Base Next.js template.",
+} as const satisfies FirstPartyTemplateMetadata;
 
 function buildContributions(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";

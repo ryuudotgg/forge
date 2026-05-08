@@ -8,6 +8,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 
 const tailwind = defineAddon<ForgeConfig, "tailwind", "nextjs">({
@@ -90,5 +91,17 @@ const tailwind = defineAddon<ForgeConfig, "tailwind", "nextjs">({
 		];
 	},
 });
+
+export const tailwindMetadata = {
+	description:
+		"Adds Tailwind CSS to compatible app and shared UI surfaces managed by Forge.",
+	experimental: false,
+	hidden: false,
+	id: "tailwind",
+	keywords: ["css", "styles", "tailwind"],
+	kind: "addon",
+	name: "Tailwind CSS",
+	summary: "Add Tailwind CSS support.",
+} as const satisfies FirstPartyAddonMetadata;
 
 export default tailwind;

@@ -14,7 +14,7 @@ import {
 	runtimes,
 	State,
 } from "@ryuujs/core";
-import { builtins, type ForgeConfig } from "@ryuujs/generators";
+import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
@@ -55,12 +55,8 @@ async function inferConfigSnapshot(
 
 	const packageManagerPrefix = packageJson.packageManager?.split("@")[0];
 	const packageManager =
-		packageManagerPrefix === "npm" ||
-		packageManagerPrefix === "yarn" ||
-		packageManagerPrefix === "bun" ||
-		packageManagerPrefix === "pnpm"
-			? packageManagers[packageManagerPrefix].displayName
-			: packageManagers.pnpm.displayName;
+		packageManagers[packageManagerPrefix as keyof typeof packageManagers]
+			?.displayName || packageManagers.pnpm.displayName;
 
 	const webModule = modules.find((module) => module.type === "app");
 	const uiModule = modules.find(
@@ -169,18 +165,27 @@ export async function loadManagedProject(
 		? (
 				await Effect.runPromise(
 					Effect.flatMap(Planner, (planner) =>
-						planner.planInstalled(
-							projectRoot,
-							config,
-							manifest.installs,
-							builtins,
+						Effect.sync(() => loadDefinitionRegistry()).pipe(
+							Effect.flatMap((loadedRegistry) =>
+								planner.planInstalled(
+									projectRoot,
+									config,
+									manifest.installs,
+									loadedRegistry.registry,
+								),
+							),
 						),
 					).pipe(Effect.provide(coreLayer)),
 				)
 			).manifest
 		: manifest;
 
-	return { config, manifest: normalizedManifest, modules, projectRoot };
+	return {
+		config,
+		manifest: normalizedManifest,
+		modules,
+		projectRoot,
+	};
 }
 
 export async function applyInstalledPlan(
@@ -188,9 +193,15 @@ export async function applyInstalledPlan(
 	config: ForgeConfig,
 	installs: ReadonlyArray<InstallRecord>,
 ) {
+	const loadedRegistry = await loadDefinitionRegistry();
 	const plan = await Effect.runPromise(
 		Effect.flatMap(Planner, (planner) =>
-			planner.planInstalled(projectRoot, config, installs, builtins),
+			planner.planInstalled(
+				projectRoot,
+				config,
+				installs,
+				loadedRegistry.registry,
+			),
 		).pipe(Effect.provide(coreLayer)),
 	);
 
@@ -200,6 +211,7 @@ export async function applyInstalledPlan(
 			manifest: plan.manifest,
 			removals: plan.removals,
 			writes: plan.writes.map((write) => ({
+				artifactId: write.artifactId,
 				content: write.content,
 				path: write.path,
 			})),

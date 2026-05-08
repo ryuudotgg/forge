@@ -41,27 +41,17 @@ const InstallRecordSchema = Schema.Struct({
 
 export type InstallRecord = typeof InstallRecordSchema.Type;
 
-const ProvenanceArtifactKindSchema = Schema.Literal("file", "surface");
-export type ProvenanceArtifactKind = typeof ProvenanceArtifactKindSchema.Type;
+const LockfileArtifactKindSchema = Schema.Literal("file", "surface");
+export type LockfileArtifactKind = typeof LockfileArtifactKindSchema.Type;
 
-const ProvenanceArtifactSchema = Schema.Struct({
-	kind: ProvenanceArtifactKindSchema,
-	target: InstallTargetSchema,
+const LockfileArtifactSchema = Schema.Struct({
+	kind: LockfileArtifactKindSchema,
 	definitionIds: Schema.Array(Schema.String),
 	hash: Schema.String,
 	path: Schema.String,
 });
 
-export type ProvenanceArtifact = typeof ProvenanceArtifactSchema.Type;
-
-export const ProvenanceSchema = Schema.Struct({
-	artifacts: Schema.optionalWith(
-		Schema.Record({ key: Schema.String, value: ProvenanceArtifactSchema }),
-		{ default: () => ({}) },
-	),
-});
-
-export type Provenance = typeof ProvenanceSchema.Type;
+export type LockfileArtifact = typeof LockfileArtifactSchema.Type;
 
 export const ManifestSchema = Schema.Struct({
 	config: Schema.optionalWith(ConfigSnapshotSchema, {
@@ -79,14 +69,25 @@ export const ManifestSchema = Schema.Struct({
 export type Manifest = typeof ManifestSchema.Type;
 
 export const LockfileSchema = Schema.Struct({
-	resolutions: Schema.optionalWith(
-		Schema.Record({ key: Schema.String, value: Schema.String }),
+	artifacts: Schema.optionalWith(
+		Schema.Record({ key: Schema.String, value: LockfileArtifactSchema }),
 		{ default: () => ({}) },
 	),
-	provenance: ProvenanceSchema,
 });
 
 export type Lockfile = typeof LockfileSchema.Type;
+
+export function defaultManifest(): Manifest {
+	return {
+		config: {},
+		installs: [],
+		modules: {},
+	};
+}
+
+export function defaultLockfile(): Lockfile {
+	return { artifacts: {} };
+}
 
 function manifestPath(projectRoot: string) {
 	return join(projectRoot, PROJECT_STATE_DIR, MANIFEST_FILE);
@@ -96,35 +97,20 @@ function lockfilePath(projectRoot: string) {
 	return join(projectRoot, PROJECT_STATE_DIR, LOCKFILE_FILE);
 }
 
-function defaultLockfile(): Lockfile {
-	return {
-		resolutions: {},
-		provenance: { artifacts: {} },
-	};
+export interface ArtifactIndex {
+	readonly byDefinition: Map<string, ReadonlyArray<LockfileArtifact>>;
+	readonly byId: Map<string, LockfileArtifact>;
+	readonly byPath: Map<string, LockfileArtifact>;
 }
 
-export interface ProvenanceIndex {
-	readonly byDefinition: Map<string, ReadonlyArray<ProvenanceArtifact>>;
-	readonly byPath: Map<string, ProvenanceArtifact>;
-	readonly byTarget: Map<string, ReadonlyArray<ProvenanceArtifact>>;
-}
+export function buildArtifactIndex(lockfile: Lockfile): ArtifactIndex {
+	const byDefinition = new Map<string, LockfileArtifact[]>();
+	const byId = new Map<string, LockfileArtifact>();
+	const byPath = new Map<string, LockfileArtifact>();
 
-function targetKey(target: InstallTarget) {
-	return target.kind === "project" ? "project" : `module:${target.moduleId}`;
-}
-
-export function buildProvenanceIndex(lockfile: Lockfile): ProvenanceIndex {
-	const byDefinition = new Map<string, ProvenanceArtifact[]>();
-	const byPath = new Map<string, ProvenanceArtifact>();
-	const byTarget = new Map<string, ProvenanceArtifact[]>();
-
-	for (const artifact of Object.values(lockfile.provenance.artifacts)) {
+	for (const [id, artifact] of Object.entries(lockfile.artifacts)) {
+		byId.set(id, artifact);
 		byPath.set(artifact.path, artifact);
-
-		const bucketKey = targetKey(artifact.target);
-		const targetArtifacts = byTarget.get(bucketKey) ?? [];
-		targetArtifacts.push(artifact);
-		byTarget.set(bucketKey, targetArtifacts);
 
 		for (const definitionId of artifact.definitionIds) {
 			const artifacts = byDefinition.get(definitionId) ?? [];
@@ -133,7 +119,7 @@ export function buildProvenanceIndex(lockfile: Lockfile): ProvenanceIndex {
 		}
 	}
 
-	return { byDefinition, byPath, byTarget };
+	return { byDefinition, byId, byPath };
 }
 
 function decodeManifest(raw: string, path: string) {
@@ -200,6 +186,16 @@ export class State extends Effect.Service<State>()("State", {
 
 			return yield* decodeManifest(raw, path);
 		});
+
+		const readManifestOrDefault = Effect.fn("State.readManifestOrDefault")(
+			function* (projectRoot: string) {
+				return yield* readManifest(projectRoot).pipe(
+					Effect.catchTag("StateError", () =>
+						Effect.succeed(defaultManifest()),
+					),
+				);
+			},
+		);
 
 		const writeManifest = Effect.fn("State.writeManifest")(function* (
 			projectRoot: string,
@@ -296,27 +292,17 @@ export class State extends Effect.Service<State>()("State", {
 		const isManagedProject = Effect.fn("State.isManagedProject")(function* (
 			projectRoot: string,
 		) {
-			const lockExists = yield* fs.exists(lockfilePath(projectRoot));
-			if (lockExists) return true;
+			const lockfileExists = yield* fs.exists(lockfilePath(projectRoot));
+			if (lockfileExists) return true;
 
-			const manifestExists = yield* fs.exists(manifestPath(projectRoot));
-			if (!manifestExists) return false;
-
-			const raw = yield* fs
-				.readFileString(manifestPath(projectRoot))
-				.pipe(Effect.catchTag("SystemError", () => Effect.succeed("")));
-			if (raw === "") return false;
-
-			return yield* decodeManifest(raw, manifestPath(projectRoot)).pipe(
-				Effect.as(true),
-				Effect.catchAll(() => Effect.succeed(false)),
-			);
+			return yield* fs.exists(manifestPath(projectRoot));
 		});
 
 		return {
 			isManagedProject,
 			readLockfile,
 			readManifest,
+			readManifestOrDefault,
 			writeLockfile,
 			writeManifest,
 		};

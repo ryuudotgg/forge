@@ -8,6 +8,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { readTemplate } from "../../template";
 
 const betterAuth = defineAddon<ForgeConfig, "better-auth", "nextjs">({
@@ -66,5 +67,17 @@ const betterAuth = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 		),
 	],
 });
+
+export const betterAuthMetadata = {
+	description:
+		"Adds Better Auth server and client surfaces to a compatible application target.",
+	experimental: false,
+	hidden: false,
+	id: "better-auth",
+	keywords: ["auth", "authentication", "better-auth"],
+	kind: "addon",
+	name: "Better Auth",
+	summary: "Add Better Auth to an app target.",
+} as const satisfies FirstPartyAddonMetadata;
 
 export default betterAuth;

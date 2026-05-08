@@ -45,6 +45,10 @@ catalogs:
     '@commitlint/types':
       specifier: ^20.5.0
       version: 20.5.0
+  monorepo:
+    turbo:
+      specifier: ^2.9.9
+      version: 2.9.9
   node:
     '@clack/core':
       specifier: 1.3.0
@@ -76,7 +80,7 @@ importers:
         specifier: catalog:dev
         version: 2.1.6
       turbo:
-        specifier: ^2.9.9
+        specifier: catalog:monorepo
         version: 2.9.9
       typescript:
         specifier: catalog:dev
@@ -171,6 +175,18 @@ importers:
       tsdown:
         specifier: catalog:build
         version: 0.22.0(typescript@6.0.3)
+      typescript:
+        specifier: catalog:dev
+        version: 6.0.3
+
+  tests/scenarios:
+    devDependencies:
+      '@ryuujs/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/typescript
+      '@types/node':
+        specifier: catalog:dev
+        version: 24.12.2
       typescript:
         specifier: catalog:dev
         version: 6.0.3
