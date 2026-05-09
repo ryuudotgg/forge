@@ -5,11 +5,11 @@
 		"build": "turbo run build",
 		"check": "turbo run check --continue",
 		"check:fix": "turbo run check --continue -- --write",
+		"check:ws": "pnpm dlx sherif@latest",
 		"clean": "git clean -xdf .turbo node_modules",
 		"clean:workspaces": "turbo run clean",
 		"dev": "turbo watch dev --continue",
-		"postinstall": "pnpm lint:ws",
-		"lint:ws": "pnpm dlx sherif@latest",
+		"postinstall": "pnpm check:ws",
 		"start": "turbo run start --continue",
 		"test": "turbo run test --continue",
 		"typecheck": "turbo run typecheck"
