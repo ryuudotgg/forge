@@ -35,7 +35,7 @@ jobs:
         uses: ./tooling/github/setup
 
       - name: Lint / Format
-        run: pnpm check
+        run: pnpm check && pnpm check:ws
 
   typecheck:
     name: Type Checks
