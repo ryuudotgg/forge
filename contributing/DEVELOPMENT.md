@@ -50,10 +50,10 @@ pnpm dev
 - `pnpm build` - Build Apps and Packages
 - `pnpm check` - Run Biome's Formatter and Linter
 - `pnpm check:fix` - Auto-fix Issues with Biome
+- `pnpm check:ws` - Check Workspace with Sherif
 - `pnpm clean` - Clean Dependencies and Build Artifacts
 - `pnpm clean:workspaces` - Clean **ALL** Dependencies and Build Artifacts
 - `pnpm dev` - Start a Development Server
-- `pnpm lint:ws` - Lint Workspace with Sherif
 - `pnpm start` - Start Apps in Production
 - `pnpm typecheck` - Run Type Checks
 
