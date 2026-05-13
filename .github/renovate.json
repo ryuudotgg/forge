@@ -1,18 +1,24 @@
 {
-	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
-	"extends": ["config:recommended", "customManagers:biomeVersions"],
-	"labels": ["dependencies"],
-	"lockFileMaintenance": {
-		"enabled": true,
-		"automerge": true,
-		"automergeType": "pr",
-		"platformAutomerge": true
-	},
-	"osvVulnerabilityAlerts": true,
-	"rangeStrategy": "bump",
-	"rebaseWhen": "behind-base-branch",
-	"reviewers": ["ryuudotgg"],
-	"vulnerabilityAlerts": {
-		"vulnerabilityFixStrategy": "highest"
-	}
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "customManagers:biomeVersions"],
+  "labels": ["dependencies"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "automergeType": "pr",
+    "platformAutomerge": true
+  },
+  "osvVulnerabilityAlerts": true,
+  "packageRules": [
+    {
+      "groupName": "clack",
+      "matchPackageNames": ["@clack/**"]
+    }
+  ],
+  "rangeStrategy": "bump",
+  "rebaseWhen": "behind-base-branch",
+  "reviewers": ["ryuudotgg"],
+  "vulnerabilityAlerts": {
+    "vulnerabilityFixStrategy": "highest"
+  }
 }
