@@ -17,6 +17,7 @@
 	],
 	"rangeStrategy": "bump",
 	"rebaseWhen": "behind-base-branch",
+	"minimumReleaseAge": "1440 minutes",
 	"reviewers": ["ryuudotgg"],
 	"vulnerabilityAlerts": {
 		"vulnerabilityFixStrategy": "highest"
