@@ -50,6 +50,7 @@ catalogs:
 
 nodeLinker: hoisted
 linkWorkspacePackages: true
+minimumReleaseAge: 1440 # 24 Hours
 
 allowBuilds:
   "@parcel/watcher": true
