@@ -24,9 +24,9 @@
 		"typescript": "catalog:dev",
 		"vitest": "catalog:dev"
 	},
-	"packageManager": "pnpm@11.2.2",
+	"packageManager": "pnpm@11.4.0",
 	"engines": {
 		"node": "24.16.0",
-		"pnpm": "^11.2.2"
+		"pnpm": "^11.4.0"
 	}
 }
