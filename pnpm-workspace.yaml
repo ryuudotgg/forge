@@ -46,7 +46,7 @@ catalogs:
   effect:
     effect: ^3.21.2
     "@effect/platform": ^0.96.1
-    "@effect/platform-node": ^0.106.0
+    "@effect/platform-node": ^0.107.0
 
 nodeLinker: hoisted
 linkWorkspacePackages: true
