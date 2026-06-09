@@ -277,7 +277,12 @@ function applyDependencies(
 					? (result[section] as Record<string, unknown>)
 					: {};
 
-			const value = dep.catalog ? `catalog:${dep.catalog}` : dep.version;
+			const value =
+				dep.catalog !== undefined
+					? dep.catalog === ""
+						? "catalog:"
+						: `catalog:${dep.catalog}`
+					: dep.version;
 			result[section] = { ...existing, [dep.name]: value };
 		}
 

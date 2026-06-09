@@ -51,6 +51,8 @@ export const projectSurfaceNames = {
 	workspaceConfig: "workspaceConfig",
 	biomeConfig: "biomeConfig",
 	gitignore: "gitignore",
+	rootEnv: "rootEnv",
+	rootEnvExample: "rootEnvExample",
 } as const;
 
 export type ProjectSurfaceName =

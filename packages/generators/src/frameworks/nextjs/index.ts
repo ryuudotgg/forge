@@ -4,6 +4,7 @@ import {
 	ensureAppModule,
 	ensuredModuleTarget,
 	type FrameworkDefinition,
+	leafTextFile,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceScripts,
@@ -73,6 +74,90 @@ function buildContributions(config: ForgeConfig) {
 	const projectName = config.name ?? slug;
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
+	const transpilePackages = [`@${slug}/ui`];
+	if (config.orm === "drizzle") transpilePackages.push(`@${slug}/db`);
+	if (config.authentication === "better-auth")
+		transpilePackages.push(`@${slug}/auth`);
+	if (config.rpc === "trpc") transpilePackages.push(`@${slug}/trpc`);
+
+	const transpileList = transpilePackages
+		.sort()
+		.map((name) => `"${name}"`)
+		.join(", ");
+	const nextConfig = interpolate(
+		readTemplate("frameworks/nextjs/next.config.ts"),
+		{
+			TRANSPILE_PACKAGES: `[${transpileList}]`,
+		},
+	);
+
+	const webEnv = readTemplate("frameworks/nextjs/env.ts");
+
+	const webPackageJson: Record<string, unknown> = {
+		name: `@${slug}/web`,
+		version: "0.1.0",
+		private: true,
+		type: "module",
+	};
+
+	const webTsconfig: Record<string, unknown> = {
+		extends: `@${slug}/tsconfig/nextjs.json`,
+		compilerOptions: {
+			paths: {
+				"@/*": ["./*"],
+				[`@${slug}/ui/*`]: ["../../packages/ui/src/*"],
+			},
+			plugins: [{ name: "next" }],
+		},
+		include: [
+			"next-env.d.ts",
+			"next.config.ts",
+			"**/*.ts",
+			"**/*.tsx",
+			".next/types/**/*.ts",
+		],
+		exclude: ["node_modules"],
+	};
+
+	const appDeps = [
+		{
+			name: `@${slug}/ui`,
+			version: "workspace:*",
+			type: "dependencies" as const,
+		},
+		{ ...deps.next, type: "dependencies" as const },
+		{ ...deps.react, type: "dependencies" as const },
+		{ ...deps.reactDom, type: "dependencies" as const },
+		{ ...deps.serverOnly, type: "dependencies" as const },
+		{ ...deps.nextThemes, type: "dependencies" as const },
+		{ ...deps.zod, type: "dependencies" as const },
+		{ ...deps.t3OssEnvNextjs, type: "dependencies" as const },
+		{
+			name: `@${slug}/tsconfig`,
+			version: "workspace:*",
+			type: "devDependencies" as const,
+		},
+		{ ...deps.typesNode, type: "devDependencies" as const },
+		{ ...deps.typesReact, type: "devDependencies" as const },
+		{ ...deps.typesReactDom, type: "devDependencies" as const },
+		{ ...deps.typescriptNativePreview, type: "devDependencies" as const },
+		{ ...deps.dotenvCli, type: "devDependencies" as const },
+		{ ...deps.typescript, type: "devDependencies" as const },
+	];
+
+	const usesTrpc = config.rpc === "trpc";
+	const providers = interpolate(
+		readTemplate("frameworks/nextjs/app/providers.tsx"),
+		{
+			PROVIDER_IMPORTS: usesTrpc
+				? '\nimport { TRPCReactProvider } from "@/trpc/react";'
+				: "",
+			PROVIDER_CHILDREN: usesTrpc
+				? "<TRPCReactProvider>{children}</TRPCReactProvider>"
+				: "{children}",
+		},
+	);
+
 	return [
 		ensureAppModule("web", "apps/web", {
 			framework: "nextjs",
@@ -81,12 +166,9 @@ function buildContributions(config: ForgeConfig) {
 				layout: "app/layout.tsx",
 				page: "app/page.tsx",
 				api: "app/api",
-				trpc: "src/trpc",
-				db: "src/db",
-				auth: "src/lib/auth.ts",
-				authClient: "src/lib/auth-client.ts",
 			},
 		}),
+
 		surfaceText(
 			ensuredModuleTarget("web"),
 			"layout",
@@ -99,45 +181,23 @@ function buildContributions(config: ForgeConfig) {
 			interpolate(readTemplate("frameworks/nextjs/app/page.tsx"), vars),
 			{ priority: 0 },
 		),
-		surfaceText(
-			ensuredModuleTarget("web"),
-			"frameworkConfig",
-			readTemplate("frameworks/nextjs/next.config.ts"),
-		),
-		surfaceJson(ensuredModuleTarget("web"), "tsconfig", {
-			extends: "../../tsconfig.json",
-			compilerOptions: {
-				jsx: "preserve",
-				jsxImportSource: "react",
-				paths: { "~/*": ["./src/*"] },
-				plugins: [{ name: "next" }],
-			},
-			include: ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-			exclude: ["node_modules"],
-		}),
-		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-			{
-				name: `@${slug}/ui`,
-				version: "workspace:*",
-				type: "dependencies",
-			},
-			{ ...deps.next, type: "dependencies" },
-			{ ...deps.react, type: "dependencies" },
-			{ ...deps.reactDom, type: "dependencies" },
-			{ ...deps.typesReact, type: "devDependencies" },
-			{ ...deps.typesReactDom, type: "devDependencies" },
-		]),
+		surfaceText(ensuredModuleTarget("web"), "frameworkConfig", nextConfig),
+		surfaceJson(ensuredModuleTarget("web"), "tsconfig", webTsconfig),
+		surfaceJson(ensuredModuleTarget("web"), "packageJson", webPackageJson),
+		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", appDeps),
 		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-			dev: "next dev",
-			build: "next build",
-			start: "next start",
+			build: "pnpm with-env next build",
+			dev: "pnpm with-env next dev",
+			postinstall: "pnpm typegen",
+			pretypecheck: "pnpm with-env next typegen",
+			start: "pnpm with-env next start",
+			typecheck: "tsgo --noEmit",
+			typegen: "pnpm with-env next typegen",
+			"with-env": "dotenv -e ../../.env --",
 		}),
-		surfaceJson(ensuredModuleTarget("web"), "packageJson", {
-			name: `@${slug}/web`,
-			version: "0.1.0",
-			private: true,
-			type: "module",
-		}),
+
+		leafTextFile(ensuredModuleTarget("web"), "env.ts", webEnv),
+		leafTextFile(ensuredModuleTarget("web"), "app/providers.tsx", providers),
 	];
 }
 

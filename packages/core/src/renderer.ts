@@ -64,6 +64,8 @@ function isProjectSurface(
 		"workspaceConfig",
 		"biomeConfig",
 		"gitignore",
+		"rootEnv",
+		"rootEnvExample",
 	].includes(surface);
 }
 
@@ -112,7 +114,12 @@ function applyDependencies(
 				? (result[section] as Record<string, unknown>)
 				: {};
 
-		const value = dep.catalog ? `catalog:${dep.catalog}` : dep.version;
+		const value =
+			dep.catalog !== undefined
+				? dep.catalog === ""
+					? "catalog:"
+					: `catalog:${dep.catalog}`
+				: dep.version;
 		result[section] = { ...existing, [dep.name]: value };
 	}
 
@@ -143,9 +150,13 @@ function resolveProjectSurfacePath(surface: ProjectSurfaceName) {
 		case "workspaceConfig":
 			return filePath("turbo.json");
 		case "biomeConfig":
-			return filePath("biome.jsonc");
+			return filePath("biome.json");
 		case "gitignore":
 			return filePath(".gitignore");
+		case "rootEnv":
+			return filePath(".env");
+		case "rootEnvExample":
+			return filePath(".env.example");
 	}
 }
 
@@ -284,7 +295,8 @@ function renderJsonSurface(
 
 	if (path.endsWith("package.json")) json = sortPackageJson(json);
 
-	return formatJson(json, { compact: false });
+	const compact = !path.endsWith("package.json");
+	return formatJson(json, { compact });
 }
 
 function buildKey(bucket: RenderBucket, surface: ManagedSurfaceName) {

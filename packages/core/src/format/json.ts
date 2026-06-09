@@ -1,6 +1,6 @@
 const LINE_WIDTH = 80;
 
-const INDENT = "\t";
+const INDENT = "  ";
 const TAB_WIDTH = 2;
 
 export interface FormatJsonOptions {

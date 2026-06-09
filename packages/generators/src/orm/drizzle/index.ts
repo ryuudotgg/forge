@@ -1,15 +1,18 @@
 import {
 	defineAddon,
+	ensuredModuleTarget,
+	ensurePackageModule,
 	leafTextFile,
-	selectedModuleTarget,
+	projectTarget,
 	surfaceDependencies,
+	surfaceJson,
 	surfaceLines,
 	surfaceScripts,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
-import { readTemplate } from "../../template";
+import { interpolate, readTemplate } from "../../template";
 
 const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	id: "drizzle",
@@ -19,47 +22,161 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	exclusive: true,
 	dependencies: [{ id: "typescript", type: "addon" }],
 	targetMode: "single",
-	compatibility: {
-		app: {
-			frameworks: ["nextjs"],
-			requiredSlots: ["db"],
-		},
-	},
 	when: (config) => config.orm === "drizzle",
-	contribute: () => [
-		leafTextFile(
-			selectedModuleTarget(),
-			"drizzle.config.ts",
-			readTemplate("orm/drizzle/drizzle.config.ts"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/db/index.ts",
-			readTemplate("orm/drizzle/src/db/index.ts"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/db/schema.ts",
-			readTemplate("orm/drizzle/src/db/schema.ts"),
-		),
-		surfaceDependencies(selectedModuleTarget(), "packageJson", [
-			{ ...deps.drizzleOrm, type: "dependencies" },
-			{ ...deps.neonServerless, type: "dependencies" },
-			{ ...deps.drizzleKit, type: "devDependencies" },
-		]),
-		surfaceScripts(selectedModuleTarget(), "packageJson", {
-			"db:generate": "drizzle-kit generate",
-			"db:migrate": "drizzle-kit migrate",
-			"db:push": "drizzle-kit push",
-			"db:studio": "drizzle-kit studio",
-		}),
-		surfaceLines(selectedModuleTarget(), "env", ["DATABASE_URL="], {
-			section: "Database",
-		}),
-		surfaceLines(selectedModuleTarget(), "envExample", ["DATABASE_URL="], {
-			section: "Database",
-		}),
-	],
+	contribute: ({ config }) => {
+		const slug = config.slug ?? "my-app";
+		const usesAuth = config.authentication === "better-auth";
+		const vars = {
+			SLUG: slug,
+			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
+		};
+		const render = (path: string) =>
+			interpolate(readTemplate(`orm/drizzle/${path}`), vars);
+
+		return [
+			ensurePackageModule("db", "packages/db", {
+				packageType: "library",
+				template: { id: "db", version: 1 },
+				capabilities: ["db", "drizzle"],
+				slots: {},
+			}),
+			surfaceJson(ensuredModuleTarget("db"), "packageJson", {
+				name: `@${slug}/db`,
+				private: true,
+				type: "module",
+				exports: {
+					".": "./src/index.ts",
+					"./client": "./src/client.ts",
+					"./relations": "./src/schema/relations.ts",
+					"./schema": "./src/schema/index.ts",
+					"./schema/*": "./src/schema/*.ts",
+					"./env": "./env.ts",
+				},
+				scripts: {
+					generate: "pnpm with-env drizzle-kit generate",
+					migrate: "pnpm with-env drizzle-kit migrate",
+					push: "pnpm with-env drizzle-kit push",
+					studio: "pnpm with-env drizzle-kit studio",
+					typecheck: "tsgo --noEmit",
+					"with-env": "dotenv -e ../../.env --",
+				},
+			}),
+			surfaceJson(ensuredModuleTarget("db"), "tsconfig", {
+				extends: `@${slug}/tsconfig/base.json`,
+				compilerOptions: {
+					types: ["node"],
+					paths: { [`@${slug}/db/*`]: ["./src/*"] },
+				},
+				include: ["./src", "./*.ts"],
+				exclude: ["node_modules"],
+			}),
+			surfaceDependencies(ensuredModuleTarget("db"), "packageJson", [
+				{ ...deps.neonServerless, type: "dependencies" },
+				{ ...deps.t3OssEnvCore, type: "dependencies" },
+				{ ...deps.drizzleOrm, type: "dependencies" },
+				{ ...deps.drizzleZod, type: "dependencies" },
+				{ ...deps.zod, type: "dependencies" },
+				{
+					name: `@${slug}/tsconfig`,
+					version: "workspace:*",
+					type: "devDependencies",
+				},
+				{ ...deps.typesNode, type: "devDependencies" },
+				{ ...deps.typescriptNativePreview, type: "devDependencies" },
+				{ ...deps.dotenvCli, type: "devDependencies" },
+				{ ...deps.drizzleKit, type: "devDependencies" },
+				{ ...deps.typescript, type: "devDependencies" },
+			]),
+
+			leafTextFile(
+				ensuredModuleTarget("db"),
+				"env.ts",
+				render("packages/db/env.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("db"),
+				"drizzle.config.ts",
+				render("packages/db/drizzle.config.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("db"),
+				"src/client.ts",
+				render("packages/db/src/client.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("db"),
+				"src/index.ts",
+				render("packages/db/src/index.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("db"),
+				"src/schema/index.ts",
+				render("packages/db/src/schema/index.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("db"),
+				"src/schema/relations.ts",
+				render(
+					usesAuth
+						? "packages/db/src/schema/relations.ts"
+						: "packages/db/src/schema/relations.base.ts",
+				),
+			),
+			leafTextFile(
+				ensuredModuleTarget("db"),
+				"src/schema/users/index.ts",
+				render("packages/db/src/schema/users/index.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("db"),
+				"src/schema/users/users.ts",
+				render("packages/db/src/schema/users/users.ts"),
+			),
+			...(usesAuth
+				? [
+						leafTextFile(
+							ensuredModuleTarget("db"),
+							"src/schema/auth.ts",
+							render("packages/db/src/schema/auth.ts"),
+						),
+					]
+				: []),
+
+			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
+				{
+					name: `@${slug}/db`,
+					version: "workspace:*",
+					type: "dependencies",
+				},
+			]),
+
+			surfaceLines(
+				projectTarget(),
+				"rootEnv",
+				[
+					'DATABASE_URL="postgresql://user:password@localhost:5432/postgres?sslmode=disable"',
+					'DATABASE_DIRECT_URL="postgresql://user:password@localhost:5432/postgres?sslmode=disable"',
+				],
+				{ section: "Database" },
+			),
+			surfaceLines(
+				projectTarget(),
+				"rootEnvExample",
+				[
+					'DATABASE_URL="postgresql://user:password@host:5432/database?sslmode=require"',
+					'DATABASE_DIRECT_URL="postgresql://user:password@host:5432/database?sslmode=require"',
+				],
+				{ section: "Database" },
+			),
+
+			surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+				"db:generate": `pnpm --filter @${slug}/db run generate`,
+				"db:migrate": `pnpm --filter @${slug}/db run migrate`,
+				"db:push": `pnpm --filter @${slug}/db run push`,
+				"db:studio": `pnpm --filter @${slug}/db run studio`,
+			}),
+		];
+	},
 });
 
 export const drizzleMetadata = {

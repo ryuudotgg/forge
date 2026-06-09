@@ -33,7 +33,7 @@ export const options = {
 	preset: {
 		type: "string",
 		short: "p",
-		description: "saas, api-only, fullstack",
+		description: "default",
 		isValueList: true,
 	},
 
@@ -99,7 +99,7 @@ export const options = {
 
 	rpc: {
 		type: "string",
-		description: "tRPC, oRPC",
+		description: "tRPC",
 		configKey: "rpc",
 	},
 

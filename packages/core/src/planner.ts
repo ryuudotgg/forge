@@ -582,7 +582,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							if (target.kind !== "module") continue;
 
 							const module = byId.get(target.moduleId);
-							if (!module || module.config.type !== "package") continue;
+							if (module?.config.type !== "package") continue;
 
 							module.config = {
 								...module.config,
@@ -767,8 +767,9 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 			for (const module of managedModules) {
 				const hash = yield* hashString(
-					formatJson(module.config, { compact: false }),
+					formatJson(module.config, { compact: true }),
 				);
+
 				const path = `${module.root}/forge.json`;
 				artifacts[`module:${module.id}:file:forge.json`] = {
 					definitionIds: [...module.definitionIds],
@@ -813,7 +814,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				for (const module of modules)
 					writes.push({
 						artifactId: `module:${module.id}:file:forge.json`,
-						content: formatJson(module.config, { compact: false }),
+						content: formatJson(module.config, { compact: true }),
 						definitionIds: [module.config.template.id],
 						kind: "file",
 						path: `${module.root}/forge.json`,

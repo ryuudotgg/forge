@@ -101,7 +101,7 @@ async function inferConfigSnapshot(
 			? "better-auth"
 			: undefined;
 
-	const linter = (await hasPath("biome.jsonc")) ? "biome" : undefined;
+	const linter = (await hasPath("biome.json")) ? "biome" : undefined;
 	const databaseProvider = orm === "drizzle" ? "neon" : undefined;
 
 	return {

@@ -11,7 +11,7 @@ const gitignore = defineAddon<ForgeConfig, "gitignore">({
 	targetMode: "single",
 	when: () => true,
 	contribute: ({ config }) => {
-		const buildLines = ["dist/", ".turbo/", ".cache/"];
+		const buildLines = ["dist/", "build/", "out/", ".turbo/", ".cache/"];
 		if (config.web === "nextjs") buildLines.push(".next/");
 		if (config.mobile) buildLines.push(".expo/");
 
@@ -19,18 +19,39 @@ const gitignore = defineAddon<ForgeConfig, "gitignore">({
 			surfaceLines(projectTarget(), "gitignore", ["node_modules/"], {
 				section: "Dependencies",
 			}),
+			surfaceLines(projectTarget(), "gitignore", [".forge/"], {
+				section: "Forge",
+			}),
 			surfaceLines(projectTarget(), "gitignore", buildLines, {
 				section: "Build",
+			}),
+			surfaceLines(projectTarget(), "gitignore", [".vercel/"], {
+				section: "Vercel",
+			}),
+			surfaceLines(projectTarget(), "gitignore", ["coverage/"], {
+				section: "Testing",
 			}),
 			surfaceLines(
 				projectTarget(),
 				"gitignore",
-				[".env", ".env.local", ".env*.local"],
+				[
+					".env",
+					".env.local",
+					".env.development.local",
+					".env.test.local",
+					".env.production.local",
+				],
 				{ section: "Environment" },
 			),
-			surfaceLines(projectTarget(), "gitignore", [".DS_Store", "Thumbs.db"], {
-				section: "OS",
+			surfaceLines(projectTarget(), "gitignore", ["npm-debug.log*"], {
+				section: "Debug",
 			}),
+			surfaceLines(
+				projectTarget(),
+				"gitignore",
+				[".DS_Store", "Thumbs.db", "*.pem"],
+				{ section: "Misc" },
+			),
 		];
 	},
 });
