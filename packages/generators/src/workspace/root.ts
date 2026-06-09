@@ -124,9 +124,6 @@ function buildContributions(
 	if (config.web === "nextjs")
 		buildTask.outputs = [".next/**", "!.next/cache/**"];
 
-	const typecheckTask: Record<string, unknown> = { dependsOn: ["^typecheck"] };
-	if (dbEnv.length > 0) typecheckTask.env = dbEnv;
-
 	return [
 		surfaceJson(projectTarget(), "rootPackageJson", packageJson),
 		surfaceDependencies(projectTarget(), "rootPackageJson", [
@@ -141,7 +138,7 @@ function buildContributions(
 			ui: "tui",
 			tasks: {
 				build: buildTask,
-				typecheck: typecheckTask,
+				typecheck: { dependsOn: ["^typecheck"] },
 				dev: { cache: false, persistent: true },
 			},
 		}),

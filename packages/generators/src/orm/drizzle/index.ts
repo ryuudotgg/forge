@@ -25,7 +25,11 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	when: (config) => config.orm === "drizzle",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
-		const vars = { SLUG: slug };
+		const usesAuth = config.authentication === "better-auth";
+		const vars = {
+			SLUG: slug,
+			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
+		};
 		const render = (path: string) =>
 			interpolate(readTemplate(`orm/drizzle/${path}`), vars);
 
@@ -112,7 +116,11 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			leafTextFile(
 				ensuredModuleTarget("db"),
 				"src/schema/relations.ts",
-				render("packages/db/src/schema/relations.ts"),
+				render(
+					usesAuth
+						? "packages/db/src/schema/relations.ts"
+						: "packages/db/src/schema/relations.base.ts",
+				),
 			),
 			leafTextFile(
 				ensuredModuleTarget("db"),
@@ -124,6 +132,15 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 				"src/schema/users/users.ts",
 				render("packages/db/src/schema/users/users.ts"),
 			),
+			...(usesAuth
+				? [
+						leafTextFile(
+							ensuredModuleTarget("db"),
+							"src/schema/auth.ts",
+							render("packages/db/src/schema/auth.ts"),
+						),
+					]
+				: []),
 
 			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
 				{
