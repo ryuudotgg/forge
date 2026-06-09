@@ -10,6 +10,7 @@ export const deps = {
 	commitlintConfigConventional: dep("commitlintConfigConventional"),
 	commitlintTypes: dep("commitlintTypes"),
 	lefthook: dep("lefthook"),
+	sherif: dep("sherif"),
 	turbo: dep("turbo"),
 	typescript: dep("typescript"),
 	typescriptNativePreview: dep("typescriptNativePreview"),

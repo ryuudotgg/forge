@@ -107,17 +107,31 @@ function buildContributions(
 		build: "turbo run build",
 		check: "biome check .",
 		"check:fix": "biome check --write .",
-		"check:ws": "pnpm dlx sherif@latest",
+		"check:ws": "sherif",
 		dev: "turbo run dev",
-		postinstall: "pnpm check:ws",
 		prepare: "lefthook install",
 		typecheck: "turbo run typecheck",
 	};
+
+	const dbEnv =
+		config.orm === "drizzle" ? ["DATABASE_URL", "DATABASE_DIRECT_URL"] : [];
+
+	const buildTask: Record<string, unknown> = {
+		dependsOn: ["^build"],
+		inputs: ["$TURBO_DEFAULT$", ".env*"],
+	};
+	if (dbEnv.length > 0) buildTask.env = dbEnv;
+	if (config.web === "nextjs")
+		buildTask.outputs = [".next/**", "!.next/cache/**"];
+
+	const typecheckTask: Record<string, unknown> = { dependsOn: ["^typecheck"] };
+	if (dbEnv.length > 0) typecheckTask.env = dbEnv;
 
 	return [
 		surfaceJson(projectTarget(), "rootPackageJson", packageJson),
 		surfaceDependencies(projectTarget(), "rootPackageJson", [
 			tsconfigDevDep,
+			{ ...deps.sherif, type: "devDependencies" },
 			{ ...deps.turbo, type: "devDependencies" },
 			{ ...deps.typescript, type: "devDependencies" },
 		]),
@@ -126,16 +140,8 @@ function buildContributions(
 			$schema: "https://turborepo.com/schema.json",
 			ui: "tui",
 			tasks: {
-				build: {
-					dependsOn: ["^build"],
-					env: ["DATABASE_URL", "DATABASE_DIRECT_URL"],
-					inputs: ["$TURBO_DEFAULT$", ".env*"],
-					outputs: [".next/**", "!.next/cache/**"],
-				},
-				typecheck: {
-					dependsOn: ["^typecheck"],
-					env: ["DATABASE_URL", "DATABASE_DIRECT_URL"],
-				},
+				build: buildTask,
+				typecheck: typecheckTask,
 				dev: { cache: false, persistent: true },
 			},
 		}),
