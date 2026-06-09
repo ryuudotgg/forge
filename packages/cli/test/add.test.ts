@@ -55,22 +55,20 @@ describe("add command", () => {
 			[
 				{
 					definitionId: "tailwind",
-					targets: [{ kind: "module", moduleId: "abcde" }],
+					targets: [{ kind: "project" }],
 				},
 			],
 		);
 	});
 
-	it("prompts with a single select when multiple compatible module targets exist", async () => {
+	it("installs a project-level addon without prompting even when multiple modules exist", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ modules: [appModule, adminModule] }),
 		);
 
-		promptMocks.select.mockResolvedValue("fghij");
-
 		await runAdd("tailwind", {});
 
-		expect(promptMocks.select).toHaveBeenCalled();
+		expect(promptMocks.select).not.toHaveBeenCalled();
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -78,7 +76,7 @@ describe("add command", () => {
 			[
 				{
 					definitionId: "tailwind",
-					targets: [{ kind: "module", moduleId: "fghij" }],
+					targets: [{ kind: "project" }],
 				},
 			],
 		);

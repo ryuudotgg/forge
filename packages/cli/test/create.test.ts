@@ -58,7 +58,7 @@ describe("create command", () => {
 				name: "From Flag",
 				"no-git": true,
 				"no-install": true,
-				preset: "api-only",
+				preset: "default",
 				runtime: "Node.js",
 			});
 
