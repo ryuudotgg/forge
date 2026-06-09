@@ -51,8 +51,8 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const previousArtifactIndex = buildArtifactIndex(previousLockfile);
 			const previousArtifacts = previousArtifactIndex.byPath;
 			const previousArtifactsById = previousArtifactIndex.byId;
-			const writesToApply: PlannedWrite[] = [];
 
+			const writesToApply: PlannedWrite[] = [];
 			for (const relativePath of plan.removals) {
 				const fullPath = join(projectRoot, relativePath);
 				const exists = yield* fs.exists(fullPath);
@@ -106,6 +106,11 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				);
 				const currentHash = yield* hashContent(currentContent);
 				if (currentHash === nextHash) continue;
+
+				if (file.artifactId?.endsWith(":file:forge.json")) {
+					writesToApply.push(file);
+					continue;
+				}
 
 				const previousArtifact = previousArtifacts.get(file.path);
 				const movedArtifact =

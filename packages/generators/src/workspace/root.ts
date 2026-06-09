@@ -2,6 +2,7 @@ import {
 	CommandProbe,
 	defineAddon,
 	GeneratorError,
+	leafTextFile,
 	packageManagerCommand,
 	projectTarget,
 	runtimeCommand,
@@ -94,39 +95,51 @@ function buildContributions(
 	};
 
 	if (packageManagerCommandName !== "pnpm")
-		packageJson.workspaces = ["apps/*", "packages/*"];
+		packageJson.workspaces = ["apps/*", "packages/*", "tooling/*"];
+
+	const tsconfigDevDep = {
+		name: `@${slug}/tsconfig`,
+		version: "workspace:*",
+		type: "devDependencies" as const,
+	};
+
+	const scripts: Record<string, string> = {
+		build: "turbo run build",
+		check: "biome check .",
+		"check:fix": "biome check --write .",
+		"check:ws": "pnpm dlx sherif@latest",
+		dev: "turbo run dev",
+		postinstall: "pnpm check:ws",
+		prepare: "lefthook install",
+		typecheck: "turbo run typecheck",
+	};
 
 	return [
 		surfaceJson(projectTarget(), "rootPackageJson", packageJson),
 		surfaceDependencies(projectTarget(), "rootPackageJson", [
+			tsconfigDevDep,
 			{ ...deps.turbo, type: "devDependencies" },
+			{ ...deps.typescript, type: "devDependencies" },
 		]),
-		surfaceScripts(projectTarget(), "rootPackageJson", {
-			build: "turbo run build",
-			check: "turbo run check --continue",
-			dev: "turbo run dev",
-			typecheck: "turbo run typecheck",
-		}),
+		surfaceScripts(projectTarget(), "rootPackageJson", scripts),
 		surfaceJson(projectTarget(), "workspaceConfig", {
 			$schema: "https://turborepo.com/schema.json",
+			ui: "tui",
 			tasks: {
 				build: {
 					dependsOn: ["^build"],
-					outputs: ["dist/**", ".next/**", "!.next/cache/**"],
-				},
-				check: {
-					dependsOn: ["^build"],
-				},
-				dev: {
-					cache: false,
-					persistent: true,
+					env: ["DATABASE_URL", "DATABASE_DIRECT_URL"],
+					inputs: ["$TURBO_DEFAULT$", ".env*"],
+					outputs: [".next/**", "!.next/cache/**"],
 				},
 				typecheck: {
-					dependsOn: ["^build"],
-					outputs: [".cache/tsbuildinfo.json"],
+					dependsOn: ["^typecheck"],
+					env: ["DATABASE_URL", "DATABASE_DIRECT_URL"],
 				},
+				dev: { cache: false, persistent: true },
 			},
 		}),
+		leafTextFile(projectTarget(), ".nvmrc", `${runtimeVersion}\n`),
 	];
 }
 

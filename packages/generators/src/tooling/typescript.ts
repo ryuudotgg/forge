@@ -1,11 +1,11 @@
 import {
 	defineAddon,
+	formatJson,
+	leafTextFile,
 	projectTarget,
-	surfaceDependencies,
 	surfaceJson,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
-import { deps } from "../deps";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 
 const typescript = defineAddon<ForgeConfig, "typescript">({
@@ -16,34 +16,84 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 	exclusive: false,
 	targetMode: "single",
 	when: () => true,
-	contribute: () => [
-		surfaceJson(projectTarget(), "rootTsconfig", {
+	contribute: ({ config }) => {
+		const slug = config.slug ?? "my-app";
+
+		const baseTsconfig = {
 			$schema: "https://json.schemastore.org/tsconfig",
+			display: "Default",
 			compilerOptions: {
-				target: "ES2022",
-				lib: ["ES2022"],
-				module: "preserve",
-				moduleResolution: "bundler",
-				resolveJsonModule: true,
-				verbatimModuleSyntax: true,
-				strict: true,
-				noUncheckedIndexedAccess: true,
-				noEmit: true,
-				esModuleInterop: true,
-				isolatedModules: true,
-				skipLibCheck: true,
 				declaration: true,
 				declarationMap: true,
-				sourceMap: true,
-				incremental: true,
-				tsBuildInfoFile: ".cache/tsbuildinfo.json",
+				esModuleInterop: true,
+				incremental: false,
+				isolatedModules: true,
+				lib: ["ESNext", "DOM", "DOM.Iterable"],
+				module: "ESNext",
+				moduleDetection: "force",
+				moduleResolution: "Bundler",
+				noUncheckedIndexedAccess: true,
+				resolveJsonModule: true,
+				skipLibCheck: true,
+				strict: true,
+				target: "ESNext",
 			},
-			exclude: ["node_modules", "dist", ".next", ".turbo"],
-		}),
-		surfaceDependencies(projectTarget(), "rootPackageJson", [
-			{ ...deps.typescript, type: "devDependencies" },
-		]),
-	],
+		};
+
+		const nextjsTsconfig = {
+			$schema: "https://json.schemastore.org/tsconfig",
+			display: "Next.js",
+			extends: "./base.json",
+			compilerOptions: {
+				declaration: false,
+				declarationMap: false,
+				plugins: [{ name: "next" }],
+				module: "ESNext",
+				moduleResolution: "Bundler",
+				allowJs: true,
+				jsx: "preserve",
+				noEmit: true,
+			},
+		};
+
+		const reactLibraryTsconfig = {
+			$schema: "https://json.schemastore.org/tsconfig",
+			display: "React Library",
+			extends: "./base.json",
+			compilerOptions: { jsx: "react-jsx" },
+		};
+
+		const toolingPackageJson = {
+			name: `@${slug}/tsconfig`,
+			private: true,
+		};
+
+		return [
+			surfaceJson(projectTarget(), "rootTsconfig", {
+				extends: `@${slug}/tsconfig/base.json`,
+			}),
+			leafTextFile(
+				projectTarget(),
+				"tooling/tsconfig/package.json",
+				formatJson(toolingPackageJson, { compact: false }),
+			),
+			leafTextFile(
+				projectTarget(),
+				"tooling/tsconfig/base.json",
+				formatJson(baseTsconfig, { compact: true }),
+			),
+			leafTextFile(
+				projectTarget(),
+				"tooling/tsconfig/nextjs.json",
+				formatJson(nextjsTsconfig, { compact: true }),
+			),
+			leafTextFile(
+				projectTarget(),
+				"tooling/tsconfig/react-library.json",
+				formatJson(reactLibraryTsconfig, { compact: true }),
+			),
+		];
+	},
 });
 
 export const typescriptMetadata = {

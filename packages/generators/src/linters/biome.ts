@@ -16,42 +16,75 @@ const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 	exclusive: true,
 	targetMode: "single",
 	when: (config) => config.linter === "biome",
-	contribute: ({ config }) => {
-		const excludes = ["**/dist", "**/.turbo", "**/.cache"];
-
-		if (config.web === "nextjs") excludes.push("**/.next");
-		if (config.mobile === "expo") excludes.push("**/.expo");
-
-		return [
-			surfaceJson(projectTarget(), "biomeConfig", {
-				$schema: "./node_modules/@biomejs/biome/configuration_schema.json",
-				files: {
-					includes: ["**/*", ...excludes.map((entry) => `!${entry}`)],
-				},
+	contribute: () => [
+		surfaceJson(projectTarget(), "biomeConfig", {
+			$schema: "./node_modules/@biomejs/biome/configuration_schema.json",
+			vcs: {
+				enabled: true,
+				clientKind: "git",
+				useIgnoreFile: true,
+				defaultBranch: "main",
+			},
+			assist: {
+				enabled: true,
+				actions: { source: { organizeImports: "on" } },
+			},
+			formatter: {
+				enabled: true,
+				indentStyle: "space",
+				indentWidth: 2,
+				lineWidth: 80,
+				lineEnding: "lf",
+			},
+			javascript: {
 				formatter: {
-					enabled: true,
-					indentStyle: "tab",
-					lineEnding: "lf",
-					lineWidth: 80,
+					quoteStyle: "double",
+					trailingCommas: "all",
+					semicolons: "always",
 				},
-				linter: {
-					enabled: true,
-					rules: { recommended: true },
-				},
-				assist: {
-					enabled: true,
-					actions: {
-						source: {
-							organizeImports: "on",
-						},
+			},
+			linter: {
+				enabled: true,
+				rules: {
+					recommended: true,
+					correctness: { noUnusedImports: "warn" },
+					style: {
+						useImportType: "warn",
+						useNodejsImportProtocol: "warn",
 					},
 				},
-			}),
-			surfaceDependencies(projectTarget(), "rootPackageJson", [
-				{ ...deps.biome, type: "devDependencies" },
-			]),
-		];
-	},
+			},
+			css: {
+				parser: { tailwindDirectives: true },
+				formatter: { enabled: true },
+				linter: { enabled: true },
+			},
+			json: {
+				parser: { allowComments: true, allowTrailingCommas: true },
+			},
+			files: {
+				includes: [
+					"**",
+					"!**/node_modules",
+					"!**/.next",
+					"!**/.turbo",
+					"!**/.vercel",
+					"!**/.expo",
+					"!**/.cache",
+					"!**/.forge",
+					"!**/coverage",
+					"!**/dist",
+					"!**/build",
+					"!**/out",
+					"!**/.env",
+					"!**/.env.*",
+				],
+			},
+		}),
+		surfaceDependencies(projectTarget(), "rootPackageJson", [
+			{ ...deps.biome, type: "devDependencies" },
+		]),
+	],
 });
 
 export const biomeMetadata = {

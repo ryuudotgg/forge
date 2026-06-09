@@ -1,7 +1,6 @@
 export { authenticationCustomUISchema as authenticationCustomUI } from "./auth/custom-ui";
 export { authenticationSchema as authentication } from "./auth/provider";
 export { backendSchema as backend } from "./backend/framework";
-export { orpcContractsSchema as orpcContracts } from "./backend/orpc-contracts";
 export { rpcSchema as rpc } from "./backend/rpc";
 export { publicRPCSchema as rpcPublic } from "./backend/rpc-public";
 export { databaseSchema as database } from "./data/database";

@@ -10,8 +10,12 @@ import nextjsBaseTemplate, {
 import biome, { biomeMetadata } from "../linters/biome";
 import drizzle, { drizzleMetadata } from "../orm/drizzle";
 import tailwind, { tailwindMetadata } from "../style/tailwind";
+import commitlint, { commitlintMetadata } from "../tooling/commitlint";
+import githubCi, { githubCiMetadata } from "../tooling/github-ci";
 import gitignore, { gitignoreMetadata } from "../tooling/gitignore";
+import lefthook, { lefthookMetadata } from "../tooling/lefthook";
 import typescript, { typescriptMetadata } from "../tooling/typescript";
+import vscode, { vscodeMetadata } from "../tooling/vscode";
 import ui, { uiMetadata } from "../ui";
 import pnpm, { pnpmMetadata } from "../workspace/pnpm";
 import root, { rootMetadata } from "../workspace/root";
@@ -31,6 +35,10 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		typescript,
 		biome,
 		gitignore,
+		commitlint,
+		lefthook,
+		vscode,
+		githubCi,
 		ui,
 		tailwind,
 		trpc,
@@ -47,6 +55,10 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(typescript, typescriptMetadata),
 	addonCatalogEntry(biome, biomeMetadata),
 	addonCatalogEntry(gitignore, gitignoreMetadata),
+	addonCatalogEntry(commitlint, commitlintMetadata),
+	addonCatalogEntry(lefthook, lefthookMetadata),
+	addonCatalogEntry(vscode, vscodeMetadata),
+	addonCatalogEntry(githubCi, githubCiMetadata),
 	addonCatalogEntry(ui, uiMetadata),
 	addonCatalogEntry(tailwind, tailwindMetadata),
 	addonCatalogEntry(trpc, trpcMetadata),

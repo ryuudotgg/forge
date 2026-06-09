@@ -1,13 +1,15 @@
 import {
 	defineAddon,
+	ensuredModuleTarget,
+	ensurePackageModule,
 	leafTextFile,
-	selectedModuleTarget,
 	surfaceDependencies,
+	surfaceJson,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
-import { readTemplate } from "../../template";
+import { interpolate, readTemplate } from "../../template";
 
 const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 	id: "trpc",
@@ -18,60 +20,108 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 	dependencies: [
 		{ id: "nextjs/base", type: "template" },
 		{ id: "typescript", type: "addon" },
+		{ id: "drizzle", type: "addon" },
 	],
 	targetMode: "single",
-	compatibility: {
-		app: {
-			frameworks: ["nextjs"],
-			requiredSlots: ["trpc"],
-			templates: [{ id: "nextjs/base", version: 1 }],
-		},
-	},
 	when: (config) => config.rpc === "trpc",
-	contribute: () => [
-		leafTextFile(
-			selectedModuleTarget(),
-			"app/api/trpc/[trpc]/route.ts",
-			readTemplate("api/trpc/app/api/trpc/[trpc]/route.ts"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/trpc/index.ts",
-			readTemplate("api/trpc/src/trpc/index.ts"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/trpc/query-client.ts",
-			readTemplate("api/trpc/src/trpc/query-client.ts"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/trpc/react.tsx",
-			readTemplate("api/trpc/src/trpc/react.tsx"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/trpc/root.ts",
-			readTemplate("api/trpc/src/trpc/root.ts"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/trpc/server.tsx",
-			readTemplate("api/trpc/src/trpc/server.tsx"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/trpc/trpc.ts",
-			readTemplate("api/trpc/src/trpc/trpc.ts"),
-		),
-		surfaceDependencies(selectedModuleTarget(), "packageJson", [
-			{ ...deps.trpcServer, type: "dependencies" },
-			{ ...deps.trpcClient, type: "dependencies" },
-			{ ...deps.trpcReactQuery, type: "dependencies" },
-			{ ...deps.tanstackReactQuery, type: "dependencies" },
-			{ ...deps.superjson, type: "dependencies" },
-		]),
-	],
+	contribute: ({ config }) => {
+		const slug = config.slug ?? "my-app";
+		const vars = { SLUG: slug };
+		const render = (path: string) =>
+			interpolate(readTemplate(`api/trpc/${path}`), vars);
+
+		return [
+			ensurePackageModule("trpc", "packages/trpc", {
+				packageType: "library",
+				template: { id: "trpc", version: 1 },
+				capabilities: ["trpc"],
+				slots: {},
+			}),
+			surfaceJson(ensuredModuleTarget("trpc"), "packageJson", {
+				name: `@${slug}/trpc`,
+				private: true,
+				type: "module",
+				exports: { ".": "./src/index.ts" },
+				scripts: { typecheck: "tsgo --noEmit" },
+			}),
+			surfaceJson(ensuredModuleTarget("trpc"), "tsconfig", {
+				extends: `@${slug}/tsconfig/base.json`,
+				compilerOptions: {
+					types: ["node"],
+					paths: { [`@${slug}/trpc/*`]: ["./src/*"] },
+				},
+				include: ["./src"],
+				exclude: ["node_modules"],
+			}),
+			surfaceDependencies(ensuredModuleTarget("trpc"), "packageJson", [
+				{
+					name: `@${slug}/db`,
+					version: "workspace:*",
+					type: "dependencies",
+				},
+				{ ...deps.trpcServer, type: "dependencies" },
+				{ ...deps.superjson, type: "dependencies" },
+				{ ...deps.zod, type: "dependencies" },
+				{
+					name: `@${slug}/tsconfig`,
+					version: "workspace:*",
+					type: "devDependencies",
+				},
+				{ ...deps.typesNode, type: "devDependencies" },
+				{ ...deps.typescriptNativePreview, type: "devDependencies" },
+				{ ...deps.typescript, type: "devDependencies" },
+			]),
+
+			leafTextFile(
+				ensuredModuleTarget("trpc"),
+				"src/index.ts",
+				render("packages/trpc/src/index.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("trpc"),
+				"src/trpc.ts",
+				render("packages/trpc/src/trpc.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("trpc"),
+				"src/root.ts",
+				render("packages/trpc/src/root.ts"),
+			),
+
+			leafTextFile(
+				ensuredModuleTarget("web"),
+				"trpc/query-client.ts",
+				render("apps/web/trpc/query-client.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("web"),
+				"trpc/server.ts",
+				render("apps/web/trpc/server.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("web"),
+				"trpc/react.tsx",
+				render("apps/web/trpc/react.tsx"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("web"),
+				"app/api/trpc/[trpc]/route.ts",
+				render("apps/web/app/api/trpc/[trpc]/route.ts"),
+			),
+			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
+				{
+					name: `@${slug}/trpc`,
+					version: "workspace:*",
+					type: "dependencies",
+				},
+				{ ...deps.trpcClient, type: "dependencies" },
+				{ ...deps.trpcReactQuery, type: "dependencies" },
+				{ ...deps.trpcServer, type: "dependencies" },
+				{ ...deps.tanstackReactQuery, type: "dependencies" },
+				{ ...deps.superjson, type: "dependencies" },
+			]),
+		];
+	},
 });
 
 export const trpcMetadata = {

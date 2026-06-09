@@ -1,10 +1,6 @@
 import type { PartialConfig } from "../steps/types";
-import { apiOnly } from "./api-only";
-import { fullstack } from "./fullstack";
-import { saas } from "./saas";
+import { defaultPreset } from "./default";
 
 export const presets: Record<string, PartialConfig> = {
-	saas,
-	"api-only": apiOnly,
-	fullstack,
+	default: defaultPreset,
 };

@@ -2,7 +2,6 @@ import addonSelect from "./addons/select";
 import authCustomUI from "./auth/custom-ui";
 import authProvider from "./auth/provider";
 import backendFramework from "./backend/framework";
-import orpcContracts from "./backend/orpc-contracts";
 import rpc from "./backend/rpc";
 import rpcPublic from "./backend/rpc-public";
 import database from "./data/database";
@@ -46,7 +45,6 @@ export const steps: Step[] = [
 	backendFramework,
 	rpc,
 	rpcPublic,
-	orpcContracts,
 
 	database,
 	orm,

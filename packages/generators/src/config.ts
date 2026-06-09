@@ -56,7 +56,6 @@ export type Backend = keyof typeof backends.definitions;
 
 export const rpcProviders = defineChoices({
 	trpc: "tRPC",
-	orpc: "oRPC",
 } as const);
 
 export type RpcProvider = keyof typeof rpcProviders.definitions;

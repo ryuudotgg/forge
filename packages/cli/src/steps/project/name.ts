@@ -36,31 +36,24 @@ const nameStep = defineStep<{ name: string; slug: string }>({
 	shouldRun: () => true,
 
 	async execute(config, interactive) {
-		if (!interactive) {
-			if (config.name && config.slug) {
-				const nameResult = Schema.decodeUnknownEither(nameSchema)(config.name);
-				if (Either.isLeft(nameResult)) return SKIP;
-
-				const slugResult = Schema.decodeUnknownEither(slugSchema)(config.slug);
-				if (Either.isLeft(slugResult)) return SKIP;
-
+		if (config.name && config.slug) {
+			const nameResult = Schema.decodeUnknownEither(nameSchema)(config.name);
+			const slugResult = Schema.decodeUnknownEither(slugSchema)(config.slug);
+			if (Either.isRight(nameResult) && Either.isRight(slugResult))
 				return { name: nameResult.right, slug: slugResult.right };
-			}
+		}
 
-			if (config.name) {
-				const nameResult = Schema.decodeUnknownEither(nameSchema)(config.name);
-				if (Either.isLeft(nameResult)) return SKIP;
-
+		if (config.name) {
+			const nameResult = Schema.decodeUnknownEither(nameSchema)(config.name);
+			if (Either.isRight(nameResult)) {
 				const slug = slugify(nameResult.right);
 				const slugResult = Schema.decodeUnknownEither(slugSchema)(slug);
-
-				if (Either.isLeft(slugResult)) return SKIP;
-
-				return { name: nameResult.right, slug: slugResult.right };
+				if (Either.isRight(slugResult))
+					return { name: nameResult.right, slug: slugResult.right };
 			}
-
-			return SKIP;
 		}
+
+		if (!interactive) return SKIP;
 
 		const name = await text({
 			message: "What is the name of your project?",

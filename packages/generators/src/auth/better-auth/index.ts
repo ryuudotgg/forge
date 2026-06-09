@@ -1,17 +1,19 @@
 import {
 	defineAddon,
+	ensuredModuleTarget,
+	ensurePackageModule,
 	leafTextFile,
-	selectedModuleTarget,
+	projectTarget,
 	surfaceDependencies,
+	surfaceJson,
 	surfaceLines,
-	surfaceText,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
-import { readTemplate } from "../../template";
+import { interpolate, readTemplate } from "../../template";
 
-const betterAuth = defineAddon<ForgeConfig, "better-auth", "nextjs">({
+const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 	id: "better-auth",
 	name: "Better Auth",
 	version: "0.1.0",
@@ -22,50 +24,126 @@ const betterAuth = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 		{ id: "drizzle", type: "addon" },
 	],
 	targetMode: "single",
-	compatibility: {
-		app: {
-			frameworks: ["nextjs"],
-			requiredSlots: ["auth", "authClient"],
-		},
-	},
 	when: (config) => config.authentication === "better-auth",
-	contribute: () => [
-		leafTextFile(
-			selectedModuleTarget(),
-			"app/api/auth/[...all]/route.ts",
-			readTemplate("auth/better-auth/app/api/auth/[...all]/route.ts"),
-		),
-		leafTextFile(
-			selectedModuleTarget(),
-			"src/db/auth-schema.ts",
-			readTemplate("auth/better-auth/src/db/auth-schema.ts"),
-		),
-		surfaceText(
-			selectedModuleTarget(),
-			"authClient",
-			readTemplate("auth/better-auth/src/lib/auth-client.ts"),
-		),
-		surfaceText(
-			selectedModuleTarget(),
-			"auth",
-			readTemplate("auth/better-auth/src/lib/auth.ts"),
-		),
-		surfaceDependencies(selectedModuleTarget(), "packageJson", [
-			{ ...deps.betterAuth, type: "dependencies" },
-		]),
-		surfaceLines(
-			selectedModuleTarget(),
-			"env",
-			["BETTER_AUTH_SECRET=", "BETTER_AUTH_URL=http://localhost:3000"],
-			{ section: "Auth" },
-		),
-		surfaceLines(
-			selectedModuleTarget(),
-			"envExample",
-			["BETTER_AUTH_SECRET=", "BETTER_AUTH_URL=http://localhost:3000"],
-			{ section: "Auth" },
-		),
-	],
+	contribute: ({ config }) => {
+		const slug = config.slug ?? "my-app";
+		const vars = { SLUG: slug };
+		const render = (path: string) =>
+			interpolate(readTemplate(`auth/better-auth/${path}`), vars);
+
+		return [
+			ensurePackageModule("auth", "packages/auth", {
+				packageType: "library",
+				template: { id: "auth", version: 1 },
+				capabilities: ["auth"],
+				slots: {},
+			}),
+			surfaceJson(ensuredModuleTarget("auth"), "packageJson", {
+				name: `@${slug}/auth`,
+				private: true,
+				type: "module",
+				exports: {
+					".": "./src/index.ts",
+					"./env": "./env.ts",
+					"./client": "./src/client.ts",
+				},
+				scripts: { typecheck: "tsgo --noEmit" },
+			}),
+			surfaceJson(ensuredModuleTarget("auth"), "tsconfig", {
+				extends: `@${slug}/tsconfig/base.json`,
+				compilerOptions: {
+					types: ["node"],
+					paths: { [`@${slug}/auth/*`]: ["./src/*"] },
+				},
+				include: ["./src", "./*.ts"],
+				exclude: ["node_modules"],
+			}),
+			surfaceDependencies(ensuredModuleTarget("auth"), "packageJson", [
+				{
+					name: `@${slug}/db`,
+					version: "workspace:*",
+					type: "dependencies",
+				},
+				{ ...deps.t3OssEnvCore, type: "dependencies" },
+				{ ...deps.betterAuth, type: "dependencies" },
+				{ ...deps.zod, type: "dependencies" },
+				{
+					name: `@${slug}/tsconfig`,
+					version: "workspace:*",
+					type: "devDependencies",
+				},
+				{ ...deps.typesNode, type: "devDependencies" },
+				{ ...deps.typescriptNativePreview, type: "devDependencies" },
+				{ ...deps.typescript, type: "devDependencies" },
+			]),
+
+			leafTextFile(
+				ensuredModuleTarget("auth"),
+				"env.ts",
+				render("packages/auth/env.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("auth"),
+				"src/index.ts",
+				render("packages/auth/src/index.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("auth"),
+				"src/client.ts",
+				render("packages/auth/src/client.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("web"),
+				"app/api/auth/[...all]/route.ts",
+				render("apps/web/app/api/auth/[...all]/route.ts"),
+			),
+			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
+				{
+					name: `@${slug}/auth`,
+					version: "workspace:*",
+					type: "dependencies",
+				},
+				{ ...deps.betterAuth, type: "dependencies" },
+			]),
+
+			surfaceLines(
+				projectTarget(),
+				"rootEnv",
+				[
+					"# @use pnpm dlx @better-auth/cli secret",
+					'AUTH_SECRET="change-me-locally-or-generate-with-the-cli-above"',
+					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
+					"",
+					'APP_ORIGIN="http://localhost:3000"',
+					"",
+					'AUTH_GOOGLE_CLIENT_ID=""',
+					'AUTH_GOOGLE_CLIENT_SECRET=""',
+					"",
+					'AUTH_APPLE_CLIENT_ID=""',
+					'AUTH_APPLE_CLIENT_SECRET=""',
+				],
+				{ section: "Better Auth" },
+			),
+			surfaceLines(
+				projectTarget(),
+				"rootEnvExample",
+				[
+					"# @use pnpm dlx @better-auth/cli secret",
+					'AUTH_SECRET=""',
+					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
+					"",
+					'APP_ORIGIN="http://localhost:3000"',
+					"",
+					'AUTH_GOOGLE_CLIENT_ID=""',
+					'AUTH_GOOGLE_CLIENT_SECRET=""',
+					"",
+					'AUTH_APPLE_CLIENT_ID=""',
+					'AUTH_APPLE_CLIENT_SECRET=""',
+				],
+				{ section: "Better Auth" },
+			),
+		];
+	},
 });
 
 export const betterAuthMetadata = {
@@ -80,4 +158,4 @@ export const betterAuthMetadata = {
 	summary: "Add Better Auth to an app target.",
 } as const satisfies FirstPartyAddonMetadata;
 
-export default betterAuth;
+export default betterAuthAddon;

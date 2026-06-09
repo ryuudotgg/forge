@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "biomejs.biome",
+    "bradlc.vscode-tailwindcss",
+    "typescriptteam.native-preview",
+    "yoavbls.pretty-ts-errors"
+  ]
+}
