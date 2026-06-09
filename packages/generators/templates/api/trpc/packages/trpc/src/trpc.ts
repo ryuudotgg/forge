@@ -1,23 +1,21 @@
-import { db } from "@__SLUG__/db/client";
-import { initTRPC, TRPCError } from "@trpc/server";
+__DB_IMPORT__import { initTRPC, TRPCError } from "@trpc/server";
 import SuperJSON from "superjson";
 import { ZodError, z } from "zod";
 
-type TRPCContext = {
-  db: typeof db;
+type Session = {
+  user: { id: string; email: string };
+};
+
+type TRPCContext = {__DB_CTX_TYPE__
   headers: Headers;
   session: Session | null;
 };
 
-type Session = {
-  user: { id: string; email: string };
-} | null;
-
 export async function createTRPCContext(opts: {
   headers: Headers;
-  session: Session;
+  session: Session | null;
 }): Promise<TRPCContext> {
-  return { db, headers: opts.headers, session: opts.session };
+  return {__DB_CTX_VALUE__ headers: opts.headers, session: opts.session };
 }
 
 const t = initTRPC.context<TRPCContext>().create({

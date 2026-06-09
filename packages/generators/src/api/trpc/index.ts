@@ -20,15 +20,28 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 	dependencies: [
 		{ id: "nextjs/base", type: "template" },
 		{ id: "typescript", type: "addon" },
-		{ id: "drizzle", type: "addon" },
 	],
 	targetMode: "single",
 	when: (config) => config.rpc === "trpc",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
-		const vars = { SLUG: slug };
+		const usesDb = config.orm === "drizzle";
+		const vars = {
+			SLUG: slug,
+			DB_IMPORT: usesDb ? `import { db } from "@${slug}/db/client";\n` : "",
+			DB_CTX_TYPE: usesDb ? "\n  db: typeof db;" : "",
+			DB_CTX_VALUE: usesDb ? " db," : "",
+		};
 		const render = (path: string) =>
 			interpolate(readTemplate(`api/trpc/${path}`), vars);
+
+		const dbDeps: Array<{
+			name: string;
+			version: string;
+			type: "dependencies";
+		}> = usesDb
+			? [{ name: `@${slug}/db`, version: "workspace:*", type: "dependencies" }]
+			: [];
 
 		return [
 			ensurePackageModule("trpc", "packages/trpc", {
@@ -54,11 +67,7 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 				exclude: ["node_modules"],
 			}),
 			surfaceDependencies(ensuredModuleTarget("trpc"), "packageJson", [
-				{
-					name: `@${slug}/db`,
-					version: "workspace:*",
-					type: "dependencies",
-				},
+				...dbDeps,
 				{ ...deps.trpcServer, type: "dependencies" },
 				{ ...deps.superjson, type: "dependencies" },
 				{ ...deps.zod, type: "dependencies" },
