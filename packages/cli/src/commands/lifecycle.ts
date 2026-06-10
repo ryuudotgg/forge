@@ -14,7 +14,11 @@ import {
 	runtimes,
 	State,
 } from "@ryuujs/core";
-import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
+import {
+	type ForgeConfig,
+	loadDefinitionRegistry,
+	type OptionalAddon,
+} from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
@@ -104,7 +108,20 @@ async function inferConfigSnapshot(
 	const linter = (await hasPath("biome.json")) ? "biome" : undefined;
 	const databaseProvider = orm === "drizzle" ? "neon" : undefined;
 
+	const addonFiles: ReadonlyArray<readonly [OptionalAddon, string]> = [
+		["commitlint", "commitlint.config.ts"],
+		["github-ci", ".github/workflows/ci.yml"],
+		["lefthook", "lefthook.yml"],
+		["shared", "packages/shared/package.json"],
+		["vscode", ".vscode/settings.json"],
+	];
+
+	const addons: OptionalAddon[] = [];
+	for (const [addon, path] of addonFiles)
+		if (await hasPath(path)) addons.push(addon);
+
 	return {
+		addons,
 		authentication,
 		databaseProvider,
 		linter,

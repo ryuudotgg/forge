@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAdd } from "../src/commands/add";
-import { adminModule, appModule, managedProject } from "./lifecycle-fixtures";
+import {
+	adminModule,
+	appModule,
+	managedProject,
+	reactRouterModule,
+} from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	intro: vi.fn(),
@@ -28,6 +33,22 @@ vi.mock("../src/commands/lifecycle", () => ({
 	applyInstalledPlan: lifecycleMocks.applyInstalledPlan,
 	loadManagedProject: lifecycleMocks.loadManagedProject,
 }));
+
+vi.mock("@ryuujs/generators", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuujs/generators")>();
+	const { multiTargetAddon, singleTargetAddon } = await import(
+		"./lifecycle-fixtures"
+	);
+
+	return {
+		...original,
+		loadAddonDefinition: (id: string) => {
+			if (id === singleTargetAddon.id) return { addon: singleTargetAddon };
+			if (id === multiTargetAddon.id) return { addon: multiTargetAddon };
+			return original.loadAddonDefinition(id);
+		},
+	};
+});
 
 describe("add command", () => {
 	beforeEach(() => {
@@ -80,6 +101,151 @@ describe("add command", () => {
 				},
 			],
 		);
+	});
+
+	it("records opt-in addons on the config so contributions stay in sync", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ config: { addons: ["lefthook"], slug: "acme" } }),
+		);
+
+		await runAdd("commitlint", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ addons: ["lefthook", "commitlint"], slug: "acme" },
+			[
+				{
+					definitionId: "commitlint",
+					targets: [{ kind: "project" }],
+				},
+			],
+		);
+	});
+
+	it("installs a compatible addon into the only matching module without prompting", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+		await runAdd("mock-single", {});
+
+		expect(promptMocks.select).not.toHaveBeenCalled();
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[
+				{
+					definitionId: "mock-single",
+					targets: [{ kind: "module", moduleId: appModule.id }],
+				},
+			],
+		);
+	});
+
+	it("prompts for a single module when multiple targets are compatible", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ modules: [appModule, adminModule] }),
+		);
+		promptMocks.select.mockResolvedValue(adminModule.id);
+
+		await runAdd("mock-single", {});
+
+		expect(promptMocks.select).toHaveBeenCalledWith(
+			expect.objectContaining({
+				options: [
+					expect.objectContaining({ value: appModule.id }),
+					expect.objectContaining({ value: adminModule.id }),
+				],
+			}),
+		);
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[
+				{
+					definitionId: "mock-single",
+					targets: [{ kind: "module", moduleId: adminModule.id }],
+				},
+			],
+		);
+	});
+
+	it("multi-selects modules for addons that support multiple targets", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ modules: [appModule, adminModule] }),
+		);
+		promptMocks.multiselect.mockResolvedValue([appModule.id, adminModule.id]);
+
+		await runAdd("mock-multi", {});
+
+		expect(promptMocks.select).not.toHaveBeenCalled();
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[
+				{
+					definitionId: "mock-multi",
+					targets: [
+						{ kind: "module", moduleId: appModule.id },
+						{ kind: "module", moduleId: adminModule.id },
+					],
+				},
+			],
+		);
+	});
+
+	it("merges new module targets into an existing multi-target install", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				installs: [
+					{
+						definitionId: "mock-multi",
+						targets: [{ kind: "module", moduleId: appModule.id }],
+					},
+				],
+				modules: [appModule, adminModule],
+			}),
+		);
+		promptMocks.multiselect.mockResolvedValue([adminModule.id]);
+
+		await runAdd("mock-multi", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[
+				{
+					definitionId: "mock-multi",
+					targets: [
+						{ kind: "module", moduleId: appModule.id },
+						{ kind: "module", moduleId: adminModule.id },
+					],
+				},
+			],
+		);
+	});
+
+	it("shows a friendly error when no module is compatible", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({ modules: [reactRouterModule] }),
+			);
+
+			await expect(runAdd("mock-single", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'We couldn\'t find a compatible target for "Mock Single".',
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
 	});
 
 	it("shows a friendly error when the addon id is unknown", async () => {

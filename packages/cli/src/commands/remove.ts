@@ -5,6 +5,7 @@ import {
 	listVisibleAddons,
 	loadAddonDefinition,
 	RegistryLoadError,
+	withoutAddon,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
@@ -135,5 +136,12 @@ export async function runRemove(
 			.filter((entry): entry is InstallRecord => entry !== undefined);
 	}
 
-	await applyInstalledPlan(project.projectRoot, project.config, nextInstalls);
+	const removedEverywhere = !nextInstalls.some(
+		(entry) => entry.definitionId === resolvedAddonId,
+	);
+	const nextConfig = removedEverywhere
+		? withoutAddon(project.config, resolvedAddonId)
+		: project.config;
+
+	await applyInstalledPlan(project.projectRoot, nextConfig, nextInstalls);
 }

@@ -1,5 +1,5 @@
 import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
-import type { ForgeConfig } from "../config";
+import { type ForgeConfig, hasAddon } from "../config";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { readTemplate } from "../template";
 
@@ -10,7 +10,7 @@ const vscode = defineAddon<ForgeConfig, "vscode">({
 	category: "tooling",
 	exclusive: false,
 	targetMode: "single",
-	when: () => true,
+	when: (config) => hasAddon(config, "vscode"),
 	contribute: () => [
 		leafTextFile(
 			projectTarget(),

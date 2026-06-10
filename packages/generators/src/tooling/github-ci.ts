@@ -1,5 +1,5 @@
 import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
-import type { ForgeConfig } from "../config";
+import { type ForgeConfig, hasAddon } from "../config";
 import { pmRun, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { interpolate, readTemplate } from "../template";
@@ -11,7 +11,7 @@ const githubCi = defineAddon<ForgeConfig, "github-ci">({
 	category: "tooling",
 	exclusive: false,
 	targetMode: "single",
-	when: () => true,
+	when: (config) => hasAddon(config, "github-ci"),
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
 		const pm = resolvePackageManager(config);

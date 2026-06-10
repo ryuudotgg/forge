@@ -4,7 +4,7 @@ import {
 	projectTarget,
 	surfaceDependencies,
 } from "@ryuujs/core";
-import type { ForgeConfig } from "../config";
+import { type ForgeConfig, hasAddon } from "../config";
 import { deps } from "../deps";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { readTemplate } from "../template";
@@ -16,7 +16,7 @@ const commitlint = defineAddon<ForgeConfig, "commitlint">({
 	category: "tooling",
 	exclusive: false,
 	targetMode: "single",
-	when: () => true,
+	when: (config) => hasAddon(config, "commitlint"),
 	contribute: () => [
 		leafTextFile(
 			projectTarget(),
