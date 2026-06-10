@@ -4,7 +4,7 @@ import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const ormSchema = Schema.Literal("drizzle");
+export const ormSchema = Schema.Literal("drizzle", "prisma");
 
 const ormStep = defineStep<typeof ormSchema.Type>({
 	id: "orm",

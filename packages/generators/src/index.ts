@@ -58,17 +58,20 @@ export type {
 	DatabaseProviderProfile,
 	DrizzleDriver,
 	DrizzleSupport,
+	PrismaSupport,
 	ProviderEnvVar,
 } from "./data/providers";
 export {
 	detectDatabaseProvider,
 	localPostgres,
 	postgresProviderIds,
+	postgresProviderIdsFor,
 	resolveDatabaseProvider,
 } from "./data/providers";
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
 export { default as biome } from "./linters/biome";
 export { default as drizzle } from "./orm/drizzle";
+export { default as prisma } from "./orm/prisma";
 export {
 	builtins,
 	loadAddonDefinition,

@@ -78,20 +78,20 @@ function buildContributions(config: ForgeConfig) {
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
 	const transpilePackages = [`@${slug}/ui`];
-	if (config.orm === "drizzle") transpilePackages.push(`@${slug}/db`);
+
+	if (config.orm !== undefined) transpilePackages.push(`@${slug}/db`);
+	if (config.rpc === "trpc") transpilePackages.push(`@${slug}/trpc`);
 	if (config.authentication === "better-auth")
 		transpilePackages.push(`@${slug}/auth`);
-	if (config.rpc === "trpc") transpilePackages.push(`@${slug}/trpc`);
 
 	const transpileList = transpilePackages
 		.sort()
 		.map((name) => `"${name}"`)
 		.join(", ");
+
 	const nextConfig = interpolate(
 		readTemplate("frameworks/nextjs/next.config.ts"),
-		{
-			TRANSPILE_PACKAGES: `[${transpileList}]`,
-		},
+		{ TRANSPILE_PACKAGES: `[${transpileList}]` },
 	);
 
 	const webEnv = readTemplate("frameworks/nextjs/env.ts");

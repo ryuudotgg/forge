@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { databaseProviders, postgresProviderIds } from "@ryuujs/generators";
+import { databaseProviders, postgresProviderIdsFor } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
@@ -43,7 +43,7 @@ const databaseProviderStep = defineStep<DatabaseProvider>({
 			}
 
 			case "postgresql": {
-				options = [...postgresProviderIds, "none"];
+				options = [...postgresProviderIdsFor(config.orm), "none"];
 				message = "Do you want a managed PostgreSQL database?";
 				break;
 			}

@@ -320,6 +320,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 		};
 
 		const resolveDependencies = <ConfigValue>(
+			config: ConfigValue,
 			registry: DefinitionRegistry<ConfigValue>,
 			templates: ReadonlyArray<TemplateDefinition<ConfigValue>>,
 			addons: ReadonlyArray<AddonDefinition<ConfigValue>>,
@@ -343,6 +344,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 						resolved.set(key, definition);
 
+						const dependencyDefinitions: Definition<ConfigValue>[] = [];
 						for (const dependency of definition.dependencies) {
 							const dependencyDefinition =
 								dependency.type === "template"
@@ -355,7 +357,28 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 									message: "Definition Dependency Missing",
 								});
 
-							yield* visit(dependencyDefinition);
+							dependencyDefinitions.push(dependencyDefinition);
+						}
+
+						for (const dependencyDefinition of dependencyDefinitions) {
+							if (dependencyDefinition.when(config)) {
+								yield* visit(dependencyDefinition);
+								continue;
+							}
+
+							const hasActiveAlternative = dependencyDefinitions.some(
+								(alternative) =>
+									alternative !== dependencyDefinition &&
+									alternative._tag === dependencyDefinition._tag &&
+									alternative.category === dependencyDefinition.category &&
+									alternative.when(config),
+							);
+
+							if (!hasActiveAlternative)
+								return yield* new PlannerError({
+									path: definition.id,
+									message: "Definition Dependency Inactive",
+								});
 						}
 					});
 
@@ -894,6 +917,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						};
 
 			const definitions = yield* resolveDependencies(
+				intent.config,
 				registry,
 				selection.templates,
 				selection.directAddons,

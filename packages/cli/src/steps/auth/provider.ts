@@ -14,7 +14,8 @@ const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 	schema: authenticationSchema,
 	configKey: "authentication",
 
-	shouldRun: () => true,
+	dependencies: ["orm"],
+	shouldRun: (config) => !!config.orm,
 
 	async execute(config, interactive) {
 		if (!interactive) {

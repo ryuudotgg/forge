@@ -99,28 +99,35 @@ async function inferConfigSnapshot(
 		}
 	};
 
-	const rpc =
-		webModule && (await hasPath(join(webModule.root, "src/trpc/index.ts")))
-			? "trpc"
-			: undefined;
+	const detectFromMarkers = async <const T extends string>(
+		module: DiscoveredModule | undefined,
+		markers: ReadonlyArray<readonly [T, string]>,
+	): Promise<T | undefined> => {
+		if (!module) return undefined;
 
-	const orm =
-		dbModule && (await hasPath(join(dbModule.root, "drizzle.config.ts")))
-			? "drizzle"
-			: undefined;
+		for (const [value, marker] of markers)
+			if (await hasPath(join(module.root, marker))) return value;
 
-	const authentication =
-		webModule &&
-		(await hasPath(
-			join(webModule.root, webModule.slots.auth ?? "src/lib/auth.ts"),
-		))
-			? "better-auth"
-			: undefined;
+		return undefined;
+	};
+
+	const rpc = await detectFromMarkers(webModule, [
+		["trpc", "src/trpc/index.ts"],
+	]);
+
+	const orm = await detectFromMarkers(dbModule, [
+		["drizzle", "drizzle.config.ts"],
+		["prisma", "prisma.config.ts"],
+	]);
+
+	const authentication = await detectFromMarkers(webModule, [
+		["better-auth", webModule?.slots.auth ?? "src/lib/auth.ts"],
+	]);
 
 	const linter = (await hasPath("biome.json")) ? "biome" : undefined;
 
 	const [dbPackageJson, dbClientSource, rootEnv] =
-		orm === "drizzle" && dbModule
+		orm !== undefined && dbModule
 			? await Promise.all([
 					readJsonFile<{ dependencies?: Record<string, string> }>(
 						join(projectRoot, dbModule.root, "package.json"),

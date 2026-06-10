@@ -25,13 +25,15 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 	when: (config) => config.rpc === "trpc",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
-		const usesDb = config.orm === "drizzle";
+
+		const usesDb = config.orm !== undefined;
 		const vars = {
 			SLUG: slug,
 			DB_IMPORT: usesDb ? `import { db } from "@${slug}/db/client";\n` : "",
 			DB_CTX_TYPE: usesDb ? "\n  db: typeof db;" : "",
 			DB_CTX_VALUE: usesDb ? " db," : "",
 		};
+
 		const render = (path: string) =>
 			interpolate(readTemplate(`api/trpc/${path}`), vars);
 
