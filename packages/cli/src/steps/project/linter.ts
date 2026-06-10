@@ -1,11 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
-import { type Linter, linters } from "@ryuujs/generators";
+import { linters } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const linterIds = linters.ids as [Linter, ...Linter[]];
-export const linterSchema = Schema.Literal(...linterIds);
+export const linterSchema = Schema.Literal(...linters.ids);
 
 const linterStep = defineStep<typeof linterSchema.Type>({
 	id: "linter",

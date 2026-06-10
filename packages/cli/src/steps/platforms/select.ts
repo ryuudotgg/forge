@@ -7,9 +7,8 @@ import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const platformIds = platformChoices.ids as [Platform, ...Platform[]];
 export const platformsSchema = Schema.NonEmptyArray(
-	Schema.Literal(...platformIds),
+	Schema.Literal(...platformChoices.ids),
 );
 
 const platformsStep = defineStep<typeof platformsSchema.Type>({

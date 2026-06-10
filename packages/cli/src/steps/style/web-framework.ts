@@ -1,7 +1,6 @@
 import { isCancel, select } from "@clack/prompts";
 import {
 	desktopFrameworks,
-	type StyleFramework,
 	styleFrameworks,
 	webFrameworks,
 } from "@ryuujs/generators";
@@ -10,12 +9,7 @@ import { cancel } from "../../utils/cancel";
 import { stripNulls } from "../../utils/strip-nulls";
 import { defineStep, SKIP } from "../types";
 
-const styleFrameworkIds = styleFrameworks.ids as [
-	StyleFramework,
-	...StyleFramework[],
-];
-
-export const styleFrameworkSchema = Schema.Literal(...styleFrameworkIds);
+export const styleFrameworkSchema = Schema.Literal(...styleFrameworks.ids);
 
 const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 	id: "styleFramework",

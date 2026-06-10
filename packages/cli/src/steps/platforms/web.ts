@@ -1,11 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
-import { type WebFramework, webFrameworks } from "@ryuujs/generators";
+import { webFrameworks } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
-const webIds = webFrameworks.ids as [WebFramework, ...WebFramework[]];
-export const webSchema = Schema.Literal(...webIds);
+export const webSchema = Schema.Literal(...webFrameworks.ids);
 
 const webStep = defineStep<typeof webSchema.Type>({
 	id: "web",

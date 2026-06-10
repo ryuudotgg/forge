@@ -1,18 +1,12 @@
 import { isCancel, select } from "@clack/prompts";
-import {
-	type AuthenticationProvider,
-	authenticationProviders,
-} from "@ryuujs/generators";
+import { authenticationProviders } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const authenticationIds = authenticationProviders.ids as [
-	AuthenticationProvider,
-	...AuthenticationProvider[],
-];
-
-export const authenticationSchema = Schema.Literal(...authenticationIds);
+export const authenticationSchema = Schema.Literal(
+	...authenticationProviders.ids,
+);
 
 const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 	id: "authentication",

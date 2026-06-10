@@ -9,8 +9,7 @@ import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const addonIds = optionalAddons.ids as [OptionalAddon, ...OptionalAddon[]];
-export const addonsSchema = Schema.Array(Schema.Literal(...addonIds));
+export const addonsSchema = Schema.Array(Schema.Literal(...optionalAddons.ids));
 
 function addonOption(addon: OptionalAddon) {
 	const entry = getCatalogEntry(addon);
@@ -47,12 +46,16 @@ const addonsStep = defineStep<typeof addonsSchema.Type>({
 			return SKIP;
 		}
 
+		const options = optionalAddons.ids.flatMap(addonOption);
+		if (options.length === 0) return SKIP;
+
+		const visible = new Set(options.map((option) => option.value));
 		const selectedAddons = await multiselect({
 			message: "Which addons do you want to include?",
 			required: false,
-			initialValues: [...recommendedAddons],
+			initialValues: recommendedAddons.filter((addon) => visible.has(addon)),
 
-			options: optionalAddons.ids.flatMap(addonOption),
+			options,
 		});
 
 		if (isCancel(selectedAddons)) cancel();

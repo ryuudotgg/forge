@@ -1,11 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
-import { type Database, databases } from "@ryuujs/generators";
+import { databases } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const databaseIds = databases.ids as [Database, ...Database[]];
-export const databaseSchema = Schema.Literal(...databaseIds);
+export const databaseSchema = Schema.Literal(...databases.ids);
 
 const databaseStep = defineStep<typeof databaseSchema.Type>({
 	id: "database",
