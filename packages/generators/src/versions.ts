@@ -94,6 +94,16 @@ export const versions = {
 		version: "^1.0.2",
 		group: "Database",
 	},
+	pg: {
+		name: "pg",
+		version: "^8.21.0",
+		group: "Database",
+	},
+	typesPg: {
+		name: "@types/pg",
+		version: "^8.20.0",
+		group: "Database",
+	},
 	dotenvCli: {
 		name: "dotenv-cli",
 		version: "^10.0.0",
