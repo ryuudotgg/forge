@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
+import { orms } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { ArrayFormatter } from "effect/ParseResult";
 import { buildFlagOverrides } from "../cli";
@@ -68,6 +69,11 @@ export async function runCreate(
 	initialConfig = { ...initialConfig, ...buildFlagOverrides(values) };
 	if (values["no-install"] === true) initialConfig.installDeps = false;
 	if (values["no-git"] === true) initialConfig.gitInit = false;
+
+	if (orms.normalize(initialConfig.orm) === "prisma") {
+		log.error("We don't support Prisma yet.");
+		process.exit(1);
+	}
 
 	const interactive = !values.config;
 	await orchestrate(steps, { initialConfig, interactive });

@@ -15,6 +15,7 @@ import {
 	State,
 } from "@ryuujs/core";
 import {
+	detectDatabaseProvider,
 	type ForgeConfig,
 	loadDefinitionRegistry,
 	type OptionalAddon,
@@ -30,6 +31,14 @@ function lifecycleUnavailableMessage(command: string) {
 async function readJsonFile<T>(path: string): Promise<T | undefined> {
 	try {
 		return JSON.parse(await readFile(path, "utf-8")) as T;
+	} catch {
+		return undefined;
+	}
+}
+
+async function readTextFile(path: string): Promise<string | undefined> {
+	try {
+		return await readFile(path, "utf-8");
 	} catch {
 		return undefined;
 	}
@@ -66,6 +75,9 @@ async function inferConfigSnapshot(
 	const uiModule = modules.find(
 		(module) => module.type === "package" && module.template.id === "ui",
 	);
+	const dbModule = modules.find(
+		(module) => module.type === "package" && module.template.id === "db",
+	);
 
 	const web =
 		webModule?.type === "app"
@@ -93,7 +105,7 @@ async function inferConfigSnapshot(
 			: undefined;
 
 	const orm =
-		webModule && (await hasPath(join(webModule.root, "drizzle.config.ts")))
+		dbModule && (await hasPath(join(dbModule.root, "drizzle.config.ts")))
 			? "drizzle"
 			: undefined;
 
@@ -106,7 +118,21 @@ async function inferConfigSnapshot(
 			: undefined;
 
 	const linter = (await hasPath("biome.json")) ? "biome" : undefined;
-	const databaseProvider = orm === "drizzle" ? "neon" : undefined;
+
+	const [dbPackageJson, dbClientSource] =
+		orm === "drizzle" && dbModule
+			? await Promise.all([
+					readJsonFile<{ dependencies?: Record<string, string> }>(
+						join(projectRoot, dbModule.root, "package.json"),
+					),
+					readTextFile(join(projectRoot, dbModule.root, "src/client.ts")),
+				])
+			: [undefined, undefined];
+
+	const databaseProvider = detectDatabaseProvider(
+		dbPackageJson?.dependencies ?? {},
+		dbClientSource,
+	);
 
 	const addonFiles: ReadonlyArray<readonly [OptionalAddon, string]> = [
 		["commitlint", "commitlint.config.ts"],

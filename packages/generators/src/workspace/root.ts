@@ -12,6 +12,7 @@ import {
 } from "@ryuujs/core";
 import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
+import { resolveDatabaseProvider } from "../data/providers";
 import { deps } from "../deps";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 
@@ -113,7 +114,9 @@ function buildContributions(
 	};
 
 	const dbEnv =
-		config.orm === "drizzle" ? ["DATABASE_URL", "DATABASE_DIRECT_URL"] : [];
+		config.orm === "drizzle"
+			? resolveDatabaseProvider(config).envVars.map(({ name }) => name)
+			: [];
 
 	const buildTask: Record<string, unknown> = {
 		dependsOn: ["^build"],

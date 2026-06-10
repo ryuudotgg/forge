@@ -4,7 +4,7 @@ import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const ormSchema = Schema.Literal(...orms.ids);
+export const ormSchema = Schema.Literal("drizzle");
 
 const ormStep = defineStep<typeof ormSchema.Type>({
 	id: "orm",
@@ -30,7 +30,7 @@ const ormStep = defineStep<typeof ormSchema.Type>({
 		const orm = await select({
 			message: "What is your preferred ORM?",
 			options: [
-				...orms.ids.map((option) => ({
+				...ormSchema.literals.map((option) => ({
 					label: orms.label(option),
 					value: option,
 				})),
