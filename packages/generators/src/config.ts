@@ -92,6 +92,13 @@ export const styleFrameworks = defineChoices({
 
 export type StyleFramework = keyof typeof styleFrameworks.definitions;
 
+export const uiLibraries = defineChoices({
+	"base-ui": "Base UI",
+	radix: "Radix UI",
+} as const);
+
+export type UiLibrary = keyof typeof uiLibraries.definitions;
+
 export const linters = defineChoices({
 	biome: "Biome",
 	oxc: "Oxc",
@@ -197,6 +204,7 @@ export interface ForgeConfig {
 	readonly database?: Database;
 	readonly databaseProvider?: DatabaseProvider;
 	readonly style?: StyleFramework;
+	readonly uiLibrary?: UiLibrary;
 	readonly desktop?: DesktopFramework;
 	readonly mobile?: MobileFramework;
 	readonly nativeStyleFramework?: NativeStyleFramework;

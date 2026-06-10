@@ -50,6 +50,7 @@ export const deps = {
 	tailwindMerge: dep("tailwindMerge"),
 	classVarianceAuthority: dep("classVarianceAuthority"),
 
+	baseUiReact: dep("baseUiReact"),
 	shadcn: dep("shadcn"),
 	nextThemes: dep("nextThemes"),
 	sonner: dep("sonner"),

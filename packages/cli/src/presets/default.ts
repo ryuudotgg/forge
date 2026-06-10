@@ -12,6 +12,7 @@ export const defaultPreset: PartialConfig = {
 	databaseProvider: "neon",
 	authentication: "better-auth",
 	style: "tailwind",
+	uiLibrary: "base-ui",
 	linter: "biome",
 	runtime: "Node.js",
 	packageManager: "pnpm",

@@ -18,4 +18,5 @@ export { packageManagerSchema as packageManager } from "./project/package-manage
 export { pathSchema as path } from "./project/path";
 export { runtimeSchema as runtime } from "./project/runtime";
 export { nativeStyleFrameworkSchema as nativeStyleFramework } from "./style/native-framework";
+export { uiLibrarySchema as uiLibrary } from "./style/ui-library";
 export { styleFrameworkSchema as styleFramework } from "./style/web-framework";

@@ -130,6 +130,7 @@ export const versions = {
 		group: "Utilities",
 	},
 
+	baseUiReact: { name: "@base-ui/react", version: "^1.5.0", group: "UI" },
 	shadcn: { name: "shadcn", version: "^4.2.0", group: "UI" },
 	nextThemes: { name: "next-themes", version: "^0.4.6", group: "Framework" },
 	sonner: { name: "sonner", version: "^2.0.7", group: "UI" },
