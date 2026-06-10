@@ -64,10 +64,23 @@ describe("detectDatabaseProvider", () => {
 		).toBe("planetscale");
 	});
 
-	it("detects supabase from postgres-js", () => {
+	it("detects supabase from postgres-js and a supabase host", () => {
 		expect(
-			detectDatabaseProvider({ dependencies: { postgres: "^3.4.9" } }),
+			detectDatabaseProvider({
+				dependencies: { postgres: "^3.4.9" },
+				databaseUrl:
+					"postgres://postgres.project-ref:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres",
+			}),
 		).toBe("supabase");
+	});
+
+	it("stays undetected for postgres-js against a non-supabase host", () => {
+		expect(
+			detectDatabaseProvider({
+				dependencies: { postgres: "^3.4.9" },
+				databaseUrl: "postgres://user:password@db.example.com:5432/database",
+			}),
+		).toBeUndefined();
 	});
 
 	it("detects nile from the connection string", () => {

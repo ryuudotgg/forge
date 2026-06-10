@@ -181,7 +181,13 @@ export function detectDatabaseProvider(
 			? "planetscale"
 			: "neon";
 
-	if ("postgres" in evidence.dependencies) return "supabase";
+	// postgres-js is Supabase's documented driver but also a general-purpose
+	// client, so a Supabase host has to confirm it.
+	if (
+		"postgres" in evidence.dependencies &&
+		evidence.databaseUrl?.includes(".supabase.")
+	)
+		return "supabase";
 
 	// Nile shares the pg driver with the local-postgres fallback, so only the
 	// connection string can tell them apart.
