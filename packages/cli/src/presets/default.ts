@@ -1,6 +1,8 @@
+import { recommendedAddons } from "@ryuujs/generators";
 import type { PartialConfig } from "../steps/types";
 
 export const defaultPreset: PartialConfig = {
+	addons: [...recommendedAddons],
 	platforms: ["web"],
 	web: "nextjs",
 	backend: "nextjs",

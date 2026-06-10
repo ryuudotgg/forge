@@ -44,6 +44,7 @@ export const deps = {
 	zod: dep("zod"),
 
 	clsx: dep("clsx"),
+	nanoid: dep("nanoid"),
 	tailwindMerge: dep("tailwindMerge"),
 	classVarianceAuthority: dep("classVarianceAuthority"),
 

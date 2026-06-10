@@ -3,8 +3,9 @@ import {
 	leafTextFile,
 	projectTarget,
 	surfaceDependencies,
+	surfaceScripts,
 } from "@ryuujs/core";
-import type { ForgeConfig } from "../config";
+import { type ForgeConfig, hasAddon } from "../config";
 import { deps } from "../deps";
 import { pmExec, pmRun, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
@@ -17,26 +18,38 @@ const lefthook = defineAddon<ForgeConfig, "lefthook">({
 	category: "tooling",
 	exclusive: false,
 	targetMode: "single",
-	when: () => true,
+	when: (config) => hasAddon(config, "lefthook"),
 	contribute: ({ config }) => {
 		const pm = resolvePackageManager(config);
 
+		const preCommit = interpolate(
+			readTemplate("tooling/lefthook/lefthook.yml"),
+			{
+				CHECK_FIX_COMMAND: pmRun(
+					pm,
+					"check:fix",
+					"--staged --no-errors-on-unmatched",
+				),
+			},
+		);
+
+		const commitMsg = interpolate(
+			readTemplate("tooling/lefthook/commit-msg.yml"),
+			{ COMMITLINT_COMMAND: pmExec(pm, "commitlint") },
+		);
+
+		const hooks = hasAddon(config, "commitlint")
+			? `${commitMsg}\n${preCommit}`
+			: preCommit;
+
 		return [
-			leafTextFile(
-				projectTarget(),
-				"lefthook.yml",
-				interpolate(readTemplate("tooling/lefthook/lefthook.yml"), {
-					COMMITLINT_COMMAND: pmExec(pm, "commitlint"),
-					CHECK_FIX_COMMAND: pmRun(
-						pm,
-						"check:fix",
-						"--staged --no-errors-on-unmatched",
-					),
-				}),
-			),
+			leafTextFile(projectTarget(), "lefthook.yml", hooks),
 			surfaceDependencies(projectTarget(), "rootPackageJson", [
 				{ ...deps.lefthook, type: "devDependencies" },
 			]),
+			surfaceScripts(projectTarget(), "rootPackageJson", {
+				prepare: "lefthook install",
+			}),
 		];
 	},
 });

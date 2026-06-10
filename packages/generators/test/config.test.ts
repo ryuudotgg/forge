@@ -7,7 +7,9 @@ import {
 	linters,
 	mobileFrameworks,
 	nativeStyleFrameworks,
+	optionalAddons,
 	orms,
+	recommendedAddons,
 	rpcProviders,
 	styleFrameworks,
 	webFrameworks,
@@ -26,6 +28,8 @@ describe("generator config choices", () => {
 		expect(desktopFrameworks.label("electron")).toBe("Electron");
 		expect(mobileFrameworks.label("react-native")).toBe("React Native");
 		expect(nativeStyleFrameworks.label("nativewind")).toBe("NativeWind");
+		expect(optionalAddons.label("github-ci")).toBe("GitHub CI");
+		expect(optionalAddons.label("vscode")).toBe("VS Code");
 	});
 
 	it("normalizes legacy display values to canonical ids", () => {
@@ -44,5 +48,12 @@ describe("generator config choices", () => {
 		expect(desktopFrameworks.normalize("Electron")).toBe("electron");
 		expect(mobileFrameworks.normalize("React Native")).toBe("react-native");
 		expect(nativeStyleFrameworks.normalize("NativeWind")).toBe("nativewind");
+		expect(optionalAddons.normalize("GitHub CI")).toBe("github-ci");
+		expect(optionalAddons.normalize("VS Code")).toBe("vscode");
+	});
+
+	it("only recommends known optional addons", () => {
+		for (const addon of recommendedAddons)
+			expect(optionalAddons.ids).toContain(addon);
 	});
 });

@@ -1,12 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
-import { type Runtime, runtimes } from "@ryuujs/core";
+import { runtimes } from "@ryuujs/core";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
-const runtimeOptions = Object.values(runtimes).map(
-	(r) => r.displayName,
-) as Runtime[];
+const runtimeOptions = Object.values(runtimes).map((r) => r.displayName);
 
 export const runtimeSchema = Schema.Literal(...runtimeOptions);
 

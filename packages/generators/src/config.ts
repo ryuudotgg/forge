@@ -141,6 +141,44 @@ export const nativeStyleFrameworks = defineChoices({
 export type NativeStyleFramework =
 	keyof typeof nativeStyleFrameworks.definitions;
 
+export const optionalAddons = defineChoices({
+	commitlint: "commitlint",
+	"github-ci": "GitHub CI",
+	lefthook: "Lefthook",
+	shared: "Shared Package",
+	vscode: "VS Code",
+} as const);
+
+export type OptionalAddon = keyof typeof optionalAddons.definitions;
+
+export const recommendedAddons: ReadonlyArray<OptionalAddon> = [
+	"commitlint",
+	"github-ci",
+	"lefthook",
+	"vscode",
+];
+
+export function hasAddon(config: ForgeConfig, addon: OptionalAddon): boolean {
+	return config.addons?.includes(addon) ?? false;
+}
+
+export function withAddon(config: ForgeConfig, addon: string): ForgeConfig {
+	const normalized = optionalAddons.normalize(addon);
+	if (normalized === undefined || hasAddon(config, normalized)) return config;
+
+	return { ...config, addons: [...(config.addons ?? []), normalized] };
+}
+
+export function withoutAddon(config: ForgeConfig, addon: string): ForgeConfig {
+	const normalized = optionalAddons.normalize(addon);
+	if (normalized === undefined || !hasAddon(config, normalized)) return config;
+
+	return {
+		...config,
+		addons: (config.addons ?? []).filter((entry) => entry !== normalized),
+	};
+}
+
 export interface ForgeConfig {
 	readonly [key: string]: unknown;
 	readonly name?: string;
@@ -162,4 +200,5 @@ export interface ForgeConfig {
 	readonly desktop?: DesktopFramework;
 	readonly mobile?: MobileFramework;
 	readonly nativeStyleFramework?: NativeStyleFramework;
+	readonly addons?: ReadonlyArray<OptionalAddon>;
 }

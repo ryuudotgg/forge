@@ -9,6 +9,7 @@ import nextjsBaseTemplate, {
 } from "../frameworks/nextjs";
 import biome, { biomeMetadata } from "../linters/biome";
 import drizzle, { drizzleMetadata } from "../orm/drizzle";
+import shared, { sharedMetadata } from "../shared";
 import tailwind, { tailwindMetadata } from "../style/tailwind";
 import commitlint, { commitlintMetadata } from "../tooling/commitlint";
 import githubCi, { githubCiMetadata } from "../tooling/github-ci";
@@ -41,6 +42,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		lefthook,
 		vscode,
 		githubCi,
+		shared,
 		ui,
 		tailwind,
 		trpc,
@@ -62,6 +64,7 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(lefthook, lefthookMetadata),
 	addonCatalogEntry(vscode, vscodeMetadata),
 	addonCatalogEntry(githubCi, githubCiMetadata),
+	addonCatalogEntry(shared, sharedMetadata),
 	addonCatalogEntry(ui, uiMetadata),
 	addonCatalogEntry(tailwind, tailwindMetadata),
 	addonCatalogEntry(trpc, trpcMetadata),

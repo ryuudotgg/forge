@@ -1,16 +1,12 @@
 import { isCancel, log, select } from "@clack/prompts";
-import {
-	checkPackageManager,
-	type PackageManager,
-	packageManagers,
-} from "@ryuujs/core";
+import { checkPackageManager, packageManagers } from "@ryuujs/core";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, type PartialConfig } from "../types";
 
 const packageManagerOptions = Object.values(packageManagers).map(
 	(p) => p.displayName,
-) as PackageManager[];
+);
 
 export const packageManagerSchema = Schema.Literal(...packageManagerOptions);
 

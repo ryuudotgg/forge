@@ -109,7 +109,6 @@ function buildContributions(
 		"check:fix": "biome check --write .",
 		"check:ws": "sherif",
 		dev: "turbo run dev",
-		prepare: "lefthook install",
 		typecheck: "turbo run typecheck",
 	};
 

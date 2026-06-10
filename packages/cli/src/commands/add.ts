@@ -17,6 +17,7 @@ import {
 	listVisibleAddons,
 	loadAddonDefinition,
 	RegistryLoadError,
+	withAddon,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
@@ -220,7 +221,7 @@ export async function runAdd(
 
 	await applyInstalledPlan(
 		project.projectRoot,
-		project.config,
+		withAddon(project.config, addon.id),
 		mergeInstallRecord(project.manifest.installs, record, addon.targetMode),
 	);
 }

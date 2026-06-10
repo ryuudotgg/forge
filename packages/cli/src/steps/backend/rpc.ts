@@ -1,15 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
-import {
-	type RpcProvider,
-	rpcProviders,
-	webFrameworks,
-} from "@ryuujs/generators";
+import { rpcProviders, webFrameworks } from "@ryuujs/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
-const rpcIds = rpcProviders.ids as [RpcProvider, ...RpcProvider[]];
-export const rpcSchema = Schema.Literal(...rpcIds);
+export const rpcSchema = Schema.Literal(...rpcProviders.ids);
 
 export default defineStep<typeof rpcSchema.Type>({
 	id: "rpc",

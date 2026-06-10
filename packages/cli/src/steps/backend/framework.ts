@@ -1,11 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
-import { type Backend, backends } from "@ryuujs/generators";
+import { backends } from "@ryuujs/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
-const backendIds = backends.ids as [Backend, ...Backend[]];
-export const backendSchema = Schema.Literal(...backendIds);
+export const backendSchema = Schema.Literal(...backends.ids);
 
 export default defineStep<typeof backendSchema.Type>({
 	id: "backend",

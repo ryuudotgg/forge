@@ -55,4 +55,37 @@ describe("registry loader", () => {
 			expect.arrayContaining(["nextjs/base", "root", "pnpm", "tailwind"]),
 		);
 	});
+
+	it("gates opt-in tooling addons on the addons selection", async () => {
+		const baseConfig = {
+			name: "Acme",
+			packageManager: "pnpm",
+			path: ".",
+			platforms: ["web"],
+			runtime: "Node.js",
+			slug: "acme",
+			web: "nextjs",
+		} as const;
+
+		const optInIds = [
+			"commitlint",
+			"github-ci",
+			"lefthook",
+			"shared",
+			"vscode",
+		];
+
+		const withoutAddons = await Effect.runPromise(resolveBuiltins(baseConfig));
+		const withoutIds = withoutAddons.map((entry) => entry.id);
+		for (const id of optInIds) expect(withoutIds).not.toContain(id);
+
+		const withAddons = await Effect.runPromise(
+			resolveBuiltins({ ...baseConfig, addons: ["lefthook", "shared"] }),
+		);
+		const withIds = withAddons.map((entry) => entry.id);
+
+		expect(withIds).toEqual(expect.arrayContaining(["lefthook", "shared"]));
+		expect(withIds).not.toContain("vscode");
+		expect(withIds).not.toContain("github-ci");
+	});
 });

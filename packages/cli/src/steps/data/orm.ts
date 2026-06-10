@@ -1,11 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
-import { type Orm, orms } from "@ryuujs/generators";
+import { orms } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-const ormIds = orms.ids as [Orm, ...Orm[]];
-export const ormSchema = Schema.Literal(...ormIds);
+export const ormSchema = Schema.Literal(...orms.ids);
 
 const ormStep = defineStep<typeof ormSchema.Type>({
 	id: "orm",

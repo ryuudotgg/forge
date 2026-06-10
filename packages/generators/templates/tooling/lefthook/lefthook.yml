@@ -1,7 +1,3 @@
-commit-msg:
-  jobs:
-    - run: __COMMITLINT_COMMAND__ --edit {1}
-
 pre-commit:
   jobs:
     - run: __CHECK_FIX_COMMAND__

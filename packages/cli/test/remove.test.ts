@@ -64,6 +64,26 @@ describe("remove command", () => {
 		);
 	});
 
+	it("drops opt-in addons from the config when fully removed", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: { addons: ["commitlint", "lefthook"], slug: "acme" },
+				installs: [
+					{ definitionId: "commitlint", targets: [{ kind: "project" }] },
+					{ definitionId: "lefthook", targets: [{ kind: "project" }] },
+				],
+			}),
+		);
+
+		await runRemove("commitlint", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ addons: ["lefthook"], slug: "acme" },
+			[{ definitionId: "lefthook", targets: [{ kind: "project" }] }],
+		);
+	});
+
 	it("prompts for module targets only when an addon is installed in multiple modules", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({

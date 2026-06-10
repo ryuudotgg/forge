@@ -24,6 +24,7 @@ export type {
 	Linter,
 	MobileFramework,
 	NativeStyleFramework,
+	OptionalAddon,
 	Orm,
 	Platform,
 	RpcProvider,
@@ -37,14 +38,19 @@ export {
 	databaseProviders,
 	databases,
 	desktopFrameworks,
+	hasAddon,
 	linters,
 	mobileFrameworks,
 	nativeStyleFrameworks,
+	optionalAddons,
 	orms,
 	platforms,
+	recommendedAddons,
 	rpcProviders,
 	styleFrameworks,
 	webFrameworks,
+	withAddon,
+	withoutAddon,
 } from "./config";
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
 export { default as biome } from "./linters/biome";
@@ -60,6 +66,7 @@ export type {
 	LoadedAddonDefinition,
 	LoadedDefinitionRegistry,
 } from "./registry/types";
+export { default as shared } from "./shared";
 export { default as tailwind } from "./style/tailwind";
 export { default as gitignore } from "./tooling/gitignore";
 export { default as typescript } from "./tooling/typescript";

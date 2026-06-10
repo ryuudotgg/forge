@@ -9,6 +9,7 @@ import {
 } from "../utils/harness";
 
 const baseConfig = {
+	addons: ["commitlint", "github-ci", "lefthook"],
 	linter: "biome",
 	orm: "drizzle",
 	rpc: "trpc",
