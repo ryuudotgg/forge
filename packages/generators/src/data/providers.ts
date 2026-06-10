@@ -216,9 +216,38 @@ export interface DatabaseProviderEvidence {
 	readonly databaseUrl?: string;
 }
 
+function databaseHost(databaseUrl: string | undefined): string | undefined {
+	if (databaseUrl === undefined) return undefined;
+
+	try {
+		return new URL(databaseUrl).hostname;
+	} catch {
+		return undefined;
+	}
+}
+
+function hostBelongsTo(host: string | undefined, domain: string): boolean;
+function hostBelongsTo(
+	host: string | undefined,
+	domains: ReadonlyArray<string>,
+): boolean;
+function hostBelongsTo(
+	host: string | undefined,
+	domains: string | ReadonlyArray<string>,
+): boolean {
+	if (host === undefined) return false;
+
+	const candidates = typeof domains === "string" ? [domains] : domains;
+	return candidates.some(
+		(domain) => host === domain || host.endsWith(`.${domain}`),
+	);
+}
+
 export function detectDatabaseProvider(
 	evidence: DatabaseProviderEvidence,
 ): DatabaseProvider | undefined {
+	const host = databaseHost(evidence.databaseUrl);
+
 	if ("@neondatabase/serverless" in evidence.dependencies)
 		return evidence.clientSource?.includes("neonConfig.fetchEndpoint")
 			? "planetscale"
@@ -229,23 +258,22 @@ export function detectDatabaseProvider(
 	// The pg adapter is shared by every plain-postgres provider, so only the
 	// connection string can tell them apart.
 	if ("@prisma/adapter-pg" in evidence.dependencies) {
-		if (evidence.databaseUrl?.includes(".psdb.cloud")) return "planetscale";
-		if (evidence.databaseUrl?.includes(".supabase.")) return "supabase";
-		if (evidence.databaseUrl?.includes("db.prisma.io"))
-			return "prisma-postgres";
+		if (hostBelongsTo(host, "psdb.cloud")) return "planetscale";
+		if (hostBelongsTo(host, "db.prisma.io")) return "prisma-postgres";
+		if (hostBelongsTo(host, ["supabase.com", "supabase.co"])) return "supabase";
 	}
 
 	// postgres-js is Supabase's documented driver but also a general-purpose
 	// client, so a Supabase host has to confirm it.
 	if (
 		"postgres" in evidence.dependencies &&
-		evidence.databaseUrl?.includes(".supabase.")
+		hostBelongsTo(host, ["supabase.com", "supabase.co"])
 	)
 		return "supabase";
 
 	// Nile shares the pg driver with the local-postgres fallback, so only the
 	// connection string can tell them apart.
-	if (evidence.databaseUrl?.includes(".thenile.dev")) return "nile";
+	if (hostBelongsTo(host, "thenile.dev")) return "nile";
 
 	return undefined;
 }

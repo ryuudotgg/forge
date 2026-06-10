@@ -194,4 +194,37 @@ describe("detectDatabaseProvider", () => {
 			}),
 		).toBeUndefined();
 	});
+
+	it("only matches provider hosts on domain boundaries", () => {
+		const dependencies = { "@prisma/adapter-pg": "^7.8.0" };
+
+		expect(
+			detectDatabaseProvider({
+				dependencies,
+				databaseUrl: "postgres://user:password@db.prisma.io.evil.example/",
+			}),
+		).toBeUndefined();
+		expect(
+			detectDatabaseProvider({
+				dependencies,
+				databaseUrl: "postgres://user:password@evil.example/db.prisma.io",
+			}),
+		).toBeUndefined();
+		expect(
+			detectDatabaseProvider({
+				dependencies,
+				databaseUrl: "postgres://db.thenile.dev@evil.example/database",
+			}),
+		).toBeUndefined();
+		expect(
+			detectDatabaseProvider({
+				dependencies,
+				databaseUrl:
+					"postgres://user:password@pooler.supabase.com.evil.example/",
+			}),
+		).toBeUndefined();
+		expect(
+			detectDatabaseProvider({ dependencies, databaseUrl: "not a url" }),
+		).toBeUndefined();
+	});
 });
