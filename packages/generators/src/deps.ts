@@ -38,6 +38,7 @@ export const deps = {
 	drizzleZod: dep("drizzleZod"),
 	neonServerless: dep("neonServerless"),
 	pg: dep("pg"),
+	postgres: dep("postgres"),
 	typesPg: dep("typesPg"),
 	dotenvCli: dep("dotenvCli"),
 

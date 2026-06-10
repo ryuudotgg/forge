@@ -54,6 +54,18 @@ export {
 	withAddon,
 	withoutAddon,
 } from "./config";
+export type {
+	DatabaseProviderProfile,
+	DrizzleDriver,
+	DrizzleSupport,
+	ProviderEnvVar,
+} from "./data/providers";
+export {
+	detectDatabaseProvider,
+	localPostgres,
+	postgresProviderIds,
+	resolveDatabaseProvider,
+} from "./data/providers";
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
 export { default as biome } from "./linters/biome";
 export { default as drizzle } from "./orm/drizzle";

@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { databaseProviders } from "@ryuujs/generators";
+import { databaseProviders, postgresProviderIds } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
@@ -43,21 +43,8 @@ const databaseProviderStep = defineStep<DatabaseProvider>({
 			}
 
 			case "postgresql": {
-				const pgOptions: ProviderOption[] = [
-					"planetscale",
-					"neon",
-					"nile",
-					"supabase",
-					"prisma-postgres",
-					"none",
-				];
-
-				options = pgOptions.filter(
-					(option) => config.orm === "prisma" || option !== "prisma-postgres",
-				);
-
+				options = [...postgresProviderIds, "none"];
 				message = "Do you want a managed PostgreSQL database?";
-
 				break;
 			}
 

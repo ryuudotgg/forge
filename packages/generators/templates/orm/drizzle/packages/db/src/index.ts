@@ -1,4 +1,4 @@
 export { db } from "@__SLUG__/db/client";
 export * from "drizzle-orm";
-export type { NeonHttpDatabase } from "drizzle-orm/neon-http";
+export type { __DATABASE_TYPE__ } from "drizzle-orm/__DRIZZLE_DRIVER__";
 export * from "drizzle-orm/sql";

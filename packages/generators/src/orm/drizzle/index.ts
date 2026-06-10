@@ -10,6 +10,7 @@ import {
 	surfaceScripts,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
+import { resolveDatabaseProvider } from "../../data/providers";
 import { deps } from "../../deps";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
@@ -29,11 +30,15 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 
 		const pm = resolvePackageManager(config);
 		const dbPackage = { name: `@${slug}/db`, path: "../../packages/db" };
+		const provider = resolveDatabaseProvider(config);
 
 		const usesAuth = config.authentication === "better-auth";
 		const vars = {
 			SLUG: slug,
 			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
+			DATABASE_TYPE: provider.drizzle.databaseType,
+			DRIZZLE_DRIVER: provider.drizzle.driver,
+			KIT_DIALECT: provider.drizzle.kitDialect,
 		};
 
 		const render = (path: string) =>
@@ -77,7 +82,10 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 				exclude: ["node_modules"],
 			}),
 			surfaceDependencies(ensuredModuleTarget("db"), "packageJson", [
-				{ ...deps.neonServerless, type: "dependencies" },
+				...provider.runtimeDeps.map((key) => ({
+					...deps[key],
+					type: "dependencies" as const,
+				})),
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
 				{ ...deps.drizzleOrm, type: "dependencies" },
 				{ ...deps.drizzleZod, type: "dependencies" },
@@ -87,9 +95,11 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 					version: "workspace:*",
 					type: "devDependencies",
 				},
-				{ ...deps.pg, type: "devDependencies" },
+				...provider.devDeps.map((key) => ({
+					...deps[key],
+					type: "devDependencies" as const,
+				})),
 				{ ...deps.typesNode, type: "devDependencies" },
-				{ ...deps.typesPg, type: "devDependencies" },
 				{ ...deps.typescriptNativePreview, type: "devDependencies" },
 				{ ...deps.dotenvCli, type: "devDependencies" },
 				{ ...deps.drizzleKit, type: "devDependencies" },
@@ -109,7 +119,7 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			leafTextFile(
 				ensuredModuleTarget("db"),
 				"src/client.ts",
-				render("packages/db/src/client.ts"),
+				render(`packages/db/src/client.${provider.drizzle.clientTemplate}.ts`),
 			),
 			leafTextFile(
 				ensuredModuleTarget("db"),
@@ -161,19 +171,13 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			surfaceLines(
 				projectTarget(),
 				"rootEnv",
-				[
-					'DATABASE_URL="postgresql://user:password@localhost:5432/postgres?sslmode=disable"',
-					'DATABASE_DIRECT_URL="postgresql://user:password@localhost:5432/postgres?sslmode=disable"',
-				],
+				provider.envVars.map(({ name, value }) => `${name}="${value}"`),
 				{ section: "Database" },
 			),
 			surfaceLines(
 				projectTarget(),
 				"rootEnvExample",
-				[
-					'DATABASE_URL="postgresql://user:password@host:5432/database?sslmode=require"',
-					'DATABASE_DIRECT_URL="postgresql://user:password@host:5432/database?sslmode=require"',
-				],
+				provider.envVars.map(({ name, example }) => `${name}="${example}"`),
 				{ section: "Database" },
 			),
 

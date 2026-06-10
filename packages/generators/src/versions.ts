@@ -99,6 +99,11 @@ export const versions = {
 		version: "^8.21.0",
 		group: "Database",
 	},
+	postgres: {
+		name: "postgres",
+		version: "^3.4.9",
+		group: "Database",
+	},
 	dotenvCli: {
 		name: "dotenv-cli",
 		version: "^10.0.0",

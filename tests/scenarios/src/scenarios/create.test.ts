@@ -73,4 +73,23 @@ describe("create", () => {
 			).toBe(true);
 		});
 	}, 240_000);
+
+	it("rejects prisma configs before generating anything", async () => {
+		await withScenarioWorkspace("create-prisma", async (workspace) => {
+			await expect(
+				createProject(workspace, {
+					database: "postgresql",
+					linter: "biome",
+					orm: "prisma",
+					packageManager: "pnpm",
+					style: "tailwind",
+					web: "nextjs",
+				}),
+			).rejects.toThrow(/We don't support Prisma yet/);
+
+			expect(
+				await pathExists(join(workspace.projectRoot, "package.json")),
+			).toBe(false);
+		});
+	}, 120_000);
 });
