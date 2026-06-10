@@ -29,6 +29,7 @@ export type {
 	Platform,
 	RpcProvider,
 	StyleFramework,
+	UiLibrary,
 	WebFramework,
 } from "./config";
 export {
@@ -48,6 +49,7 @@ export {
 	recommendedAddons,
 	rpcProviders,
 	styleFrameworks,
+	uiLibraries,
 	webFrameworks,
 	withAddon,
 	withoutAddon,

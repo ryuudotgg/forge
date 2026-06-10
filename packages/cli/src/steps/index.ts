@@ -23,6 +23,7 @@ import packageManager from "./project/package-manager";
 import path from "./project/path";
 import runtime from "./project/runtime";
 import nativeStyleFramework from "./style/native-framework";
+import uiLibrary from "./style/ui-library";
 import webStyleFramework from "./style/web-framework";
 import summary from "./summary";
 import type { Step } from "./types";
@@ -55,6 +56,7 @@ export const steps: Step[] = [
 
 	webStyleFramework,
 	nativeStyleFramework,
+	uiLibrary,
 
 	addonSelect,
 
