@@ -99,11 +99,6 @@ export const versions = {
 		version: "^8.21.0",
 		group: "Database",
 	},
-	typesPg: {
-		name: "@types/pg",
-		version: "^8.20.0",
-		group: "Database",
-	},
 	dotenvCli: {
 		name: "dotenv-cli",
 		version: "^10.0.0",
@@ -147,6 +142,7 @@ export const versions = {
 	},
 
 	typesNode: { name: "@types/node", version: "^25.6.0", group: "Types" },
+	typesPg: { name: "@types/pg", version: "^8.20.0", group: "Types" },
 	typesReact: { name: "@types/react", version: "^19.2.14", group: "Types" },
 	typesReactDom: {
 		name: "@types/react-dom",
