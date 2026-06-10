@@ -72,7 +72,7 @@ describe("add command", () => {
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
-			{ slug: "acme", web: "nextjs" },
+			{ slug: "acme", style: "tailwind", web: "nextjs" },
 			[
 				{
 					definitionId: "tailwind",
@@ -93,7 +93,7 @@ describe("add command", () => {
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
-			{ slug: "acme", web: "nextjs" },
+			{ slug: "acme", style: "tailwind", web: "nextjs" },
 			[
 				{
 					definitionId: "tailwind",
@@ -101,6 +101,93 @@ describe("add command", () => {
 				},
 			],
 		);
+	});
+
+	it("sets the mapped config field when adding an orm", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+		await runAdd("prisma", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ orm: "prisma", slug: "acme", web: "nextjs" },
+			[
+				{
+					definitionId: "prisma",
+					targets: [{ kind: "project" }],
+				},
+			],
+		);
+	});
+
+	it("rejects adding a second orm instead of swapping", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					config: { orm: "drizzle", slug: "acme", web: "nextjs" },
+					installs: [
+						{ definitionId: "drizzle", targets: [{ kind: "project" }] },
+					],
+				}),
+			);
+
+			await expect(runAdd("prisma", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"This project already uses Drizzle.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("refuses to switch package managers", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+			await expect(runAdd("yarn", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't switch package managers yet.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("requires an orm before adding better-auth", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+			await expect(runAdd("better-auth", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"You need to add an ORM before you can use Better Auth.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
 	});
 
 	it("records opt-in addons on the config so contributions stay in sync", async () => {

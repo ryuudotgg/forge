@@ -20,12 +20,32 @@ import {
 	loadDefinitionRegistry,
 	type OptionalAddon,
 } from "@ryuujs/generators";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 function lifecycleUnavailableMessage(command: string) {
 	return `We couldn't run "${command}" here because this project hasn't been bootstrapped with the current Forge metadata yet.`;
+}
+
+async function runLifecycleEffect<A, E extends { readonly message: string }>(
+	effect: Effect.Effect<A, E>,
+	failureMessage: string,
+): Promise<A> {
+	const exit = await Effect.runPromiseExit(effect);
+	if (Exit.isSuccess(exit)) return exit.value;
+
+	const failure = Cause.failureOption(exit.cause);
+	if (Option.isSome(failure)) {
+		const detail = failure.value.message;
+		log.error(
+			`${failureMessage} ${detail.endsWith(".") ? detail.slice(0, -1) : detail}.`,
+		);
+
+		process.exit(1);
+	}
+
+	throw Cause.squash(exit.cause);
 }
 
 async function readJsonFile<T>(path: string): Promise<T | undefined> {
@@ -185,8 +205,9 @@ export async function loadManagedProject(
 	projectRoot: string,
 	command: string,
 ): Promise<ManagedProject> {
-	const isManagedProject = await Effect.runPromise(
+	const isManagedProject = await runLifecycleEffect(
 		State.isManagedProject(projectRoot).pipe(Effect.provide(coreLayer)),
+		"We couldn't read this project's Forge metadata.",
 	);
 
 	if (!isManagedProject) {
@@ -195,11 +216,13 @@ export async function loadManagedProject(
 	}
 
 	const [manifest, modules] = await Promise.all([
-		Effect.runPromise(
+		runLifecycleEffect(
 			State.readManifest(projectRoot).pipe(Effect.provide(coreLayer)),
+			"We couldn't read this project's Forge metadata.",
 		),
-		Effect.runPromise(
+		runLifecycleEffect(
 			ConfigStore.discover(projectRoot).pipe(Effect.provide(coreLayer)),
+			"We couldn't read this project's modules.",
 		),
 	]);
 
@@ -217,7 +240,7 @@ export async function loadManagedProject(
 
 	const normalizedManifest = needsNormalization
 		? (
-				await Effect.runPromise(
+				await runLifecycleEffect(
 					Effect.flatMap(Planner, (planner) =>
 						Effect.sync(() => loadDefinitionRegistry()).pipe(
 							Effect.flatMap((loadedRegistry) =>
@@ -230,6 +253,7 @@ export async function loadManagedProject(
 							),
 						),
 					).pipe(Effect.provide(coreLayer)),
+					"We couldn't plan this change.",
 				)
 			).manifest
 		: manifest;
@@ -248,7 +272,7 @@ export async function applyInstalledPlan(
 	installs: ReadonlyArray<InstallRecord>,
 ) {
 	const loadedRegistry = await loadDefinitionRegistry();
-	const plan = await Effect.runPromise(
+	const plan = await runLifecycleEffect(
 		Effect.flatMap(Planner, (planner) =>
 			planner.planInstalled(
 				projectRoot,
@@ -257,9 +281,10 @@ export async function applyInstalledPlan(
 				loadedRegistry.registry,
 			),
 		).pipe(Effect.provide(coreLayer)),
+		"We couldn't plan this change.",
 	);
 
-	await Effect.runPromise(
+	await runLifecycleEffect(
 		Apply.applyPlan(projectRoot, {
 			lockfile: plan.lockfile,
 			manifest: plan.manifest,
@@ -270,5 +295,6 @@ export async function applyInstalledPlan(
 				path: write.path,
 			})),
 		}).pipe(Effect.provide(coreLayer)),
+		"We couldn't apply this change.",
 	);
 }

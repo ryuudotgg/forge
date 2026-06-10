@@ -33,13 +33,17 @@ export type {
 	WebFramework,
 } from "./config";
 export {
+	addonConfigBindings,
 	authenticationProviders,
 	backends,
 	catalogs,
+	configWithInstall,
+	configWithoutInstall,
 	databaseProviders,
 	databases,
 	desktopFrameworks,
 	hasAddon,
+	installConflict,
 	linters,
 	mobileFrameworks,
 	nativeStyleFrameworks,
@@ -74,11 +78,13 @@ export { default as drizzle } from "./orm/drizzle";
 export { default as prisma } from "./orm/prisma";
 export {
 	builtins,
+	findRemovalBlockers,
 	loadAddonDefinition,
 	loadDefinitionRegistry,
 	RegistryLoadError,
 	resolveBuiltins,
 } from "./registry";
+export type { RemovalBlockers } from "./registry/loader";
 export type {
 	LoadedAddonDefinition,
 	LoadedDefinitionRegistry,

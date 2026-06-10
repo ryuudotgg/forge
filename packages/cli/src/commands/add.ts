@@ -13,12 +13,13 @@ import {
 } from "@ryuujs/core";
 import {
 	type AddonCatalogEntry,
+	configWithInstall,
 	type ForgeConfig,
+	installConflict,
 	listVisibleAddons,
 	loadAddonDefinition,
 	orms,
 	RegistryLoadError,
-	withAddon,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
@@ -158,8 +159,25 @@ export async function runAdd(
 		throw error;
 	}
 
+	if (addon.category === "packageManager") {
+		log.error("We can't switch package managers yet.");
+		process.exit(1);
+	}
+
 	if (addon.id === "better-auth" && !orms.normalize(project.config.orm)) {
 		log.error("You need to add an ORM before you can use Better Auth.");
+		process.exit(1);
+	}
+
+	const conflictId = installConflict(
+		addon.id,
+		project.manifest.installs.map((entry) => entry.definitionId),
+	);
+
+	if (conflictId !== undefined) {
+		const conflict = loadAddonDefinition(conflictId).addon;
+		log.error(`This project already uses ${conflict.name}.`);
+
 		process.exit(1);
 	}
 
@@ -227,7 +245,7 @@ export async function runAdd(
 
 	await applyInstalledPlan(
 		project.projectRoot,
-		withAddon(project.config, addon.id),
+		configWithInstall(project.config, addon.id),
 		mergeInstallRecord(project.manifest.installs, record, addon.targetMode),
 	);
 }

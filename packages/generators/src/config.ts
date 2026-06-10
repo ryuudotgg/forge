@@ -186,6 +186,58 @@ export function withoutAddon(config: ForgeConfig, addon: string): ForgeConfig {
 	};
 }
 
+export const addonConfigBindings: Readonly<
+	Record<string, Partial<ForgeConfig>>
+> = {
+	"better-auth": { authentication: "better-auth" },
+	biome: { linter: "biome" },
+	drizzle: { orm: "drizzle" },
+	prisma: { orm: "prisma" },
+	tailwind: { style: "tailwind" },
+	trpc: { rpc: "trpc" },
+};
+
+export function configWithInstall(
+	config: ForgeConfig,
+	addonId: string,
+): ForgeConfig {
+	const binding = addonConfigBindings[addonId];
+	if (binding === undefined) return withAddon(config, addonId);
+
+	return { ...config, ...binding };
+}
+
+export function configWithoutInstall(
+	config: ForgeConfig,
+	addonId: string,
+): ForgeConfig {
+	const binding = addonConfigBindings[addonId];
+	if (binding === undefined) return withoutAddon(config, addonId);
+
+	const next = { ...config };
+	for (const [field, value] of Object.entries(binding))
+		if (next[field] === value) delete next[field];
+
+	return next;
+}
+
+export function installConflict(
+	addonId: string,
+	installedIds: ReadonlyArray<string>,
+): string | undefined {
+	const binding = addonConfigBindings[addonId];
+	if (binding === undefined) return undefined;
+
+	const fields = Object.keys(binding);
+
+	return Object.entries(addonConfigBindings).find(
+		([id, other]) =>
+			id !== addonId &&
+			installedIds.includes(id) &&
+			Object.keys(other).some((field) => fields.includes(field)),
+	)?.[0];
+}
+
 export interface ForgeConfig {
 	readonly [key: string]: unknown;
 	readonly name?: string;

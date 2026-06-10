@@ -1,14 +1,16 @@
 import { intro, isCancel, log, multiselect, select } from "@clack/prompts";
 import type { InstallRecord } from "@ryuujs/core";
 import {
+	configWithoutInstall,
+	findRemovalBlockers,
 	getCatalogEntry,
 	listVisibleAddons,
 	loadAddonDefinition,
 	RegistryLoadError,
-	withoutAddon,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
+import { listAnd } from "./shared";
 
 function moduleLabel(
 	moduleId: string,
@@ -101,6 +103,11 @@ export async function runRemove(
 		throw error;
 	}
 
+	if (addon.category === "packageManager") {
+		log.error("We can't remove your package manager setup.");
+		process.exit(1);
+	}
+
 	let nextInstalls = project.manifest.installs;
 
 	if (install.targets.some((target) => target.kind === "project"))
@@ -140,8 +147,36 @@ export async function runRemove(
 		(entry) => entry.definitionId === resolvedAddonId,
 	);
 	const nextConfig = removedEverywhere
-		? withoutAddon(project.config, resolvedAddonId)
+		? configWithoutInstall(project.config, resolvedAddonId)
 		: project.config;
+
+	if (removedEverywhere) {
+		const blockers = findRemovalBlockers(
+			resolvedAddonId,
+			nextConfig,
+			nextInstalls.map((entry) => entry.definitionId),
+			project.modules.map((module) => module.template),
+		);
+
+		const label = addon.category === "orm" ? "the ORM" : addon.name;
+
+		if (blockers.frameworks.length > 0) {
+			log.error(
+				`We can't remove ${label} because your ${listAnd.format(blockers.frameworks)} app needs it.`,
+			);
+
+			process.exit(1);
+		}
+
+		if (blockers.dependents.length > 0) {
+			const names = listAnd.format(
+				blockers.dependents.map((dependent) => dependent.name),
+			);
+
+			log.error(`We can't remove ${label} until you remove ${names}.`);
+			process.exit(1);
+		}
+	}
 
 	await applyInstalledPlan(project.projectRoot, nextConfig, nextInstalls);
 }

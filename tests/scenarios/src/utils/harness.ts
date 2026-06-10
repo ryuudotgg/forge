@@ -120,7 +120,7 @@ export async function runCommand(
 	});
 }
 
-export async function runForge(
+export async function tryRunForge(
 	cwd: string,
 	args: ReadonlyArray<string>,
 	options?: {
@@ -129,7 +129,7 @@ export async function runForge(
 		readonly workspaceRoot?: string;
 	},
 ) {
-	const result = await runCommand("node", [forgeCliPath, ...args], {
+	return await runCommand("node", [forgeCliPath, ...args], {
 		cwd,
 		env: {
 			CI: "true",
@@ -141,6 +141,18 @@ export async function runForge(
 		},
 		input: options?.input,
 	});
+}
+
+export async function runForge(
+	cwd: string,
+	args: ReadonlyArray<string>,
+	options?: {
+		readonly env?: NodeJS.ProcessEnv;
+		readonly input?: string;
+		readonly workspaceRoot?: string;
+	},
+) {
+	const result = await tryRunForge(cwd, args, options);
 
 	if (result.exitCode !== 0)
 		throw new Error(
