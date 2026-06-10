@@ -37,6 +37,8 @@ export const deps = {
 	drizzleKit: dep("drizzleKit"),
 	drizzleZod: dep("drizzleZod"),
 	neonServerless: dep("neonServerless"),
+	pg: dep("pg"),
+	typesPg: dep("typesPg"),
 	dotenvCli: dep("dotenvCli"),
 
 	t3OssEnvCore: dep("t3OssEnvCore"),
