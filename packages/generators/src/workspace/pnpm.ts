@@ -58,9 +58,16 @@ function buildWorkspaceYaml(config: ForgeConfig): string {
 
 	lines.push("");
 	lines.push("allowBuilds:");
+
+	if (config.orm === "prisma")
+		lines.push(`  ${quote("@prisma/engines")}: true`);
+
 	lines.push("  esbuild: true");
 	lines.push("  lefthook: true");
 	lines.push("  msw: true");
+
+	if (config.orm === "prisma") lines.push("  prisma: true");
+
 	lines.push("  sharp: true");
 	lines.push("");
 

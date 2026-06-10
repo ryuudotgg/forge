@@ -16,6 +16,7 @@ import {
 	type ForgeConfig,
 	listVisibleAddons,
 	loadAddonDefinition,
+	orms,
 	RegistryLoadError,
 	withAddon,
 } from "@ryuujs/generators";
@@ -155,6 +156,11 @@ export async function runAdd(
 		}
 
 		throw error;
+	}
+
+	if (addon.id === "better-auth" && !orms.normalize(project.config.orm)) {
+		log.error("You need to add an ORM before you can use Better Auth.");
+		process.exit(1);
 	}
 
 	let record: InstallRecord;

@@ -114,7 +114,7 @@ function buildContributions(
 	};
 
 	const dbEnv =
-		config.orm === "drizzle"
+		config.orm !== undefined
 			? resolveDatabaseProvider(config).envVars.map(({ name }) => name)
 			: [];
 

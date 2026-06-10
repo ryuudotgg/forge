@@ -16,6 +16,7 @@ const cookieDomain = normalizeCookieDomain(env.AUTH_COOKIE_DOMAIN);
 
 const config = {
   secret: authSecret,
+  baseURL: normalizeOrigin(env.APP_ORIGIN),
 
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -26,8 +27,6 @@ const config = {
       verification: verifications,
     },
   }),
-
-  baseURL: normalizeOrigin(env.APP_ORIGIN),
 
   plugins: [nextCookies()],
 

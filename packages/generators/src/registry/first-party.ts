@@ -9,6 +9,7 @@ import nextjsBaseTemplate, {
 } from "../frameworks/nextjs";
 import biome, { biomeMetadata } from "../linters/biome";
 import drizzle, { drizzleMetadata } from "../orm/drizzle";
+import prisma, { prismaMetadata } from "../orm/prisma";
 import shared, { sharedMetadata } from "../shared";
 import tailwind, { tailwindMetadata } from "../style/tailwind";
 import commitlint, { commitlintMetadata } from "../tooling/commitlint";
@@ -47,6 +48,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		tailwind,
 		trpc,
 		drizzle,
+		prisma,
 		betterAuth,
 	],
 });
@@ -69,6 +71,7 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(tailwind, tailwindMetadata),
 	addonCatalogEntry(trpc, trpcMetadata),
 	addonCatalogEntry(drizzle, drizzleMetadata),
+	addonCatalogEntry(prisma, prismaMetadata),
 	addonCatalogEntry(betterAuth, betterAuthMetadata),
 ] as const satisfies ReadonlyArray<CatalogEntry>;
 

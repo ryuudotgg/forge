@@ -1,6 +1,12 @@
+import { log } from "@clack/prompts";
 import { NodeContext } from "@effect/platform-node";
 import { Apply, CoreLive, Planner } from "@ryuujs/core";
-import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
+import {
+	authenticationProviders,
+	type ForgeConfig,
+	loadDefinitionRegistry,
+	orms,
+} from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
 import type { PartialConfig } from "./types";
 import { defineStep, SKIP } from "./types";
@@ -14,6 +20,15 @@ const generateStep = defineStep({
 	shouldRun: () => true,
 
 	async execute(config: PartialConfig) {
+		if (
+			authenticationProviders.normalize(config.authentication) ===
+				"better-auth" &&
+			!orms.normalize(config.orm)
+		) {
+			log.error("You need to add an ORM before you can use Better Auth.");
+			process.exit(1);
+		}
+
 		const projectRoot = String(config.path ?? ".");
 		const forgeConfig: ForgeConfig = config;
 

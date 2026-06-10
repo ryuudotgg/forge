@@ -21,6 +21,8 @@ import {
 import { readJson, withTempDir, writeJson } from "./harness";
 
 interface TestConfig extends Record<string, unknown> {
+	readonly auth?: boolean;
+	readonly orm?: "a" | "b";
 	readonly ui?: boolean;
 	readonly web?: "nextjs";
 }
@@ -92,6 +94,65 @@ function moduleBucketId(bucket: RenderBucket) {
 	return bucket.kind === "module" ? bucket.moduleId : undefined;
 }
 
+function alternativesRegistry() {
+	const ormAddon = (id: "orm-a" | "orm-b", orm: "a" | "b") =>
+		defineAddon<TestConfig>({
+			id,
+			name: `ORM ${orm.toUpperCase()}`,
+			version: "0.1.0",
+			category: "orm",
+			exclusive: true,
+			targetMode: "single",
+			when: (config) => config.orm === orm,
+			contribute: () => [
+				ensurePackageModule("db", "packages/db", {
+					packageType: "library",
+					template: { id: "db", version: 1 },
+					capabilities: ["db"],
+					slots: {},
+				}),
+				leafTextFile(
+					ensuredModuleTarget("db"),
+					"src/client.ts",
+					`export const orm = "${orm}";\n`,
+				),
+			],
+		});
+
+	const auth = defineAddon<TestConfig>({
+		id: "auth",
+		name: "Auth",
+		version: "0.1.0",
+		category: "auth",
+		exclusive: true,
+		dependencies: [
+			{ id: "orm-a", type: "addon" },
+			{ id: "orm-b", type: "addon" },
+		],
+		targetMode: "single",
+		when: (config) => config.auth === true,
+		contribute: () => [
+			ensurePackageModule("auth", "packages/auth", {
+				packageType: "library",
+				template: { id: "auth", version: 1 },
+				capabilities: ["auth"],
+				slots: {},
+			}),
+			leafTextFile(
+				ensuredModuleTarget("auth"),
+				"src/index.ts",
+				"export const auth = true;\n",
+			),
+		],
+	});
+
+	return defineRegistry({
+		frameworks: [],
+		templates: [],
+		addons: [ormAddon("orm-a", "a"), ormAddon("orm-b", "b"), auth],
+	});
+}
+
 describe("planner", () => {
 	it("reconstructs legacy empty installs and retracts inactive ensured modules", async () => {
 		await withTempDir("planner-legacy-installs", async (directory) => {
@@ -161,6 +222,59 @@ describe("planner", () => {
 					(write) => moduleBucketId(write.target) === uiModuleId,
 				),
 			).toBe(false);
+		});
+	});
+
+	it("activates only the dependency alternative the config selects", async () => {
+		await withTempDir("planner-dependency-alternatives", async (directory) => {
+			const plan = await Effect.runPromise(
+				Effect.flatMap(Planner, (planner) =>
+					planner.planCreate(
+						directory,
+						{ auth: true, orm: "a" },
+						alternativesRegistry(),
+					),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			const client = plan.writes.find(
+				(write) => write.path === "packages/db/src/client.ts",
+			);
+
+			expect(client?.content).toBe('export const orm = "a";\n');
+			expect(
+				plan.writes.some(
+					(write) => write.path === "packages/auth/src/index.ts",
+				),
+			).toBe(true);
+		});
+	});
+
+	it("fails when no dependency alternative is active", async () => {
+		await withTempDir("planner-dependency-inactive", async (directory) => {
+			await expect(
+				Effect.runPromiseExit(
+					Effect.flatMap(Planner, (planner) =>
+						planner.planCreate(
+							directory,
+							{ auth: true },
+							alternativesRegistry(),
+						),
+					).pipe(Effect.provide(coreLayer)),
+				),
+			).resolves.toSatisfy((exit) => {
+				if (!Exit.isFailure(exit)) return false;
+
+				const failure = Cause.failureOption(exit.cause);
+				if (Option.isNone(failure)) return false;
+
+				const error = failure.value as PlannerError;
+
+				return (
+					error._tag === "PlannerError" &&
+					error.message === "Definition Dependency Inactive"
+				);
+			});
 		});
 	});
 

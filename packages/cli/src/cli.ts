@@ -111,7 +111,7 @@ export const options = {
 
 	orm: {
 		type: "string",
-		description: "Drizzle ORM",
+		description: "Drizzle ORM, Prisma",
 		configKey: "orm",
 	},
 

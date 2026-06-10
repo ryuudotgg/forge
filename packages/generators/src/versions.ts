@@ -94,6 +94,26 @@ export const versions = {
 		version: "^1.0.2",
 		group: "Database",
 	},
+	prisma: {
+		name: "prisma",
+		version: "^7.8.0",
+		group: "Database",
+	},
+	prismaClient: {
+		name: "@prisma/client",
+		version: "^7.8.0",
+		group: "Database",
+	},
+	prismaAdapterNeon: {
+		name: "@prisma/adapter-neon",
+		version: "^7.8.0",
+		group: "Database",
+	},
+	prismaAdapterPg: {
+		name: "@prisma/adapter-pg",
+		version: "^7.8.0",
+		group: "Database",
+	},
 	pg: {
 		name: "pg",
 		version: "^8.21.0",

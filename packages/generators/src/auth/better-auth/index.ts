@@ -9,6 +9,7 @@ import {
 	surfaceLines,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
+import { resolveDatabaseProvider } from "../../data/providers";
 import { deps } from "../../deps";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
@@ -23,16 +24,24 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 	dependencies: [
 		{ id: "nextjs/base", type: "template" },
 		{ id: "drizzle", type: "addon" },
+		{ id: "prisma", type: "addon" },
 	],
 	targetMode: "single",
 	when: (config) => config.authentication === "better-auth",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
 
+		if (config.orm === undefined)
+			throw new Error("You need to add an ORM before you can use Better Auth.");
+
 		const pm = resolvePackageManager(config);
 		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
 
-		const vars = { SLUG: slug };
+		const vars = {
+			SLUG: slug,
+			DATASOURCE_PROVIDER:
+				resolveDatabaseProvider(config).prisma.datasourceProvider,
+		};
 		const render = (path: string) =>
 			interpolate(readTemplate(`auth/better-auth/${path}`), vars);
 
@@ -90,7 +99,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 			leafTextFile(
 				ensuredModuleTarget("auth"),
 				"src/index.ts",
-				render("packages/auth/src/index.ts"),
+				render(`packages/auth/src/index.${config.orm}.ts`),
 			),
 			leafTextFile(
 				ensuredModuleTarget("auth"),

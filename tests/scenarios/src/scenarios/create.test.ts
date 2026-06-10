@@ -74,18 +74,17 @@ describe("create", () => {
 		});
 	}, 240_000);
 
-	it("rejects prisma configs before generating anything", async () => {
-		await withScenarioWorkspace("create-prisma", async (workspace) => {
+	it("rejects better auth configs without an orm before generating anything", async () => {
+		await withScenarioWorkspace("create-auth-no-orm", async (workspace) => {
 			await expect(
 				createProject(workspace, {
-					database: "postgresql",
+					authentication: "better-auth",
 					linter: "biome",
-					orm: "prisma",
 					packageManager: "pnpm",
 					style: "tailwind",
 					web: "nextjs",
 				}),
-			).rejects.toThrow(/We don't support Prisma yet/);
+			).rejects.toThrow(/You need to add an ORM/);
 
 			expect(
 				await pathExists(join(workspace.projectRoot, "package.json")),

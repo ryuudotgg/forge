@@ -1,0 +1,23 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "__DATASOURCE_PROVIDER__"
+}
+
+model User {
+  id            String   @id
+
+  name          String
+  image         String?
+
+  email         String   @unique
+  emailVerified Boolean  @default(false) @map("email_verified")
+
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("users")
+}

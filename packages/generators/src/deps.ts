@@ -37,9 +37,16 @@ export const deps = {
 	drizzleKit: dep("drizzleKit"),
 	drizzleZod: dep("drizzleZod"),
 	neonServerless: dep("neonServerless"),
+
+	prisma: dep("prisma"),
+	prismaClient: dep("prismaClient"),
+	prismaAdapterNeon: dep("prismaAdapterNeon"),
+	prismaAdapterPg: dep("prismaAdapterPg"),
+
 	pg: dep("pg"),
 	postgres: dep("postgres"),
 	typesPg: dep("typesPg"),
+
 	dotenvCli: dep("dotenvCli"),
 
 	t3OssEnvCore: dep("t3OssEnvCore"),
