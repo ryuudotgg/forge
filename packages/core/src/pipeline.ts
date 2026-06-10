@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect, Layer } from "effect";
+import { dependencyFormatFor } from "./environment";
 import {
 	CyclicDependencyError,
 	ExclusiveCategoryError,
@@ -168,6 +169,7 @@ export class Pipeline extends Effect.Service<Pipeline>()("Pipeline", {
 
 			const resolved = yield* vfsService.resolve(vfs, {
 				onConflict: "accept-incoming",
+				dependencyFormat: dependencyFormatFor(config.packageManager),
 			});
 
 			yield* applyResolvedToDisk(resolved, projectRoot);

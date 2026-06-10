@@ -111,11 +111,18 @@ export type {
 	UserDeleted,
 	UserModified,
 } from "./conflicts";
-export type { EnvironmentCheck, PackageManager, Runtime } from "./environment";
+export type {
+	EnvironmentCheck,
+	PackageManager,
+	PackageManagerId,
+	Runtime,
+} from "./environment";
 export {
 	checkPackageManager,
 	checkRuntime,
+	dependencyFormatFor,
 	Environment,
+	isPackageManager,
 	packageManagerCommand,
 	packageManagers,
 	runtimeCommand,
@@ -159,11 +166,16 @@ export type {
 	CreateFile,
 	CreateJson,
 	Dependency,
+	DependencyFormat,
 	FileOperation,
 	FilePath,
 	MergeJson,
 } from "./operations";
-export { filePath } from "./operations";
+export {
+	defaultDependencyFormat,
+	dependencyValue,
+	filePath,
+} from "./operations";
 export { hashContent, Pipeline, run, topologicalSort } from "./pipeline";
 export type { PlannedFile, ProjectPlan } from "./planner";
 export { Planner } from "./planner";

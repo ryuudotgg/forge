@@ -1,7 +1,8 @@
 import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
+import { pmRun, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
-import { readTemplate } from "../template";
+import { interpolate, readTemplate } from "../template";
 
 const githubCi = defineAddon<ForgeConfig, "github-ci">({
 	id: "github-ci",
@@ -13,17 +14,22 @@ const githubCi = defineAddon<ForgeConfig, "github-ci">({
 	when: () => true,
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
+		const pm = resolvePackageManager(config);
 
 		return [
 			leafTextFile(
 				projectTarget(),
 				".github/workflows/ci.yml",
-				readTemplate("tooling/github/ci.yml"),
+				interpolate(readTemplate("tooling/github/ci.yml"), {
+					CHECK_COMMAND: pmRun(pm, "check"),
+					CHECK_WS_COMMAND: pmRun(pm, "check:ws"),
+					TYPECHECK_COMMAND: pmRun(pm, "typecheck"),
+				}),
 			),
 			leafTextFile(
 				projectTarget(),
 				"tooling/github/setup/action.yml",
-				readTemplate("tooling/github/setup-action.yml"),
+				readTemplate(`tooling/github/setup-action.${pm}.yml`),
 			),
 			leafTextFile(
 				projectTarget(),

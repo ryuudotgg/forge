@@ -13,6 +13,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
@@ -72,6 +73,8 @@ export const nextjsBaseTemplateMetadata = {
 function buildContributions(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";
 	const projectName = config.name ?? slug;
+
+	const pm = resolvePackageManager(config);
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
 	const transpilePackages = [`@${slug}/ui`];
@@ -186,13 +189,13 @@ function buildContributions(config: ForgeConfig) {
 		surfaceJson(ensuredModuleTarget("web"), "packageJson", webPackageJson),
 		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", appDeps),
 		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-			build: "pnpm with-env next build",
-			dev: "pnpm with-env next dev",
-			postinstall: "pnpm typegen",
-			pretypecheck: "pnpm with-env next typegen",
-			start: "pnpm with-env next start",
+			build: pmRun(pm, "with-env", "next build"),
+			dev: pmRun(pm, "with-env", "next dev"),
+			postinstall: pmRun(pm, "typegen"),
+			pretypecheck: pmRun(pm, "with-env", "next typegen"),
+			start: pmRun(pm, "with-env", "next start"),
 			typecheck: "tsgo --noEmit",
-			typegen: "pnpm with-env next typegen",
+			typegen: pmRun(pm, "with-env", "next typegen"),
 			"with-env": "dotenv -e ../../.env --",
 		}),
 

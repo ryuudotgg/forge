@@ -32,10 +32,10 @@ jobs:
       - uses: ./tooling/github/setup
 
       - name: Format & Lint
-        run: pnpm check
+        run: __CHECK_COMMAND__
 
       - name: Lint Workspace
-        run: pnpm check:ws
+        run: __CHECK_WS_COMMAND__
 
   typecheck:
     name: Type Check
@@ -48,4 +48,4 @@ jobs:
       - uses: ./tooling/github/setup
 
       - name: Type Check
-        run: pnpm typecheck
+        run: __TYPECHECK_COMMAND__

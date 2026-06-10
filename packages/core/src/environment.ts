@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import { CommandProbe } from "./command";
+import { type DependencyFormat, defaultDependencyFormat } from "./operations";
 
 export const runtimes = {
 	node: { displayName: "Node.js", minimumMajor: 22 },
@@ -21,11 +22,11 @@ export function runtimeCommand(rt: Runtime): string {
 export const packageManagers = {
 	pnpm: { displayName: "pnpm", minimumMajor: 10 },
 	npm: { displayName: "npm", minimumMajor: 10 },
-	yarn: { displayName: "Yarn", minimumMajor: 1 },
+	yarn: { displayName: "Yarn", minimumMajor: 4 },
 	bun: { displayName: "Bun", minimumMajor: 1 },
 } as const;
 
-type PackageManagerId = keyof typeof packageManagers;
+export type PackageManagerId = keyof typeof packageManagers;
 export type PackageManager =
 	(typeof packageManagers)[PackageManagerId]["displayName"];
 
@@ -36,8 +37,22 @@ const pmCommandMap = Object.fromEntries(
 	]),
 ) as Record<PackageManager, PackageManagerId>;
 
-export function packageManagerCommand(pm: PackageManager): string {
+export function packageManagerCommand(pm: PackageManager): PackageManagerId {
 	return pmCommandMap[pm];
+}
+
+export function isPackageManager(value: unknown): value is PackageManager {
+	return Object.values(packageManagers).some((pm) => pm.displayName === value);
+}
+
+export function dependencyFormatFor(packageManager: unknown): DependencyFormat {
+	if (!isPackageManager(packageManager)) return defaultDependencyFormat;
+
+	const id = pmCommandMap[packageManager];
+	return {
+		useCatalog: id === "pnpm",
+		useWorkspaceProtocol: id !== "npm",
+	};
 }
 
 export interface EnvironmentCheck {

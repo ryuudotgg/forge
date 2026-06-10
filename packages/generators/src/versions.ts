@@ -147,7 +147,11 @@ export const versions = {
 export type VersionKey = keyof typeof versions;
 
 export function catalogRef(key: VersionKey) {
-	return { name: versions[key].name, version: "", catalog: "" };
+	return {
+		name: versions[key].name,
+		version: versions[key].version,
+		catalog: "",
+	};
 }
 
 const groupOrder: ReadonlyArray<CatalogGroup> = [

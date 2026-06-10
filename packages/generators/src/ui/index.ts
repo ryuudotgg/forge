@@ -8,6 +8,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
+import { pmDlx, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { interpolate, readTemplate } from "../template";
 
@@ -22,7 +23,10 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 	when: (config) => !!config.web,
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
+
+		const pm = resolvePackageManager(config);
 		const useTailwind = config.style === "tailwind";
+
 		const vars = { SLUG: slug };
 		const render = (path: string) =>
 			interpolate(readTemplate(`ui/${path}`), vars);
@@ -82,7 +86,7 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 			},
 			scripts: {
 				typecheck: "tsgo --noEmit",
-				"ui-add": "pnpm dlx shadcn@latest add",
+				"ui-add": pmDlx(pm, "shadcn@latest add"),
 			},
 		};
 

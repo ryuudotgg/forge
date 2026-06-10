@@ -1,8 +1,8 @@
 commit-msg:
   jobs:
-    - run: pnpm exec commitlint --edit {1}
+    - run: __COMMITLINT_COMMAND__ --edit {1}
 
 pre-commit:
   jobs:
-    - run: pnpm check:fix --staged --no-errors-on-unmatched
+    - run: __CHECK_FIX_COMMAND__
     - run: git update-index --again

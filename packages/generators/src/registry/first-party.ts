@@ -19,6 +19,7 @@ import vscode, { vscodeMetadata } from "../tooling/vscode";
 import ui, { uiMetadata } from "../ui";
 import pnpm, { pnpmMetadata } from "../workspace/pnpm";
 import root, { rootMetadata } from "../workspace/root";
+import yarn, { yarnMetadata } from "../workspace/yarn";
 import {
 	addonCatalogEntry,
 	type CatalogEntry,
@@ -32,6 +33,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 	addons: [
 		root,
 		pnpm,
+		yarn,
 		typescript,
 		biome,
 		gitignore,
@@ -52,6 +54,7 @@ export const firstPartyCatalog = [
 	templateCatalogEntry(nextjsBaseTemplate, nextjsBaseTemplateMetadata),
 	addonCatalogEntry(root, rootMetadata),
 	addonCatalogEntry(pnpm, pnpmMetadata),
+	addonCatalogEntry(yarn, yarnMetadata),
 	addonCatalogEntry(typescript, typescriptMetadata),
 	addonCatalogEntry(biome, biomeMetadata),
 	addonCatalogEntry(gitignore, gitignoreMetadata),

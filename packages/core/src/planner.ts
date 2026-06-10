@@ -14,6 +14,7 @@ import {
 	type DiscoveredModule,
 	type ModuleId,
 } from "./config";
+import { dependencyFormatFor } from "./environment";
 import { AggregateConflictError, GeneratorError, PlannerError } from "./errors";
 import { formatJson } from "./format/json";
 import { type FileOperation, filePath } from "./operations";
@@ -959,6 +960,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			const renderedSurfaces = yield* renderer.render(
 				managedInputs,
 				modules.map((module) => ({ ...module.config, root: module.root })),
+				dependencyFormatFor(intent.config.packageManager),
 			);
 			const leafFiles = yield* collectLeafFiles(
 				evaluated,

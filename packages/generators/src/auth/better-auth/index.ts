@@ -10,6 +10,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 
@@ -27,6 +28,10 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 	when: (config) => config.authentication === "better-auth",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
+
+		const pm = resolvePackageManager(config);
+		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
+
 		const vars = { SLUG: slug };
 		const render = (path: string) =>
 			interpolate(readTemplate(`auth/better-auth/${path}`), vars);
@@ -110,7 +115,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 				projectTarget(),
 				"rootEnv",
 				[
-					"# @use pnpm dlx @better-auth/cli secret",
+					`# @use ${secretCommand}`,
 					'AUTH_SECRET="change-me-locally-or-generate-with-the-cli-above"',
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
@@ -128,7 +133,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 				projectTarget(),
 				"rootEnvExample",
 				[
-					"# @use pnpm dlx @better-auth/cli secret",
+					`# @use ${secretCommand}`,
 					'AUTH_SECRET=""',
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
