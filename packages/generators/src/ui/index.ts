@@ -26,7 +26,10 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 
 		const pm = resolvePackageManager(config);
 		const useTailwind = config.style === "tailwind";
-		const useBaseUi = config.uiLibrary !== "radix";
+
+		const uiLibrary = config.uiLibrary ?? "base-ui";
+		const useBaseUi = uiLibrary === "base-ui";
+
 		const shadcnStyle = useBaseUi ? "base-vega" : "radix-vega";
 
 		const vars = { SLUG: slug };
