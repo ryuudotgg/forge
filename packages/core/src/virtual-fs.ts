@@ -3,15 +3,18 @@ import { AggregateConflictError, ConflictError, ParseError } from "./errors";
 import { formatJson } from "./format/json";
 import { deepMerge, mergeJson } from "./merge/json";
 import { appendLines } from "./merge/lines";
-import type {
-	AddDependencies,
-	AddScripts,
-	AppendLines,
-	CreateFile,
-	CreateJson,
-	FileOperation,
-	FilePath,
-	MergeJson,
+import {
+	type AddDependencies,
+	type AddScripts,
+	type AppendLines,
+	type CreateFile,
+	type CreateJson,
+	type DependencyFormat,
+	defaultDependencyFormat,
+	dependencyValue,
+	type FileOperation,
+	type FilePath,
+	type MergeJson,
 } from "./operations";
 import { sortPackageJson } from "./sort/package-json";
 
@@ -91,10 +94,12 @@ export type ConflictStrategy = "error" | "accept-incoming" | "accept-current";
 
 export interface ResolveOptions {
 	readonly onConflict?: ConflictStrategy;
+	readonly dependencyFormat?: DependencyFormat;
 }
 
 function resolveVirtualFs(vfs: VirtualFs, options?: ResolveOptions) {
 	const strategy = options?.onConflict ?? "error";
+	const format = options?.dependencyFormat ?? defaultDependencyFormat;
 
 	return Effect.gen(function* () {
 		if (strategy === "error") {
@@ -111,7 +116,7 @@ function resolveVirtualFs(vfs: VirtualFs, options?: ResolveOptions) {
 
 		for (const [path, sourced] of vfs.operations) {
 			const generators = [...new Set(sourced.map((s) => s.generatorId))];
-			const content = yield* resolveFileOperations(sourced, strategy);
+			const content = yield* resolveFileOperations(sourced, strategy, format);
 			resolved.push({ path, content, generators });
 		}
 
@@ -157,6 +162,7 @@ export function resolve(vfs: VirtualFs, options?: ResolveOptions) {
 function resolveFileOperations(
 	sourced: ReadonlyArray<SourcedOperation>,
 	strategy: ConflictStrategy,
+	format: DependencyFormat,
 ) {
 	const path = sourced[0]?.operation.path ?? "unknown";
 
@@ -227,7 +233,7 @@ function resolveFileOperations(
 					json = mergeJson(json, merge.value, merge.strategy);
 
 				if (scripts.length > 0) json = applyScripts(json, scripts);
-				if (deps.length > 0) json = applyDependencies(json, deps);
+				if (deps.length > 0) json = applyDependencies(json, deps, format);
 
 				if (path.endsWith("package.json")) json = sortPackageJson(json);
 
@@ -266,6 +272,7 @@ function parseJson(content: string): Record<string, unknown> {
 function applyDependencies(
 	json: Record<string, unknown>,
 	ops: ReadonlyArray<AddDependencies>,
+	format: DependencyFormat,
 ): Record<string, unknown> {
 	const result = { ...json };
 
@@ -277,13 +284,10 @@ function applyDependencies(
 					? (result[section] as Record<string, unknown>)
 					: {};
 
-			const value =
-				dep.catalog !== undefined
-					? dep.catalog === ""
-						? "catalog:"
-						: `catalog:${dep.catalog}`
-					: dep.version;
-			result[section] = { ...existing, [dep.name]: value };
+			result[section] = {
+				...existing,
+				[dep.name]: dependencyValue(dep, format),
+			};
 		}
 
 	return result;

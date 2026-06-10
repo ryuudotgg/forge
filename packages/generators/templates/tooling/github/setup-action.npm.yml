@@ -1,0 +1,14 @@
+name: "Setup & Install"
+description: "Setup & Install"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version-file: ".nvmrc"
+        cache: "npm"
+
+    - name: Install Dependencies
+      shell: bash
+      run: npm ci

@@ -11,6 +11,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 
@@ -25,11 +26,16 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	when: (config) => config.orm === "drizzle",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
+
+		const pm = resolvePackageManager(config);
+		const dbPackage = { name: `@${slug}/db`, path: "../../packages/db" };
+
 		const usesAuth = config.authentication === "better-auth";
 		const vars = {
 			SLUG: slug,
 			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
 		};
+
 		const render = (path: string) =>
 			interpolate(readTemplate(`orm/drizzle/${path}`), vars);
 
@@ -53,10 +59,10 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 					"./env": "./env.ts",
 				},
 				scripts: {
-					generate: "pnpm with-env drizzle-kit generate",
-					migrate: "pnpm with-env drizzle-kit migrate",
-					push: "pnpm with-env drizzle-kit push",
-					studio: "pnpm with-env drizzle-kit studio",
+					generate: pmRun(pm, "with-env", "drizzle-kit generate"),
+					migrate: pmRun(pm, "with-env", "drizzle-kit migrate"),
+					push: pmRun(pm, "with-env", "drizzle-kit push"),
+					studio: pmRun(pm, "with-env", "drizzle-kit studio"),
 					typecheck: "tsgo --noEmit",
 					"with-env": "dotenv -e ../../.env --",
 				},
@@ -170,10 +176,10 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			),
 
 			surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-				"db:generate": `pnpm --filter @${slug}/db run generate`,
-				"db:migrate": `pnpm --filter @${slug}/db run migrate`,
-				"db:push": `pnpm --filter @${slug}/db run push`,
-				"db:studio": `pnpm --filter @${slug}/db run studio`,
+				"db:generate": pmRunIn(pm, dbPackage, "generate"),
+				"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
+				"db:push": pmRunIn(pm, dbPackage, "push"),
+				"db:studio": pmRunIn(pm, dbPackage, "studio"),
 			}),
 		];
 	},

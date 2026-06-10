@@ -6,8 +6,9 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
+import { pmExec, pmRun, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
-import { readTemplate } from "../template";
+import { interpolate, readTemplate } from "../template";
 
 const lefthook = defineAddon<ForgeConfig, "lefthook">({
 	id: "lefthook",
@@ -17,16 +18,27 @@ const lefthook = defineAddon<ForgeConfig, "lefthook">({
 	exclusive: false,
 	targetMode: "single",
 	when: () => true,
-	contribute: () => [
-		leafTextFile(
-			projectTarget(),
-			"lefthook.yml",
-			readTemplate("tooling/lefthook/lefthook.yml"),
-		),
-		surfaceDependencies(projectTarget(), "rootPackageJson", [
-			{ ...deps.lefthook, type: "devDependencies" },
-		]),
-	],
+	contribute: ({ config }) => {
+		const pm = resolvePackageManager(config);
+
+		return [
+			leafTextFile(
+				projectTarget(),
+				"lefthook.yml",
+				interpolate(readTemplate("tooling/lefthook/lefthook.yml"), {
+					COMMITLINT_COMMAND: pmExec(pm, "commitlint"),
+					CHECK_FIX_COMMAND: pmRun(
+						pm,
+						"check:fix",
+						"--staged --no-errors-on-unmatched",
+					),
+				}),
+			),
+			surfaceDependencies(projectTarget(), "rootPackageJson", [
+				{ ...deps.lefthook, type: "devDependencies" },
+			]),
+		];
+	},
 });
 
 export const lefthookMetadata = {

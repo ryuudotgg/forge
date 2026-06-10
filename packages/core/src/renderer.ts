@@ -20,7 +20,13 @@ import { RendererError } from "./errors";
 import { formatJson } from "./format/json";
 import { mergeJson } from "./merge/json";
 import { appendLines } from "./merge/lines";
-import { type Dependency, filePath } from "./operations";
+import {
+	type Dependency,
+	type DependencyFormat,
+	defaultDependencyFormat,
+	dependencyValue,
+	filePath,
+} from "./operations";
 import { sortPackageJson } from "./sort/package-json";
 
 export interface ProjectBucketTarget {
@@ -104,6 +110,7 @@ function isPackageSurface(
 function applyDependencies(
 	json: Record<string, unknown>,
 	dependencies: ReadonlyArray<Dependency>,
+	format: DependencyFormat,
 ): Record<string, unknown> {
 	const result = { ...json };
 
@@ -114,13 +121,7 @@ function applyDependencies(
 				? (result[section] as Record<string, unknown>)
 				: {};
 
-		const value =
-			dep.catalog !== undefined
-				? dep.catalog === ""
-					? "catalog:"
-					: `catalog:${dep.catalog}`
-				: dep.version;
-		result[section] = { ...existing, [dep.name]: value };
+		result[section] = { ...existing, [dep.name]: dependencyValue(dep, format) };
 	}
 
 	return result;
@@ -145,16 +146,22 @@ function resolveProjectSurfacePath(surface: ProjectSurfaceName) {
 	switch (surface) {
 		case "rootPackageJson":
 			return filePath("package.json");
+
 		case "rootTsconfig":
 			return filePath("tsconfig.json");
+
 		case "workspaceConfig":
 			return filePath("turbo.json");
+
 		case "biomeConfig":
 			return filePath("biome.json");
+
 		case "gitignore":
 			return filePath(".gitignore");
+
 		case "rootEnv":
 			return filePath(".env");
+
 		case "rootEnvExample":
 			return filePath(".env.example");
 	}
@@ -167,19 +174,27 @@ function resolveAppSurfacePath(
 	switch (surface) {
 		case "packageJson":
 			return filePath(`${module.root}/package.json`);
+
 		case "tsconfig":
 			return filePath(`${module.root}/tsconfig.json`);
+
 		case "env":
 			return filePath(`${module.root}/.env`);
+
 		case "envExample":
 			return filePath(`${module.root}/.env.example`);
-		case "frameworkConfig":
+
+		case "frameworkConfig": {
 			if (module.framework === "nextjs")
 				return filePath(`${module.root}/next.config.ts`);
+
 			throw new Error("Unsupported Framework Config Surface");
+		}
+
 		default: {
 			const slotPath = module.slots[surface];
 			if (!slotPath) throw new Error("Module Slot Missing");
+
 			return filePath(`${module.root}/${slotPath}`);
 		}
 	}
@@ -192,11 +207,14 @@ function resolvePackageSurfacePath(
 	switch (surface) {
 		case "packageJson":
 			return filePath(`${module.root}/package.json`);
+
 		case "tsconfig":
 			return filePath(`${module.root}/tsconfig.json`);
+
 		default: {
 			const slotPath = module.slots[surface];
 			if (!slotPath) throw new Error("Module Slot Missing");
+
 			return filePath(`${module.root}/${slotPath}`);
 		}
 	}
@@ -249,6 +267,7 @@ function renderTextSurface(inputs: ReadonlyArray<SurfaceRenderContribution>) {
 	const conflicts = textInputs.filter(
 		(input) => (input.contribution.priority ?? 0) === topPriority,
 	);
+
 	if (conflicts.length > 1) throw new Error("Managed Surface Conflict");
 
 	return winner.contribution.content;
@@ -272,21 +291,26 @@ function renderLinesSurface(inputs: ReadonlyArray<SurfaceRenderContribution>) {
 function renderJsonSurface(
 	path: ReturnType<typeof filePath>,
 	inputs: ReadonlyArray<SurfaceRenderContribution>,
+	format: DependencyFormat,
 ) {
 	let json: Record<string, unknown> = {};
 
 	for (const input of sortInputs(inputs)) {
 		switch (input.contribution._tag) {
-			case "ManagedJsonSurfaceContribution":
+			case "ManagedJsonSurfaceContribution": {
 				json = mergeJson(
 					json,
 					input.contribution.value,
 					input.contribution.strategy ?? "deep",
 				);
+
 				break;
+			}
+
 			case "ManagedDependenciesSurfaceContribution":
-				json = applyDependencies(json, input.contribution.dependencies);
+				json = applyDependencies(json, input.contribution.dependencies, format);
 				break;
+
 			case "ManagedScriptsSurfaceContribution":
 				json = applyScripts(json, input.contribution.scripts);
 				break;
@@ -311,9 +335,11 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 		render: (
 			inputs: ReadonlyArray<SurfaceRenderContribution>,
 			modules: ReadonlyArray<DiscoveredModule>,
+			dependencyFormat?: DependencyFormat,
 		) =>
 			Effect.try({
 				try: () => {
+					const format = dependencyFormat ?? defaultDependencyFormat;
 					const modulesById = new Map(
 						modules.map((module) => [module.id, module]),
 					);
@@ -337,6 +363,7 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 							first.bucket,
 							modulesById,
 						);
+
 						const definitionIds = [
 							...new Set(entries.map((entry) => entry.definitionId)),
 						];
@@ -349,7 +376,7 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 							? renderTextSurface(entries)
 							: tags.has("ManagedLinesSurfaceContribution")
 								? renderLinesSurface(entries)
-								: renderJsonSurface(path, entries);
+								: renderJsonSurface(path, entries, format);
 
 						rendered.push({
 							bucket: first.bucket,

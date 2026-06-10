@@ -1,0 +1,18 @@
+name: "Setup & Install"
+description: "Setup & Install"
+
+runs:
+  using: composite
+  steps:
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    - uses: actions/setup-node@v6
+      with:
+        node-version-file: ".nvmrc"
+        cache: "yarn"
+
+    - name: Install Dependencies
+      shell: bash
+      run: yarn install --immutable

@@ -74,6 +74,43 @@ describe("renderer", () => {
 		});
 	});
 
+	it("renders explicit versions when the dependency format disables the catalog", async () => {
+		const inputs = [
+			{
+				bucket: { kind: "project" },
+				contribution: surfaceDependencies(projectTarget(), "rootPackageJson", [
+					{
+						catalog: "",
+						name: "react",
+						type: "dependencies",
+						version: "^19.0.0",
+					},
+					{
+						name: "@acme/ui",
+						type: "dependencies",
+						version: "workspace:*",
+					},
+				]),
+				definitionId: "deps",
+				order: 0,
+			},
+		] satisfies ReadonlyArray<SurfaceRenderContribution>;
+
+		const rendered = await Effect.runPromise(
+			Renderer.render(inputs, [], {
+				useCatalog: false,
+				useWorkspaceProtocol: false,
+			}).pipe(Effect.provide(Renderer.Default)),
+		);
+
+		expect(JSON.parse(rendered[0]?.content ?? "{}")).toEqual({
+			dependencies: {
+				"@acme/ui": "*",
+				react: "^19.0.0",
+			},
+		});
+	});
+
 	it("renders module surfaces through the module slot map", async () => {
 		const modules = [
 			{
