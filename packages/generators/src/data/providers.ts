@@ -56,7 +56,7 @@ const neonHttp = {
 } as const satisfies DrizzleSupport;
 
 // PlanetScale Postgres reuses the Neon serverless driver, but serves the
-// HTTP protocol on the database host itself instead of Neon's api. gateway.
+// HTTP protocol on the database host itself instead of Neon's API gateway.
 const planetscaleHttp = {
 	clientTemplate: "planetscale",
 	driver: "neon-http",
@@ -167,16 +167,25 @@ export function resolveDatabaseProvider(
 	return profile;
 }
 
+export interface DatabaseProviderEvidence {
+	readonly dependencies: Record<string, string>;
+	readonly clientSource?: string;
+	readonly databaseUrl?: string;
+}
+
 export function detectDatabaseProvider(
-	dependencies: Record<string, string>,
-	clientSource?: string,
+	evidence: DatabaseProviderEvidence,
 ): DatabaseProvider | undefined {
-	if ("@neondatabase/serverless" in dependencies)
-		return clientSource?.includes("neonConfig.fetchEndpoint")
+	if ("@neondatabase/serverless" in evidence.dependencies)
+		return evidence.clientSource?.includes("neonConfig.fetchEndpoint")
 			? "planetscale"
 			: "neon";
 
-	if ("postgres" in dependencies) return "supabase";
+	if ("postgres" in evidence.dependencies) return "supabase";
+
+	// Nile shares the pg driver with the local-postgres fallback, so only the
+	// connection string can tell them apart.
+	if (evidence.databaseUrl?.includes(".thenile.dev")) return "nile";
 
 	return undefined;
 }

@@ -119,20 +119,24 @@ async function inferConfigSnapshot(
 
 	const linter = (await hasPath("biome.json")) ? "biome" : undefined;
 
-	const [dbPackageJson, dbClientSource] =
+	const [dbPackageJson, dbClientSource, rootEnv] =
 		orm === "drizzle" && dbModule
 			? await Promise.all([
 					readJsonFile<{ dependencies?: Record<string, string> }>(
 						join(projectRoot, dbModule.root, "package.json"),
 					),
 					readTextFile(join(projectRoot, dbModule.root, "src/client.ts")),
+					readTextFile(join(projectRoot, ".env")),
 				])
-			: [undefined, undefined];
+			: [undefined, undefined, undefined];
 
-	const databaseProvider = detectDatabaseProvider(
-		dbPackageJson?.dependencies ?? {},
-		dbClientSource,
-	);
+	const databaseProvider = detectDatabaseProvider({
+		dependencies: dbPackageJson?.dependencies ?? {},
+		clientSource: dbClientSource,
+		databaseUrl: rootEnv
+			?.match(/^DATABASE_URL=(.*)$/m)?.[1]
+			?.replace(/^"|"$/g, ""),
+	});
 
 	const addonFiles: ReadonlyArray<readonly [OptionalAddon, string]> = [
 		["commitlint", "commitlint.config.ts"],
