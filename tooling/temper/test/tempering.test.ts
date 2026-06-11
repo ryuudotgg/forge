@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	formatRange,
 	freshSteel,
+	isTemperComment,
 	lineCoverage,
 	metricPct,
 	parseAddedLines,
@@ -104,6 +105,18 @@ describe("parseAddedLines", () => {
 		);
 	});
 
+	it("keeps non-ascii paths intact", () => {
+		const diff = [
+			"+++ b/packages/core/src/naïve.ts",
+			"@@ -1 +1 @@",
+			"+one",
+		].join("\n");
+
+		expect(parseAddedLines(diff).get("packages/core/src/naïve.ts")).toEqual(
+			new Set([1]),
+		);
+	});
+
 	it("keeps files in one diff apart", () => {
 		const diff = [
 			"+++ b/packages/core/src/a.ts",
@@ -188,14 +201,32 @@ describe("tier", () => {
 		expect(tier(report(50, 40))).toBe("🔥");
 	});
 
-	it("cools to orange within the grace window", () => {
-		expect(tier(report(45, 35))).toBe("🟠");
-		expect(tier(report(40, 30))).toBe("🟠");
+	it("cools to orange within ninety percent of both thresholds", () => {
+		expect(tier(report(45, 36))).toBe("🟠");
+		expect(tier(report(48, 38))).toBe("🟠");
 	});
 
 	it("freezes below the window on either metric", () => {
-		expect(tier(report(45, 25))).toBe("🧊");
-		expect(tier(report(39.9, 40))).toBe("🧊");
+		expect(tier(report(44.9, 36))).toBe("🧊");
+		expect(tier(report(45, 35.9))).toBe("🧊");
+	});
+});
+
+describe("isTemperComment", () => {
+	it("matches a body that starts with the marker", () => {
+		expect(
+			isTemperComment("<!-- temper-report -->\n\n## ⚒️ Temper Report"),
+		).toBe(true);
+	});
+
+	it("rejects a quote-reply of the report", () => {
+		expect(isTemperComment("> <!-- temper-report -->\n> quoted")).toBe(false);
+	});
+
+	it("rejects a comment mentioning the marker inline", () => {
+		expect(isTemperComment("reply about <!-- temper-report --> usage")).toBe(
+			false,
+		);
 	});
 });
 

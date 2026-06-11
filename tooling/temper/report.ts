@@ -4,8 +4,8 @@ import { join, relative } from "node:path";
 import {
 	formatRange,
 	isRecord,
+	isTemperComment,
 	lineCoverage,
-	MARKER,
 	metricPct,
 	type PackageReport,
 	parseAddedLines,
@@ -113,7 +113,7 @@ async function upsertComment(
 				isRecord(comment) &&
 				typeof comment.id === "number" &&
 				typeof comment.body === "string" &&
-				comment.body.includes(MARKER)
+				isTemperComment(comment.body)
 			) {
 				await github(token, "PATCH", `${base}/issues/comments/${comment.id}`, {
 					body,
@@ -132,18 +132,24 @@ async function upsertComment(
 }
 
 const root = git(["rev-parse", "--show-toplevel"]).trim();
-const baseRef = `origin/${process.env.GITHUB_BASE_REF || "main"}`;
 
 const sourceDirs = Object.values(PACKAGES).map((pkg) =>
 	join(pkg.directory, "src"),
 );
 
+const ciBase = process.env.GITHUB_BASE_REF;
+const diffRange = ciBase
+	? `origin/${ciBase}...HEAD`
+	: git(["merge-base", "origin/main", "HEAD"], root).trim();
+
 const diff = git(
 	[
+		"-c",
+		"core.quotePath=false",
 		"diff",
 		"--unified=0",
 		"--no-color",
-		`${baseRef}...HEAD`,
+		diffRange,
 		"--",
 		...sourceDirs,
 	],

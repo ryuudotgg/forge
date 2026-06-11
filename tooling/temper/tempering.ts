@@ -4,6 +4,10 @@ export const MARKER = "<!-- temper-report -->";
 
 const MAX_BRITTLE_REFS = 8;
 
+export function isTemperComment(body: string): boolean {
+	return body.startsWith(MARKER);
+}
+
 export interface PackageReport {
 	readonly branches: number;
 	readonly lines: number;
@@ -129,7 +133,7 @@ export function tier(report: PackageReport): string {
 	const { branches, lines, temper } = report;
 
 	if (lines >= temper.lines && branches >= temper.branches) return "🔥";
-	if (lines >= temper.lines - 10 && branches >= temper.branches - 10)
+	if (lines >= temper.lines * 0.9 && branches >= temper.branches * 0.9)
 		return "🟠";
 
 	return "🧊";
