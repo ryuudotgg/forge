@@ -1,3 +1,4 @@
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,6 +7,22 @@ import {
 	readJson,
 	withScenarioWorkspace,
 } from "../utils/harness";
+
+async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
+	const entries = await readdir(join(root, prefix), { withFileTypes: true });
+	const files: string[] = [];
+
+	for (const entry of entries) {
+		if (entry.name === ".forge") continue;
+
+		const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+		if (entry.isDirectory())
+			files.push(...(await listProjectFiles(root, relativePath)));
+		else files.push(relativePath);
+	}
+
+	return files.sort();
+}
 
 describe("create", () => {
 	it("creates a recommended first-party workspace with manifest, lockfile, and module metadata", async () => {
@@ -22,11 +39,11 @@ describe("create", () => {
 			const manifest = await readJson<{
 				config: { slug: string };
 				installs: Array<{ definitionId: string }>;
-				modules: Record<string, object>;
+				modules: Record<string, { root?: string }>;
 			}>(join(workspace.projectRoot, ".forge/manifest.json"));
 
 			const lockfile = await readJson<{
-				artifacts: Record<string, object>;
+				artifacts: Record<string, { path: string }>;
 			}>(join(workspace.projectRoot, ".forge/lock.json"));
 
 			const appConfig = await readJson<{
@@ -40,21 +57,32 @@ describe("create", () => {
 			}>(join(workspace.projectRoot, "packages/ui/forge.json"));
 
 			expect(manifest.config.slug).toBe("acme");
-			expect(manifest.installs.map((entry) => entry.definitionId)).toEqual(
-				expect.arrayContaining([
-					"root",
-					"pnpm",
-					"typescript",
-					"biome",
-					"ui",
-					"tailwind",
-					"trpc",
-					"drizzle",
-				]),
-			);
+			expect(
+				manifest.installs.map((entry) => entry.definitionId).sort(),
+			).toEqual([
+				"biome",
+				"drizzle",
+				"gitignore",
+				"pnpm",
+				"root",
+				"tailwind",
+				"trpc",
+				"typescript",
+				"ui",
+			]);
 
-			expect(Object.keys(manifest.modules).length).toBeGreaterThan(0);
-			expect(Object.keys(lockfile.artifacts).length).toBeGreaterThan(0);
+			expect(
+				Object.values(manifest.modules)
+					.map((module) => module.root)
+					.sort(),
+			).toEqual(["apps/web", "packages/db", "packages/trpc", "packages/ui"]);
+
+			const projectFiles = await listProjectFiles(workspace.projectRoot);
+			const artifactPaths = Object.values(lockfile.artifacts)
+				.map((artifact) => artifact.path)
+				.sort();
+
+			expect(artifactPaths).toEqual(projectFiles);
 
 			expect(appConfig).toMatchObject({ framework: "nextjs", type: "app" });
 			expect(uiConfig).toMatchObject({
@@ -62,9 +90,21 @@ describe("create", () => {
 				type: "package",
 			});
 
-			expect(
-				await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
-			).toBe(true);
+			const root = await readJson<{
+				name?: string;
+				packageManager?: string;
+			}>(join(workspace.projectRoot, "package.json"));
+
+			expect(root.name).toBe("acme");
+			expect(root.packageManager).toMatch(/^pnpm@/);
+
+			const workspaceYaml = await readFile(
+				join(workspace.projectRoot, "pnpm-workspace.yaml"),
+				"utf-8",
+			);
+
+			expect(workspaceYaml).toContain('- "apps/*"');
+			expect(workspaceYaml).toContain('- "packages/*"');
 
 			expect(
 				await pathExists(
@@ -86,9 +126,7 @@ describe("create", () => {
 				}),
 			).rejects.toThrow(/You need to add an ORM/);
 
-			expect(
-				await pathExists(join(workspace.projectRoot, "package.json")),
-			).toBe(false);
+			expect(await readdir(workspace.projectRoot)).toEqual([]);
 		});
 	}, 120_000);
 });

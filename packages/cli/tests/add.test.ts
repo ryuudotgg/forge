@@ -1,3 +1,4 @@
+import { listVisibleAddons } from "@ryuujs/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAdd } from "../src/commands/add";
 import {
@@ -8,7 +9,9 @@ import {
 } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
+	cancel: vi.fn(),
 	intro: vi.fn(),
+	isCancel: vi.fn((_value: unknown) => false),
 	logError: vi.fn(),
 	multiselect: vi.fn(),
 	select: vi.fn(),
@@ -21,8 +24,9 @@ const lifecycleMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@clack/prompts", () => ({
+	cancel: promptMocks.cancel,
 	intro: promptMocks.intro,
-	isCancel: () => false,
+	isCancel: promptMocks.isCancel,
 	log: { error: promptMocks.logError },
 	multiselect: promptMocks.multiselect,
 	select: promptMocks.select,
@@ -45,6 +49,9 @@ vi.mock("@ryuujs/generators", async (importOriginal) => {
 		loadAddonDefinition: (id: string) => {
 			if (id === singleTargetAddon.id) return { addon: singleTargetAddon };
 			if (id === multiTargetAddon.id) return { addon: multiTargetAddon };
+			if (id === "mock-broken")
+				throw new Error("Registry Offline: mock-broken");
+
 			return original.loadAddonDefinition(id);
 		},
 	};
@@ -54,7 +61,9 @@ describe("add command", () => {
 	beforeEach(() => {
 		lifecycleMocks.applyInstalledPlan.mockReset();
 		lifecycleMocks.loadManagedProject.mockReset();
+		promptMocks.cancel.mockReset();
 		promptMocks.intro.mockReset();
+		promptMocks.isCancel.mockReset();
 		promptMocks.logError.mockReset();
 		promptMocks.multiselect.mockReset();
 		promptMocks.select.mockReset();
@@ -67,19 +76,88 @@ describe("add command", () => {
 
 		await runAdd(undefined, {});
 
-		expect(promptMocks.text).toHaveBeenCalled();
+		expect(promptMocks.text).toHaveBeenCalledWith({
+			message: "Search for an addon (leave blank to browse).",
+			placeholder: "tailwind, auth, trpc...",
+		});
 		expect(promptMocks.select).not.toHaveBeenCalled();
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+		expect(lifecycleMocks.loadManagedProject).toHaveBeenCalledWith(".", "add");
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", style: "tailwind", web: "nextjs" },
-			[
-				{
-					definitionId: "tailwind",
-					targets: [{ kind: "project" }],
-				},
-			],
+			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
 		);
+	});
+
+	it("offers every visible addon when the search is left blank", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+		promptMocks.text.mockResolvedValue("");
+		promptMocks.select.mockResolvedValue("tailwind");
+
+		await runAdd(undefined, {});
+
+		expect(promptMocks.select).toHaveBeenCalledWith({
+			message: "Which addon do you want to add?",
+			options: listVisibleAddons().map((entry) => ({
+				hint: entry.summary,
+				label: entry.name,
+				value: entry.id,
+			})),
+		});
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", style: "tailwind", web: "nextjs" },
+			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
+		);
+	});
+
+	it("keeps hidden addons out of the search results", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+			promptMocks.text.mockResolvedValue("root");
+
+			await expect(runAdd(undefined, {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We couldn't find an addon matching that search.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("cancels the run when the addon search is dismissed", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+			const cancelSentinel = Symbol("cancelled");
+			promptMocks.text.mockResolvedValue(cancelSentinel);
+			promptMocks.isCancel.mockImplementation(
+				(value: unknown) => value === cancelSentinel,
+			);
+
+			await expect(runAdd(undefined, {})).rejects.toThrow("exit:0");
+
+			expect(promptMocks.cancel).toHaveBeenCalledWith(
+				"You've extinguished the forge.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
 	});
 
 	it("installs a project-level addon without prompting even when multiple modules exist", async () => {
@@ -94,12 +172,7 @@ describe("add command", () => {
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", style: "tailwind", web: "nextjs" },
-			[
-				{
-					definitionId: "tailwind",
-					targets: [{ kind: "project" }],
-				},
-			],
+			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
 		);
 	});
 
@@ -111,12 +184,7 @@ describe("add command", () => {
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ orm: "prisma", slug: "acme", web: "nextjs" },
-			[
-				{
-					definitionId: "prisma",
-					targets: [{ kind: "project" }],
-				},
-			],
+			[{ definitionId: "prisma", targets: [{ kind: "project" }] }],
 		);
 	});
 
@@ -190,6 +258,31 @@ describe("add command", () => {
 		}
 	});
 
+	it("adds better-auth once an orm is installed", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: { orm: "drizzle", slug: "acme", web: "nextjs" },
+				installs: [{ definitionId: "drizzle", targets: [{ kind: "project" }] }],
+			}),
+		);
+
+		await runAdd("better-auth", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{
+				authentication: "better-auth",
+				orm: "drizzle",
+				slug: "acme",
+				web: "nextjs",
+			},
+			[
+				{ definitionId: "drizzle", targets: [{ kind: "project" }] },
+				{ definitionId: "better-auth", targets: [{ kind: "project" }] },
+			],
+		);
+	});
+
 	it("records opt-in addons on the config so contributions stay in sync", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ config: { addons: ["lefthook"], slug: "acme" } }),
@@ -200,12 +293,7 @@ describe("add command", () => {
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ addons: ["lefthook", "commitlint"], slug: "acme" },
-			[
-				{
-					definitionId: "commitlint",
-					targets: [{ kind: "project" }],
-				},
-			],
+			[{ definitionId: "commitlint", targets: [{ kind: "project" }] }],
 		);
 	});
 
@@ -236,14 +324,13 @@ describe("add command", () => {
 
 		await runAdd("mock-single", {});
 
-		expect(promptMocks.select).toHaveBeenCalledWith(
-			expect.objectContaining({
-				options: [
-					expect.objectContaining({ value: appModule.id }),
-					expect.objectContaining({ value: adminModule.id }),
-				],
-			}),
-		);
+		expect(promptMocks.select).toHaveBeenCalledWith({
+			message: 'Where should we add "Mock Single"?',
+			options: [
+				{ label: "@acme/web (apps/web)", value: appModule.id },
+				{ label: "@acme/admin (apps/admin)", value: adminModule.id },
+			],
+		});
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -257,15 +344,54 @@ describe("add command", () => {
 		);
 	});
 
+	it("replaces the install record when a single-target addon moves modules", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				installs: [
+					{ definitionId: "tailwind", targets: [{ kind: "project" }] },
+					{
+						definitionId: "mock-single",
+						targets: [{ kind: "module", moduleId: appModule.id }],
+					},
+				],
+				modules: [appModule, adminModule],
+			}),
+		);
+		promptMocks.select.mockResolvedValue(adminModule.id);
+
+		await runAdd("mock-single", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[
+				{ definitionId: "tailwind", targets: [{ kind: "project" }] },
+				{
+					definitionId: "mock-single",
+					targets: [{ kind: "module", moduleId: adminModule.id }],
+				},
+			],
+		);
+	});
+
 	it("multi-selects modules for addons that support multiple targets", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ modules: [appModule, adminModule] }),
 		);
+
 		promptMocks.multiselect.mockResolvedValue([appModule.id, adminModule.id]);
 
 		await runAdd("mock-multi", {});
 
 		expect(promptMocks.select).not.toHaveBeenCalled();
+		expect(promptMocks.multiselect).toHaveBeenCalledWith({
+			message: 'Where should we add "Mock Multi"?',
+			options: [
+				{ label: "@acme/web (apps/web)", value: appModule.id },
+				{ label: "@acme/admin (apps/admin)", value: adminModule.id },
+			],
+			required: true,
+		});
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", web: "nextjs" },
@@ -281,10 +407,11 @@ describe("add command", () => {
 		);
 	});
 
-	it("merges new module targets into an existing multi-target install", async () => {
+	it("merges new module targets into an existing multi-target install without duplicates", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
+					{ definitionId: "tailwind", targets: [{ kind: "project" }] },
 					{
 						definitionId: "mock-multi",
 						targets: [{ kind: "module", moduleId: appModule.id }],
@@ -293,7 +420,8 @@ describe("add command", () => {
 				modules: [appModule, adminModule],
 			}),
 		);
-		promptMocks.multiselect.mockResolvedValue([adminModule.id]);
+
+		promptMocks.multiselect.mockResolvedValue([appModule.id, adminModule.id]);
 
 		await runAdd("mock-multi", {});
 
@@ -301,6 +429,7 @@ describe("add command", () => {
 			".",
 			{ slug: "acme", web: "nextjs" },
 			[
+				{ definitionId: "tailwind", targets: [{ kind: "project" }] },
 				{
 					definitionId: "mock-multi",
 					targets: [
@@ -309,6 +438,25 @@ describe("add command", () => {
 					],
 				},
 			],
+		);
+	});
+
+	it("keeps config and installs unchanged when re-adding an installed addon", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: { slug: "acme", style: "tailwind", web: "nextjs" },
+				installs: [
+					{ definitionId: "tailwind", targets: [{ kind: "project" }] },
+				],
+			}),
+		);
+
+		await runAdd("tailwind", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", style: "tailwind", web: "nextjs" },
+			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
 		);
 	});
 
@@ -354,5 +502,16 @@ describe("add command", () => {
 		} finally {
 			exit.mockRestore();
 		}
+	});
+
+	it("rethrows unexpected registry failures instead of hiding them", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+		await expect(runAdd("mock-broken", {})).rejects.toThrow(
+			"Registry Offline: mock-broken",
+		);
+
+		expect(promptMocks.logError).not.toHaveBeenCalled();
+		expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 	});
 });

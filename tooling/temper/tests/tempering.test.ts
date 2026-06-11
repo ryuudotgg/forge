@@ -34,6 +34,20 @@ describe("parseAddedLines", () => {
 		);
 	});
 
+	it("tolerates function context after the hunk header", () => {
+		const diff = [
+			"+++ b/packages/core/src/a.ts",
+			"@@ -10,2 +12,3 @@ export function plan(",
+			"+one",
+			"+two",
+			"+three",
+		].join("\n");
+
+		expect(parseAddedLines(diff).get("packages/core/src/a.ts")).toEqual(
+			new Set([12, 13, 14]),
+		);
+	});
+
 	it("treats an omitted count as one line", () => {
 		const diff = ["+++ b/packages/core/src/a.ts", "@@ -5 +6 @@", "+one"].join(
 			"\n",
@@ -132,6 +146,31 @@ describe("parseAddedLines", () => {
 		expect(added.get("packages/core/src/a.ts")).toEqual(new Set([2, 3]));
 		expect(added.get("packages/core/src/b.ts")).toEqual(new Set([1]));
 	});
+
+	it("merges repeated sections for the same file", () => {
+		const diff = [
+			"+++ b/packages/core/src/a.ts",
+			"@@ -1 +1 @@",
+			"+one",
+			"+++ b/packages/core/src/a.ts",
+			"@@ -5 +6 @@",
+			"+two",
+		].join("\n");
+
+		expect(parseAddedLines(diff).get("packages/core/src/a.ts")).toEqual(
+			new Set([1, 6]),
+		);
+	});
+
+	it("keeps an added line starting with two plus signs", () => {
+		const diff = ["+++ b/packages/core/src/a.ts", "@@ -1 +1 @@", "+++i;"].join(
+			"\n",
+		);
+
+		expect(parseAddedLines(diff).get("packages/core/src/a.ts")).toEqual(
+			new Set([1]),
+		);
+	});
 });
 
 describe("lineCoverage", () => {
@@ -157,6 +196,19 @@ describe("lineCoverage", () => {
 		expect(lineCoverage(null).size).toBe(0);
 		expect(lineCoverage({}).size).toBe(0);
 		expect(lineCoverage({ statementMap: {} }).size).toBe(0);
+	});
+
+	it("skips entries with malformed counts or positions", () => {
+		const coverage = lineCoverage({
+			s: { 0: "x", 1: 1, 2: 2 },
+			statementMap: {
+				0: { start: { line: 3 } },
+				1: { start: {} },
+				2: { start: { line: 7 } },
+			},
+		});
+
+		expect(coverage).toEqual(new Map([[7, 2]]));
 	});
 });
 
@@ -194,6 +246,18 @@ describe("metricPct", () => {
 			"Malformed Coverage Summary: no branches total in x.json",
 		);
 	});
+
+	it("throws on a non-numeric metric pct", () => {
+		expect(() =>
+			metricPct({ total: { lines: { pct: "79" } } }, "lines", "x.json"),
+		).toThrow("Malformed Coverage Summary: no lines total in x.json");
+	});
+
+	it("throws on a summary that is not a record", () => {
+		expect(() => metricPct(null, "lines", "x.json")).toThrow(
+			"Malformed Coverage Summary: no lines total in x.json",
+		);
+	});
 });
 
 describe("tier", () => {
@@ -206,9 +270,26 @@ describe("tier", () => {
 		expect(tier(report(48, 38))).toBe("🟠");
 	});
 
+	it("stays below hot when only lines reach their threshold", () => {
+		expect(tier(report(50, 36))).toBe("🟠");
+	});
+
+	it("stays below hot when only branches reach their threshold", () => {
+		expect(tier(report(45, 40))).toBe("🟠");
+	});
+
 	it("freezes below the window on either metric", () => {
 		expect(tier(report(44.9, 36))).toBe("🧊");
 		expect(tier(report(45, 35.9))).toBe("🧊");
+	});
+
+	it("freezes when one metric is hot and the other is below the window", () => {
+		expect(tier(report(50, 30))).toBe("🧊");
+		expect(tier(report(40, 40))).toBe("🧊");
+	});
+
+	it("freezes below the window on both metrics", () => {
+		expect(tier(report(44, 35))).toBe("🧊");
 	});
 });
 
@@ -261,6 +342,20 @@ describe("freshSteel", () => {
 			"**Fresh Steel:** 0.0% tempered with 10 brittle lines in `a.ts:1`, `a.ts:2`, `a.ts:3`, `a.ts:4`, `a.ts:5`, `a.ts:6`, `a.ts:7`, `a.ts:8`, and 2 more.",
 		);
 	});
+
+	it("lists exactly eight refs with an oxford comma", () => {
+		const refs = Array.from({ length: 8 }, (_, i) => `a.ts:${i + 1}`);
+		expect(freshSteel(0, 8, refs)).toBe(
+			"**Fresh Steel:** 0.0% tempered with 8 brittle lines in `a.ts:1`, `a.ts:2`, `a.ts:3`, `a.ts:4`, `a.ts:5`, `a.ts:6`, `a.ts:7`, and `a.ts:8`.",
+		);
+	});
+
+	it("keeps a single overflow ref singular", () => {
+		const refs = Array.from({ length: 9 }, (_, i) => `a.ts:${i + 1}`);
+		expect(freshSteel(0, 9, refs)).toBe(
+			"**Fresh Steel:** 0.0% tempered with 9 brittle lines in `a.ts:1`, `a.ts:2`, `a.ts:3`, `a.ts:4`, `a.ts:5`, `a.ts:6`, `a.ts:7`, `a.ts:8`, and 1 more.",
+		);
+	});
 });
 
 describe("render", () => {
@@ -274,6 +369,45 @@ describe("render", () => {
 				"| Package | Temper | Branches |",
 				"| --- | --- | --- |",
 				"| `@ryuujs/core` | 🔥 80.0% | 70.0% |",
+				"",
+				"**Fresh Steel:** nothing to temper (this diff changes no measured lines).",
+			].join("\n"),
+		);
+	});
+
+	it("renders rows in report order with a fresh steel summary", () => {
+		const cold = {
+			branches: 30,
+			lines: 44,
+			name: "@ryuujs/db",
+			temper: TEMPER,
+		};
+
+		expect(render([report(80, 70), cold], 2, 1, ["a.ts:4"])).toBe(
+			[
+				"<!-- temper-report -->",
+				"",
+				"## ⚒️ Temper Report",
+				"",
+				"| Package | Temper | Branches |",
+				"| --- | --- | --- |",
+				"| `@ryuujs/core` | 🔥 80.0% | 70.0% |",
+				"| `@ryuujs/db` | 🧊 44.0% | 30.0% |",
+				"",
+				"**Fresh Steel:** 66.7% tempered with 1 brittle line in `a.ts:4`.",
+			].join("\n"),
+		);
+	});
+
+	it("renders a bare table for no reports", () => {
+		expect(render([], 0, 0, [])).toBe(
+			[
+				"<!-- temper-report -->",
+				"",
+				"## ⚒️ Temper Report",
+				"",
+				"| Package | Temper | Branches |",
+				"| --- | --- | --- |",
 				"",
 				"**Fresh Steel:** nothing to temper (this diff changes no measured lines).",
 			].join("\n"),

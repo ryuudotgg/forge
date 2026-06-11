@@ -119,7 +119,7 @@ tests are e2e (they exercise the built CLI in child processes), so they are
 intentionally not measured.
 
 On pull requests, CI posts a single **⚒️ Temper Report** comment with each
-package's temper and the *fresh steel* number: how much of the PR's changed
+package's temper and the _fresh steel_ number: how much of the PR's changed
 lines are covered. The comment updates in place on new pushes, and it still
 appears when thresholds fail (the job stays red; the comment is narration,
 not the gate).

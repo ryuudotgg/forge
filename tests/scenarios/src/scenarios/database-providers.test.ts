@@ -80,6 +80,9 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 				'export type { NeonHttpDatabase } from "drizzle-orm/neon-http";',
 			);
 			expect(db.drizzleConfig).toContain('dialect: "postgresql"');
+			expect(db.drizzleConfig).toContain(
+				"dbCredentials: { url: env.DATABASE_DIRECT_URL },",
+			);
 
 			expect(db.packageJson.dependencies).toHaveProperty(
 				"@neondatabase/serverless",
@@ -89,6 +92,12 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 			expect(db.packageJson.devDependencies).toHaveProperty("@types/pg");
 
 			expect(db.env).toContain(
+				'DATABASE_URL="postgresql://user:password@ep-example-123456-pooler.us-east-2.aws.neon.tech/database?sslmode=require&channel_binding=require"',
+			);
+			expect(db.env).toContain(
+				'DATABASE_DIRECT_URL="postgresql://user:password@ep-example-123456.us-east-2.aws.neon.tech/database?sslmode=require&channel_binding=require"',
+			);
+			expect(db.envExample).toContain(
 				'DATABASE_URL="postgresql://user:password@ep-example-123456-pooler.us-east-2.aws.neon.tech/database?sslmode=require&channel_binding=require"',
 			);
 			expect(db.envExample).toContain(
@@ -127,7 +136,9 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 			expect(db.env).toContain(
 				'DATABASE_DIRECT_URL="postgres://postgres.project-ref:password@aws-0-us-east-1.pooler.supabase.com:5432/postgres"',
 			);
-			expect(db.envExample).toContain("pooler.supabase.com:6543");
+			expect(db.envExample).toContain(
+				'DATABASE_URL="postgres://postgres.project-ref:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres"',
+			);
 		});
 	}, 120_000);
 
@@ -180,9 +191,64 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 				'import { drizzle } from "drizzle-orm/node-postgres";',
 			);
 			expect(db.packageJson.dependencies).toHaveProperty("pg");
-			expect(db.env).toContain("db.thenile.dev:5432");
-			expect(db.envExample).toContain("db.thenile.dev:5432");
+			expect(db.env).toContain(
+				'DATABASE_URL="postgres://user:password@db.thenile.dev:5432/database"',
+			);
+			expect(db.env).toContain(
+				'DATABASE_DIRECT_URL="postgres://user:password@db.thenile.dev:5432/database"',
+			);
+			expect(db.envExample).toContain(
+				'DATABASE_URL="postgres://user:password@db.thenile.dev:5432/database"',
+			);
+			expect(db.envExample).toContain(
+				'DATABASE_DIRECT_URL="postgres://user:password@db.thenile.dev:5432/database"',
+			);
 		});
+	}, 120_000);
+
+	it("keeps drizzle on a node-postgres client when the config picks prisma postgres", async () => {
+		await withScenarioWorkspace(
+			"db-provider-prisma-postgres",
+			async (workspace) => {
+				const db = await createDatabaseProject(workspace, {
+					databaseProvider: "prisma-postgres",
+				});
+
+				expect(db.client).toContain(
+					'import { drizzle } from "drizzle-orm/node-postgres";',
+				);
+				expect(db.client).toContain('import { Pool } from "pg";');
+				expect(db.client).toContain(
+					"const client = new Pool({ connectionString: env.DATABASE_URL });",
+				);
+
+				expect(db.index).toContain(
+					'export type { NodePgDatabase } from "drizzle-orm/node-postgres";',
+				);
+				expect(db.drizzleConfig).toContain('dialect: "postgresql"');
+				expect(db.drizzleConfig).toContain(
+					"dbCredentials: { url: env.DATABASE_DIRECT_URL },",
+				);
+
+				expect(db.packageJson.dependencies).toHaveProperty("pg");
+				expect(db.packageJson.dependencies).not.toHaveProperty(
+					"@neondatabase/serverless",
+				);
+
+				expect(db.env).toContain(
+					'DATABASE_URL="postgres://user:password@pooled.db.prisma.io:5432/?sslmode=require"',
+				);
+				expect(db.env).toContain(
+					'DATABASE_DIRECT_URL="postgres://user:password@db.prisma.io:5432/?sslmode=require"',
+				);
+
+				const schemaIndex = await readFile(
+					join(workspace.projectRoot, "packages/db/src/schema/index.ts"),
+					"utf-8",
+				);
+				expect(schemaIndex).not.toContain('export * from "./auth";');
+			},
+		);
 	}, 120_000);
 
 	it("generates a neon-http client on the planetscale endpoint for planetscale", async () => {
@@ -276,9 +342,10 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 			const readText = (path: string) =>
 				readFile(join(workspace.projectRoot, path), "utf-8");
 
-			const [users, authSchema, auth] = await Promise.all([
+			const [users, authSchema, schemaIndex, auth] = await Promise.all([
 				readText("packages/db/src/schema/users/users.ts"),
 				readText("packages/db/src/schema/auth.ts"),
+				readText("packages/db/src/schema/index.ts"),
 				readText("packages/auth/src/index.ts"),
 			]);
 
@@ -299,6 +366,8 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 			expect(authSchema).toContain(
 				'.references(() => users.id, { onDelete: "cascade" })',
 			);
+
+			expect(schemaIndex).toContain('export * from "./auth";');
 
 			expect(auth).toContain('provider: "sqlite",');
 		});

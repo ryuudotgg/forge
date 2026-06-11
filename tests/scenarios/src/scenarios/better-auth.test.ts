@@ -27,23 +27,43 @@ describe("better auth", () => {
 			const readText = (path: string) =>
 				readFile(join(workspace.projectRoot, path), "utf-8");
 
-			const [auth, authSchema, workspaceYaml, manifest] = await Promise.all([
-				readText("packages/auth/src/index.ts"),
-				readText("packages/db/src/schema/auth.ts"),
-				readText("pnpm-workspace.yaml"),
-				readJson<Manifest>(join(workspace.projectRoot, ".forge/manifest.json")),
-			]);
+			const [auth, authSchema, schemaIndex, workspaceYaml, manifest] =
+				await Promise.all([
+					readText("packages/auth/src/index.ts"),
+					readText("packages/db/src/schema/auth.ts"),
+					readText("packages/db/src/schema/index.ts"),
+					readText("pnpm-workspace.yaml"),
+					readJson<Manifest>(
+						join(workspace.projectRoot, ".forge/manifest.json"),
+					),
+				]);
 
 			expect(auth).toContain(
 				'import { drizzleAdapter } from "better-auth/adapters/drizzle";',
 			);
+			expect(auth).toContain('import { db } from "@acme/db/client";');
 			expect(auth).toContain("database: drizzleAdapter(db, {");
+			expect(auth).toContain('provider: "pg",');
 			expect(auth).not.toContain("prismaAdapter");
+			expect(auth).not.toContain("__SLUG__");
 
+			expect(authSchema).toContain(
+				'import { pgTable, text, timestamp } from "drizzle-orm/pg-core";',
+			);
 			expect(authSchema).toContain(
 				'export const sessions = pgTable("sessions"',
 			);
+			expect(authSchema).toContain(
+				'export const accounts = pgTable("accounts"',
+			);
+			expect(authSchema).toContain(
+				'.references(() => users.id, { onDelete: "cascade" })',
+			);
 
+			expect(schemaIndex).toContain('export * from "./auth";');
+
+			expect(workspaceYaml).toContain("allowBuilds:");
+			expect(workspaceYaml).toContain("esbuild: true");
 			expect(workspaceYaml).not.toContain("prisma: true");
 			expect(workspaceYaml).not.toContain('"@prisma/engines": true');
 

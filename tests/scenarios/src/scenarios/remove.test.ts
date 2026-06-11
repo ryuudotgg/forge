@@ -11,6 +11,11 @@ import {
 	withScenarioWorkspace,
 } from "../utils/harness";
 
+interface PackageJson {
+	readonly dependencies?: Record<string, string>;
+	readonly devDependencies?: Record<string, string>;
+}
+
 describe("remove", () => {
 	it("removes a single-target addon cleanly", async () => {
 		await withScenarioWorkspace("remove", async (workspace) => {
@@ -20,21 +25,42 @@ describe("remove", () => {
 			});
 
 			await addAddon(workspace.projectRoot, "biome");
+
+			expect(await pathExists(join(workspace.projectRoot, "biome.json"))).toBe(
+				true,
+			);
+
+			const rootAfterAdd = await readJson<PackageJson>(
+				join(workspace.projectRoot, "package.json"),
+			);
+
+			expect(rootAfterAdd.devDependencies?.["@biomejs/biome"]).toBe("catalog:");
+
 			await removeAddon(workspace.projectRoot, "biome");
 
 			const manifest = await readJson<{
+				config: { linter?: string };
 				installs: Array<{ definitionId: string }>;
 			}>(join(workspace.projectRoot, ".forge/manifest.json"));
 
 			expect(
 				manifest.installs.some((entry) => entry.definitionId === "biome"),
 			).toBe(false);
+			expect(manifest.config.linter).toBe(undefined);
 
-			expect(await pathExists(join(workspace.projectRoot, "biome.jsonc"))).toBe(
+			expect(await pathExists(join(workspace.projectRoot, "biome.json"))).toBe(
 				false,
 			);
+
+			const rootAfterRemove = await readJson<PackageJson>(
+				join(workspace.projectRoot, "package.json"),
+			);
+
+			expect(
+				rootAfterRemove.devDependencies?.["@biomejs/biome"],
+			).toBeUndefined();
 		});
-	});
+	}, 120_000);
 
 	it("refuses to remove the orm while better-auth depends on it", async () => {
 		await withScenarioWorkspace("remove-orm-blocked", async (workspace) => {
@@ -60,6 +86,16 @@ describe("remove", () => {
 				await pathExists(
 					join(workspace.projectRoot, "packages/db/drizzle.config.ts"),
 				),
+			).toBe(true);
+
+			const manifest = await readJson<{
+				config: { orm?: string };
+				installs: Array<{ definitionId: string }>;
+			}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+			expect(manifest.config.orm).toBe("drizzle");
+			expect(
+				manifest.installs.some((entry) => entry.definitionId === "drizzle"),
 			).toBe(true);
 		});
 	}, 240_000);
@@ -100,6 +136,7 @@ describe("remove", () => {
 			]);
 
 			expect(nextConfig).not.toContain('"@acme/db"');
+			expect(nextConfig).toContain('"@acme/trpc"');
 			expect(trpcPackageJson.dependencies).not.toHaveProperty("@acme/db");
 		});
 	}, 240_000);
@@ -123,6 +160,8 @@ describe("remove", () => {
 			expect(
 				await pathExists(join(workspace.projectRoot, "packages/auth")),
 			).toBe(false);
+			expect(schema).toContain("datasource db");
+			expect(schema).toContain("model User {");
 			expect(schema).not.toContain("model Session {");
 
 			await removeAddon(workspace.projectRoot, "prisma");

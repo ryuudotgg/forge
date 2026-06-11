@@ -167,6 +167,7 @@ export async function createProject(
 	config: Record<string, unknown>,
 	options?: {
 		readonly env?: NodeJS.ProcessEnv;
+		readonly install?: boolean;
 	},
 ) {
 	const configPath = join(workspace.workspaceRoot, "forge.config.json");
@@ -182,7 +183,13 @@ export async function createProject(
 
 	await runForge(
 		workspace.workspaceRoot,
-		["create", "--config", configPath, "--no-install", "--no-git"],
+		[
+			"create",
+			"--config",
+			configPath,
+			...(options?.install ? [] : ["--no-install"]),
+			"--no-git",
+		],
 		{ env: options?.env, workspaceRoot: workspace.workspaceRoot },
 	);
 }
