@@ -56,6 +56,7 @@
 		"@types/node": "catalog:dev",
 		"@vitest/coverage-v8": "catalog:dev",
 		"tsdown": "catalog:build",
-		"typescript": "catalog:dev"
+		"typescript": "catalog:dev",
+		"vitest": "catalog:dev"
 	}
 }

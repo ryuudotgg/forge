@@ -22,8 +22,7 @@
 		"@commitlint/types": "catalog:lint",
 		"lefthook": "catalog:dev",
 		"turbo": "catalog:monorepo",
-		"typescript": "catalog:dev",
-		"vitest": "catalog:dev"
+		"typescript": "catalog:dev"
 	},
 	"packageManager": "pnpm@11.5.2",
 	"engines": {

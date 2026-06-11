@@ -11,6 +11,7 @@
 	"devDependencies": {
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
-		"typescript": "catalog:dev"
+		"typescript": "catalog:dev",
+		"vitest": "catalog:dev"
 	}
 }
