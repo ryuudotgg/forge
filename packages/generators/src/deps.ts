@@ -37,14 +37,22 @@ export const deps = {
 	drizzleKit: dep("drizzleKit"),
 	drizzleZod: dep("drizzleZod"),
 	neonServerless: dep("neonServerless"),
+	libsqlClient: dep("libsqlClient"),
+	planetscaleDatabase: dep("planetscaleDatabase"),
+	mysql2: dep("mysql2"),
 
 	prisma: dep("prisma"),
 	prismaClient: dep("prismaClient"),
 	prismaAdapterNeon: dep("prismaAdapterNeon"),
 	prismaAdapterPg: dep("prismaAdapterPg"),
+	prismaAdapterLibsql: dep("prismaAdapterLibsql"),
+	prismaAdapterMariadb: dep("prismaAdapterMariadb"),
+	prismaAdapterPlanetscale: dep("prismaAdapterPlanetscale"),
+	prismaAdapterBetterSqlite3: dep("prismaAdapterBetterSqlite3"),
 
 	pg: dep("pg"),
 	postgres: dep("postgres"),
+	typesBetterSqlite3: dep("typesBetterSqlite3"),
 	typesPg: dep("typesPg"),
 
 	dotenvCli: dep("dotenvCli"),

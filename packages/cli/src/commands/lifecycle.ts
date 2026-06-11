@@ -15,6 +15,7 @@ import {
 	State,
 } from "@ryuujs/core";
 import {
+	detectDatabase,
 	detectDatabaseProvider,
 	type ForgeConfig,
 	loadDefinitionRegistry,
@@ -157,13 +158,21 @@ async function inferConfigSnapshot(
 				])
 			: [undefined, undefined, undefined];
 
-	const databaseProvider = detectDatabaseProvider({
+	const envValue = (name: string) =>
+		rootEnv
+			?.split("\n")
+			.find((line) => line.startsWith(`${name}=`))
+			?.slice(name.length + 1)
+			.replace(/^["'`]|["'`]$/g, "");
+
+	const databaseEvidence = {
 		dependencies: dbPackageJson?.dependencies ?? {},
 		clientSource: dbClientSource,
-		databaseUrl: rootEnv
-			?.match(/^DATABASE_URL=(.*)$/m)?.[1]
-			?.replace(/^"|"$/g, ""),
-	});
+		databaseUrl: envValue("DATABASE_URL") ?? envValue("TURSO_DATABASE_URL"),
+	};
+
+	const database = detectDatabase(databaseEvidence);
+	const databaseProvider = detectDatabaseProvider(databaseEvidence);
 
 	const addonFiles: ReadonlyArray<readonly [OptionalAddon, string]> = [
 		["commitlint", "commitlint.config.ts"],
@@ -180,6 +189,7 @@ async function inferConfigSnapshot(
 	return {
 		addons,
 		authentication,
+		database,
 		databaseProvider,
 		linter,
 		name: slug,

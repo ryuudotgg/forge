@@ -19,7 +19,7 @@ const config = {
   baseURL: normalizeOrigin(env.APP_ORIGIN),
 
   database: drizzleAdapter(db, {
-    provider: "pg",
+    provider: "__DRIZZLE_PROVIDER__",
     schema: {
       user: users,
       account: accounts,
