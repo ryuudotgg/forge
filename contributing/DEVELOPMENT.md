@@ -100,8 +100,8 @@ export function MyComponent({
 We use [Vitest](https://vitest.dev) for testing. To run tests:
 
 ```bash
-pnpm test        # Run Tests
-pnpm test:watch  # Run Tests in Watch Mode
+pnpm test           # Run Tests
+pnpm test:coverage  # Run Tests With Coverage + Thresholds
 ```
 
 When writing tests:
@@ -109,6 +109,25 @@ When writing tests:
 - Place test files in a directory outside `src`
 - Use descriptive test names that explain the expected behavior
 - Write both unit and integration tests where appropriate
+
+### Coverage & the Temper Report
+
+`pnpm test:coverage` measures per-package coverage (vitest's v8 provider)
+and enforces line/branch thresholds. The thresholds live in
+`tooling/temper/thresholds.ts`, and an undercut fails the run. Scenario
+tests are e2e (they exercise the built CLI in child processes), so they are
+intentionally not measured.
+
+On pull requests, CI posts a single **⚒️ Temper Report** comment with each
+package's temper and the *fresh steel* number: how much of the PR's changed
+lines are covered. The comment updates in place on new pushes, and it still
+appears when thresholds fail (the job stays red; the comment is narration,
+not the gate).
+
+To reproduce locally, run `pnpm test:coverage` and then
+`node tooling/temper/report.ts`; it prints the same report to stdout,
+including uncommitted changes (diffed against the merge base with
+`origin/main`).
 
 ## Debugging
 
