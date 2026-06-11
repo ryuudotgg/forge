@@ -1,4 +1,4 @@
-import type { Temper } from "./temper.ts";
+import type { Temper } from "./thresholds.ts";
 
 export const MARKER = "<!-- temper-report -->";
 
@@ -63,9 +63,10 @@ export function parseAddedLines(diff: string): Map<string, Set<number>> {
 	const added = new Map<string, Set<number>>();
 
 	let current: Set<number> | undefined;
-	for (const line of diff.split("\n")) {
-		if (line.startsWith("+++ ")) {
-			const target = line.slice(4).trim();
+	let line = 0;
+	for (const row of diff.split("\n")) {
+		if (row.startsWith("+++ ")) {
+			const target = row.slice(4).trim();
 			if (target === "/dev/null") {
 				current = undefined;
 				continue;
@@ -79,12 +80,18 @@ export function parseAddedLines(diff: string): Map<string, Set<number>> {
 			continue;
 		}
 
-		const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-		if (!hunk || !current) continue;
+		const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(row);
+		if (hunk) {
+			line = Number(hunk[1]);
+			continue;
+		}
 
-		const start = Number(hunk[1]);
-		const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
-		for (let offset = 0; offset < count; offset++) current.add(start + offset);
+		if (!current) continue;
+
+		if (row.startsWith("+")) {
+			current.add(line);
+			line++;
+		} else if (row.startsWith(" ")) line++;
 	}
 
 	return added;

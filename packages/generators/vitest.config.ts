@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-import { PACKAGES } from "../../scripts/temper";
+import { PACKAGES } from "../../tooling/temper/thresholds";
 
 export default defineConfig({
 	test: {

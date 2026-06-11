@@ -73,6 +73,37 @@ describe("parseAddedLines", () => {
 		);
 	});
 
+	it("skips context lines in hunks with context", () => {
+		const diff = [
+			"+++ b/packages/core/src/a.ts",
+			"@@ -10,4 +10,5 @@",
+			" context",
+			" context",
+			"+new line",
+			" context",
+			" context",
+		].join("\n");
+
+		expect(parseAddedLines(diff).get("packages/core/src/a.ts")).toEqual(
+			new Set([12]),
+		);
+	});
+
+	it("tracks the new-side line number across removals", () => {
+		const diff = [
+			"+++ b/packages/core/src/a.ts",
+			"@@ -10,3 +10,3 @@",
+			" context",
+			"-old line",
+			"+new line",
+			" context",
+		].join("\n");
+
+		expect(parseAddedLines(diff).get("packages/core/src/a.ts")).toEqual(
+			new Set([11]),
+		);
+	});
+
 	it("keeps files in one diff apart", () => {
 		const diff = [
 			"+++ b/packages/core/src/a.ts",

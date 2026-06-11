@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { PACKAGES } from "./temper.ts";
 import {
 	formatRange,
 	isRecord,
@@ -13,6 +12,7 @@ import {
 	render,
 	toRanges,
 } from "./tempering.ts";
+import { PACKAGES } from "./thresholds.ts";
 
 class GitHubRequestError extends Error {
 	readonly status: number;
@@ -38,10 +38,13 @@ function readJson(path: string): unknown {
 function readCoverageFile(path: string): unknown {
 	try {
 		return readJson(path);
-	} catch {
-		throw new Error(
-			`Missing Coverage Report: ${path} (run \`pnpm test:coverage\` first)`,
-		);
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT")
+			throw new Error(
+				`Missing Coverage Report: ${path} (run \`pnpm test:coverage\` first)`,
+			);
+
+		throw new Error(`Malformed Coverage Report: ${path} (${String(error)})`);
 	}
 }
 

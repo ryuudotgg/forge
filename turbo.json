@@ -42,7 +42,7 @@
 		},
 		"test:coverage": {
 			"dependsOn": ["^build"],
-			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/temper.ts"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tooling/temper/thresholds.ts"],
 			"outputs": ["coverage/**"]
 		},
 		"typecheck": {
