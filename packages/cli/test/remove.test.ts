@@ -117,6 +117,132 @@ describe("remove command", () => {
 		);
 	});
 
+	it("clears the mapped config field when removing an orm", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: { orm: "drizzle", slug: "acme", web: "nextjs" },
+				installs: [{ definitionId: "drizzle", targets: [{ kind: "project" }] }],
+			}),
+		);
+
+		await runRemove("drizzle", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[],
+		);
+	});
+
+	it("refuses to remove the orm while better-auth depends on it", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					config: {
+						authentication: "better-auth",
+						orm: "drizzle",
+						slug: "acme",
+						web: "nextjs",
+					},
+					installs: [
+						{ definitionId: "better-auth", targets: [{ kind: "project" }] },
+						{ definitionId: "drizzle", targets: [{ kind: "project" }] },
+					],
+				}),
+			);
+
+			await expect(runRemove("drizzle", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't remove the ORM until you remove Better Auth.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("refuses to remove addons the app template depends on", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					installs: [{ definitionId: "ui", targets: [{ kind: "project" }] }],
+				}),
+			);
+
+			await expect(runRemove("ui", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't remove UI Package because your Next.js app needs it.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("refuses to remove the package manager setup", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					installs: [{ definitionId: "pnpm", targets: [{ kind: "project" }] }],
+				}),
+			);
+
+			await expect(runRemove("pnpm", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't remove your package manager setup.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("removes better-auth while the orm stays installed", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					authentication: "better-auth",
+					orm: "prisma",
+					slug: "acme",
+					web: "nextjs",
+				},
+				installs: [
+					{ definitionId: "better-auth", targets: [{ kind: "project" }] },
+					{ definitionId: "prisma", targets: [{ kind: "project" }] },
+				],
+			}),
+		);
+
+		await runRemove("better-auth", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ orm: "prisma", slug: "acme", web: "nextjs" },
+			[{ definitionId: "prisma", targets: [{ kind: "project" }] }],
+		);
+	});
+
 	it("shows a friendly error when an installed addon id is no longer known", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(((
 			code?: string | number | null,

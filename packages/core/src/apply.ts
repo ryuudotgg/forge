@@ -1,4 +1,5 @@
-import { dirname, join } from "node:path";
+import { rmdir } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { ApplyError } from "./errors";
@@ -134,6 +135,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				writesToApply.push(file);
 			}
 
+			const removedPaths: string[] = [];
 			for (const relativePath of plan.removals) {
 				const fullPath = join(projectRoot, relativePath);
 				const exists = yield* fs.exists(fullPath);
@@ -149,6 +151,40 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+				removedPaths.push(relativePath);
+			}
+
+			const rootPath = resolve(projectRoot);
+			const realRoot = yield* fs
+				.realPath(rootPath)
+				.pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+			for (const relativePath of realRoot === null ? [] : removedPaths) {
+				let directory = dirname(resolve(projectRoot, relativePath));
+
+				while (
+					directory !== rootPath &&
+					directory.startsWith(`${rootPath}${sep}`)
+				) {
+					const realDirectory = yield* fs
+						.realPath(directory)
+						.pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+					if (
+						realDirectory === null ||
+						!realDirectory.startsWith(`${realRoot}${sep}`)
+					)
+						break;
+
+					const removed = yield* Effect.tryPromise(() => rmdir(directory)).pipe(
+						Effect.as(true),
+						Effect.catchAll(() => Effect.succeed(false)),
+					);
+
+					if (!removed) break;
+
+					directory = dirname(directory);
+				}
 			}
 
 			for (const file of writesToApply) {

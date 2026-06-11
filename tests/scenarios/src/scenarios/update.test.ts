@@ -5,6 +5,7 @@ import {
 	createProject,
 	pathExists,
 	readJson,
+	tryRunForge,
 	updateProject,
 	withScenarioWorkspace,
 	writeJson,
@@ -56,4 +57,40 @@ describe("update", () => {
 			expect(await pathExists(layoutPath)).toBe(true);
 		});
 	});
+
+	it("surfaces planner failures as a friendly error with exit 1", async () => {
+		await withScenarioWorkspace("update-planner-error", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			const manifestPath = join(workspace.projectRoot, ".forge/manifest.json");
+			const manifest = await readJson<{
+				config: Record<string, unknown>;
+				installs: Array<{
+					definitionId: string;
+					targets: Array<Record<string, string>>;
+				}>;
+			}>(manifestPath);
+
+			manifest.config.authentication = "better-auth";
+			manifest.installs.push({
+				definitionId: "better-auth",
+				targets: [{ kind: "project" }],
+			});
+
+			await writeJson(manifestPath, manifest);
+
+			const result = await tryRunForge(workspace.projectRoot, ["update"], {
+				workspaceRoot: workspace.workspaceRoot,
+			});
+
+			expect(result.exitCode).toBe(1);
+			expect(result.stdout + result.stderr).toContain(
+				"We couldn't plan this change.",
+			);
+			expect(result.stdout + result.stderr).not.toContain("FiberFailure");
+		});
+	}, 240_000);
 });

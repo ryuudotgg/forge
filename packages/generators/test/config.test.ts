@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
 	authenticationProviders,
 	catalogs,
+	configWithInstall,
+	configWithoutInstall,
 	databaseProviders,
 	desktopFrameworks,
+	installConflict,
 	linters,
 	mobileFrameworks,
 	nativeStyleFrameworks,
@@ -55,5 +58,68 @@ describe("generator config choices", () => {
 	it("only recommends known optional addons", () => {
 		for (const addon of recommendedAddons)
 			expect(optionalAddons.ids).toContain(addon);
+	});
+});
+
+describe("install config reconciliation", () => {
+	it("maps installed addons onto their config fields", () => {
+		expect(configWithInstall({ slug: "acme" }, "prisma")).toEqual({
+			orm: "prisma",
+			slug: "acme",
+		});
+
+		expect(configWithInstall({ orm: "prisma" }, "better-auth")).toEqual({
+			authentication: "better-auth",
+			orm: "prisma",
+		});
+
+		expect(configWithInstall({}, "trpc")).toEqual({ rpc: "trpc" });
+	});
+
+	it("keeps routing opt-in tooling addons through the addons list", () => {
+		expect(configWithInstall({ slug: "acme" }, "commitlint")).toEqual({
+			addons: ["commitlint"],
+			slug: "acme",
+		});
+
+		expect(
+			configWithoutInstall({ addons: ["commitlint"] }, "commitlint"),
+		).toEqual({ addons: [] });
+	});
+
+	it("clears mapped config fields on removal", () => {
+		expect(
+			configWithoutInstall({ orm: "drizzle", slug: "acme" }, "drizzle"),
+		).toEqual({ slug: "acme" });
+
+		expect(
+			configWithoutInstall(
+				{ authentication: "better-auth", orm: "prisma" },
+				"better-auth",
+			),
+		).toEqual({ orm: "prisma" });
+	});
+
+	it("keeps a mapped field that belongs to a different addon", () => {
+		expect(configWithoutInstall({ orm: "prisma" }, "drizzle")).toEqual({
+			orm: "prisma",
+		});
+	});
+
+	it("leaves the config untouched when removing an unmapped addon", () => {
+		expect(configWithoutInstall({ orm: "drizzle" }, "unknown")).toEqual({
+			orm: "drizzle",
+		});
+	});
+
+	it("flags installs that fight over the same config field", () => {
+		expect(installConflict("prisma", ["drizzle", "trpc"])).toBe("drizzle");
+		expect(installConflict("drizzle", ["prisma"])).toBe("prisma");
+	});
+
+	it("allows re-adding the same addon and unrelated addons", () => {
+		expect(installConflict("prisma", ["prisma"])).toBe(undefined);
+		expect(installConflict("tailwind", ["drizzle"])).toBe(undefined);
+		expect(installConflict("commitlint", ["lefthook"])).toBe(undefined);
 	});
 });
