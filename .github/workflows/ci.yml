@@ -53,7 +53,7 @@ jobs:
         run: pnpm typecheck
 
   test:
-    name: Tests
+    name: Scenarios
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,12 +66,11 @@ jobs:
         uses: ./tooling/github/setup
 
       - name: Test
-        run: pnpm test
+        run: pnpm test --filter=@ryuujs/scenarios
 
   temper:
     name: Temper Report
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     permissions:
       contents: read
       pull-requests: write
@@ -88,7 +87,7 @@ jobs:
         run: pnpm test:coverage
 
       - name: Temper Report
-        if: ${{ !cancelled() }}
+        if: ${{ github.event_name == 'pull_request' && !cancelled() }}
         run: node scripts/temper-report.ts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

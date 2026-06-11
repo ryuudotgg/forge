@@ -243,8 +243,9 @@ async function github(
 		headers: {
 			accept: "application/vnd.github+json",
 			authorization: `Bearer ${token}`,
+			...(body !== undefined && { "content-type": "application/json" }),
 			"user-agent": "temper-report",
-			"x-github-api-version": "2022-11-28",
+			"x-github-api-version": "2026-03-10",
 		},
 		method,
 	});
