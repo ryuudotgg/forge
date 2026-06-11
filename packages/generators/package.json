@@ -43,7 +43,7 @@
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache coverage dist node_modules",
 		"dev": "tsdown --watch",
-		"test": "vitest run test",
+		"test": "vitest run tests",
 		"test:coverage": "vitest run --coverage",
 		"typecheck": "tsc"
 	},

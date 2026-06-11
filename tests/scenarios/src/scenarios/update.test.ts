@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -20,6 +20,16 @@ describe("update", () => {
 				web: "nextjs",
 			});
 
+			const originalLayoutPath = join(
+				workspace.projectRoot,
+				"apps/web/app/layout.tsx",
+			);
+			const movedLayoutPath = join(
+				workspace.projectRoot,
+				"apps/web/app/(site)/layout.tsx",
+			);
+			const originalLayout = await readFile(originalLayoutPath, "utf-8");
+
 			const configPath = join(workspace.projectRoot, "apps/web/forge.json");
 			const moduleConfig = await readJson<{
 				id: string;
@@ -31,13 +41,16 @@ describe("update", () => {
 
 			await updateProject(workspace.projectRoot);
 
-			expect(
-				await pathExists(
-					join(workspace.projectRoot, "apps/web/app/(site)/layout.tsx"),
-				),
-			).toBe(true);
+			expect(await pathExists(originalLayoutPath)).toBe(false);
+			expect(await readFile(movedLayoutPath, "utf-8")).toBe(originalLayout);
+
+			const updatedConfig = await readJson<{
+				slots: Record<string, string>;
+			}>(configPath);
+
+			expect(updatedConfig.slots.layout).toBe("app/(site)/layout.tsx");
 		});
-	});
+	}, 120_000);
 
 	it("restores missing managed files from the lockfile", async () => {
 		await withScenarioWorkspace("update-heal", async (workspace) => {
@@ -48,15 +61,16 @@ describe("update", () => {
 			});
 
 			const layoutPath = join(workspace.projectRoot, "apps/web/app/layout.tsx");
+			const originalLayout = await readFile(layoutPath, "utf-8");
 
 			await rm(layoutPath, { force: true });
 			expect(await pathExists(layoutPath)).toBe(false);
 
 			await updateProject(workspace.projectRoot);
 
-			expect(await pathExists(layoutPath)).toBe(true);
+			expect(await readFile(layoutPath, "utf-8")).toBe(originalLayout);
 		});
-	});
+	}, 120_000);
 
 	it("surfaces planner failures as a friendly error with exit 1", async () => {
 		await withScenarioWorkspace("update-planner-error", async (workspace) => {
@@ -88,7 +102,7 @@ describe("update", () => {
 
 			expect(result.exitCode).toBe(1);
 			expect(result.stdout + result.stderr).toContain(
-				"We couldn't plan this change.",
+				"We couldn't plan this change. Definition Dependency Inactive.",
 			);
 			expect(result.stdout + result.stderr).not.toContain("FiberFailure");
 		});

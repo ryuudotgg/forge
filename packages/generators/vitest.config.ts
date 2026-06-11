@@ -9,6 +9,6 @@ export default defineConfig({
 			thresholds: PACKAGES["@ryuujs/generators"].temper,
 		},
 		environment: "node",
-		include: ["test/**/*.test.ts"],
+		include: ["tests/**/*.test.ts"],
 	},
 });

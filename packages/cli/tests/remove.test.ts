@@ -56,7 +56,21 @@ describe("remove command", () => {
 
 		await runRemove(undefined, {});
 
-		expect(promptMocks.select).toHaveBeenCalled();
+		expect(lifecycleMocks.loadManagedProject).toHaveBeenCalledWith(
+			".",
+			"remove",
+		);
+		expect(promptMocks.select).toHaveBeenCalledWith({
+			message: "Which addon do you want to remove?",
+			options: [
+				{
+					hint: "Add Tailwind CSS support.",
+					label: "Tailwind CSS",
+					value: "tailwind",
+				},
+			],
+		});
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", web: "nextjs" },
@@ -77,6 +91,7 @@ describe("remove command", () => {
 
 		await runRemove("commitlint", {});
 
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ addons: ["lefthook"], slug: "acme" },
@@ -87,6 +102,7 @@ describe("remove command", () => {
 	it("prompts for module targets only when an addon is installed in multiple modules", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
+				config: { slug: "acme", style: "tailwind", web: "nextjs" },
 				installs: [
 					{
 						definitionId: "tailwind",
@@ -104,10 +120,17 @@ describe("remove command", () => {
 
 		await runRemove("tailwind", {});
 
-		expect(promptMocks.multiselect).toHaveBeenCalled();
+		expect(promptMocks.multiselect).toHaveBeenCalledWith({
+			message: 'Where should we remove "Tailwind CSS" from?',
+			options: [
+				{ label: "@acme/web (apps/web)", value: "abcde" },
+				{ label: "@acme/admin (apps/admin)", value: "fghij" },
+			],
+			required: true,
+		});
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
-			{ slug: "acme", web: "nextjs" },
+			{ slug: "acme", style: "tailwind", web: "nextjs" },
 			[
 				{
 					definitionId: "tailwind",
@@ -266,6 +289,27 @@ describe("remove command", () => {
 
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We couldn\'t find "stale" in this project.',
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("shows a friendly error when a known addon is not installed", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+			await expect(runRemove("tailwind", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'We couldn\'t find "tailwind" in this project.',
 			);
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {

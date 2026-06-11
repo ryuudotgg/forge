@@ -6,7 +6,7 @@
 	"scripts": {
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache node_modules",
-		"test": "vitest run test",
+		"test": "vitest run tests",
 		"typecheck": "tsc"
 	},
 	"devDependencies": {

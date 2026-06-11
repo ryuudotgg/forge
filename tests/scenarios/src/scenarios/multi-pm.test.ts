@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -31,6 +31,102 @@ function dependencyValues(pkg: PackageJson): ReadonlyArray<string> {
 	];
 }
 
+const coreManifestPaths = [
+	"package.json",
+	"apps/web/package.json",
+	"packages/db/package.json",
+	"packages/trpc/package.json",
+	"packages/ui/package.json",
+];
+
+interface WorkspaceManifest {
+	readonly path: string;
+	readonly pkg: PackageJson;
+}
+
+async function readWorkspaceManifests(
+	projectRoot: string,
+): Promise<ReadonlyArray<WorkspaceManifest>> {
+	const manifests: WorkspaceManifest[] = [
+		{
+			path: "package.json",
+			pkg: await readJson<PackageJson>(join(projectRoot, "package.json")),
+		},
+	];
+
+	for (const group of ["apps", "packages", "tooling"]) {
+		const entries = await readdir(join(projectRoot, group), {
+			withFileTypes: true,
+		});
+
+		for (const entry of entries) {
+			if (!entry.isDirectory()) continue;
+
+			const manifestPath = join(group, entry.name, "package.json");
+			if (await pathExists(join(projectRoot, manifestPath)))
+				manifests.push({
+					path: manifestPath,
+					pkg: await readJson<PackageJson>(join(projectRoot, manifestPath)),
+				});
+		}
+	}
+
+	return manifests;
+}
+
+function expectResolvedDependencies(
+	manifests: ReadonlyArray<WorkspaceManifest>,
+	options: { readonly allowWorkspaceProtocol: boolean },
+) {
+	expect(manifests.map((manifest) => manifest.path)).toEqual(
+		expect.arrayContaining(coreManifestPaths),
+	);
+
+	for (const { path, pkg } of manifests) {
+		const values = dependencyValues(pkg);
+		if (coreManifestPaths.includes(path))
+			expect(values.length, path).toBeGreaterThan(0);
+
+		for (const value of values) {
+			expect(value, path).not.toMatch(/^catalog:/);
+			if (!options.allowWorkspaceProtocol)
+				expect(value, path).not.toMatch(/^workspace:/);
+		}
+	}
+}
+
+interface PrismaCell {
+	readonly dbDependency: string;
+	readonly dbGenerate: string;
+	readonly migrate: string;
+	readonly pm: string;
+	readonly postinstall: string;
+}
+
+const prismaCells: ReadonlyArray<PrismaCell> = [
+	{
+		dbDependency: "*",
+		dbGenerate: "npm run generate --prefix ../../packages/db",
+		migrate: "npm run with-env -- prisma migrate dev",
+		pm: "npm",
+		postinstall: "npm run generate --prefix packages/db",
+	},
+	{
+		dbDependency: "workspace:*",
+		dbGenerate: "yarn workspace @acme/db generate",
+		migrate: "yarn with-env prisma migrate dev",
+		pm: "Yarn",
+		postinstall: "yarn workspace @acme/db generate",
+	},
+	{
+		dbDependency: "workspace:*",
+		dbGenerate: "bun --filter @acme/db generate",
+		migrate: "bun run with-env prisma migrate dev",
+		pm: "Bun",
+		postinstall: "bun --filter @acme/db generate",
+	},
+];
+
 describe("multi-pm", () => {
 	it("keeps pnpm projects on the workspace catalog", async () => {
 		await withScenarioWorkspace("multi-pm-pnpm", async (workspace) => {
@@ -52,6 +148,10 @@ describe("multi-pm", () => {
 
 			expect(root.workspaces).toBeUndefined();
 			expect(workspaceYaml).toContain("catalog:");
+			expect(workspaceYaml).toMatch(/^ {2}next: \d/m);
+			expect(workspaceYaml).toContain("allowBuilds:");
+			expect(workspaceYaml).toContain("  esbuild: true");
+			expect(workspaceYaml).toContain("  lefthook: true");
 			expect(web.dependencies?.next).toBe("catalog:");
 			expect(web.dependencies?.["@acme/ui"]).toBe("workspace:*");
 			expect(web.scripts?.build).toBe("pnpm with-env next build");
@@ -91,11 +191,10 @@ describe("multi-pm", () => {
 				await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
 			).toBe(false);
 
-			for (const pkg of [root, web, db])
-				for (const value of dependencyValues(pkg)) {
-					expect(value).not.toMatch(/^catalog:/);
-					expect(value).not.toMatch(/^workspace:/);
-				}
+			expectResolvedDependencies(
+				await readWorkspaceManifests(workspace.projectRoot),
+				{ allowWorkspaceProtocol: false },
+			);
 
 			expect(web.dependencies?.["@acme/ui"]).toBe("*");
 			expect(web.scripts?.build).toBe("npm run with-env -- next build");
@@ -141,10 +240,19 @@ describe("multi-pm", () => {
 			);
 
 			expect(root.workspaces).toEqual(["apps/*", "packages/*", "tooling/*"]);
+			expect(
+				await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
+			).toBe(false);
 			expect(yarnrc).toBe("nodeLinker: node-modules\n");
+			expect(gitignore).toContain(".pnp.*");
 			expect(gitignore).toContain(".yarn/*");
+			expect(gitignore).toContain("!.yarn/patches");
 			expect(web.dependencies?.["@acme/ui"]).toBe("workspace:*");
-			expect(web.dependencies?.next).not.toMatch(/^catalog:/);
+			expect(web.dependencies?.next).toMatch(/^\d/);
+			expectResolvedDependencies(
+				await readWorkspaceManifests(workspace.projectRoot),
+				{ allowWorkspaceProtocol: true },
+			);
 			expect(web.scripts?.build).toBe("yarn with-env next build");
 			expect(web.scripts?.["db:generate"]).toBe(
 				"yarn workspace @acme/db generate",
@@ -176,8 +284,18 @@ describe("multi-pm", () => {
 			);
 
 			expect(root.workspaces).toEqual(["apps/*", "packages/*", "tooling/*"]);
+			expect(
+				await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
+			).toBe(false);
+			expect(await pathExists(join(workspace.projectRoot, ".yarnrc.yml"))).toBe(
+				false,
+			);
 			expect(web.dependencies?.["@acme/ui"]).toBe("workspace:*");
-			expect(web.dependencies?.next).not.toMatch(/^catalog:/);
+			expect(web.dependencies?.next).toMatch(/^\d/);
+			expectResolvedDependencies(
+				await readWorkspaceManifests(workspace.projectRoot),
+				{ allowWorkspaceProtocol: true },
+			);
 			expect(web.scripts?.build).toBe("bun run with-env next build");
 			expect(web.scripts?.["db:generate"]).toBe(
 				"bun --filter @acme/db generate",
@@ -186,5 +304,45 @@ describe("multi-pm", () => {
 			expect(setupAction).toContain("oven-sh/setup-bun");
 			expect(setupAction).toContain("bun install --frozen-lockfile");
 		});
+	}, 240_000);
+
+	it.each(
+		prismaCells,
+	)("wires prisma scripts and the db dependency for $pm", async ({
+		dbDependency,
+		dbGenerate,
+		migrate,
+		pm,
+		postinstall,
+	}) => {
+		await withScenarioWorkspace(
+			`multi-pm-prisma-${pm.toLowerCase()}`,
+			async (workspace) => {
+				await createProject(workspace, {
+					...baseConfig,
+					database: "postgresql",
+					orm: "prisma",
+					packageManager: pm,
+				});
+
+				const root = await readJson<PackageJson>(
+					join(workspace.projectRoot, "package.json"),
+				);
+				const web = await readJson<PackageJson>(
+					join(workspace.projectRoot, "apps/web/package.json"),
+				);
+				const db = await readJson<PackageJson>(
+					join(workspace.projectRoot, "packages/db/package.json"),
+				);
+
+				expect(root.scripts?.postinstall).toBe(postinstall);
+				expect(db.scripts?.migrate).toBe(migrate);
+				expect(web.scripts?.["db:generate"]).toBe(dbGenerate);
+				expect(web.dependencies?.["@acme/db"]).toBe(dbDependency);
+				expect(
+					await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
+				).toBe(false);
+			},
+		);
 	}, 240_000);
 });

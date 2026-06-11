@@ -6,22 +6,46 @@ import {
 	createProject,
 	pathExists,
 	readJson,
+	updateProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
 
 const optInFiles = [
 	".github/workflows/ci.yml",
+	".vscode/extensions.json",
 	".vscode/settings.json",
 	"commitlint.config.ts",
 	"lefthook.yml",
 	"packages/shared/forge.json",
+	"tooling/github/package.json",
 	"tooling/github/setup/action.yml",
 ];
 
+const lefthookPreCommitYaml = `pre-commit:
+  jobs:
+    - run: pnpm check:fix --staged --no-errors-on-unmatched
+    - run: git update-index --again
+`;
+
+const lefthookFullYaml = `commit-msg:
+  jobs:
+    - run: pnpm exec commitlint --edit {1}
+
+${lefthookPreCommitYaml}`;
+
 interface PackageJson {
 	readonly dependencies?: Record<string, string>;
+	readonly devDependencies?: Record<string, string>;
 	readonly name?: string;
 	readonly scripts?: Record<string, string>;
+}
+
+interface AddonsManifest {
+	readonly config: { readonly addons?: ReadonlyArray<string> };
+	readonly installs: Array<{
+		definitionId: string;
+		targets: Array<{ kind: string }>;
+	}>;
 }
 
 describe("addons", () => {
@@ -61,15 +85,31 @@ describe("addons", () => {
 			);
 
 			expect(root.scripts?.prepare).toBe("lefthook install");
+			expect(root.devDependencies?.lefthook).toBe("catalog:");
+			expect(root.devDependencies?.["@commitlint/cli"]).toBe("catalog:");
 
 			const lefthook = await readFile(
 				join(workspace.projectRoot, "lefthook.yml"),
 				"utf-8",
 			);
 
-			expect(lefthook).toContain("pre-commit:");
-			expect(lefthook).toContain("commit-msg:");
-			expect(lefthook).toContain("commitlint --edit {1}");
+			expect(lefthook).toBe(lefthookFullYaml);
+
+			const ci = await readFile(
+				join(workspace.projectRoot, ".github/workflows/ci.yml"),
+				"utf-8",
+			);
+
+			expect(ci).toContain("run: pnpm check");
+			expect(ci).toContain("run: pnpm check:ws");
+			expect(ci).toContain("run: pnpm typecheck");
+			expect(ci).toContain("uses: ./tooling/github/setup");
+
+			const vscodeSettings = await readJson<Record<string, unknown>>(
+				join(workspace.projectRoot, ".vscode/settings.json"),
+			);
+
+			expect(vscodeSettings["editor.defaultFormatter"]).toBe("biomejs.biome");
 
 			expect(shared.name).toBe("@acme/shared");
 			expect(shared.dependencies?.nanoid).toBe("catalog:");
@@ -99,6 +139,8 @@ describe("addons", () => {
 			);
 
 			expect(root.scripts?.prepare).toBeUndefined();
+			expect(root.devDependencies?.lefthook).toBeUndefined();
+			expect(root.devDependencies?.["@commitlint/cli"]).toBeUndefined();
 
 			await addAddon(workspace.projectRoot, "lefthook");
 
@@ -107,8 +149,7 @@ describe("addons", () => {
 				"utf-8",
 			);
 
-			expect(lefthookOnly).toContain("pre-commit:");
-			expect(lefthookOnly).not.toContain("commit-msg:");
+			expect(lefthookOnly).toBe(lefthookPreCommitYaml);
 			expect(
 				await pathExists(join(workspace.projectRoot, "commitlint.config.ts")),
 			).toBe(false);
@@ -126,8 +167,7 @@ describe("addons", () => {
 				"utf-8",
 			);
 
-			expect(lefthookWithCommitlint).toContain("commit-msg:");
-			expect(lefthookWithCommitlint).toContain("commitlint --edit {1}");
+			expect(lefthookWithCommitlint).toBe(lefthookFullYaml);
 			expect(
 				await pathExists(join(workspace.projectRoot, "commitlint.config.ts")),
 			).toBe(true);
@@ -136,9 +176,51 @@ describe("addons", () => {
 
 			expect(
 				await pathExists(
+					join(workspace.projectRoot, "packages/shared/forge.json"),
+				),
+			).toBe(true);
+			expect(
+				await pathExists(
 					join(workspace.projectRoot, "packages/shared/src/index.ts"),
 				),
 			).toBe(true);
+
+			const sharedPackageJson = await readJson<PackageJson>(
+				join(workspace.projectRoot, "packages/shared/package.json"),
+			);
+
+			expect(sharedPackageJson.name).toBe("@acme/shared");
+
+			const manifest = await readJson<AddonsManifest>(
+				join(workspace.projectRoot, ".forge/manifest.json"),
+			);
+
+			expect(manifest.config.addons).toEqual([
+				"lefthook",
+				"commitlint",
+				"shared",
+			]);
+			expect(manifest.installs).toContainEqual({
+				definitionId: "lefthook",
+				targets: [{ kind: "project" }],
+			});
+			expect(manifest.installs).toContainEqual({
+				definitionId: "commitlint",
+				targets: [{ kind: "project" }],
+			});
+			expect(manifest.installs).toContainEqual({
+				definitionId: "shared",
+				targets: [{ kind: "project" }],
+			});
+
+			await updateProject(workspace.projectRoot);
+
+			const lefthookAfterUpdate = await readFile(
+				join(workspace.projectRoot, "lefthook.yml"),
+				"utf-8",
+			);
+
+			expect(lefthookAfterUpdate).toBe(lefthookFullYaml);
 		});
 	}, 240_000);
 });
