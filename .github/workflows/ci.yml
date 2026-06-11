@@ -67,3 +67,28 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  temper:
+    name: Temper Report
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Measure Coverage
+        run: pnpm test:coverage
+
+      - name: Temper Report
+        if: ${{ !cancelled() }} # Narrate even when thresholds fail the run.
+        run: node scripts/temper-report.ts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

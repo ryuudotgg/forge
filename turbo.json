@@ -40,6 +40,11 @@
 			"dependsOn": ["^build"],
 			"outputs": []
 		},
+		"test:coverage": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/temper.ts"],
+			"outputs": ["coverage/**"]
+		},
 		"typecheck": {
 			"dependsOn": ["^build"],
 			"outputs": [".cache/tsbuildinfo.json"]

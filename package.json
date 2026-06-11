@@ -12,6 +12,7 @@
 		"postinstall": "pnpm check:ws",
 		"start": "turbo run start --continue",
 		"test": "turbo run test --continue",
+		"test:coverage": "turbo run test:coverage --continue",
 		"typecheck": "turbo run typecheck"
 	},
 	"devDependencies": {

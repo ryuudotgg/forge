@@ -41,9 +41,10 @@
 	"scripts": {
 		"build": "tsdown",
 		"check": "biome check",
-		"clean": "git clean -xdf .turbo .cache dist node_modules",
+		"clean": "git clean -xdf .turbo .cache coverage dist node_modules",
 		"dev": "tsdown --watch",
 		"test": "vitest run test",
+		"test:coverage": "vitest run --coverage",
 		"typecheck": "tsc"
 	},
 	"dependencies": {
@@ -53,6 +54,7 @@
 	"devDependencies": {
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
+		"@vitest/coverage-v8": "catalog:dev",
 		"tsdown": "catalog:build",
 		"typescript": "catalog:dev"
 	}
