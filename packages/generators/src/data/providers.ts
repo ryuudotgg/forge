@@ -94,9 +94,16 @@ export function envRuntimeLines(
 		.join("\n");
 }
 
-// dotenv only supports double quotes inside single-quoted values.
+// dotenv has no escaping inside quoted values, so a value has to be wrapped
+// in a quote style it doesn't use itself.
 export function envFileLine(name: string, value: string): string {
-	return value.includes('"') ? `${name}='${value}'` : `${name}="${value}"`;
+	const quote = ['"', "'", "`"].find((style) => !value.includes(style));
+	if (quote === undefined)
+		throw new Error(
+			`The value of ${name} can't be written to .env because it uses all three quote styles dotenv supports.`,
+		);
+
+	return `${name}=${quote}${value}${quote}`;
 }
 
 export function drizzleKitCredentials(support: DrizzleSupport): string {

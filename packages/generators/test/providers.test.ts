@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { envFileLine } from "../src/data/providers";
 import {
 	detectDatabase,
 	detectDatabaseProvider,
@@ -8,6 +9,26 @@ import {
 	postgresProviderIdsFor,
 	resolveDatabaseProvider,
 } from "../src/index";
+
+describe("envFileLine", () => {
+	it("wraps values in the first quote style they don't use", () => {
+		expect(envFileLine("DATABASE_URL", "postgres://localhost/db")).toBe(
+			'DATABASE_URL="postgres://localhost/db"',
+		);
+		expect(envFileLine("DATABASE_URL", 'ssl={"rejectUnauthorized":true}')).toBe(
+			`DATABASE_URL='ssl={"rejectUnauthorized":true}'`,
+		);
+		expect(envFileLine("DATABASE_URL", `pass"word'`)).toBe(
+			"DATABASE_URL=`pass\"word'`",
+		);
+	});
+
+	it("refuses values that use all three quote styles", () => {
+		expect(() => envFileLine("DATABASE_URL", "\"'`")).toThrow(
+			"all three quote styles",
+		);
+	});
+});
 
 describe("resolveDatabaseProvider", () => {
 	it("falls back to the dialect's local profile without a provider", () => {

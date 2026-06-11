@@ -160,8 +160,10 @@ async function inferConfigSnapshot(
 
 	const envValue = (name: string) =>
 		rootEnv
-			?.match(new RegExp(`^${name}=(.*)$`, "m"))?.[1]
-			?.replace(/^["']|["']$/g, "");
+			?.split("\n")
+			.find((line) => line.startsWith(`${name}=`))
+			?.slice(name.length + 1)
+			.replace(/^["'`]|["'`]$/g, "");
 
 	const databaseEvidence = {
 		dependencies: dbPackageJson?.dependencies ?? {},
