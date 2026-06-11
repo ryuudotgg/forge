@@ -4,20 +4,20 @@ generator client {
 }
 
 datasource db {
-  provider = "__DATASOURCE_PROVIDER__"
+  provider = "__DATASOURCE_PROVIDER__"__RELATION_MODE__
 }
 
 model User {
   id            String   @id
 
-  name          String
-  image         String?
+  name          String__TEXT__
+  image         String?__TEXT__
 
   email         String   @unique
   emailVerified Boolean  @default(false) @map("email_verified")
 
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt     DateTime @default(now()) @map("created_at")__TIMESTAMPTZ__
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__
 
   sessions Session[]
   accounts Account[]
@@ -30,51 +30,51 @@ model Session {
   userId    String   @map("user_id")
 
   token     String   @unique
-  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  expiresAt DateTime @map("expires_at")__TIMESTAMPTZ__
 
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent")
+  ipAddress String?  @map("ip_address")__TEXT__
+  userAgent String?  @map("user_agent")__TEXT__
 
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at")__TIMESTAMPTZ__
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("sessions")
+__RELATION_INDEX__  @@map("sessions")
 }
 
 model Account {
   id                    String    @id
   userId                String    @map("user_id")
 
-  accountId             String    @map("account_id")
-  providerId            String    @map("provider_id")
+  accountId             String    @map("account_id")__TEXT__
+  providerId            String    @map("provider_id")__TEXT__
 
-  accessToken           String?   @map("access_token")
-  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz
+  accessToken           String?   @map("access_token")__TEXT__
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")__TIMESTAMPTZ__
 
-  refreshToken          String?   @map("refresh_token")
-  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz
+  refreshToken          String?   @map("refresh_token")__TEXT__
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")__TIMESTAMPTZ__
 
-  scope                 String?
+  scope                 String?__TEXT__
 
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt             DateTime  @default(now()) @map("created_at")__TIMESTAMPTZ__
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("accounts")
+__RELATION_INDEX__  @@map("accounts")
 }
 
 model Verification {
   id         String   @id
-  identifier String
+  identifier String__TEXT__
 
-  value      String
-  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+  value      String__TEXT__
+  expiresAt  DateTime @map("expires_at")__TIMESTAMPTZ__
 
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at")__TIMESTAMPTZ__
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__
 
   @@map("verifications")
 }

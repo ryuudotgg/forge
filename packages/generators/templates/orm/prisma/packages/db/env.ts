@@ -9,14 +9,12 @@ export const env = createEnv({
   },
 
   server: {
-    DATABASE_URL: z.url(),
-    DATABASE_DIRECT_URL: z.url(),
+__ENV_SERVER__
   },
 
   runtimeEnvStrict: {
     NODE_ENV: process.env.NODE_ENV,
-    DATABASE_URL: process.env.DATABASE_URL,
-    DATABASE_DIRECT_URL: process.env.DATABASE_DIRECT_URL,
+__ENV_RUNTIME__
   },
 
   emptyStringAsUndefined: true,

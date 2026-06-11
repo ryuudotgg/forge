@@ -4,20 +4,20 @@ generator client {
 }
 
 datasource db {
-  provider = "__DATASOURCE_PROVIDER__"
+  provider = "__DATASOURCE_PROVIDER__"__RELATION_MODE__
 }
 
 model User {
   id            String   @id
 
-  name          String
-  image         String?
+  name          String__TEXT__
+  image         String?__TEXT__
 
   email         String   @unique
   emailVerified Boolean  @default(false) @map("email_verified")
 
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt     DateTime @default(now()) @map("created_at")__TIMESTAMPTZ__
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__
 
   @@map("users")
 }

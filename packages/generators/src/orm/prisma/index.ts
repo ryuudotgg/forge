@@ -10,7 +10,12 @@ import {
 	surfaceScripts,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
-import { resolveDatabaseProvider } from "../../data/providers";
+import {
+	envFileLine,
+	envRuntimeLines,
+	envServerLines,
+	resolveDatabaseProvider,
+} from "../../data/providers";
 import { deps } from "../../deps";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
@@ -33,9 +38,22 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 		const provider = resolveDatabaseProvider(config);
 
 		const usesAuth = config.authentication === "better-auth";
+		const envVars = provider.prisma.envVars ?? provider.envVars;
+		const emulatesRelations = provider.prisma.relationMode !== undefined;
 		const vars = {
 			SLUG: slug,
 			DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
+			ENV_RUNTIME: envRuntimeLines(envVars),
+			ENV_SERVER: envServerLines(envVars),
+			RELATION_MODE: emulatesRelations
+				? `\n  relationMode = "${provider.prisma.relationMode}"`
+				: "",
+			RELATION_INDEX: emulatesRelations ? "  @@index([userId])\n\n" : "",
+			TEXT: provider.prisma.datasourceProvider === "mysql" ? " @db.Text" : "",
+			TIMESTAMPTZ:
+				provider.prisma.datasourceProvider === "postgresql"
+					? " @db.Timestamptz"
+					: "",
 		};
 
 		const render = (path: string) =>
@@ -89,6 +107,10 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 					version: "workspace:*",
 					type: "devDependencies",
 				},
+				...provider.prisma.devDeps.map((key) => ({
+					...deps[key],
+					type: "devDependencies" as const,
+				})),
 				{ ...deps.typesNode, type: "devDependencies" },
 				{ ...deps.typescriptNativePreview, type: "devDependencies" },
 				{ ...deps.dotenvCli, type: "devDependencies" },
@@ -104,7 +126,9 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			leafTextFile(
 				ensuredModuleTarget("db"),
 				"prisma.config.ts",
-				render("packages/db/prisma.config.ts"),
+				render(
+					`packages/db/prisma.config.${provider.prisma.configTemplate}.ts`,
+				),
 			),
 			leafTextFile(
 				ensuredModuleTarget("db"),
@@ -137,19 +161,27 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			surfaceLines(
 				projectTarget(),
 				"rootEnv",
-				provider.envVars.map(({ name, value }) => `${name}="${value}"`),
+				envVars.map(({ name, value }) => envFileLine(name, value)),
 				{ section: "Database" },
 			),
 			surfaceLines(
 				projectTarget(),
 				"rootEnvExample",
-				provider.envVars.map(({ name, example }) => `${name}="${example}"`),
+				envVars.map(({ name, example }) => envFileLine(name, example)),
 				{ section: "Database" },
 			),
 			surfaceLines(
 				projectTarget(),
 				"gitignore",
-				["packages/db/src/generated/"],
+				[
+					"packages/db/src/generated/",
+					...(provider.prisma.configTemplate === "local-file"
+						? ["/local.db*"]
+						: []),
+					...(provider.prisma.configTemplate === "turso"
+						? ["/packages/db/prisma/local.db*"]
+						: []),
+				],
 				{ section: "Prisma" },
 			),
 

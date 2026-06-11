@@ -9,7 +9,10 @@ import {
 	surfaceLines,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
-import { resolveDatabaseProvider } from "../../data/providers";
+import {
+	drizzleAdapterProvider,
+	resolveDatabaseProvider,
+} from "../../data/providers";
 import { deps } from "../../deps";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
@@ -37,10 +40,11 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 		const pm = resolvePackageManager(config);
 		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
 
+		const provider = resolveDatabaseProvider(config);
 		const vars = {
 			SLUG: slug,
-			DATASOURCE_PROVIDER:
-				resolveDatabaseProvider(config).prisma.datasourceProvider,
+			DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
+			DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
 		};
 		const render = (path: string) =>
 			interpolate(readTemplate(`auth/better-auth/${path}`), vars);

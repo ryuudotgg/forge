@@ -10,7 +10,13 @@ import {
 	surfaceScripts,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
-import { resolveDatabaseProvider } from "../../data/providers";
+import {
+	drizzleKitCredentials,
+	envFileLine,
+	envRuntimeLines,
+	envServerLines,
+	resolveDatabaseProvider,
+} from "../../data/providers";
 import { deps } from "../../deps";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
@@ -38,6 +44,9 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
 			DATABASE_TYPE: provider.drizzle.databaseType,
 			DRIZZLE_DRIVER: provider.drizzle.driver,
+			ENV_RUNTIME: envRuntimeLines(provider.envVars),
+			ENV_SERVER: envServerLines(provider.envVars),
+			KIT_CREDENTIALS: drizzleKitCredentials(provider.drizzle),
 			KIT_DIALECT: provider.drizzle.kitDialect,
 		};
 
@@ -148,14 +157,18 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			leafTextFile(
 				ensuredModuleTarget("db"),
 				"src/schema/users/users.ts",
-				render("packages/db/src/schema/users/users.ts"),
+				render(
+					`packages/db/src/schema/users/${provider.drizzle.schemaTemplates.users}.ts`,
+				),
 			),
 			...(usesAuth
 				? [
 						leafTextFile(
 							ensuredModuleTarget("db"),
 							"src/schema/auth.ts",
-							render("packages/db/src/schema/auth.ts"),
+							render(
+								`packages/db/src/schema/${provider.drizzle.schemaTemplates.auth}.ts`,
+							),
 						),
 					]
 				: []),
@@ -171,15 +184,22 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			surfaceLines(
 				projectTarget(),
 				"rootEnv",
-				provider.envVars.map(({ name, value }) => `${name}="${value}"`),
+				provider.envVars.map(({ name, value }) => envFileLine(name, value)),
 				{ section: "Database" },
 			),
 			surfaceLines(
 				projectTarget(),
 				"rootEnvExample",
-				provider.envVars.map(({ name, example }) => `${name}="${example}"`),
+				provider.envVars.map(({ name, example }) => envFileLine(name, example)),
 				{ section: "Database" },
 			),
+			...(provider.drizzle.clientTemplate === "libsql"
+				? [
+						surfaceLines(projectTarget(), "gitignore", ["/local.db*"], {
+							section: "Database",
+						}),
+					]
+				: []),
 
 			surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
 				"db:generate": pmRunIn(pm, dbPackage, "generate"),

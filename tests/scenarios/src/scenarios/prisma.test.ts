@@ -16,6 +16,7 @@ interface PackageJson {
 
 interface GeneratedDbPackage {
 	readonly client: string;
+	readonly dbEnv: string;
 	readonly env: string;
 	readonly envExample: string;
 	readonly index: string;
@@ -41,20 +42,38 @@ async function createPrismaProject(
 	const readText = (path: string) =>
 		readFile(join(workspace.projectRoot, path), "utf-8");
 
-	const [client, env, envExample, index, packageJson, prismaConfig, schema] =
-		await Promise.all([
-			readText("packages/db/src/client.ts"),
-			readText(".env"),
-			readText(".env.example"),
-			readText("packages/db/src/index.ts"),
-			readJson<PackageJson>(
-				join(workspace.projectRoot, "packages/db/package.json"),
-			),
-			readText("packages/db/prisma.config.ts"),
-			readText("packages/db/prisma/schema.prisma"),
-		]);
+	const [
+		client,
+		dbEnv,
+		env,
+		envExample,
+		index,
+		packageJson,
+		prismaConfig,
+		schema,
+	] = await Promise.all([
+		readText("packages/db/src/client.ts"),
+		readText("packages/db/env.ts"),
+		readText(".env"),
+		readText(".env.example"),
+		readText("packages/db/src/index.ts"),
+		readJson<PackageJson>(
+			join(workspace.projectRoot, "packages/db/package.json"),
+		),
+		readText("packages/db/prisma.config.ts"),
+		readText("packages/db/prisma/schema.prisma"),
+	]);
 
-	return { client, env, envExample, index, packageJson, prismaConfig, schema };
+	return {
+		client,
+		dbEnv,
+		env,
+		envExample,
+		index,
+		packageJson,
+		prismaConfig,
+		schema,
+	};
 }
 
 describe("prisma", () => {
@@ -88,6 +107,16 @@ export const db = new PrismaClient({ adapter });
 			expect(db.index).toContain(
 				'export * from "@acme/db/generated/prisma/client";',
 			);
+
+			expect(db.dbEnv).toContain(`  server: {
+    DATABASE_URL: z.url(),
+    DATABASE_DIRECT_URL: z.url(),
+  },`);
+			expect(db.dbEnv).toContain(`  runtimeEnvStrict: {
+    NODE_ENV: process.env.NODE_ENV,
+    DATABASE_URL: process.env.DATABASE_URL,
+    DATABASE_DIRECT_URL: process.env.DATABASE_DIRECT_URL,
+  },`);
 
 			expect(db.packageJson.dependencies).toHaveProperty("@prisma/client");
 			expect(db.packageJson.dependencies).toHaveProperty("@prisma/adapter-pg");
@@ -203,6 +232,174 @@ export const db = new PrismaClient({ adapter });
 				'DATABASE_DIRECT_URL="postgres://user:password@db.prisma.io:5432/?sslmode=require"',
 			);
 			expect(db.envExample).toContain("pooled.db.prisma.io:5432");
+		});
+	}, 120_000);
+
+	it("generates a libsql adapter client and scratch migration file for turso", async () => {
+		await withScenarioWorkspace("prisma-turso", async (workspace) => {
+			const db = await createPrismaProject(workspace, {
+				database: "sqlite",
+				databaseProvider: "turso",
+			});
+
+			expect(db.client).toBe(
+				`import { env } from "@acme/db/env";
+import { PrismaClient } from "@acme/db/generated/prisma/client";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
+
+const adapter = new PrismaLibSql({
+  url: env.TURSO_DATABASE_URL,
+  authToken: env.TURSO_AUTH_TOKEN,
+});
+export const db = new PrismaClient({ adapter });
+`,
+			);
+
+			expect(db.schema).toContain('provider = "sqlite"');
+			expect(db.schema).not.toContain("relationMode");
+			expect(db.schema).not.toContain("@db.Timestamptz");
+
+			expect(db.prismaConfig).toContain(
+				'fileURLToPath(new URL("prisma/local.db", import.meta.url))',
+			);
+			expect(db.prismaConfig).toContain("turso db shell");
+
+			expect(db.packageJson.dependencies).toHaveProperty(
+				"@prisma/adapter-libsql",
+			);
+			expect(db.packageJson.dependencies).not.toHaveProperty(
+				"@prisma/adapter-pg",
+			);
+
+			expect(db.env).toContain(
+				'TURSO_DATABASE_URL="libsql://database-name-org.aws-us-east-1.turso.io"',
+			);
+			expect(db.env).toContain('TURSO_AUTH_TOKEN="change-me"');
+
+			expect(db.dbEnv).toContain(`  server: {
+    TURSO_DATABASE_URL: z.url(),
+    TURSO_AUTH_TOKEN: z.string(),
+  },`);
+
+			const gitignore = await readFile(
+				join(workspace.projectRoot, ".gitignore"),
+				"utf-8",
+			);
+			expect(gitignore).toContain("/packages/db/prisma/local.db*");
+		});
+	}, 120_000);
+
+	it("generates a planetscale adapter client with emulated relations for planetscale mysql", async () => {
+		await withScenarioWorkspace(
+			"prisma-planetscale-mysql",
+			async (workspace) => {
+				const db = await createPrismaProject(workspace, {
+					authentication: "better-auth",
+					database: "mysql",
+					databaseProvider: "planetscale",
+				});
+
+				expect(db.client).toContain(
+					'import { PrismaPlanetScale } from "@prisma/adapter-planetscale";',
+				);
+				expect(db.client).toContain(
+					"const adapter = new PrismaPlanetScale({ url: env.DATABASE_URL });",
+				);
+
+				expect(db.schema).toContain('provider = "mysql"');
+				expect(db.schema).toContain('relationMode = "prisma"');
+				expect(db.schema).toContain("@@index([userId])");
+				expect(db.schema).toContain(
+					'ipAddress String?  @map("ip_address") @db.Text',
+				);
+				expect(db.schema).not.toContain("@db.Timestamptz");
+
+				expect(db.prismaConfig).toContain("process.env.DATABASE_URL");
+				expect(db.prismaConfig).not.toContain("DATABASE_DIRECT_URL");
+
+				expect(db.packageJson.dependencies).toHaveProperty(
+					"@prisma/adapter-planetscale",
+				);
+
+				expect(db.env).toContain(
+					'DATABASE_URL="mysql://user:password@aws.connect.psdb.cloud/database?sslaccept=strict"',
+				);
+
+				const auth = await readFile(
+					join(workspace.projectRoot, "packages/auth/src/index.ts"),
+					"utf-8",
+				);
+				expect(auth).toContain(
+					'database: prismaAdapter(db, { provider: "mysql" }),',
+				);
+			},
+		);
+	}, 120_000);
+
+	it("generates a better-sqlite3 adapter client for local sqlite", async () => {
+		await withScenarioWorkspace("prisma-sqlite", async (workspace) => {
+			const db = await createPrismaProject(workspace, {
+				database: "sqlite",
+			});
+
+			expect(db.client).toContain(
+				'import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";',
+			);
+			expect(db.client).toContain(
+				"const adapter = new PrismaBetterSqlite3({ url: env.DATABASE_URL });",
+			);
+
+			expect(db.schema).toContain('provider = "sqlite"');
+			expect(db.prismaConfig).toContain(
+				'fileURLToPath(new URL("../../local.db", import.meta.url))',
+			);
+
+			expect(db.packageJson.dependencies).toHaveProperty(
+				"@prisma/adapter-better-sqlite3",
+			);
+			expect(db.packageJson.devDependencies).toHaveProperty(
+				"@types/better-sqlite3",
+			);
+
+			expect(db.env).toContain('DATABASE_URL="file:../../local.db"');
+
+			const [gitignore, workspaceYaml] = await Promise.all([
+				readFile(join(workspace.projectRoot, ".gitignore"), "utf-8"),
+				readFile(join(workspace.projectRoot, "pnpm-workspace.yaml"), "utf-8"),
+			]);
+			expect(gitignore).toContain("/local.db*");
+			expect(workspaceYaml).toContain("better-sqlite3: true");
+		});
+	}, 120_000);
+
+	it("generates a mariadb adapter client for local mysql", async () => {
+		await withScenarioWorkspace("prisma-mysql", async (workspace) => {
+			const db = await createPrismaProject(workspace, {
+				database: "mysql",
+			});
+
+			expect(db.client).toContain(
+				'import { PrismaMariaDb } from "@prisma/adapter-mariadb";',
+			);
+			expect(db.client).toContain("const adapter = new PrismaMariaDb({");
+
+			expect(db.schema).toContain('provider = "mysql"');
+			expect(db.schema).not.toContain("relationMode");
+			expect(db.schema).toContain("name          String @db.Text");
+
+			expect(db.packageJson.dependencies).toHaveProperty(
+				"@prisma/adapter-mariadb",
+			);
+
+			expect(db.env).toContain(
+				'DATABASE_URL="mysql://root:password@localhost:3306/app"',
+			);
+
+			const workspaceYaml = await readFile(
+				join(workspace.projectRoot, "pnpm-workspace.yaml"),
+				"utf-8",
+			);
+			expect(workspaceYaml).not.toContain("better-sqlite3: true");
 		});
 	}, 120_000);
 

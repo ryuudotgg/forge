@@ -3,7 +3,7 @@ import { env } from "./env";
 
 export default defineConfig({
   dialect: "__KIT_DIALECT__",
-  dbCredentials: { url: env.DATABASE_DIRECT_URL },
+  dbCredentials: { __KIT_CREDENTIALS__ },
 
   schema: "./src/schema/index.ts",
   out: "./src/drizzle",

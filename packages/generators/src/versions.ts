@@ -94,6 +94,21 @@ export const versions = {
 		version: "^1.0.2",
 		group: "Database",
 	},
+	libsqlClient: {
+		name: "@libsql/client",
+		version: "^0.17.3",
+		group: "Database",
+	},
+	planetscaleDatabase: {
+		name: "@planetscale/database",
+		version: "^1.20.1",
+		group: "Database",
+	},
+	mysql2: {
+		name: "mysql2",
+		version: "^3.22.5",
+		group: "Database",
+	},
 	prisma: {
 		name: "prisma",
 		version: "^7.8.0",
@@ -111,6 +126,26 @@ export const versions = {
 	},
 	prismaAdapterPg: {
 		name: "@prisma/adapter-pg",
+		version: "^7.8.0",
+		group: "Database",
+	},
+	prismaAdapterLibsql: {
+		name: "@prisma/adapter-libsql",
+		version: "^7.8.0",
+		group: "Database",
+	},
+	prismaAdapterMariadb: {
+		name: "@prisma/adapter-mariadb",
+		version: "^7.8.0",
+		group: "Database",
+	},
+	prismaAdapterPlanetscale: {
+		name: "@prisma/adapter-planetscale",
+		version: "^7.8.0",
+		group: "Database",
+	},
+	prismaAdapterBetterSqlite3: {
+		name: "@prisma/adapter-better-sqlite3",
 		version: "^7.8.0",
 		group: "Database",
 	},
@@ -167,6 +202,11 @@ export const versions = {
 		group: "Framework",
 	},
 
+	typesBetterSqlite3: {
+		name: "@types/better-sqlite3",
+		version: "^7.6.13",
+		group: "Types",
+	},
 	typesNode: { name: "@types/node", version: "^25.6.0", group: "Types" },
 	typesPg: { name: "@types/pg", version: "^8.20.0", group: "Types" },
 	typesReact: { name: "@types/react", version: "^19.2.14", group: "Types" },
