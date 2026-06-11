@@ -1,6 +1,17 @@
 {
+	"name": "@ryuujs/scripts",
+	"version": "0.1.0",
+	"private": true,
 	"type": "module",
+	"scripts": {
+		"check": "biome check",
+		"clean": "git clean -xdf .turbo .cache node_modules",
+		"test": "vitest run test",
+		"typecheck": "tsc"
+	},
 	"devDependencies": {
-		"@types/node": "catalog:dev"
+		"@ryuujs/tsconfig": "workspace:*",
+		"@types/node": "catalog:dev",
+		"typescript": "catalog:dev"
 	}
 }

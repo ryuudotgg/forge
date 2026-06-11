@@ -1,22 +1,18 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { PACKAGES, type Temper } from "./temper.ts";
-
-const MARKER = "<!-- temper-report -->";
-const MAX_BRITTLE_REFS = 8;
-
-interface PackageReport {
-	readonly branches: number;
-	readonly lines: number;
-	readonly name: string;
-	readonly temper: Temper;
-}
-
-interface LineRange {
-	end: number;
-	start: number;
-}
+import { PACKAGES } from "./temper.ts";
+import {
+	formatRange,
+	isRecord,
+	lineCoverage,
+	MARKER,
+	metricPct,
+	type PackageReport,
+	parseAddedLines,
+	render,
+	toRanges,
+} from "./tempering.ts";
 
 class GitHubRequestError extends Error {
 	readonly status: number;
@@ -25,10 +21,6 @@ class GitHubRequestError extends Error {
 		super(message);
 		this.status = status;
 	}
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 function git(args: readonly string[], cwd?: string): string {
@@ -51,170 +43,6 @@ function readCoverageFile(path: string): unknown {
 			`Missing Coverage Report: ${path} (run \`pnpm test:coverage\` first)`,
 		);
 	}
-}
-
-function metricPct(
-	summary: unknown,
-	metric: "branches" | "lines",
-	path: string,
-): number {
-	if (isRecord(summary) && isRecord(summary.total)) {
-		const section = summary.total[metric];
-		if (isRecord(section) && typeof section.pct === "number")
-			return section.pct;
-	}
-	throw new Error(`Malformed Coverage Summary: no ${metric} total in ${path}`);
-}
-
-function lineCoverage(fileCoverage: unknown): Map<number, number> {
-	const lines = new Map<number, number>();
-	if (
-		!isRecord(fileCoverage) ||
-		!isRecord(fileCoverage.statementMap) ||
-		!isRecord(fileCoverage.s)
-	)
-		return lines;
-
-	for (const [id, statement] of Object.entries(fileCoverage.statementMap)) {
-		const count = fileCoverage.s[id];
-		if (typeof count !== "number") continue;
-
-		if (!isRecord(statement) || !isRecord(statement.start)) continue;
-
-		const line = statement.start.line;
-		if (typeof line !== "number") continue;
-
-		const previous = lines.get(line);
-		if (previous === undefined || previous < count) lines.set(line, count);
-	}
-
-	return lines;
-}
-
-function addedLinesByFile(
-	root: string,
-	baseRef: string,
-	paths: readonly string[],
-): Map<string, Set<number>> {
-	const diff = git(
-		["diff", "--unified=0", "--no-color", `${baseRef}...HEAD`, "--", ...paths],
-		root,
-	);
-
-	const added = new Map<string, Set<number>>();
-
-	let current: Set<number> | undefined;
-	for (const line of diff.split("\n")) {
-		if (line.startsWith("+++ ")) {
-			const target = line.slice(4).trim();
-			if (target === "/dev/null") {
-				current = undefined;
-				continue;
-			}
-
-			const path = target.replace(/^b\//, "");
-
-			current = added.get(path) ?? new Set();
-			added.set(path, current);
-
-			continue;
-		}
-
-		const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-		if (!hunk || !current) continue;
-
-		const start = Number(hunk[1]);
-		const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
-		for (let offset = 0; offset < count; offset++) current.add(start + offset);
-	}
-
-	return added;
-}
-
-function toRanges(lines: readonly number[]): LineRange[] {
-	const ranges: LineRange[] = [];
-	for (const line of [...lines].sort((a, b) => a - b)) {
-		const last = ranges.at(-1);
-		if (last && line === last.end + 1) last.end = line;
-		else ranges.push({ end: line, start: line });
-	}
-
-	return ranges;
-}
-
-function formatRange(file: string, range: LineRange): string {
-	const lines =
-		range.start === range.end
-			? `${range.start}`
-			: `${range.start}-${range.end}`;
-
-	return `${file}:${lines}`;
-}
-
-function formatPct(value: number): string {
-	return `${value.toFixed(1)}%`;
-}
-
-function plural(count: number, word: string): string {
-	return `${count} ${word}${count === 1 ? "" : "s"}`;
-}
-
-function tier(report: PackageReport): string {
-	const { branches, lines, temper } = report;
-
-	if (lines >= temper.lines && branches >= temper.branches) return "🔥";
-	if (lines >= temper.lines - 10 && branches >= temper.branches - 10)
-		return "🟠";
-
-	return "🧊";
-}
-
-function freshSteel(
-	tempered: number,
-	brittle: number,
-	brittleRefs: readonly string[],
-): string {
-	const measured = tempered + brittle;
-	if (measured === 0)
-		return "**Fresh Steel:** nothing to temper (this diff changes no measured lines).";
-
-	if (brittle === 0)
-		return `**Fresh Steel:** fully tempered with ${plural(measured, "changed line")} covered.`;
-
-	const pct = formatPct((tempered / measured) * 100);
-	const shown = brittleRefs
-		.slice(0, MAX_BRITTLE_REFS)
-		.map((ref) => `\`${ref}\``);
-
-	const overflow = brittleRefs.length - shown.length;
-	const list =
-		overflow > 0
-			? `${shown.join(", ")}, and ${overflow} more`
-			: new Intl.ListFormat("en-US").format(shown);
-
-	return `**Fresh Steel:** ${pct} tempered with ${plural(brittle, "brittle line")} in ${list}.`;
-}
-
-function render(
-	reports: readonly PackageReport[],
-	tempered: number,
-	brittle: number,
-	brittleRefs: readonly string[],
-): string {
-	return [
-		MARKER,
-		"",
-		"## ⚒️ Temper Report",
-		"",
-		"| Package | Temper | Branches |",
-		"| --- | --- | --- |",
-		...reports.map(
-			(report) =>
-				`| \`${report.name}\` | ${tier(report)} ${formatPct(report.lines)} | ${formatPct(report.branches)} |`,
-		),
-		"",
-		freshSteel(tempered, brittle, brittleRefs),
-	].join("\n");
 }
 
 function pullRequestNumber(): number | undefined {
@@ -307,7 +135,19 @@ const sourceDirs = Object.values(PACKAGES).map((pkg) =>
 	join(pkg.directory, "src"),
 );
 
-const added = addedLinesByFile(root, baseRef, sourceDirs);
+const diff = git(
+	[
+		"diff",
+		"--unified=0",
+		"--no-color",
+		`${baseRef}...HEAD`,
+		"--",
+		...sourceDirs,
+	],
+	root,
+);
+
+const added = parseAddedLines(diff);
 
 const reports: PackageReport[] = [];
 const brittleRefs: string[] = [];
