@@ -8,6 +8,7 @@ export interface TemperedPackage {
 	readonly temper: Temper;
 }
 
+// TODO: change these after test audit
 export const PACKAGES = {
 	"@ryuujs/core": {
 		directory: "packages/core",

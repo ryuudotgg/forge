@@ -176,10 +176,10 @@ function freshSteel(
 ): string {
 	const measured = tempered + brittle;
 	if (measured === 0)
-		return "**Fresh steel:** nothing to temper (this diff changes no measured lines).";
+		return "**Fresh Steel:** nothing to temper (this diff changes no measured lines).";
 
 	if (brittle === 0)
-		return `**Fresh steel:** fully tempered with ${plural(measured, "changed line")} covered.`;
+		return `**Fresh Steel:** fully tempered with ${plural(measured, "changed line")} covered.`;
 
 	const pct = formatPct((tempered / measured) * 100);
 	const shown = brittleRefs
@@ -192,7 +192,7 @@ function freshSteel(
 			? `${shown.join(", ")}, and ${overflow} more`
 			: new Intl.ListFormat("en-US").format(shown);
 
-	return `**Fresh steel:** ${pct} tempered with ${plural(brittle, "brittle line")} in ${list}.`;
+	return `**Fresh Steel:** ${pct} tempered with ${plural(brittle, "brittle line")} in ${list}.`;
 }
 
 function render(
@@ -214,8 +214,6 @@ function render(
 		),
 		"",
 		freshSteel(tempered, brittle, brittleRefs),
-		"",
-		"*Scenarios run as e2e and are not measured here.*",
 	].join("\n");
 }
 
