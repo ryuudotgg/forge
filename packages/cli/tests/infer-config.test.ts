@@ -234,6 +234,28 @@ describe("inferConfigSnapshot", () => {
 		});
 	});
 
+	it("parses env values from a file with CRLF line endings", async () => {
+		await withTempDir("infer-crlf", async (directory) => {
+			await writeText(
+				join(directory, "packages/db/drizzle.config.ts"),
+				"export default {};\n",
+			);
+			await writeJson(join(directory, "packages/db/package.json"), {
+				dependencies: { "@libsql/client": "^0.14.0" },
+				name: "@acme/db",
+			});
+			await writeText(
+				join(directory, ".env"),
+				"TURSO_DATABASE_URL='libsql://acme-org.turso.io'\r\nTURSO_AUTH_TOKEN='token'\r\n",
+			);
+
+			const config = await inferConfigSnapshot(directory, [dbModule]);
+
+			expect(config.database).toBe("sqlite");
+			expect(config.databaseProvider).toBe("turso");
+		});
+	});
+
 	it("falls back to TURSO_DATABASE_URL when DATABASE_URL is missing", async () => {
 		await withTempDir("infer-turso", async (directory) => {
 			await writeText(

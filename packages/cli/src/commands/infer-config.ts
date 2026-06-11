@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type DiscoveredModule, packageManagers, runtimes } from "@ryuujs/core";
 import {
@@ -72,7 +72,7 @@ export async function inferConfigSnapshot(
 
 	const hasPath = async (path: string) => {
 		try {
-			await readFile(join(projectRoot, path), "utf-8");
+			await access(join(projectRoot, path));
 			return true;
 		} catch {
 			return false;
@@ -119,7 +119,7 @@ export async function inferConfigSnapshot(
 
 	const envValue = (name: string) =>
 		rootEnv
-			?.split("\n")
+			?.split(/\r?\n/)
 			.find((line) => line.startsWith(`${name}=`))
 			?.slice(name.length + 1)
 			.replace(/^["'`]|["'`]$/g, "");
