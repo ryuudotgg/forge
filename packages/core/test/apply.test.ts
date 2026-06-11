@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
@@ -197,6 +197,84 @@ describe("apply", () => {
 			expect(
 				await readFile(join(directory, "packages/db/notes.txt"), "utf-8"),
 			).toBe("keep me\n");
+		});
+	});
+
+	it("does not prune directories that resolve outside the project root", async () => {
+		await withTempDir("apply-prune-escape", async (scratch) => {
+			const projectRoot = join(scratch, "project");
+			const outside = join(scratch, "outside");
+			const removedFile = "packages/link/sub/index.ts";
+			const content = "export {};\n";
+
+			await mkdir(join(outside, "sub"), { recursive: true });
+			await mkdir(join(projectRoot, "packages"), { recursive: true });
+			await symlink(outside, join(projectRoot, "packages/link"));
+			await writeText(join(projectRoot, removedFile), content);
+
+			await Effect.runPromise(
+				State.writeLockfile(projectRoot, {
+					artifacts: {
+						[`project:file:${removedFile}`]: {
+							definitionIds: ["drizzle"],
+							hash: await hashContent(content),
+							kind: "file",
+							path: removedFile,
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(projectRoot, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [removedFile],
+					writes: [],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await pathExists(join(outside, "sub"))).toBe(true);
+			expect(await pathExists(join(projectRoot, "packages/link"))).toBe(true);
+		});
+	});
+
+	it("keeps user symlinks instead of unlinking them while pruning", async () => {
+		await withTempDir("apply-prune-symlink", async (directory) => {
+			const removedFile = "packages/db/index.ts";
+			const content = "export {};\n";
+
+			await mkdir(join(directory, "packages/real-db"), { recursive: true });
+			await symlink(
+				join(directory, "packages/real-db"),
+				join(directory, "packages/db"),
+			);
+			await writeText(join(directory, removedFile), content);
+
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						[`project:file:${removedFile}`]: {
+							definitionIds: ["drizzle"],
+							hash: await hashContent(content),
+							kind: "file",
+							path: removedFile,
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [removedFile],
+					writes: [],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await pathExists(join(directory, "packages/db"))).toBe(true);
+			expect(await pathExists(join(directory, "packages/real-db"))).toBe(true);
 		});
 	});
 
