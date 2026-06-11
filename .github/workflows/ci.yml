@@ -69,7 +69,7 @@ jobs:
         run: pnpm test --filter=@ryuujs/scenarios
 
   temper:
-    name: Temper Report
+    name: Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
