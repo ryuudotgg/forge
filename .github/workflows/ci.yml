@@ -52,23 +52,7 @@ jobs:
       - name: Type Check
         run: pnpm typecheck
 
-  test:
-    name: Scenarios
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2 # We probe test all PMs.
-
-      - name: Setup
-        uses: ./tooling/github/setup
-
-      - name: Test
-        run: pnpm test --filter=@ryuujs/scenarios
-
-  temper:
+  tests:
     name: Tests
     runs-on: ubuntu-latest
     permissions:
@@ -83,7 +67,7 @@ jobs:
       - name: Setup
         uses: ./tooling/github/setup
 
-      - name: Measure Coverage
+      - name: Test & Measure Coverage
         run: pnpm test:coverage
 
       - name: Temper Report
@@ -91,3 +75,19 @@ jobs:
         run: node scripts/temper-report.ts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  scenarios:
+    name: Scenarios
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2 # We probe test all PMs.
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Test
+        run: pnpm test --filter=@ryuujs/scenarios
