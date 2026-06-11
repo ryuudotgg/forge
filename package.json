@@ -12,6 +12,7 @@
 		"postinstall": "pnpm check:ws",
 		"start": "turbo run start --continue",
 		"test": "turbo run test --continue",
+		"test:coverage": "turbo run test:coverage --continue",
 		"typecheck": "turbo run typecheck"
 	},
 	"devDependencies": {
@@ -21,8 +22,7 @@
 		"@commitlint/types": "catalog:lint",
 		"lefthook": "catalog:dev",
 		"turbo": "catalog:monorepo",
-		"typescript": "catalog:dev",
-		"vitest": "catalog:dev"
+		"typescript": "catalog:dev"
 	},
 	"packageManager": "pnpm@11.5.2",
 	"engines": {

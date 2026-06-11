@@ -1,12 +1,13 @@
 {
-	"name": "@ryuujs/scenarios",
+	"name": "@ryuujs/temper",
+	"version": "0.1.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache node_modules",
-		"test": "vitest run --maxWorkers=4",
-		"typecheck": "tsc --noEmit"
+		"test": "vitest run test",
+		"typecheck": "tsc"
 	},
 	"devDependencies": {
 		"@ryuujs/tsconfig": "workspace:*",

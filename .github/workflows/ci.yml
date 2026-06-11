@@ -52,8 +52,32 @@ jobs:
       - name: Type Check
         run: pnpm typecheck
 
-  test:
+  tests:
     name: Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Test & Measure Coverage
+        run: pnpm test:coverage
+
+      - name: Temper Report
+        if: ${{ github.event_name == 'pull_request' && !cancelled() }}
+        run: node tooling/temper/report.ts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  scenarios:
+    name: Scenarios
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,4 +90,4 @@ jobs:
         uses: ./tooling/github/setup
 
       - name: Test
-        run: pnpm test
+        run: pnpm test --filter=@ryuujs/scenarios

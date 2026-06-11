@@ -40,10 +40,11 @@
 	"scripts": {
 		"build": "tsdown",
 		"check": "biome check",
-		"clean": "git clean -xdf .turbo .cache dist node_modules",
+		"clean": "git clean -xdf .turbo .cache coverage dist node_modules",
 		"dev": "tsdown --watch",
 		"prepare": "effect-language-service patch --dir ../../node_modules/typescript",
 		"test": "vitest run test",
+		"test:coverage": "vitest run --coverage",
 		"typecheck": "tsc"
 	},
 	"dependencies": {
@@ -54,7 +55,9 @@
 		"@effect/language-service": "^0.86.2",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
+		"@vitest/coverage-v8": "catalog:dev",
 		"tsdown": "catalog:build",
-		"typescript": "catalog:dev"
+		"typescript": "catalog:dev",
+		"vitest": "catalog:dev"
 	}
 }
