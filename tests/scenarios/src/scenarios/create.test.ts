@@ -5,7 +5,9 @@ import {
 	createProject,
 	pathExists,
 	readJson,
+	tryRunForge,
 	withScenarioWorkspace,
+	writeJson,
 } from "../utils/harness";
 
 async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
@@ -128,5 +130,33 @@ describe("create", () => {
 
 			expect(await readdir(workspace.projectRoot)).toEqual([]);
 		});
+	}, 120_000);
+
+	it("rejects config files that select unavailable platforms", async () => {
+		await withScenarioWorkspace(
+			"create-unavailable-platform",
+			async (workspace) => {
+				const configPath = join(workspace.workspaceRoot, "forge.config.json");
+
+				await writeJson(configPath, {
+					name: "acme",
+					path: "./project",
+					platforms: ["web", "desktop"],
+					slug: "acme",
+					web: "nextjs",
+				});
+
+				const result = await tryRunForge(
+					workspace.workspaceRoot,
+					["create", "--config", configPath, "--no-install", "--no-git"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(result.exitCode).not.toBe(0);
+				expect(result.stdout + result.stderr).toContain(
+					"We don't support Desktop yet.",
+				);
+			},
+		);
 	}, 120_000);
 });

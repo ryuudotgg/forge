@@ -9,8 +9,8 @@ import {
 	RegistryLoadError,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
+import { listAnd } from "../utils/list";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
-import { listAnd } from "./shared";
 
 function moduleLabel(
 	moduleId: string,

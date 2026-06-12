@@ -1,14 +1,25 @@
-import { isCancel, multiselect } from "@clack/prompts";
+import { isCancel, log, multiselect } from "@clack/prompts";
 import {
 	type Platform,
 	platforms as platformChoices,
 } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
+import { choiceOptions, unsupportedMessage } from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
 export const platformsSchema = Schema.NonEmptyArray(
 	Schema.Literal(...platformChoices.ids),
+).pipe(
+	Schema.filter((values) => {
+		const unavailable = values.filter(
+			(value) => !platformChoices.available(value),
+		);
+
+		return unavailable.length === 0
+			? undefined
+			: unsupportedMessage(platformChoices, unavailable);
+	}),
 );
 
 const platformsStep = defineStep<typeof platformsSchema.Type>({
@@ -33,24 +44,32 @@ const platformsStep = defineStep<typeof platformsSchema.Type>({
 			return SKIP;
 		}
 
-		const selectedPlatforms = await multiselect({
-			message: "What platforms do you want to support?",
-			required: true,
+		for (;;) {
+			const selectedPlatforms = await multiselect({
+				message: "What platforms do you want to support?",
+				required: true,
 
-			options: platformChoices.ids.map((platform) => ({
-				label: platformChoices.label(platform),
-				value: platform,
-			})),
-		});
+				options: choiceOptions(platformChoices),
+			});
 
-		if (isCancel(selectedPlatforms)) cancel();
+			if (isCancel(selectedPlatforms)) cancel();
 
-		const result =
-			Schema.decodeUnknownEither(platformsSchema)(selectedPlatforms);
+			const unavailable = selectedPlatforms.filter(
+				(platform) => !platformChoices.available(platform),
+			);
 
-		if (Either.isLeft(result)) return SKIP;
+			if (unavailable.length > 0) {
+				log.warn(unsupportedMessage(platformChoices, unavailable));
+				continue;
+			}
 
-		return result.right;
+			const result =
+				Schema.decodeUnknownEither(platformsSchema)(selectedPlatforms);
+
+			if (Either.isLeft(result)) return SKIP;
+
+			return result.right;
+		}
 	},
 });
 

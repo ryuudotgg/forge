@@ -5,6 +5,7 @@ import {
 	configWithInstall,
 	configWithoutInstall,
 	databaseProviders,
+	databases,
 	desktopFrameworks,
 	installConflict,
 	linters,
@@ -12,6 +13,7 @@ import {
 	nativeStyleFrameworks,
 	optionalAddons,
 	orms,
+	platforms,
 	recommendedAddons,
 	rpcProviders,
 	styleFrameworks,
@@ -58,6 +60,24 @@ describe("generator config choices", () => {
 	it("only recommends known optional addons", () => {
 		for (const addon of recommendedAddons)
 			expect(optionalAddons.ids).toContain(addon);
+	});
+
+	it("marks roadmap-gated choices as unavailable", () => {
+		expect(platforms.availableIds).toEqual(["web"]);
+		expect(platforms.available("desktop")).toBe(false);
+		expect(webFrameworks.availableIds).toEqual(["nextjs"]);
+		expect(authenticationProviders.availableIds).toEqual(["better-auth"]);
+	});
+
+	it("keeps ungated choice sets fully available", () => {
+		expect(databases.availableIds).toEqual(databases.ids);
+		for (const id of databases.ids) expect(databases.available(id)).toBe(true);
+	});
+
+	it("normalizes gated values independently of availability", () => {
+		expect(authenticationProviders.normalize("Clerk")).toBe("clerk");
+		expect(authenticationProviders.label("clerk")).toBe("Clerk");
+		expect(authenticationProviders.available("clerk")).toBe(false);
 	});
 });
 

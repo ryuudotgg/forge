@@ -1,4 +1,4 @@
-import { isCancel, select } from "@clack/prompts";
+import { isCancel, log, select } from "@clack/prompts";
 import {
 	desktopFrameworks,
 	styleFrameworks,
@@ -6,10 +6,17 @@ import {
 } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
+import {
+	availableChoice,
+	choiceOptions,
+	unsupportedMessage,
+} from "../../utils/choices";
 import { stripNulls } from "../../utils/strip-nulls";
 import { defineStep, SKIP } from "../types";
 
-export const styleFrameworkSchema = Schema.Literal(...styleFrameworks.ids);
+export const styleFrameworkSchema = Schema.Literal(...styleFrameworks.ids).pipe(
+	Schema.filter(availableChoice(styleFrameworks)),
+);
 
 const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 	id: "styleFramework",
@@ -32,24 +39,24 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 			return SKIP;
 		}
 
-		const styleFramework = await select({
-			message: `Which styling framework do you want to use for ${stripNulls([
-				config.web ? webFrameworks.label(config.web) : null,
-				config.desktop ? desktopFrameworks.label(config.desktop) : null,
-			]).join(" and ")}?`,
-			options: [
-				...styleFrameworks.ids.map((option) => ({
-					label: styleFrameworks.label(option),
-					value: option,
-				})),
-				{ label: "None", value: "none" as const },
-			],
-		});
+		for (;;) {
+			const styleFramework = await select({
+				message: `Which styling framework do you want to use for ${stripNulls([
+					config.web ? webFrameworks.label(config.web) : null,
+					config.desktop ? desktopFrameworks.label(config.desktop) : null,
+				]).join(" and ")}?`,
+				options: [
+					...choiceOptions(styleFrameworks),
+					{ label: "None", value: "none" as const },
+				],
+			});
 
-		if (isCancel(styleFramework)) cancel();
-		if (styleFramework === "none") return SKIP;
+			if (isCancel(styleFramework)) cancel();
+			if (styleFramework === "none") return SKIP;
+			if (styleFrameworks.available(styleFramework)) return styleFramework;
 
-		return styleFramework;
+			log.warn(unsupportedMessage(styleFrameworks, [styleFramework]));
+		}
 	},
 });
 

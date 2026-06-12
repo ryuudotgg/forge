@@ -6,12 +6,14 @@ import webStep from "../src/steps/platforms/web";
 import { type PartialConfig, SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
+	logWarn: vi.fn(),
 	multiselect: vi.fn(),
 	select: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
 	isCancel: () => false,
+	log: { warn: promptMocks.logWarn },
 	multiselect: promptMocks.multiselect,
 	select: promptMocks.select,
 }));
@@ -25,6 +27,7 @@ function rawConfig(entries: Record<string, unknown>): PartialConfig {
 }
 
 beforeEach(() => {
+	promptMocks.logWarn.mockReset();
 	promptMocks.multiselect.mockReset();
 	promptMocks.select.mockReset();
 });
@@ -32,8 +35,17 @@ beforeEach(() => {
 describe("platforms step", () => {
 	it("keeps a valid platform list when non-interactive", async () => {
 		await expect(
+			platformsStep.execute({ platforms: ["web"] }, false),
+		).resolves.toEqual(["web"]);
+	});
+
+	it("skips when the list contains an unavailable platform", async () => {
+		await expect(
 			platformsStep.execute({ platforms: ["web", "mobile"] }, false),
-		).resolves.toEqual(["web", "mobile"]);
+		).resolves.toBe(SKIP);
+		await expect(
+			platformsStep.execute({ platforms: ["desktop"] }, false),
+		).resolves.toBe(SKIP);
 	});
 
 	it("silently filters unknown platforms when non-interactive", async () => {
@@ -55,19 +67,45 @@ describe("platforms step", () => {
 	});
 
 	it("returns the interactive multiselect choice", async () => {
-		promptMocks.multiselect.mockResolvedValue(["desktop"]);
+		promptMocks.multiselect.mockResolvedValue(["web"]);
 
-		await expect(platformsStep.execute({}, true)).resolves.toEqual(["desktop"]);
+		await expect(platformsStep.execute({}, true)).resolves.toEqual(["web"]);
 
 		expect(promptMocks.multiselect).toHaveBeenCalledWith({
 			message: "What platforms do you want to support?",
 			options: [
 				{ label: "Web", value: "web" },
-				{ label: "Desktop", value: "desktop" },
-				{ label: "Mobile", value: "mobile" },
+				{ label: "Desktop", value: "desktop", hint: "coming soon" },
+				{ label: "Mobile", value: "mobile", hint: "coming soon" },
 			],
 			required: true,
 		});
+	});
+
+	it("warns and re-prompts when an unavailable platform is selected", async () => {
+		promptMocks.multiselect
+			.mockResolvedValueOnce(["web", "desktop"])
+			.mockResolvedValueOnce(["web"]);
+
+		await expect(platformsStep.execute({}, true)).resolves.toEqual(["web"]);
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"We don't support Desktop yet.",
+		);
+		expect(promptMocks.multiselect).toHaveBeenCalledTimes(2);
+	});
+
+	it("lists every unsupported platform in one warning", async () => {
+		promptMocks.multiselect
+			.mockResolvedValueOnce(["web", "desktop", "mobile"])
+			.mockResolvedValueOnce(["web"]);
+
+		await expect(platformsStep.execute({}, true)).resolves.toEqual(["web"]);
+
+		expect(promptMocks.logWarn).toHaveBeenCalledTimes(1);
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"We don't support Desktop and Mobile yet.",
+		);
 	});
 
 	it("skips when the interactive selection is empty", async () => {
@@ -85,9 +123,9 @@ describe("web step", () => {
 	});
 
 	it("keeps a valid web framework when non-interactive", async () => {
-		await expect(
-			webStep.execute({ web: "tanstack-router" }, false),
-		).resolves.toBe("tanstack-router");
+		await expect(webStep.execute({ web: "nextjs" }, false)).resolves.toBe(
+			"nextjs",
+		);
 	});
 
 	it("defaults to nextjs when web is missing", async () => {
@@ -100,20 +138,47 @@ describe("web step", () => {
 		).resolves.toBe("nextjs");
 	});
 
-	it("recommends the first option and returns the interactive choice", async () => {
-		promptMocks.select.mockResolvedValue("react-router");
+	it("silently defaults to nextjs when web is unavailable", async () => {
+		await expect(webStep.execute({ web: "react-router" }, false)).resolves.toBe(
+			"nextjs",
+		);
+	});
 
-		await expect(webStep.execute({}, true)).resolves.toBe("react-router");
+	it("recommends the first option and returns the interactive choice", async () => {
+		promptMocks.select.mockResolvedValue("nextjs");
+
+		await expect(webStep.execute({}, true)).resolves.toBe("nextjs");
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "What is your preferred web framework?",
 			options: [
 				{ label: "Next.js (Recommended)", value: "nextjs" },
-				{ label: "React Router", value: "react-router" },
-				{ label: "TanStack Router", value: "tanstack-router" },
-				{ label: "TanStack Start", value: "tanstack-start" },
+				{ label: "React Router", value: "react-router", hint: "coming soon" },
+				{
+					label: "TanStack Router",
+					value: "tanstack-router",
+					hint: "coming soon",
+				},
+				{
+					label: "TanStack Start",
+					value: "tanstack-start",
+					hint: "coming soon",
+				},
 			],
 		});
+	});
+
+	it("warns and re-prompts when an unavailable web framework is selected", async () => {
+		promptMocks.select
+			.mockResolvedValueOnce("react-router")
+			.mockResolvedValueOnce("nextjs");
+
+		await expect(webStep.execute({}, true)).resolves.toBe("nextjs");
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"We don't support React Router yet.",
+		);
+		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 });
 

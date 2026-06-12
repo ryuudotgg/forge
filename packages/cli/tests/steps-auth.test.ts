@@ -7,6 +7,7 @@ const promptMocks = vi.hoisted(() => ({
 	cancel: vi.fn(),
 	confirm: vi.fn(),
 	isCancel: vi.fn(),
+	logWarn: vi.fn(),
 	select: vi.fn(),
 }));
 
@@ -14,6 +15,7 @@ vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
 	confirm: promptMocks.confirm,
 	isCancel: promptMocks.isCancel,
+	log: { warn: promptMocks.logWarn },
 	select: promptMocks.select,
 }));
 
@@ -27,6 +29,7 @@ describe("authentication step", () => {
 		promptMocks.cancel.mockReset();
 		promptMocks.confirm.mockReset();
 		promptMocks.isCancel.mockReset();
+		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
 		promptMocks.isCancel.mockReturnValue(false);
 	});
@@ -46,8 +49,17 @@ describe("authentication step", () => {
 
 	it("normalizes display-name aliases in non-interactive mode", async () => {
 		await expect(
+			authenticationStep.execute(
+				rawConfig({ authentication: "Better Auth" }),
+				false,
+			),
+		).resolves.toBe("better-auth");
+	});
+
+	it("skips unavailable providers in non-interactive mode", async () => {
+		await expect(
 			authenticationStep.execute(rawConfig({ authentication: "Clerk" }), false),
-		).resolves.toBe("clerk");
+		).resolves.toBe(SKIP);
 	});
 
 	it("skips when the configured provider is unknown", async () => {
@@ -60,20 +72,37 @@ describe("authentication step", () => {
 	});
 
 	it("returns the selected provider", async () => {
-		promptMocks.select.mockResolvedValue("workos");
+		promptMocks.select.mockResolvedValue("better-auth");
 
-		await expect(authenticationStep.execute({}, true)).resolves.toBe("workos");
+		await expect(authenticationStep.execute({}, true)).resolves.toBe(
+			"better-auth",
+		);
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "What is your preferred way to handle authentication?",
 			options: [
 				{ label: "Better Auth", value: "better-auth" },
-				{ label: "Auth.js", value: "authjs" },
-				{ label: "WorkOS", value: "workos" },
-				{ label: "Clerk", value: "clerk" },
+				{ label: "Auth.js", value: "authjs", hint: "coming soon" },
+				{ label: "WorkOS", value: "workos", hint: "coming soon" },
+				{ label: "Clerk", value: "clerk", hint: "coming soon" },
 				{ label: "None", value: "none" },
 			],
 		});
+	});
+
+	it("explains and re-prompts when an unavailable provider is selected", async () => {
+		promptMocks.select
+			.mockResolvedValueOnce("workos")
+			.mockResolvedValueOnce("better-auth");
+
+		await expect(authenticationStep.execute({}, true)).resolves.toBe(
+			"better-auth",
+		);
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"We don't support WorkOS yet.",
+		);
+		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
 	it("skips when none is selected", async () => {
@@ -88,6 +117,7 @@ describe("authenticationCustomUI step", () => {
 		promptMocks.cancel.mockReset();
 		promptMocks.confirm.mockReset();
 		promptMocks.isCancel.mockReset();
+		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
 		promptMocks.isCancel.mockReturnValue(false);
 	});

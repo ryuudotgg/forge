@@ -36,6 +36,85 @@ describe("assembleSchema", () => {
 		});
 	});
 
+	it("rejects unavailable authentication providers with a friendly sentence", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			path: "./acme",
+			platforms: ["web"],
+			web: "nextjs",
+			authentication: "authjs",
+		});
+
+		expect(decodeMessages(result)).toContain("We don't support Auth.js yet.");
+	});
+
+	it("accepts the available authentication provider", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			path: "./acme",
+			platforms: ["web"],
+			web: "nextjs",
+			authentication: "better-auth",
+		});
+
+		expect(Either.isRight(result)).toBe(true);
+	});
+
+	it("rejects unavailable web frameworks with a friendly sentence", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			path: "./acme",
+			platforms: ["web"],
+			web: "react-router",
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"We don't support React Router yet.",
+		);
+	});
+
+	it("rejects unavailable backends with a friendly sentence", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			path: "./acme",
+			platforms: ["web"],
+			web: "nextjs",
+			backend: "hono",
+		});
+
+		expect(decodeMessages(result)).toContain("We don't support Hono yet.");
+	});
+
+	it("rejects unavailable linters with a friendly sentence", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			path: "./acme",
+			platforms: ["web"],
+			web: "nextjs",
+			linter: "oxc",
+		});
+
+		expect(decodeMessages(result)).toContain("We don't support Oxc yet.");
+	});
+
+	it("rejects unavailable style frameworks with a friendly sentence", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			path: "./acme",
+			platforms: ["web"],
+			web: "nextjs",
+			style: "unocss",
+		});
+
+		expect(decodeMessages(result)).toContain("We don't support UnoCSS yet.");
+	});
+
 	it("requires a web framework when the web platform is selected", () => {
 		const result = decodeConfig({
 			name: "Acme",
@@ -48,28 +127,37 @@ describe("assembleSchema", () => {
 		]);
 	});
 
-	it("requires a desktop framework when the desktop platform is selected", () => {
+	it("rejects the desktop platform while it isn't available", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
 			platforms: ["desktop"],
 		});
 
-		expect(decodeMessages(result)).toEqual([
-			"A desktop framework wasn't selected.",
-		]);
+		expect(decodeMessages(result)).toContain("We don't support Desktop yet.");
 	});
 
-	it("requires a mobile framework when the mobile platform is selected", () => {
+	it("rejects the mobile platform while it isn't available", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
 			platforms: ["mobile"],
 		});
 
-		expect(decodeMessages(result)).toEqual([
-			"A mobile framework wasn't selected.",
-		]);
+		expect(decodeMessages(result)).toContain("We don't support Mobile yet.");
+	});
+
+	it("lists every unsupported platform in one sentence", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			platforms: ["web", "desktop", "mobile"],
+			web: "nextjs",
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"We don't support Desktop and Mobile yet.",
+		);
 	});
 
 	it("spreads schema shape fields from null-key steps into the struct", () => {

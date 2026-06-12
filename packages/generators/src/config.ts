@@ -1,6 +1,9 @@
 import type { PackageManager, Runtime } from "@ryuujs/core";
 
-function defineChoices<const T extends Record<string, string>>(definitions: T) {
+function defineChoices<const T extends Record<string, string>>(
+	definitions: T,
+	options?: { unavailable?: ReadonlyArray<keyof T & string> },
+) {
 	type ChoiceId = keyof T & string;
 
 	const ids = Object.keys(definitions) as ReadonlyArray<ChoiceId>;
@@ -10,6 +13,7 @@ function defineChoices<const T extends Record<string, string>>(definitions: T) {
 		return value;
 	};
 	const byDisplayName = new Map(ids.map((id) => [read(id).toLowerCase(), id]));
+	const unavailable = new Set(options?.unavailable ?? []);
 
 	function normalize(value: unknown): ChoiceId | undefined {
 		if (typeof value !== "string") return undefined;
@@ -22,35 +26,68 @@ function defineChoices<const T extends Record<string, string>>(definitions: T) {
 		return read(id);
 	}
 
-	return { definitions, ids, label, normalize };
+	function available(id: ChoiceId): boolean {
+		return !unavailable.has(id);
+	}
+
+	return {
+		available,
+		availableIds: ids.filter(available),
+		definitions,
+		ids,
+		label,
+		normalize,
+	};
 }
 
-export const platforms = defineChoices({
-	web: "Web",
-	desktop: "Desktop",
-	mobile: "Mobile",
-} as const);
+export const platforms = defineChoices(
+	{
+		web: "Web",
+		desktop: "Desktop",
+		mobile: "Mobile",
+	} as const,
+	{
+		unavailable: ["desktop", "mobile"],
+	},
+);
 
 export type Platform = keyof typeof platforms.definitions;
 
-export const webFrameworks = defineChoices({
-	nextjs: "Next.js",
-	"react-router": "React Router",
-	"tanstack-router": "TanStack Router",
-	"tanstack-start": "TanStack Start",
-} as const);
+export const webFrameworks = defineChoices(
+	{
+		nextjs: "Next.js",
+		"react-router": "React Router",
+		"tanstack-router": "TanStack Router",
+		"tanstack-start": "TanStack Start",
+	} as const,
+	{
+		unavailable: ["react-router", "tanstack-router", "tanstack-start"],
+	},
+);
 
 export type WebFramework = keyof typeof webFrameworks.definitions;
 
-export const backends = defineChoices({
-	nextjs: "Next.js",
-	convex: "Convex",
-	hono: "Hono",
-	elysia: "Elysia",
-	uwebsockets: "µWebSockets",
-	fastify: "Fastify",
-	express: "Express",
-} as const);
+export const backends = defineChoices(
+	{
+		nextjs: "Next.js",
+		convex: "Convex",
+		hono: "Hono",
+		elysia: "Elysia",
+		uwebsockets: "µWebSockets",
+		fastify: "Fastify",
+		express: "Express",
+	} as const,
+	{
+		unavailable: [
+			"convex",
+			"hono",
+			"elysia",
+			"uwebsockets",
+			"fastify",
+			"express",
+		],
+	},
+);
 
 export type Backend = keyof typeof backends.definitions;
 
@@ -75,20 +112,30 @@ export const orms = defineChoices({
 
 export type Orm = keyof typeof orms.definitions;
 
-export const authenticationProviders = defineChoices({
-	"better-auth": "Better Auth",
-	authjs: "Auth.js",
-	workos: "WorkOS",
-	clerk: "Clerk",
-} as const);
+export const authenticationProviders = defineChoices(
+	{
+		"better-auth": "Better Auth",
+		authjs: "Auth.js",
+		workos: "WorkOS",
+		clerk: "Clerk",
+	} as const,
+	{
+		unavailable: ["authjs", "workos", "clerk"],
+	},
+);
 
 export type AuthenticationProvider =
 	keyof typeof authenticationProviders.definitions;
 
-export const styleFrameworks = defineChoices({
-	tailwind: "Tailwind CSS",
-	unocss: "UnoCSS",
-} as const);
+export const styleFrameworks = defineChoices(
+	{
+		tailwind: "Tailwind CSS",
+		unocss: "UnoCSS",
+	} as const,
+	{
+		unavailable: ["unocss"],
+	},
+);
 
 export type StyleFramework = keyof typeof styleFrameworks.definitions;
 
@@ -99,11 +146,16 @@ export const uiLibraries = defineChoices({
 
 export type UiLibrary = keyof typeof uiLibraries.definitions;
 
-export const linters = defineChoices({
-	biome: "Biome",
-	oxc: "Oxc",
-	"eslint-prettier": "ESLint + Prettier",
-} as const);
+export const linters = defineChoices(
+	{
+		biome: "Biome",
+		oxc: "Oxc",
+		"eslint-prettier": "ESLint + Prettier",
+	} as const,
+	{
+		unavailable: ["oxc", "eslint-prettier"],
+	},
+);
 
 export type Linter = keyof typeof linters.definitions;
 

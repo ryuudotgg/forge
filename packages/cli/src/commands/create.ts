@@ -7,7 +7,7 @@ import { orchestrate } from "../orchestrator";
 import { presets } from "../presets";
 import { steps } from "../steps";
 import type { PartialConfig } from "../steps/types";
-import { listOr } from "./shared";
+import { listOr } from "../utils/list";
 
 export async function runCreate(
 	values: Record<string, string | boolean | undefined>,

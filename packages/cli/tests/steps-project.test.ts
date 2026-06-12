@@ -9,6 +9,7 @@ import { type PartialConfig, SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
+	logWarn: vi.fn(),
 	select: vi.fn(),
 	text: vi.fn(),
 }));
@@ -20,7 +21,7 @@ const coreMocks = vi.hoisted(() => ({
 vi.mock("@clack/prompts", () => ({
 	cancel: vi.fn(),
 	isCancel: () => false,
-	log: { error: promptMocks.logError },
+	log: { error: promptMocks.logError, warn: promptMocks.logWarn },
 	select: promptMocks.select,
 	text: promptMocks.text,
 }));
@@ -50,6 +51,7 @@ describe("project steps", () => {
 	beforeEach(() => {
 		coreMocks.checkPackageManager.mockReset();
 		promptMocks.logError.mockReset();
+		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
 		promptMocks.text.mockReset();
 	});
@@ -282,6 +284,12 @@ describe("project steps", () => {
 			).resolves.toBe(SKIP);
 		});
 
+		it("skips an unavailable linter when non-interactive", async () => {
+			await expect(linterStep.execute({ linter: "oxc" }, false)).resolves.toBe(
+				SKIP,
+			);
+		});
+
 		it("returns the selected linter", async () => {
 			promptMocks.select.mockResolvedValue("biome");
 
@@ -291,12 +299,29 @@ describe("project steps", () => {
 				expect.objectContaining({
 					options: [
 						{ label: "Biome", value: "biome" },
-						{ label: "Oxc", value: "oxc" },
-						{ label: "ESLint + Prettier", value: "eslint-prettier" },
+						{ label: "Oxc", value: "oxc", hint: "coming soon" },
+						{
+							label: "ESLint + Prettier",
+							value: "eslint-prettier",
+							hint: "coming soon",
+						},
 						{ label: "None", value: "none" },
 					],
 				}),
 			);
+		});
+
+		it("warns and re-prompts when an unavailable linter is selected", async () => {
+			promptMocks.select
+				.mockResolvedValueOnce("oxc")
+				.mockResolvedValueOnce("biome");
+
+			await expect(linterStep.execute({}, true)).resolves.toBe("biome");
+
+			expect(promptMocks.logWarn).toHaveBeenCalledWith(
+				"We don't support Oxc yet.",
+			);
+			expect(promptMocks.select).toHaveBeenCalledTimes(2);
 		});
 
 		it("skips when None is selected", async () => {
