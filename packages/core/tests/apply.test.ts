@@ -671,4 +671,278 @@ describe("apply", () => {
 			});
 		});
 	});
+
+	it("refuses a modified leaf file under a renamed module root", async () => {
+		await withTempDir("apply-renamed-modified", async (directory) => {
+			await writeText(
+				`${directory}/packages/observability/src/logs.ts`,
+				"user-tweak\n",
+			);
+
+			await Effect.runPromise(
+				State.writeManifest(directory, {
+					config: {},
+					installs: [{ definitionId: "logs", targets: [{ kind: "project" }] }],
+					modules: {
+						abcde: {
+							definitionIds: ["logs"],
+							root: "packages/telemetry",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						"module:abcde:file:packages/telemetry/src/logs.ts": {
+							definitionIds: ["logs"],
+							hash: await hashContent("old-managed\n"),
+							kind: "file",
+							path: "packages/telemetry/src/logs.ts",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, {
+						lockfile: { artifacts: {} },
+						manifest: {
+							config: {},
+							installs: [
+								{ definitionId: "logs", targets: [{ kind: "project" }] },
+							],
+							modules: {
+								abcde: {
+									definitionIds: ["logs"],
+									root: "packages/observability",
+								},
+							},
+						},
+						removals: [],
+						writes: [
+							{
+								artifactId:
+									"module:abcde:file:packages/observability/src/logs.ts",
+								content: "new-managed\n",
+								path: "packages/observability/src/logs.ts",
+							},
+						],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Managed File Modified",
+				path: "packages/observability/src/logs.ts",
+			});
+		});
+	});
+
+	it("does not rescue a leaf file outside the renamed module root", async () => {
+		await withTempDir("apply-renamed-outside", async (directory) => {
+			await writeText(
+				`${directory}/packages/elsewhere/logs.ts`,
+				"old-managed\n",
+			);
+
+			await Effect.runPromise(
+				State.writeManifest(directory, {
+					config: {},
+					installs: [{ definitionId: "logs", targets: [{ kind: "project" }] }],
+					modules: {
+						abcde: {
+							definitionIds: ["logs"],
+							root: "packages/telemetry",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						"module:abcde:file:packages/telemetry/src/logs.ts": {
+							definitionIds: ["logs"],
+							hash: await hashContent("old-managed\n"),
+							kind: "file",
+							path: "packages/telemetry/src/logs.ts",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, {
+						lockfile: { artifacts: {} },
+						manifest: {
+							config: {},
+							installs: [
+								{ definitionId: "logs", targets: [{ kind: "project" }] },
+							],
+							modules: {
+								abcde: {
+									definitionIds: ["logs"],
+									root: "packages/observability",
+								},
+							},
+						},
+						removals: [],
+						writes: [
+							{
+								artifactId: "module:abcde:file:packages/elsewhere/logs.ts",
+								content: "new-managed\n",
+								path: "packages/elsewhere/logs.ts",
+							},
+						],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Unmanaged File Exists",
+				path: "packages/elsewhere/logs.ts",
+			});
+		});
+	});
+
+	it("does not rescue when the previous manifest lacks the module", async () => {
+		await withTempDir("apply-renamed-no-prev", async (directory) => {
+			await writeText(
+				`${directory}/packages/observability/src/logs.ts`,
+				"old-managed\n",
+			);
+
+			await Effect.runPromise(
+				State.writeManifest(directory, {
+					config: {},
+					installs: [{ definitionId: "logs", targets: [{ kind: "project" }] }],
+					modules: {},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						"module:abcde:file:packages/telemetry/src/logs.ts": {
+							definitionIds: ["logs"],
+							hash: await hashContent("old-managed\n"),
+							kind: "file",
+							path: "packages/telemetry/src/logs.ts",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, {
+						lockfile: { artifacts: {} },
+						manifest: {
+							config: {},
+							installs: [
+								{ definitionId: "logs", targets: [{ kind: "project" }] },
+							],
+							modules: {
+								abcde: {
+									definitionIds: ["logs"],
+									root: "packages/observability",
+								},
+							},
+						},
+						removals: [],
+						writes: [
+							{
+								artifactId:
+									"module:abcde:file:packages/observability/src/logs.ts",
+								content: "new-managed\n",
+								path: "packages/observability/src/logs.ts",
+							},
+						],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Unmanaged File Exists",
+				path: "packages/observability/src/logs.ts",
+			});
+		});
+	});
+
+	it("does not rescue when the artifact id disagrees with the write path", async () => {
+		await withTempDir("apply-renamed-id-mismatch", async (directory) => {
+			await writeText(
+				`${directory}/packages/observability/src/logs.ts`,
+				"old-managed\n",
+			);
+
+			await Effect.runPromise(
+				State.writeManifest(directory, {
+					config: {},
+					installs: [{ definitionId: "logs", targets: [{ kind: "project" }] }],
+					modules: {
+						abcde: {
+							definitionIds: ["logs"],
+							root: "packages/telemetry",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						"module:abcde:file:packages/telemetry/src/logs.ts": {
+							definitionIds: ["logs"],
+							hash: await hashContent("old-managed\n"),
+							kind: "file",
+							path: "packages/telemetry/src/logs.ts",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, {
+						lockfile: { artifacts: {} },
+						manifest: {
+							config: {},
+							installs: [
+								{ definitionId: "logs", targets: [{ kind: "project" }] },
+							],
+							modules: {
+								abcde: {
+									definitionIds: ["logs"],
+									root: "packages/observability",
+								},
+							},
+						},
+						removals: [],
+						writes: [
+							{
+								artifactId:
+									"module:abcde:file:packages/observability/src/other.ts",
+								content: "new-managed\n",
+								path: "packages/observability/src/logs.ts",
+							},
+						],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Unmanaged File Exists",
+				path: "packages/observability/src/logs.ts",
+			});
+		});
+	});
 });
