@@ -119,6 +119,62 @@ describe("parseAddedLines", () => {
 		);
 	});
 
+	it("treats added content starting with two pluses as content", () => {
+		const diff = [
+			"diff --git a/docs/notes.md b/docs/notes.md",
+			"--- a/docs/notes.md",
+			"+++ b/docs/notes.md",
+			"@@ -1,1 +1,3 @@",
+			" context",
+			"+++ added in markdown",
+			"+after",
+		].join("\n");
+
+		const added = parseAddedLines(diff);
+
+		expect([...added.keys()]).toEqual(["docs/notes.md"]);
+		expect(added.get("docs/notes.md")).toEqual(new Set([2, 3]));
+	});
+
+	it("treats removed content starting with two dashes as content", () => {
+		const diff = [
+			"diff --git a/docs/notes.md b/docs/notes.md",
+			"--- a/docs/notes.md",
+			"+++ b/docs/notes.md",
+			"@@ -1,2 +1,2 @@",
+			" context",
+			"--- removed in markdown",
+			"+++ added in markdown",
+		].join("\n");
+
+		const added = parseAddedLines(diff);
+
+		expect([...added.keys()]).toEqual(["docs/notes.md"]);
+		expect(added.get("docs/notes.md")).toEqual(new Set([2]));
+	});
+
+	it("parses the next file header after a hunk", () => {
+		const diff = [
+			"diff --git a/packages/core/src/a.ts b/packages/core/src/a.ts",
+			"--- a/packages/core/src/a.ts",
+			"+++ b/packages/core/src/a.ts",
+			"@@ -1,1 +1,2 @@",
+			" context",
+			"+one",
+			"diff --git a/packages/core/src/b.ts b/packages/core/src/b.ts",
+			"--- a/packages/core/src/b.ts",
+			"+++ b/packages/core/src/b.ts",
+			"@@ -1,1 +1,2 @@",
+			" context",
+			"+two",
+		].join("\n");
+
+		const added = parseAddedLines(diff);
+
+		expect(added.get("packages/core/src/a.ts")).toEqual(new Set([2]));
+		expect(added.get("packages/core/src/b.ts")).toEqual(new Set([2]));
+	});
+
 	it("keeps non-ascii paths intact", () => {
 		const diff = [
 			"+++ b/packages/core/src/naïve.ts",
@@ -137,6 +193,7 @@ describe("parseAddedLines", () => {
 			"@@ -1,0 +2,2 @@",
 			"+one",
 			"+two",
+			"diff --git a/packages/core/src/b.ts b/packages/core/src/b.ts",
 			"+++ b/packages/core/src/b.ts",
 			"@@ -1 +1 @@",
 			"+one",
@@ -152,6 +209,7 @@ describe("parseAddedLines", () => {
 			"+++ b/packages/core/src/a.ts",
 			"@@ -1 +1 @@",
 			"+one",
+			"diff --git a/packages/core/src/a.ts b/packages/core/src/a.ts",
 			"+++ b/packages/core/src/a.ts",
 			"@@ -5 +6 @@",
 			"+two",

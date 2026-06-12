@@ -67,9 +67,15 @@ export function parseAddedLines(diff: string): Map<string, Set<number>> {
 	const added = new Map<string, Set<number>>();
 
 	let current: Set<number> | undefined;
+	let inHunk = false;
 	let line = 0;
 	for (const row of diff.split("\n")) {
-		if (row.startsWith("+++ ")) {
+		if (row.startsWith("diff --git ")) {
+			inHunk = false;
+			continue;
+		}
+
+		if (!inHunk && row.startsWith("+++ ")) {
 			const target = row.slice(4).trim();
 			if (target === "/dev/null") {
 				current = undefined;
@@ -86,11 +92,12 @@ export function parseAddedLines(diff: string): Map<string, Set<number>> {
 
 		const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(row);
 		if (hunk) {
+			inHunk = true;
 			line = Number(hunk[1]);
 			continue;
 		}
 
-		if (!current) continue;
+		if (!current || !inHunk) continue;
 
 		if (row.startsWith("+")) {
 			current.add(line);
