@@ -159,7 +159,11 @@ describe("add", () => {
 			const uiConfigAfter = await readJson<UiModuleConfig>(uiConfigPath);
 			const uiPackageAfter = await readJson<UiPackageJson>(uiPackageJsonPath);
 
-			expect(uiConfigAfter.capabilities).toContain("tailwind");
+			expect([...uiConfigAfter.capabilities].sort()).toEqual([
+				"react",
+				"tailwind",
+				"ui",
+			]);
 			expect(uiPackageAfter.devDependencies?.tailwindcss).toBe("catalog:");
 			expect(uiPackageAfter.devDependencies?.["@tailwindcss/postcss"]).toBe(
 				"catalog:",
@@ -327,7 +331,11 @@ describe("add", () => {
 				join(workspace.projectRoot, "packages/ui/package.json"),
 			);
 
-			expect(uiConfig.capabilities).toContain("tailwind");
+			expect([...uiConfig.capabilities].sort()).toEqual([
+				"react",
+				"tailwind",
+				"ui",
+			]);
 			expect(uiPackageJson.devDependencies?.tailwindcss).toBe("catalog:");
 		});
 	}, 240_000);
