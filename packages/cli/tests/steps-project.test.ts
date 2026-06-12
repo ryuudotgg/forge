@@ -177,6 +177,15 @@ describe("project steps", () => {
 			expect(validate?.("!!!")).toBe("We couldn't generate a slug.");
 			expect(validate?.("Acme")).toBeUndefined();
 		});
+
+		it("trims prompted names before deriving the slug", async () => {
+			promptMocks.text.mockResolvedValue("  Acme  ");
+
+			await expect(nameStep.execute({}, true)).resolves.toEqual({
+				name: "Acme",
+				slug: "acme",
+			});
+		});
 	});
 
 	describe("path", () => {
