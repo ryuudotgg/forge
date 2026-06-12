@@ -1,10 +1,17 @@
-import { isCancel, select } from "@clack/prompts";
+import { isCancel, log, select } from "@clack/prompts";
 import { linters } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
+import {
+	availableChoice,
+	choiceOptions,
+	unavailableMessage,
+} from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
-export const linterSchema = Schema.Literal(...linters.ids);
+export const linterSchema = Schema.Literal(...linters.ids).pipe(
+	Schema.filter(availableChoice(linters)),
+);
 
 const linterStep = defineStep<typeof linterSchema.Type>({
 	id: "linter",
@@ -25,21 +32,21 @@ const linterStep = defineStep<typeof linterSchema.Type>({
 			return SKIP;
 		}
 
-		const linter = await select({
-			message: "What is your preferred linter/formatter?",
-			options: [
-				...linters.ids.map((option) => ({
-					label: linters.label(option),
-					value: option,
-				})),
-				{ label: "None", value: "none" as const },
-			],
-		});
+		for (;;) {
+			const linter = await select({
+				message: "What is your preferred linter/formatter?",
+				options: [
+					...choiceOptions(linters),
+					{ label: "None", value: "none" as const },
+				],
+			});
 
-		if (isCancel(linter)) cancel();
-		if (linter === "none") return SKIP;
+			if (isCancel(linter)) cancel();
+			if (linter === "none") return SKIP;
+			if (linters.available(linter)) return linter;
 
-		return linter;
+			log.warn(unavailableMessage(linters, linter));
+		}
 	},
 });
 

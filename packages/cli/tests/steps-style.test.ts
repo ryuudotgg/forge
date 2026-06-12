@@ -8,12 +8,14 @@ import { type PartialConfig, SKIP } from "../src/steps/types";
 const promptMocks = vi.hoisted(() => ({
 	cancel: vi.fn(),
 	isCancel: vi.fn(),
+	logWarn: vi.fn(),
 	select: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
 	isCancel: promptMocks.isCancel,
+	log: { warn: promptMocks.logWarn },
 	select: promptMocks.select,
 }));
 
@@ -29,6 +31,7 @@ beforeEach(() => {
 	promptMocks.cancel.mockReset();
 	promptMocks.isCancel.mockReset();
 	promptMocks.isCancel.mockReturnValue(false);
+	promptMocks.logWarn.mockReset();
 	promptMocks.select.mockReset();
 });
 
@@ -52,6 +55,12 @@ describe("style framework step", () => {
 		).resolves.toBe(SKIP);
 	});
 
+	it("skips an unavailable style framework when non-interactive", async () => {
+		await expect(
+			styleFrameworkStep.execute({ style: "unocss" }, false),
+		).resolves.toBe(SKIP);
+	});
+
 	it("joins the selected framework labels in the interactive message", async () => {
 		promptMocks.select.mockResolvedValue("tailwind");
 
@@ -64,24 +73,39 @@ describe("style framework step", () => {
 				"Which styling framework do you want to use for Next.js and Electron?",
 			options: [
 				{ label: "Tailwind CSS", value: "tailwind" },
-				{ label: "UnoCSS", value: "unocss" },
+				{ label: "UnoCSS", value: "unocss", hint: "coming soon" },
 				{ label: "None", value: "none" },
 			],
 		});
 	});
 
 	it("drops absent frameworks from the interactive message", async () => {
-		promptMocks.select.mockResolvedValue("unocss");
+		promptMocks.select.mockResolvedValue("tailwind");
 
 		await expect(
 			styleFrameworkStep.execute({ web: "nextjs" }, true),
-		).resolves.toBe("unocss");
+		).resolves.toBe("tailwind");
 
 		expect(promptMocks.select).toHaveBeenCalledWith(
 			expect.objectContaining({
 				message: "Which styling framework do you want to use for Next.js?",
 			}),
 		);
+	});
+
+	it("warns and re-prompts when an unavailable style framework is selected", async () => {
+		promptMocks.select
+			.mockResolvedValueOnce("unocss")
+			.mockResolvedValueOnce("tailwind");
+
+		await expect(
+			styleFrameworkStep.execute({ web: "nextjs" }, true),
+		).resolves.toBe("tailwind");
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"UnoCSS isn't available yet.",
+		);
+		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
 	it("skips when none is selected interactively", async () => {

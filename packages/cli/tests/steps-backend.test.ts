@@ -8,6 +8,7 @@ const promptMocks = vi.hoisted(() => ({
 	cancel: vi.fn(),
 	confirm: vi.fn(),
 	isCancel: vi.fn(),
+	logWarn: vi.fn(),
 	select: vi.fn(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
 	confirm: promptMocks.confirm,
 	isCancel: promptMocks.isCancel,
+	log: { warn: promptMocks.logWarn },
 	select: promptMocks.select,
 }));
 
@@ -28,22 +30,29 @@ describe("backend step", () => {
 		promptMocks.cancel.mockReset();
 		promptMocks.confirm.mockReset();
 		promptMocks.isCancel.mockReset();
+		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
 		promptMocks.isCancel.mockReturnValue(false);
 	});
 
 	it("accepts a canonical backend id without prompting", async () => {
-		await expect(backendStep.execute({ backend: "hono" }, false)).resolves.toBe(
-			"hono",
-		);
+		await expect(
+			backendStep.execute({ backend: "nextjs" }, false),
+		).resolves.toBe("nextjs");
 
 		expect(promptMocks.select).not.toHaveBeenCalled();
 	});
 
 	it("normalizes display-name aliases in non-interactive mode", async () => {
 		await expect(
-			backendStep.execute(rawConfig({ backend: "Hono" }), false),
-		).resolves.toBe("hono");
+			backendStep.execute(rawConfig({ backend: "Next.js" }), false),
+		).resolves.toBe("nextjs");
+	});
+
+	it("skips unavailable backends in non-interactive mode", async () => {
+		await expect(backendStep.execute({ backend: "hono" }, false)).resolves.toBe(
+			SKIP,
+		);
 	});
 
 	it("skips when the configured backend is unknown", async () => {
@@ -53,25 +62,38 @@ describe("backend step", () => {
 	});
 
 	it("marks the chosen web framework as recommended", async () => {
-		promptMocks.select.mockResolvedValue("hono");
+		promptMocks.select.mockResolvedValue("nextjs");
 
 		await expect(backendStep.execute({ web: "nextjs" }, true)).resolves.toBe(
-			"hono",
+			"nextjs",
 		);
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "What is your preferred backend framework?",
 			options: [
 				{ label: "Next.js (Recommended)", value: "nextjs" },
-				{ label: "Convex", value: "convex" },
-				{ label: "Hono", value: "hono" },
-				{ label: "Elysia", value: "elysia" },
-				{ label: "µWebSockets", value: "uwebsockets" },
-				{ label: "Fastify", value: "fastify" },
-				{ label: "Express", value: "express" },
+				{ label: "Convex", value: "convex", hint: "coming soon" },
+				{ label: "Hono", value: "hono", hint: "coming soon" },
+				{ label: "Elysia", value: "elysia", hint: "coming soon" },
+				{ label: "µWebSockets", value: "uwebsockets", hint: "coming soon" },
+				{ label: "Fastify", value: "fastify", hint: "coming soon" },
+				{ label: "Express", value: "express", hint: "coming soon" },
 				{ label: "None", value: "none" },
 			],
 		});
+	});
+
+	it("warns and re-prompts when an unavailable backend is selected", async () => {
+		promptMocks.select
+			.mockResolvedValueOnce("hono")
+			.mockResolvedValueOnce("nextjs");
+
+		await expect(backendStep.execute({}, true)).resolves.toBe("nextjs");
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"Hono isn't available yet.",
+		);
+		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
 	it("skips when none is selected", async () => {
@@ -107,6 +129,7 @@ describe("rpc step", () => {
 		promptMocks.cancel.mockReset();
 		promptMocks.confirm.mockReset();
 		promptMocks.isCancel.mockReset();
+		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
 		promptMocks.isCancel.mockReturnValue(false);
 	});
@@ -171,6 +194,7 @@ describe("rpcPublic step", () => {
 		promptMocks.cancel.mockReset();
 		promptMocks.confirm.mockReset();
 		promptMocks.isCancel.mockReset();
+		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
 		promptMocks.isCancel.mockReturnValue(false);
 	});

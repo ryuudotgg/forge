@@ -3,7 +3,6 @@ import authCustomUI from "./auth/custom-ui";
 import authProvider from "./auth/provider";
 import backendFramework from "./backend/framework";
 import rpc from "./backend/rpc";
-import rpcPublic from "./backend/rpc-public";
 import database from "./data/database";
 import databaseProvider from "./data/database-provider";
 import orm from "./data/orm";
@@ -45,7 +44,6 @@ export const steps: Step[] = [
 
 	backendFramework,
 	rpc,
-	rpcPublic,
 
 	database,
 	orm,
