@@ -19,6 +19,38 @@ export interface ApplyPlan {
 	readonly writes: ReadonlyArray<PlannedWrite>;
 }
 
+function movedModuleArtifactId(
+	write: PlannedWrite,
+	current: Manifest,
+	previous: Manifest,
+): string | undefined {
+	if (write.artifactId === undefined) return undefined;
+
+	const match = /^module:([^:]+):file:(.+)$/.exec(write.artifactId);
+
+	const moduleId = match?.[1];
+	const artifactPath = match?.[2];
+	if (
+		moduleId === undefined ||
+		artifactPath === undefined ||
+		artifactPath !== write.path
+	)
+		return undefined;
+
+	const nextRoot = current.modules[moduleId]?.root;
+	const previousRoot = previous.modules[moduleId]?.root;
+	if (
+		nextRoot === undefined ||
+		previousRoot === undefined ||
+		nextRoot === previousRoot ||
+		!write.path.startsWith(`${nextRoot}/`)
+	)
+		return undefined;
+
+	const relative = write.path.slice(nextRoot.length + 1);
+	return `module:${moduleId}:file:${previousRoot}/${relative}`;
+}
+
 export class Apply extends Effect.Service<Apply>()("Apply", {
 	accessors: true,
 	effect: Effect.gen(function* () {
@@ -49,6 +81,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			plan: ApplyPlan,
 		) {
 			const previousLockfile = yield* State.readLockfile(projectRoot);
+			const previousManifest = yield* State.readManifestOrDefault(projectRoot);
 			const previousArtifactIndex = buildArtifactIndex(previousLockfile);
 			const previousArtifacts = previousArtifactIndex.byPath;
 			const previousArtifactsById = previousArtifactIndex.byId;
@@ -114,10 +147,20 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				}
 
 				const previousArtifact = previousArtifacts.get(file.path);
+				const renamedArtifactId = movedModuleArtifactId(
+					file,
+					plan.manifest,
+					previousManifest,
+				);
+
 				const movedArtifact =
-					file.artifactId === undefined
+					(file.artifactId === undefined
 						? undefined
-						: previousArtifactsById.get(file.artifactId);
+						: previousArtifactsById.get(file.artifactId)) ??
+					(renamedArtifactId === undefined
+						? undefined
+						: previousArtifactsById.get(renamedArtifactId));
+
 				if (!previousArtifact)
 					if (!movedArtifact)
 						return yield* new ApplyError({

@@ -1,4 +1,4 @@
-import { rename, rm } from "node:fs/promises";
+import { readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
@@ -31,7 +31,7 @@ import {
 	surfaceText,
 	templateModuleTarget,
 } from "../src/index";
-import { readJson, withTempDir, writeJson } from "./harness";
+import { readJson, withTempDir, writeJson, writeText } from "./harness";
 
 interface TestConfig extends Record<string, unknown> {
 	readonly audit?: boolean;
@@ -273,6 +273,37 @@ function sharedModuleRegistry() {
 		addons: [
 			telemetryAddon("logs", "client"),
 			telemetryAddon("metrics", "provider"),
+		],
+	});
+}
+
+function versionedRegistry(content: string) {
+	return defineRegistry({
+		frameworks: [],
+		templates: [],
+		addons: [
+			defineAddon<TestConfig>({
+				id: "logs",
+				name: "Logs",
+				version: "0.1.0",
+				category: "tooling",
+				exclusive: false,
+				targetMode: "single",
+				when: (config) => config.logs === true,
+				contribute: () => [
+					ensurePackageModule("telemetry", "packages/telemetry", {
+						packageType: "library",
+						template: { id: "telemetry", version: 1 },
+						capabilities: ["logs"],
+						slots: {},
+					}),
+					leafTextFile(
+						ensuredModuleTarget("telemetry"),
+						"src/logs.ts",
+						content,
+					),
+				],
+			}),
 		],
 	});
 }
@@ -982,6 +1013,105 @@ describe("planner", () => {
 				"packages/two",
 				"packages/two-moved",
 			]);
+		});
+	});
+
+	it("applies replanned leaf content after a module rename", async () => {
+		await withTempDir("planner-rename-content", async (directory) => {
+			const installs: InstallRecord[] = [
+				{ definitionId: "logs", targets: [{ kind: "project" }] },
+			];
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(
+					directory,
+					{ logs: true },
+					versionedRegistry("export const logs = 1;\n"),
+				),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			await rename(
+				join(directory, "packages/telemetry"),
+				join(directory, "packages/observability"),
+			);
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					{ logs: true },
+					installs,
+					versionedRegistry("export const logs = 2;\n"),
+				),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, updatePlan));
+
+			expect(
+				await readFile(
+					join(directory, "packages/observability/src/logs.ts"),
+					"utf-8",
+				),
+			).toBe("export const logs = 2;\n");
+		});
+	});
+
+	it("rejects user edits to a moved managed file", async () => {
+		await withTempDir("planner-rename-edited", async (directory) => {
+			const installs: InstallRecord[] = [
+				{ definitionId: "logs", targets: [{ kind: "project" }] },
+			];
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(
+					directory,
+					{ logs: true },
+					versionedRegistry("export const logs = 1;\n"),
+				),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			await rename(
+				join(directory, "packages/telemetry"),
+				join(directory, "packages/observability"),
+			);
+			await writeText(
+				join(directory, "packages/observability/src/logs.ts"),
+				"user edit\n",
+			);
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					{ logs: true },
+					installs,
+					versionedRegistry("export const logs = 2;\n"),
+				),
+			);
+
+			const exit = await Effect.runPromiseExit(
+				applyPlanEffect(directory, updatePlan),
+			);
+
+			expect(Exit.isFailure(exit)).toBe(true);
+			if (!Exit.isFailure(exit)) throw new Error("Missing Apply Failure");
+
+			const failure = Cause.failureOption(exit.cause);
+			expect(Option.isSome(failure)).toBe(true);
+			expect(Option.getOrThrow(failure)).toMatchObject({
+				_tag: "ApplyError",
+				message: "Managed File Modified",
+				path: "packages/observability/src/logs.ts",
+			});
+
+			expect(
+				await readFile(
+					join(directory, "packages/observability/src/logs.ts"),
+					"utf-8",
+				),
+			).toBe("user edit\n");
 		});
 	});
 
