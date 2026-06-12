@@ -100,7 +100,7 @@ describe("authentication step", () => {
 		);
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"WorkOS isn't available yet.",
+			"We don't support WorkOS yet.",
 		);
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});

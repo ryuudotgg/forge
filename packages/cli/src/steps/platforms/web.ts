@@ -5,7 +5,7 @@ import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
 	choiceOptions,
-	unavailableMessage,
+	unsupportedMessage,
 } from "../../utils/choices";
 import { defineStep } from "../types";
 
@@ -47,7 +47,7 @@ const webStep = defineStep<typeof webSchema.Type>({
 			if (isCancel(web)) cancel();
 			if (webFrameworks.available(web)) return web;
 
-			log.warn(unavailableMessage(webFrameworks, web));
+			log.warn(unsupportedMessage(webFrameworks, [web]));
 		}
 	},
 });

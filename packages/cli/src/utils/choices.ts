@@ -1,19 +1,21 @@
+import { listAnd } from "./list";
+
 export interface Choices<Id extends string> {
 	readonly available: (id: Id) => boolean;
 	readonly ids: ReadonlyArray<Id>;
 	readonly label: (id: Id) => string;
 }
 
-export function unavailableMessage<Id extends string>(
+export function unsupportedMessage<Id extends string>(
 	choices: Choices<Id>,
-	id: Id,
+	ids: ReadonlyArray<Id>,
 ) {
-	return `${choices.label(id)} isn't available yet.`;
+	return `We don't support ${listAnd.format(ids.map((id) => choices.label(id)))} yet.`;
 }
 
 export function availableChoice<Id extends string>(choices: Choices<Id>) {
 	return (id: Id) =>
-		choices.available(id) ? undefined : unavailableMessage(choices, id);
+		choices.available(id) ? undefined : unsupportedMessage(choices, [id]);
 }
 
 export function choiceOptions<Id extends string>(choices: Choices<Id>) {

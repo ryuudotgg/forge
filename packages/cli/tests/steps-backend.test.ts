@@ -91,7 +91,7 @@ describe("backend step", () => {
 		await expect(backendStep.execute({}, true)).resolves.toBe("nextjs");
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"Hono isn't available yet.",
+			"We don't support Hono yet.",
 		);
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});

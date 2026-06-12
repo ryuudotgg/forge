@@ -103,7 +103,7 @@ describe("style framework step", () => {
 		).resolves.toBe("tailwind");
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"UnoCSS isn't available yet.",
+			"We don't support UnoCSS yet.",
 		);
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});

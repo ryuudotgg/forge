@@ -90,9 +90,22 @@ describe("platforms step", () => {
 		await expect(platformsStep.execute({}, true)).resolves.toEqual(["web"]);
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"Desktop isn't available yet.",
+			"We don't support Desktop yet.",
 		);
 		expect(promptMocks.multiselect).toHaveBeenCalledTimes(2);
+	});
+
+	it("lists every unsupported platform in one warning", async () => {
+		promptMocks.multiselect
+			.mockResolvedValueOnce(["web", "desktop", "mobile"])
+			.mockResolvedValueOnce(["web"]);
+
+		await expect(platformsStep.execute({}, true)).resolves.toEqual(["web"]);
+
+		expect(promptMocks.logWarn).toHaveBeenCalledTimes(1);
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"We don't support Desktop and Mobile yet.",
+		);
 	});
 
 	it("skips when the interactive selection is empty", async () => {
@@ -163,7 +176,7 @@ describe("web step", () => {
 		await expect(webStep.execute({}, true)).resolves.toBe("nextjs");
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"React Router isn't available yet.",
+			"We don't support React Router yet.",
 		);
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});

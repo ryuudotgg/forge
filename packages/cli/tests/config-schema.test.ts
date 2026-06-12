@@ -46,7 +46,7 @@ describe("assembleSchema", () => {
 			authentication: "authjs",
 		});
 
-		expect(decodeMessages(result)).toContain("Auth.js isn't available yet.");
+		expect(decodeMessages(result)).toContain("We don't support Auth.js yet.");
 	});
 
 	it("accepts the available authentication provider", () => {
@@ -72,7 +72,7 @@ describe("assembleSchema", () => {
 		});
 
 		expect(decodeMessages(result)).toContain(
-			"React Router isn't available yet.",
+			"We don't support React Router yet.",
 		);
 	});
 
@@ -86,7 +86,7 @@ describe("assembleSchema", () => {
 			backend: "hono",
 		});
 
-		expect(decodeMessages(result)).toContain("Hono isn't available yet.");
+		expect(decodeMessages(result)).toContain("We don't support Hono yet.");
 	});
 
 	it("rejects unavailable linters with a friendly sentence", () => {
@@ -99,7 +99,7 @@ describe("assembleSchema", () => {
 			linter: "oxc",
 		});
 
-		expect(decodeMessages(result)).toContain("Oxc isn't available yet.");
+		expect(decodeMessages(result)).toContain("We don't support Oxc yet.");
 	});
 
 	it("rejects unavailable style frameworks with a friendly sentence", () => {
@@ -112,7 +112,7 @@ describe("assembleSchema", () => {
 			style: "unocss",
 		});
 
-		expect(decodeMessages(result)).toContain("UnoCSS isn't available yet.");
+		expect(decodeMessages(result)).toContain("We don't support UnoCSS yet.");
 	});
 
 	it("requires a web framework when the web platform is selected", () => {
@@ -134,7 +134,7 @@ describe("assembleSchema", () => {
 			platforms: ["desktop"],
 		});
 
-		expect(decodeMessages(result)).toContain("Desktop isn't available yet.");
+		expect(decodeMessages(result)).toContain("We don't support Desktop yet.");
 	});
 
 	it("rejects the mobile platform while it isn't available", () => {
@@ -144,7 +144,20 @@ describe("assembleSchema", () => {
 			platforms: ["mobile"],
 		});
 
-		expect(decodeMessages(result)).toContain("Mobile isn't available yet.");
+		expect(decodeMessages(result)).toContain("We don't support Mobile yet.");
+	});
+
+	it("lists every unsupported platform in one sentence", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			platforms: ["web", "desktop", "mobile"],
+			web: "nextjs",
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"We don't support Desktop and Mobile yet.",
+		);
 	});
 
 	it("spreads schema shape fields from null-key steps into the struct", () => {

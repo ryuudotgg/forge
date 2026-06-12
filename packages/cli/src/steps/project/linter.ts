@@ -5,7 +5,7 @@ import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
 	choiceOptions,
-	unavailableMessage,
+	unsupportedMessage,
 } from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
@@ -45,7 +45,7 @@ const linterStep = defineStep<typeof linterSchema.Type>({
 			if (linter === "none") return SKIP;
 			if (linters.available(linter)) return linter;
 
-			log.warn(unavailableMessage(linters, linter));
+			log.warn(unsupportedMessage(linters, [linter]));
 		}
 	},
 });

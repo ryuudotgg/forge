@@ -154,7 +154,7 @@ describe("create", () => {
 
 				expect(result.exitCode).not.toBe(0);
 				expect(result.stdout + result.stderr).toContain(
-					"Desktop isn't available yet.",
+					"We don't support Desktop yet.",
 				);
 			},
 		);

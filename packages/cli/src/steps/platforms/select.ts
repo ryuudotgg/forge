@@ -5,20 +5,20 @@ import {
 } from "@ryuujs/generators";
 import { Either, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
-import { choiceOptions, unavailableMessage } from "../../utils/choices";
+import { choiceOptions, unsupportedMessage } from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
 export const platformsSchema = Schema.NonEmptyArray(
 	Schema.Literal(...platformChoices.ids),
 ).pipe(
 	Schema.filter((values) => {
-		const unavailable = values.find(
+		const unavailable = values.filter(
 			(value) => !platformChoices.available(value),
 		);
 
-		return unavailable === undefined
+		return unavailable.length === 0
 			? undefined
-			: unavailableMessage(platformChoices, unavailable);
+			: unsupportedMessage(platformChoices, unavailable);
 	}),
 );
 
@@ -59,9 +59,7 @@ const platformsStep = defineStep<typeof platformsSchema.Type>({
 			);
 
 			if (unavailable.length > 0) {
-				for (const platform of unavailable)
-					log.warn(unavailableMessage(platformChoices, platform));
-
+				log.warn(unsupportedMessage(platformChoices, unavailable));
 				continue;
 			}
 

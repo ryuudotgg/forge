@@ -9,7 +9,7 @@ import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
 	choiceOptions,
-	unavailableMessage,
+	unsupportedMessage,
 } from "../../utils/choices";
 import { stripNulls } from "../../utils/strip-nulls";
 import { defineStep, SKIP } from "../types";
@@ -55,7 +55,7 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 			if (styleFramework === "none") return SKIP;
 			if (styleFrameworks.available(styleFramework)) return styleFramework;
 
-			log.warn(unavailableMessage(styleFrameworks, styleFramework));
+			log.warn(unsupportedMessage(styleFrameworks, [styleFramework]));
 		}
 	},
 });

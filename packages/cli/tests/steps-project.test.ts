@@ -319,7 +319,7 @@ describe("project steps", () => {
 			await expect(linterStep.execute({}, true)).resolves.toBe("biome");
 
 			expect(promptMocks.logWarn).toHaveBeenCalledWith(
-				"Oxc isn't available yet.",
+				"We don't support Oxc yet.",
 			);
 			expect(promptMocks.select).toHaveBeenCalledTimes(2);
 		});

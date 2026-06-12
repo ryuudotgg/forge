@@ -5,7 +5,7 @@ import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
 	choiceOptions,
-	unavailableMessage,
+	unsupportedMessage,
 } from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
@@ -53,7 +53,7 @@ const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 			if (authenticationProviders.available(authentication))
 				return authentication;
 
-			log.warn(unavailableMessage(authenticationProviders, authentication));
+			log.warn(unsupportedMessage(authenticationProviders, [authentication]));
 		}
 	},
 });

@@ -5,7 +5,7 @@ import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
 	choiceOptions,
-	unavailableMessage,
+	unsupportedMessage,
 } from "../../utils/choices";
 import { defineStep, SKIP, type Skip } from "../types";
 
@@ -51,7 +51,7 @@ export default defineStep<typeof backendSchema.Type>({
 			if (backend === "none") return SKIP;
 			if (backends.available(backend)) return backend;
 
-			log.warn(unavailableMessage(backends, backend));
+			log.warn(unsupportedMessage(backends, [backend]));
 		}
 	},
 });
