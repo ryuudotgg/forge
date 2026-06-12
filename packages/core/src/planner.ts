@@ -601,12 +601,10 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			const claimedRoots = new Set<string>();
 			for (const module of byRoot.values()) {
 				if (claimedRoots.has(module.root))
-					return yield* Effect.fail(
-						new PlannerError({
-							path: module.root,
-							message: "Module Root Conflict",
-						}),
-					);
+					return yield* new PlannerError({
+						path: module.root,
+						message: "Module Root Conflict",
+					});
 
 				claimedRoots.add(module.root);
 			}

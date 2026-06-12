@@ -34,7 +34,9 @@ import {
 import { readJson, withTempDir, writeJson } from "./harness";
 
 interface TestConfig extends Record<string, unknown> {
+	readonly audit?: boolean;
 	readonly auth?: boolean;
+	readonly dual?: boolean;
 	readonly kit?: boolean;
 	readonly logs?: boolean;
 	readonly metrics?: boolean;
