@@ -70,10 +70,21 @@ function detectRuntime(): { id: RuntimeId; version: string } {
 	return { id: "node", version: process.versions.node };
 }
 
+function parseMajor(version: string): number | undefined {
+	const major = version.match(/^(\d+)(?:\.|$)/)?.[1];
+	return major === undefined ? undefined : Number(major);
+}
+
 function checkCurrentRuntime(): EnvironmentCheck {
 	const { id, version } = detectRuntime();
 	const { displayName, minimumMajor } = runtimes[id];
-	const major = Number(version.split(".")[0]);
+	const major = parseMajor(version);
+
+	if (major === undefined)
+		return {
+			ok: false,
+			message: `We couldn't tell which ${displayName} version you're running.`,
+		};
 
 	if (major < minimumMajor)
 		return {
@@ -91,7 +102,13 @@ function buildPackageManagerCheck(
 	const cmd = pmCommandMap[pm];
 	const { displayName, minimumMajor } = packageManagers[cmd];
 
-	const major = Number(version.split(".")[0]);
+	const major = parseMajor(version);
+	if (major === undefined)
+		return {
+			ok: false,
+			message: `We couldn't tell which ${displayName} version you're running.`,
+		};
+
 	if (major < minimumMajor)
 		return {
 			ok: false,
