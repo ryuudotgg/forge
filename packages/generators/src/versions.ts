@@ -76,12 +76,12 @@ export const versions = {
 
 	drizzleOrm: {
 		name: "drizzle-orm",
-		version: "1.0.0-beta.21",
+		version: "1.0.0-rc.4-5d5b77c",
 		group: "Database",
 	},
 	drizzleKit: {
 		name: "drizzle-kit",
-		version: "1.0.0-beta.21",
+		version: "1.0.0-rc.4-ca0f029",
 		group: "Database",
 	},
 	drizzleZod: {
