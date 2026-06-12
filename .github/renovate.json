@@ -20,8 +20,10 @@
 		}
 	],
 	"packageRules": [
-		{ 
-			"groupName": "clack", "matchPackageNames": ["@clack/**"] },
+		{
+			"groupName": "clack",
+			"matchPackageNames": ["@clack/**"]
+		},
 		{
 			"groupName": "scaffolded versions",
 			"matchFileNames": ["packages/generators/src/versions.ts"]
