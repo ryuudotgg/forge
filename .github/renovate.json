@@ -9,10 +9,22 @@
 		"platformAutomerge": true
 	},
 	"osvVulnerabilityAlerts": true,
-	"packageRules": [
+	"customManagers": [
 		{
-			"groupName": "clack",
-			"matchPackageNames": ["@clack/**"]
+			"customType": "regex",
+			"datasourceTemplate": "npm",
+			"managerFilePatterns": ["/^packages/generators/src/versions\\.ts$/"],
+			"matchStrings": [
+				"name: \"(?<depName>[^\"]+)\",\\s+version: \"(?<currentValue>[^\"]+)\""
+			]
+		}
+	],
+	"packageRules": [
+		{ 
+			"groupName": "clack", "matchPackageNames": ["@clack/**"] },
+		{
+			"groupName": "scaffolded versions",
+			"matchFileNames": ["packages/generators/src/versions.ts"]
 		}
 	],
 	"rangeStrategy": "bump",

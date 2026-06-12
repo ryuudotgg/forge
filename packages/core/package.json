@@ -52,7 +52,7 @@
 		"effect": "catalog:effect"
 	},
 	"devDependencies": {
-		"@effect/language-service": "^0.86.2",
+		"@effect/language-service": "catalog:effect",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"@vitest/coverage-v8": "catalog:dev",
