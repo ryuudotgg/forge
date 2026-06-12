@@ -78,7 +78,8 @@ const nameStep = defineStep<{ name: string; slug: string }>({
 
 		if (isCancel(name)) cancel();
 
-		return { name, slug: slugify(name) };
+		const trimmed = name.trim();
+		return { name: trimmed, slug: slugify(trimmed) };
 	},
 });
 

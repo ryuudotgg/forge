@@ -34,6 +34,15 @@ describe("slugify", () => {
 	it("collapses repeated dashes", () => {
 		expect(slugify("a--b")).toBe("a-b");
 	});
+
+	it("trims surrounding whitespace before dashing", () => {
+		expect(slugify("  Acme  ")).toBe("acme");
+	});
+
+	it("strips leading and trailing dashes", () => {
+		expect(slugify("-acme-")).toBe("acme");
+		expect(slugify("__Acme__")).toBe("acme");
+	});
 });
 
 describe("cancel", () => {
