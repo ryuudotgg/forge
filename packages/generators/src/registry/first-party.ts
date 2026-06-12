@@ -19,6 +19,7 @@ import lefthook, { lefthookMetadata } from "../tooling/lefthook";
 import typescript, { typescriptMetadata } from "../tooling/typescript";
 import vscode, { vscodeMetadata } from "../tooling/vscode";
 import ui, { uiMetadata } from "../ui";
+import bun, { bunMetadata } from "../workspace/bun";
 import pnpm, { pnpmMetadata } from "../workspace/pnpm";
 import root, { rootMetadata } from "../workspace/root";
 import yarn, { yarnMetadata } from "../workspace/yarn";
@@ -36,6 +37,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		root,
 		pnpm,
 		yarn,
+		bun,
 		typescript,
 		biome,
 		gitignore,
@@ -59,6 +61,7 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(root, rootMetadata),
 	addonCatalogEntry(pnpm, pnpmMetadata),
 	addonCatalogEntry(yarn, yarnMetadata),
+	addonCatalogEntry(bun, bunMetadata),
 	addonCatalogEntry(typescript, typescriptMetadata),
 	addonCatalogEntry(biome, biomeMetadata),
 	addonCatalogEntry(gitignore, gitignoreMetadata),

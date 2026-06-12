@@ -21,6 +21,7 @@ interface PackageJson {
 	readonly dependencies?: Record<string, string>;
 	readonly devDependencies?: Record<string, string>;
 	readonly scripts?: Record<string, string>;
+	readonly trustedDependencies?: ReadonlyArray<string>;
 	readonly workspaces?: ReadonlyArray<string>;
 }
 
@@ -101,6 +102,7 @@ interface PrismaCell {
 	readonly migrate: string;
 	readonly pm: string;
 	readonly postinstall: string;
+	readonly trustedDependencies?: ReadonlyArray<string>;
 }
 
 const prismaCells: ReadonlyArray<PrismaCell> = [
@@ -124,6 +126,14 @@ const prismaCells: ReadonlyArray<PrismaCell> = [
 		migrate: "bun run with-env prisma migrate dev",
 		pm: "Bun",
 		postinstall: "bun --filter @acme/db generate",
+		trustedDependencies: [
+			"@prisma/engines",
+			"esbuild",
+			"lefthook",
+			"msw",
+			"prisma",
+			"sharp",
+		],
 	},
 ];
 
@@ -147,6 +157,7 @@ describe("multi-pm", () => {
 			);
 
 			expect(root.workspaces).toBeUndefined();
+			expect(root.trustedDependencies).toBeUndefined();
 			expect(workspaceYaml).toContain("catalog:");
 			expect(workspaceYaml).toMatch(/^ {2}next: \d/m);
 			expect(workspaceYaml).toContain("allowBuilds:");
@@ -284,6 +295,12 @@ describe("multi-pm", () => {
 			);
 
 			expect(root.workspaces).toEqual(["apps/*", "packages/*", "tooling/*"]);
+			expect(root.trustedDependencies).toEqual([
+				"esbuild",
+				"lefthook",
+				"msw",
+				"sharp",
+			]);
 			expect(
 				await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
 			).toBe(false);
@@ -314,6 +331,7 @@ describe("multi-pm", () => {
 		migrate,
 		pm,
 		postinstall,
+		trustedDependencies,
 	}) => {
 		await withScenarioWorkspace(
 			`multi-pm-prisma-${pm.toLowerCase()}`,
@@ -336,6 +354,7 @@ describe("multi-pm", () => {
 				);
 
 				expect(root.scripts?.postinstall).toBe(postinstall);
+				expect(root.trustedDependencies).toEqual(trustedDependencies);
 				expect(db.scripts?.migrate).toBe(migrate);
 				expect(web.scripts?.["db:generate"]).toBe(dbGenerate);
 				expect(web.dependencies?.["@acme/db"]).toBe(dbDependency);

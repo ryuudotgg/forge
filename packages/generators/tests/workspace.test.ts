@@ -8,7 +8,7 @@ import {
 } from "@ryuujs/core";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
-import { type ForgeConfig, pnpm, root, yarn } from "../src/index";
+import { bun, type ForgeConfig, pnpm, root, yarn } from "../src/index";
 
 const commandVersions: Record<string, string> = {
 	node: "22.11.0",
@@ -311,6 +311,65 @@ describe("yarn workspace", () => {
 			"!.yarn/releases",
 			"!.yarn/sdks",
 			"!.yarn/versions",
+		]);
+	});
+});
+
+describe("bun workspace", () => {
+	it("only runs for bun projects", () => {
+		expect(bun.when({ packageManager: "Bun" })).toBe(true);
+		expect(bun.when({ packageManager: "pnpm" })).toBe(false);
+		expect(bun.when({})).toBe(false);
+	});
+
+	it("trusts the baseline build scripts", () => {
+		const packageJson = jsonSurface(
+			syncContributions(bun, { packageManager: "Bun" }),
+			"rootPackageJson",
+		);
+
+		expect(packageJson.trustedDependencies).toEqual([
+			"esbuild",
+			"lefthook",
+			"msw",
+			"sharp",
+		]);
+	});
+
+	it("trusts the prisma build scripts for the prisma orm", () => {
+		const packageJson = jsonSurface(
+			syncContributions(bun, { orm: "prisma", packageManager: "Bun" }),
+			"rootPackageJson",
+		);
+
+		expect(packageJson.trustedDependencies).toEqual([
+			"@prisma/engines",
+			"esbuild",
+			"lefthook",
+			"msw",
+			"prisma",
+			"sharp",
+		]);
+	});
+
+	it("trusts better-sqlite3 when prisma uses the local sqlite client", () => {
+		const packageJson = jsonSurface(
+			syncContributions(bun, {
+				database: "sqlite",
+				orm: "prisma",
+				packageManager: "Bun",
+			}),
+			"rootPackageJson",
+		);
+
+		expect(packageJson.trustedDependencies).toEqual([
+			"@prisma/engines",
+			"better-sqlite3",
+			"esbuild",
+			"lefthook",
+			"msw",
+			"prisma",
+			"sharp",
 		]);
 	});
 });
