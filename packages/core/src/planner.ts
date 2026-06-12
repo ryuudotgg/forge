@@ -13,6 +13,7 @@ import {
 	ConfigStore,
 	type DiscoveredModule,
 	type ModuleId,
+	type Slots,
 } from "./config";
 import { dependencyFormatFor } from "./environment";
 import { AggregateConflictError, GeneratorError, PlannerError } from "./errors";
@@ -96,6 +97,49 @@ function templateMatchesId(templateId: string, moduleTemplateId: string) {
 	);
 }
 
+function sameModuleIdentity(
+	config: Config,
+	ensured: EnsureModuleContribution["module"],
+) {
+	if (
+		config.template.id !== ensured.template.id ||
+		config.template.version !== ensured.template.version
+	)
+		return false;
+
+	if (config.type === "app" && ensured.type === "app")
+		return config.framework === ensured.framework;
+
+	if (config.type === "package" && ensured.type === "package")
+		return config.packageType === ensured.packageType;
+
+	return false;
+}
+
+function findAdoptableModule(
+	modules: Iterable<ManagedModuleRecord>,
+	ensuredIds: ReadonlySet<ModuleId>,
+	staticRoots: ReadonlySet<string>,
+	contribution: EnsureModuleContribution,
+	definitionId: string,
+) {
+	const candidates = [...modules].filter(
+		(module) =>
+			!ensuredIds.has(module.id) &&
+			!staticRoots.has(module.root) &&
+			module.definitionIds.includes(definitionId) &&
+			sameModuleIdentity(module.config, contribution.module),
+	);
+
+	return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+function rebaseSlots(ensured: Slots, onDisk: Slots): Slots {
+	return Object.fromEntries(
+		Object.entries(ensured).map(([slot, path]) => [slot, onDisk[slot] ?? path]),
+	);
+}
+
 function cloneModule(
 	module: DiscoveredModule,
 	record?: ModuleRecord,
@@ -129,6 +173,8 @@ function mergeEnsuredModule(
 	ensured: EnsureModuleContribution,
 	moduleId: ModuleId,
 	definitionId: string,
+	alreadyEnsured: boolean,
+	onDiskSlots: Slots,
 ): Effect.Effect<ManagedModuleRecord, PlannerError> {
 	const nextConfig = ensured.module;
 
@@ -165,10 +211,17 @@ function mergeEnsuredModule(
 			config: {
 				...nextConfig,
 				id: existing.id,
-				slots: { ...nextConfig.slots, ...existing.config.slots },
+				slots: alreadyEnsured
+					? {
+							...rebaseSlots(nextConfig.slots, onDiskSlots),
+							...existing.config.slots,
+						}
+					: rebaseSlots(nextConfig.slots, onDiskSlots),
 				type: "app",
 			},
-			definitionIds: [...new Set([...existing.definitionIds, definitionId])],
+			definitionIds: alreadyEnsured
+				? [...new Set([...existing.definitionIds, definitionId])]
+				: [definitionId],
 			id: existing.id,
 			root: existing.root,
 		});
@@ -190,17 +243,26 @@ function mergeEnsuredModule(
 		return Effect.succeed({
 			config: {
 				...nextConfig,
-				capabilities: [
-					...new Set([
-						...(nextConfig.capabilities ?? []),
-						...(existing.config.capabilities ?? []),
-					]),
-				],
+				capabilities: alreadyEnsured
+					? [
+							...new Set([
+								...(nextConfig.capabilities ?? []),
+								...(existing.config.capabilities ?? []),
+							]),
+						]
+					: [...(nextConfig.capabilities ?? [])],
 				id: existing.id,
-				slots: { ...nextConfig.slots, ...existing.config.slots },
+				slots: alreadyEnsured
+					? {
+							...rebaseSlots(nextConfig.slots, onDiskSlots),
+							...existing.config.slots,
+						}
+					: rebaseSlots(nextConfig.slots, onDiskSlots),
 				type: "package",
 			},
-			definitionIds: [...new Set([...existing.definitionIds, definitionId])],
+			definitionIds: alreadyEnsured
+				? [...new Set([...existing.definitionIds, definitionId])]
+				: [definitionId],
 			id: existing.id,
 			root: existing.root,
 		});
@@ -485,11 +547,35 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			);
 			const byKey = new Map<string, ModuleId>();
 			const usedIds = new Set(discovered.map((module) => module.id));
+			const ensuredIds = new Set<ModuleId>();
+			const onDiskSlots = new Map<ModuleId, Slots>(
+				discovered.map((module) => [module.id, module.slots]),
+			);
+
+			const staticRoots = new Set(
+				evaluated.flatMap((entry) =>
+					entry.contributions.flatMap((contribution) =>
+						contribution._tag === "EnsureModuleContribution"
+							? [contribution.root]
+							: [],
+					),
+				),
+			);
 
 			for (const entry of evaluated)
 				for (const contribution of entry.contributions)
 					if (contribution._tag === "EnsureModuleContribution") {
-						const existing = byRoot.get(contribution.root);
+						const direct = byRoot.get(contribution.root);
+						const existing =
+							direct ??
+							findAdoptableModule(
+								byRoot.values(),
+								ensuredIds,
+								staticRoots,
+								contribution,
+								entry.definition.id,
+							);
+
 						const moduleId = existing
 							? existing.id
 							: yield* configStore.generateId(usedIds);
@@ -500,10 +586,28 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							contribution,
 							moduleId,
 							entry.definition.id,
+							ensuredIds.has(moduleId),
+							onDiskSlots.get(moduleId) ?? {},
 						);
+
+						if (existing && !direct) byRoot.delete(existing.root);
+
 						byRoot.set(contribution.root, merged);
 						byKey.set(contribution.moduleKey, merged.id);
+
+						ensuredIds.add(merged.id);
 					}
+
+			const claimedRoots = new Set<string>();
+			for (const module of byRoot.values()) {
+				if (claimedRoots.has(module.root))
+					return yield* new PlannerError({
+						path: module.root,
+						message: "Module Root Conflict",
+					});
+
+				claimedRoots.add(module.root);
+			}
 
 			return {
 				modules: [...byRoot.values()],

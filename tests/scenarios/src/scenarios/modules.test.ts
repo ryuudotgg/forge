@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	createProject,
+	pathExists,
 	readJson,
 	renameModuleRoot,
 	updateProject,
@@ -41,6 +42,15 @@ describe("module identity", () => {
 			expect(manifest.modules[beforeRename.id]?.root).toBe(
 				"packages/design-system",
 			);
+			expect(await pathExists(join(workspace.projectRoot, "packages/ui"))).toBe(
+				false,
+			);
+			expect(Object.keys(manifest.modules)).toHaveLength(2);
+			expect(
+				Object.values(manifest.modules).some(
+					(record) => record.root === "packages/ui",
+				),
+			).toBe(false);
 		});
 	});
 });

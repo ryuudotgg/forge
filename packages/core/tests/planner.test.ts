@@ -1,3 +1,5 @@
+import { rename, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import { describe, expect, it } from "vitest";
@@ -32,7 +34,9 @@ import {
 import { readJson, withTempDir, writeJson } from "./harness";
 
 interface TestConfig extends Record<string, unknown> {
+	readonly audit?: boolean;
 	readonly auth?: boolean;
+	readonly dual?: boolean;
 	readonly kit?: boolean;
 	readonly logs?: boolean;
 	readonly metrics?: boolean;
@@ -269,6 +273,83 @@ function sharedModuleRegistry() {
 		addons: [
 			telemetryAddon("logs", "client"),
 			telemetryAddon("metrics", "provider"),
+		],
+	});
+}
+
+function ownershipRegistry() {
+	const kitAddon = (id: "logs" | "audit", root: string) =>
+		defineAddon<TestConfig>({
+			id,
+			name: id === "logs" ? "Logs" : "Audit",
+			version: "0.1.0",
+			category: "tooling",
+			exclusive: false,
+			targetMode: "single",
+			when: (config) => config[id] === true,
+			contribute: () => [
+				ensurePackageModule(id, root, {
+					packageType: "library",
+					template: { id: "kit", version: 1 },
+					capabilities: [id],
+					slots: {},
+				}),
+				leafTextFile(
+					ensuredModuleTarget(id),
+					`src/${id}.ts`,
+					`export const ${id} = true;\n`,
+				),
+			],
+		});
+
+	return defineRegistry({
+		frameworks: [],
+		templates: [],
+		addons: [
+			kitAddon("logs", "packages/telemetry"),
+			kitAddon("audit", "packages/audit"),
+		],
+	});
+}
+
+function siblingRegistry() {
+	return defineRegistry({
+		frameworks: [],
+		templates: [],
+		addons: [
+			defineAddon<TestConfig>({
+				id: "dual",
+				name: "Dual",
+				version: "0.1.0",
+				category: "tooling",
+				exclusive: false,
+				targetMode: "single",
+				when: (config) => config.dual === true,
+				contribute: () => [
+					ensurePackageModule("one", "packages/one", {
+						packageType: "library",
+						template: { id: "kit", version: 1 },
+						capabilities: [],
+						slots: {},
+					}),
+					leafTextFile(
+						ensuredModuleTarget("one"),
+						"src/one.ts",
+						"export const one = true;\n",
+					),
+					ensurePackageModule("two", "packages/two", {
+						packageType: "library",
+						template: { id: "kit", version: 1 },
+						capabilities: [],
+						slots: {},
+					}),
+					leafTextFile(
+						ensuredModuleTarget("two"),
+						"src/two.ts",
+						"export const two = true;\n",
+					),
+				],
+			}),
 		],
 	});
 }
@@ -582,6 +663,9 @@ describe("planner", () => {
 			);
 
 			expect(removalPlan.manifest.modules[telemetryId]).toBeDefined();
+			expect(removalPlan.manifest.modules[telemetryId]?.definitionIds).toEqual([
+				"logs",
+			]);
 			expect(removalPlan.removals).toEqual([
 				"packages/telemetry/src/metrics.ts",
 			]);
@@ -600,9 +684,303 @@ describe("planner", () => {
 
 			const survivorConfig = decodePackageConfig(survivorForge.content);
 
-			expect([...survivorConfig.capabilities].sort()).toEqual([
-				"logs",
-				"metrics",
+			expect([...survivorConfig.capabilities]).toEqual(["logs"]);
+			expect(survivorConfig.slots).toEqual({ client: "src/client.ts" });
+		});
+	});
+
+	it("adopts a renamed module root instead of recreating it", async () => {
+		await withTempDir("planner-renamed-root", async (directory) => {
+			const registry = sharedModuleRegistry();
+			const installs: InstallRecord[] = [
+				{ definitionId: "logs", targets: [{ kind: "project" }] },
+			];
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { logs: true }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			const telemetryId = moduleIdByRoot(
+				createPlan.manifest.modules,
+				"packages/telemetry",
+			);
+
+			expect(telemetryId).toBeDefined();
+			if (!telemetryId) throw new Error("Missing Telemetry Module");
+
+			await rename(
+				join(directory, "packages/telemetry"),
+				join(directory, "packages/observability"),
+			);
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(directory, { logs: true }, installs, registry),
+			);
+
+			expect(Object.keys(updatePlan.manifest.modules)).toEqual([telemetryId]);
+			expect(updatePlan.manifest.modules[telemetryId]?.root).toBe(
+				"packages/observability",
+			);
+			expect(
+				updatePlan.writes.some(
+					(write) => write.path === "packages/observability/forge.json",
+				),
+			).toBe(true);
+			expect(
+				updatePlan.writes.some(
+					(write) => write.path === "packages/observability/src/logs.ts",
+				),
+			).toBe(true);
+			expect(
+				updatePlan.writes.some((write) =>
+					write.path.startsWith("packages/telemetry/"),
+				),
+			).toBe(false);
+		});
+	});
+
+	it("adopts a renamed app module root", async () => {
+		await withTempDir("planner-renamed-app", async (directory) => {
+			const registry = testRegistry();
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			const webId = moduleIdByRoot(createPlan.manifest.modules, "apps/web");
+
+			expect(webId).toBeDefined();
+			if (!webId) throw new Error("Missing Web Module");
+
+			await rename(join(directory, "apps/web"), join(directory, "apps/site"));
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(directory, { web: "nextjs" }, [], registry),
+			);
+
+			expect(Object.keys(updatePlan.manifest.modules)).toEqual([webId]);
+			expect(updatePlan.manifest.modules[webId]?.root).toBe("apps/site");
+			expect(
+				updatePlan.writes.some(
+					(write) => write.path === "apps/site/app/layout.tsx",
+				),
+			).toBe(true);
+			expect(
+				updatePlan.writes.some((write) => write.path.startsWith("apps/web/")),
+			).toBe(false);
+		});
+	});
+
+	it("preserves a moved slot path through replanning", async () => {
+		await withTempDir("planner-moved-slot", async (directory) => {
+			const registry = sharedModuleRegistry();
+			const installs: InstallRecord[] = [
+				{ definitionId: "logs", targets: [{ kind: "project" }] },
+			];
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { logs: true }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			const configPath = join(directory, "packages/telemetry/forge.json");
+			const onDisk = await readJson<{ slots: Record<string, string> }>(
+				configPath,
+			);
+
+			await writeJson(configPath, {
+				...onDisk,
+				slots: { ...onDisk.slots, client: "src/moved/client.ts" },
+			});
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(directory, { logs: true }, installs, registry),
+			);
+
+			const forgeWrite = updatePlan.writes.find(
+				(write) => write.path === "packages/telemetry/forge.json",
+			);
+
+			expect(forgeWrite).toBeDefined();
+			if (!forgeWrite) throw new Error("Missing Telemetry Config Write");
+
+			expect(decodePackageConfig(forgeWrite.content).slots).toEqual({
+				client: "src/moved/client.ts",
+			});
+		});
+	});
+
+	it("keeps moved slot paths for every ensure of a shared module", async () => {
+		await withTempDir("planner-shared-moved-slot", async (directory) => {
+			const registry = sharedModuleRegistry();
+			const installs: InstallRecord[] = [
+				{ definitionId: "logs", targets: [{ kind: "project" }] },
+				{ definitionId: "metrics", targets: [{ kind: "project" }] },
+			];
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { logs: true, metrics: true }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			const configPath = join(directory, "packages/telemetry/forge.json");
+			const onDisk = await readJson<{ slots: Record<string, string> }>(
+				configPath,
+			);
+
+			await writeJson(configPath, {
+				...onDisk,
+				slots: { ...onDisk.slots, provider: "src/custom/provider.ts" },
+			});
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					{ logs: true, metrics: true },
+					installs,
+					registry,
+				),
+			);
+
+			const forgeWrite = updatePlan.writes.find(
+				(write) => write.path === "packages/telemetry/forge.json",
+			);
+
+			expect(forgeWrite).toBeDefined();
+			if (!forgeWrite) throw new Error("Missing Telemetry Config Write");
+
+			expect(decodePackageConfig(forgeWrite.content).slots).toEqual({
+				client: "src/client.ts",
+				provider: "src/custom/provider.ts",
+			});
+		});
+	});
+
+	it("leaves renamed modules owned by other definitions alone", async () => {
+		await withTempDir("planner-adoption-ownership", async (directory) => {
+			const registry = ownershipRegistry();
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { audit: true }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			const auditId = moduleIdByRoot(
+				createPlan.manifest.modules,
+				"packages/audit",
+			);
+
+			expect(auditId).toBeDefined();
+			if (!auditId) throw new Error("Missing Audit Module");
+
+			await rename(
+				join(directory, "packages/audit"),
+				join(directory, "packages/audit-renamed"),
+			);
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					{ audit: true, logs: true },
+					[
+						{ definitionId: "logs", targets: [{ kind: "project" }] },
+						{ definitionId: "audit", targets: [{ kind: "project" }] },
+					],
+					registry,
+				),
+			);
+
+			const roots = Object.values(updatePlan.manifest.modules)
+				.map((record) => record.root)
+				.sort();
+
+			expect(roots).toEqual(["packages/audit-renamed", "packages/telemetry"]);
+			expect(updatePlan.manifest.modules[auditId]?.root).toBe(
+				"packages/audit-renamed",
+			);
+			expect(updatePlan.manifest.modules[auditId]?.definitionIds).toEqual([
+				"audit",
+			]);
+		});
+	});
+
+	it("heals a deleted sibling module without stealing the survivor", async () => {
+		await withTempDir("planner-sibling-heal", async (directory) => {
+			const registry = siblingRegistry();
+			const installs: InstallRecord[] = [
+				{ definitionId: "dual", targets: [{ kind: "project" }] },
+			];
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { dual: true }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			await rm(join(directory, "packages/one"), {
+				force: true,
+				recursive: true,
+			});
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(directory, { dual: true }, installs, registry),
+			);
+
+			const roots = Object.values(updatePlan.manifest.modules)
+				.map((record) => record.root)
+				.sort();
+
+			expect(roots).toEqual(["packages/one", "packages/two"]);
+			expect(
+				updatePlan.writes.some(
+					(write) => write.path === "packages/one/src/one.ts",
+				),
+			).toBe(true);
+		});
+	});
+
+	it("falls back to fresh modules when adoption is ambiguous", async () => {
+		await withTempDir("planner-ambiguous-adoption", async (directory) => {
+			const registry = siblingRegistry();
+			const installs: InstallRecord[] = [
+				{ definitionId: "dual", targets: [{ kind: "project" }] },
+			];
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { dual: true }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+			await rename(
+				join(directory, "packages/one"),
+				join(directory, "packages/one-moved"),
+			);
+			await rename(
+				join(directory, "packages/two"),
+				join(directory, "packages/two-moved"),
+			);
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(directory, { dual: true }, installs, registry),
+			);
+
+			const roots = Object.values(updatePlan.manifest.modules)
+				.map((record) => record.root)
+				.sort();
+
+			expect(roots).toEqual([
+				"packages/one",
+				"packages/one-moved",
+				"packages/two",
+				"packages/two-moved",
 			]);
 		});
 	});
