@@ -17,26 +17,26 @@ export interface CatalogEntry {
 }
 
 export const versions = {
-	biome: { name: "@biomejs/biome", version: "^2.4.11", group: "Tooling" },
+	biome: { name: "@biomejs/biome", version: "^2.4.16", group: "Tooling" },
 	commitlintCli: {
 		name: "@commitlint/cli",
-		version: "^20.1.0",
+		version: "^21.0.2",
 		group: "Tooling",
 	},
 	commitlintConfigConventional: {
 		name: "@commitlint/config-conventional",
-		version: "^20.0.0",
+		version: "^21.0.2",
 		group: "Tooling",
 	},
 	commitlintTypes: {
 		name: "@commitlint/types",
-		version: "^20.0.0",
+		version: "^21.0.1",
 		group: "Tooling",
 	},
-	lefthook: { name: "lefthook", version: "^2.0.0", group: "Tooling" },
+	lefthook: { name: "lefthook", version: "^2.1.9", group: "Tooling" },
 	sherif: { name: "sherif", version: "^1.11.1", group: "Tooling" },
-	turbo: { name: "turbo", version: "^2.9.6", group: "Tooling" },
-	typescript: { name: "typescript", version: "^6.0.2", group: "Tooling" },
+	turbo: { name: "turbo", version: "^2.9.18", group: "Tooling" },
+	typescript: { name: "typescript", version: "^6.0.3", group: "Tooling" },
 	typescriptNativePreview: {
 		name: "@typescript/native-preview",
 		version: "^7.0.0-dev.20260414.1",
