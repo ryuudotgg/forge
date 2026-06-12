@@ -30,7 +30,12 @@ function movedModuleArtifactId(
 
 	const moduleId = match?.[1];
 	const artifactPath = match?.[2];
-	if (moduleId === undefined || artifactPath !== write.path) return undefined;
+	if (
+		moduleId === undefined ||
+		artifactPath === undefined ||
+		artifactPath !== write.path
+	)
+		return undefined;
 
 	const nextRoot = current.modules[moduleId]?.root;
 	const previousRoot = previous.modules[moduleId]?.root;
