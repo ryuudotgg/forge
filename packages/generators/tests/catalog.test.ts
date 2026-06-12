@@ -11,6 +11,7 @@ import {
 const visibleAddonIds = [
 	"better-auth",
 	"biome",
+	"bun",
 	"commitlint",
 	"drizzle",
 	"github-ci",

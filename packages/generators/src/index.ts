@@ -97,6 +97,7 @@ export { default as tailwind } from "./style/tailwind";
 export { default as gitignore } from "./tooling/gitignore";
 export { default as typescript } from "./tooling/typescript";
 export { default as ui } from "./ui";
+export { default as bun } from "./workspace/bun";
 export { default as pnpm } from "./workspace/pnpm";
 export { default as root } from "./workspace/root";
 export { default as yarn } from "./workspace/yarn";
