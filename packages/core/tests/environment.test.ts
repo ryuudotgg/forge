@@ -135,6 +135,38 @@ describe("environment", () => {
 		expect(result).toEqual({ ok: true, message: "pnpm v10.0.0" });
 	});
 
+	it("rejects version output it can't parse", async () => {
+		for (const garbage of ["unexpected output", "", "v.1.2", "10a.0.0"]) {
+			const result = await Effect.runPromise(
+				Environment.checkPackageManager("pnpm").pipe(
+					Effect.provide(
+						Layer.mergeAll(
+							probeLayer({ pnpm: garbage }, []),
+							Environment.Default,
+						),
+					),
+				),
+			);
+
+			expect(result).toEqual({
+				ok: false,
+				message: "We couldn't tell which pnpm version you're running.",
+			});
+		}
+	});
+
+	it("accepts a bare major version", async () => {
+		const result = await Effect.runPromise(
+			Environment.checkPackageManager("pnpm").pipe(
+				Effect.provide(
+					Layer.mergeAll(probeLayer({ pnpm: "10" }, []), Environment.Default),
+				),
+			),
+		);
+
+		expect(result).toEqual({ ok: true, message: "pnpm v10" });
+	});
+
 	it("returns a friendly missing-package-manager result on probe failure", async () => {
 		const result = await Effect.runPromise(
 			Environment.checkPackageManager("Bun").pipe(
