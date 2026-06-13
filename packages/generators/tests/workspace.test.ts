@@ -226,7 +226,9 @@ describe("pnpm workspace", () => {
 		expect(yaml).toContain(
 			'packages:\n  - "apps/*"\n  - "packages/*"\n  - "tooling/*"\n',
 		);
-		expect(yaml).toContain('  "@tanstack/react-query": ^5.90.5');
+		expect(yaml).toContain(
+			`  "@tanstack/react-query": ${versions.tanstackReactQuery.version}`,
+		);
 		expect(yaml).toContain(`  next: ${versions.next.version}`);
 		expect(yaml).not.toContain('"next"');
 	});
