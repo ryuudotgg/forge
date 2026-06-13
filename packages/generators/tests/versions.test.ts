@@ -47,11 +47,12 @@ describe("catalogEntries", () => {
 });
 
 describe("catalogRef", () => {
-	it("returns the pinned name and version with an empty catalog", () => {
-		expect(catalogRef("next")).toEqual({
-			name: "next",
-			version: "16.2.3",
-			catalog: "",
-		});
+	it("maps the key to its entry name and version with an empty catalog", () => {
+		const ref = catalogRef("next");
+
+		expect(ref.name).toBe("next");
+		expect(ref.version).toBe(versions.next.version);
+		expect(ref.version).not.toBe(ref.name);
+		expect(ref.catalog).toBe("");
 	});
 });
