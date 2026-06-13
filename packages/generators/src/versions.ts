@@ -43,7 +43,7 @@ export const versions = {
 		group: "Tooling",
 	},
 
-	next: { name: "next", version: "16.2.3", group: "Framework" },
+	next: { name: "next", version: "16.2.9", group: "Framework" },
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
