@@ -6,6 +6,7 @@ Ryuu's Forge is a monorepo-based project structured using workspaces:
 
 - `apps/*` - Applications
 - `packages/*` - Shared Packages and Libraries
+- `tests/*` - Test Suites and Scenarios
 - `tooling/*` - Development and Build Tools
 
 ## Prerequisites
@@ -16,7 +17,7 @@ Ensure you have the following installed:
 - [Node](https://nodejs.org)
   - Version: [.nvmrc](../.nvmrc)
 - [PNPM](https://pnpm.io)
-  - Version: [package.json#packageManager](../package.json#L4)
+  - Version: [package.json#packageManager](../package.json)
 
 ## Getting Started
 
@@ -33,13 +34,7 @@ cd forge
 pnpm install
 ```
 
-3. Copy the environment variables:
-
-```bash
-cp .env.example .env
-```
-
-4. Start the development server:
+3. Start the development server:
 
 ```bash
 pnpm dev
@@ -55,6 +50,8 @@ pnpm dev
 - `pnpm clean:workspaces` - Clean **ALL** Dependencies and Build Artifacts
 - `pnpm dev` - Start a Development Server
 - `pnpm start` - Start Apps in Production
+- `pnpm test` - Run Tests
+- `pnpm test:coverage` - Run Tests With Coverage + Thresholds
 - `pnpm typecheck` - Run Type Checks
 
 ## Code Style
@@ -65,35 +62,17 @@ We use [Biome](https://biomejs.dev) for code formatting and linting, alongside s
 
 - Enable strict mode for all TypeScript code
 - Proper type definitions for all variables, parameters, and return types
-- No `any` types without explicit justification in comments
+- No `any` types and no `as` casts
 - Use TypeScript's utility types when appropriate
 
-### React Components
+### Effect
 
-- Use function declarations for components (not arrow functions unless very simple)
-- Properly type all props and state
-- Follow React 19 best practices
-- Use proper React Hooks organization
-
-#### Component Example
-
-```typescript
-export function MyComponent({
-  title,
-  onClick,
-}: {
-  title: string;
-  onClick: () => void;
-}) {
-  return <button onClick={onClick}>{title}</button>;
-}
-```
-
-### File Structure
-
-- One component per file
-- Use index.ts files for exporting multiple components from a directory
-- Keep related components together in a directory
+Services, typed errors (`Schema.TaggedError`), and schema validation use the
+Effect library (`effect`, `@effect/platform`). Do not introduce `any` or `as`
+casts; prove types through Effect's type machinery instead. User-facing CLI
+messages are natural sentences (lists via `Intl.ListFormat`). Tooling and
+infra errors throw a Title Case prefix plus detail, e.g.
+`Addon Not Found: ${id}`.
 
 ## Testing
 
@@ -131,11 +110,21 @@ including uncommitted changes (diffed against the merge base with
 
 ## Debugging
 
-For debugging applications:
+Forge is a terminal CLI. `pnpm dev` runs `tsdown --watch`, which rebuilds on
+save and re-runs the CLI after each successful build (via the `onSuccess`
+hook in `packages/cli/tsdown.config.ts`), so a single `pnpm dev` gives you a
+build-and-run loop for iterating on the prompt flow.
 
-1. Start the development server with `pnpm dev`
-2. Use your browser's dev tools for frontend debugging
-3. Add `console.log()` statements for quick debugging (remove before committing)
+That auto-run executes in `packages/cli`, so to exercise a clean scaffold
+into a fresh target, invoke the built CLI from a scratch directory instead:
+
+```bash
+cd /tmp/forge-scratch
+node /path/to/forge/packages/cli/dist/index.mjs
+```
+
+For a tight feedback loop inside a single package, use `vitest run <file>`
+directly within that package's directory.
 
 ## Pull Requests
 
