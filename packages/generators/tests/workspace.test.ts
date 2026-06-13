@@ -9,6 +9,7 @@ import {
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 import { bun, type ForgeConfig, pnpm, root, yarn } from "../src/index";
+import { versions } from "../src/versions";
 
 const commandVersions: Record<string, string> = {
 	node: "22.11.0",
@@ -226,7 +227,7 @@ describe("pnpm workspace", () => {
 			'packages:\n  - "apps/*"\n  - "packages/*"\n  - "tooling/*"\n',
 		);
 		expect(yaml).toContain('  "@tanstack/react-query": ^5.90.5');
-		expect(yaml).toContain("  next: 16.2.3");
+		expect(yaml).toContain(`  next: ${versions.next.version}`);
 		expect(yaml).not.toContain('"next"');
 	});
 

@@ -50,7 +50,7 @@ describe("catalogRef", () => {
 	it("returns the pinned name and version with an empty catalog", () => {
 		expect(catalogRef("next")).toEqual({
 			name: "next",
-			version: "16.2.3",
+			version: versions.next.version,
 			catalog: "",
 		});
 	});
