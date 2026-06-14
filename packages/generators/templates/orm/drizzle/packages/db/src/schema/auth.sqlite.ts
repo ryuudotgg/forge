@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, snakeCase, text } from "drizzle-orm/sqlite-core";
 
 import { users } from "./users";
 
 const unixepochMs = sql`(cast(unixepoch('subsecond') * 1000 as integer))`;
 
-export const sessions = sqliteTable("sessions", {
+export const sessions = snakeCase.table("sessions", {
   id: text().primaryKey(),
   userId: text()
     .notNull()
@@ -24,7 +24,7 @@ export const sessions = sqliteTable("sessions", {
     .$onUpdate(() => new Date()),
 });
 
-export const accounts = sqliteTable("accounts", {
+export const accounts = snakeCase.table("accounts", {
   id: text().primaryKey(),
   userId: text()
     .notNull()
@@ -48,7 +48,7 @@ export const accounts = sqliteTable("accounts", {
     .$onUpdate(() => new Date()),
 });
 
-export const verifications = sqliteTable("verifications", {
+export const verifications = snakeCase.table("verifications", {
   id: text().primaryKey(),
   identifier: text().notNull(),
 

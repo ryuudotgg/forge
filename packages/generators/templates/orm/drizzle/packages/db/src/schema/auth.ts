@@ -1,8 +1,8 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { snakeCase, text, timestamp } from "drizzle-orm/pg-core";
 
 import { users } from "./users";
 
-export const sessions = pgTable("sessions", {
+export const sessions = snakeCase.table("sessions", {
   id: text().primaryKey(),
   userId: text()
     .notNull()
@@ -21,7 +21,7 @@ export const sessions = pgTable("sessions", {
     .$onUpdate(() => new Date()),
 });
 
-export const accounts = pgTable("accounts", {
+export const accounts = snakeCase.table("accounts", {
   id: text().primaryKey(),
   userId: text()
     .notNull()
@@ -45,7 +45,7 @@ export const accounts = pgTable("accounts", {
     .$onUpdate(() => new Date()),
 });
 
-export const verifications = pgTable("verifications", {
+export const verifications = snakeCase.table("verifications", {
   id: text().primaryKey(),
   identifier: text().notNull(),
 

@@ -1,6 +1,6 @@
-import { boolean, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, snakeCase, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
-export const users = mysqlTable("users", {
+export const users = snakeCase.table("users", {
   id: varchar({ length: 36 }).primaryKey(),
 
   name: varchar({ length: 255 }).notNull(),

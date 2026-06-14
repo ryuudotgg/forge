@@ -48,13 +48,13 @@ describe("better auth", () => {
 			expect(auth).not.toContain("__SLUG__");
 
 			expect(authSchema).toContain(
-				'import { pgTable, text, timestamp } from "drizzle-orm/pg-core";',
+				'import { snakeCase, text, timestamp } from "drizzle-orm/pg-core";',
 			);
 			expect(authSchema).toContain(
-				'export const sessions = pgTable("sessions"',
+				'export const sessions = snakeCase.table("sessions"',
 			);
 			expect(authSchema).toContain(
-				'export const accounts = pgTable("accounts"',
+				'export const accounts = snakeCase.table("accounts"',
 			);
 			expect(authSchema).toContain(
 				'.references(() => users.id, { onDelete: "cascade" })',

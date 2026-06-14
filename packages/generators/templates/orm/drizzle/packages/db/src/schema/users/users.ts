@@ -1,6 +1,6 @@
-import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, snakeCase, text, timestamp } from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
+export const users = snakeCase.table("users", {
   id: text().primaryKey(),
   name: text().notNull(),
   email: text().notNull().unique(),

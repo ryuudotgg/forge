@@ -1,8 +1,8 @@
-import { mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { snakeCase, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 import { users } from "./users";
 
-export const sessions = mysqlTable("sessions", {
+export const sessions = snakeCase.table("sessions", {
   id: varchar({ length: 36 }).primaryKey(),
   userId: varchar({ length: 36 })
     .notNull()
@@ -21,7 +21,7 @@ export const sessions = mysqlTable("sessions", {
     .$onUpdate(() => new Date()),
 });
 
-export const accounts = mysqlTable("accounts", {
+export const accounts = snakeCase.table("accounts", {
   id: varchar({ length: 36 }).primaryKey(),
   userId: varchar({ length: 36 })
     .notNull()
@@ -45,7 +45,7 @@ export const accounts = mysqlTable("accounts", {
     .$onUpdate(() => new Date()),
 });
 
-export const verifications = mysqlTable("verifications", {
+export const verifications = snakeCase.table("verifications", {
   id: varchar({ length: 36 }).primaryKey(),
   identifier: varchar({ length: 255 }).notNull(),
 
