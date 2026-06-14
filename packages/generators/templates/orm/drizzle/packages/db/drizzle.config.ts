@@ -7,6 +7,4 @@ export default defineConfig({
 
   schema: "./src/schema/index.ts",
   out: "./src/drizzle",
-
-  casing: "snake_case",
 });

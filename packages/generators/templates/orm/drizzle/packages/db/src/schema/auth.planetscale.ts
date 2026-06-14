@@ -1,8 +1,6 @@
-// PlanetScale ships without foreign key constraints by default, so the user
-// references stay unenforced and the lookup indexes are declared by hand.
-import { index, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { index, snakeCase, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
-export const sessions = mysqlTable(
+export const sessions = snakeCase.table(
   "sessions",
   {
     id: varchar({ length: 36 }).primaryKey(),
@@ -23,7 +21,7 @@ export const sessions = mysqlTable(
   (table) => [index("sessions_user_id_idx").on(table.userId)],
 );
 
-export const accounts = mysqlTable(
+export const accounts = snakeCase.table(
   "accounts",
   {
     id: varchar({ length: 36 }).primaryKey(),
@@ -49,7 +47,7 @@ export const accounts = mysqlTable(
   (table) => [index("accounts_user_id_idx").on(table.userId)],
 );
 
-export const verifications = mysqlTable("verifications", {
+export const verifications = snakeCase.table("verifications", {
   id: varchar({ length: 36 }).primaryKey(),
   identifier: varchar({ length: 255 }).notNull(),
 

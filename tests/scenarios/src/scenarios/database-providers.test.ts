@@ -66,13 +66,11 @@ describe("database providers", () => {
 			expect(db.client).toBe(
 				`import { env } from "@acme/db/env";
 import { relations } from "@acme/db/relations";
-import * as schema from "@acme/db/schema";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 
 const client = neon(env.DATABASE_URL);
-
-export const db = drizzle({ client, schema, relations, casing: "snake_case" });
+export const db = drizzle({ client, relations });
 `,
 			);
 
@@ -297,7 +295,6 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 			expect(db.client).toBe(
 				`import { env } from "@acme/db/env";
 import { relations } from "@acme/db/relations";
-import * as schema from "@acme/db/schema";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 
@@ -306,7 +303,7 @@ const client = createClient({
   authToken: env.TURSO_AUTH_TOKEN,
 });
 
-export const db = drizzle({ client, schema, relations, casing: "snake_case" });
+export const db = drizzle({ client, relations });
 `,
 			);
 
@@ -350,7 +347,7 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 			]);
 
 			expect(users).toContain(
-				'import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";',
+				'import { integer, snakeCase, text } from "drizzle-orm/sqlite-core";',
 			);
 			expect(users).toContain(
 				'emailVerified: integer({ mode: "boolean" }).notNull().default(false),',
@@ -360,7 +357,7 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 			);
 
 			expect(authSchema).toContain(
-				'export const sessions = sqliteTable("sessions", {',
+				'export const sessions = snakeCase.table("sessions", {',
 			);
 			expect(authSchema).toContain('integer({ mode: "timestamp_ms" })');
 			expect(authSchema).toContain(
@@ -456,7 +453,7 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 					readText("packages/auth/src/index.ts"),
 				]);
 
-				expect(users).toContain("export const users = mysqlTable(");
+				expect(users).toContain("export const users = snakeCase.table(");
 				expect(users).toContain("id: varchar({ length: 36 }).primaryKey(),");
 				expect(users).toContain(
 					"email: varchar({ length: 255 }).notNull().unique(),",
@@ -494,7 +491,7 @@ export const db = drizzle({ client, schema, relations, casing: "snake_case" });
 			expect(db.client).toContain(
 				'const client = createPool({ uri: env.DATABASE_URL, timezone: "Z" });',
 			);
-			expect(db.client).toContain('mode: "default",');
+			expect(db.client).toContain('mode: "default"');
 
 			expect(db.index).toContain(
 				'export type { MySql2Database } from "drizzle-orm/mysql2";',

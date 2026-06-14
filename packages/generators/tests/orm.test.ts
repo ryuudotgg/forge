@@ -314,7 +314,7 @@ describe("drizzle addon", () => {
 		expect(paths).not.toContain("src/schema/auth.ts");
 
 		expect(leafFile(contributions, "src/schema/users/users.ts")).toContain(
-			"pgTable",
+			"snakeCase.table",
 		);
 		expect(leafFile(contributions, "src/schema/index.ts")).toBe(
 			'export * from "./users";\n',
@@ -337,7 +337,7 @@ describe("drizzle addon", () => {
 		});
 
 		expect(leafFile(contributions, "src/schema/auth.ts")).toContain(
-			'export const sessions = pgTable("sessions"',
+			'export const sessions = snakeCase.table("sessions"',
 		);
 		expect(leafFile(contributions, "src/schema/index.ts")).toBe(
 			'export * from "./auth";\nexport * from "./users";\n',
@@ -413,7 +413,7 @@ describe("drizzle addon", () => {
 		);
 
 		expect(leafFile(contributions, "src/schema/users/users.ts")).toContain(
-			"mysqlTable",
+			"snakeCase.table",
 		);
 
 		const index = leafFile(contributions, "src/index.ts");
