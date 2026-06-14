@@ -1,7 +1,7 @@
 import { defineAddon, projectTarget, surfaceJson } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
-import { resolveDatabaseProvider } from "../data/providers";
 import type { FirstPartyAddonMetadata } from "../registry/types";
+import { trustedBuildDependencies } from "./trusted-builds";
 
 const bun = defineAddon<ForgeConfig, "bun">({
 	id: "bun",
@@ -19,18 +19,9 @@ const bun = defineAddon<ForgeConfig, "bun">({
 });
 
 function trustedDependencies(config: ForgeConfig): string[] {
-	const names = ["esbuild", "lefthook", "msw", "sharp"];
-
-	if (config.orm === "prisma") {
-		names.push("@prisma/engines", "prisma");
-
-		if (
-			resolveDatabaseProvider(config).prisma.clientTemplate === "better-sqlite3"
-		)
-			names.push("better-sqlite3");
-	}
-
-	return names.sort((left, right) => left.localeCompare(right));
+	return trustedBuildDependencies(config).sort((left, right) =>
+		left.localeCompare(right),
+	);
 }
 
 export const bunMetadata = {

@@ -1,8 +1,8 @@
 import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
-import { resolveDatabaseProvider } from "../data/providers";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { catalogEntries } from "../versions";
+import { trustedBuildDependencies } from "./trusted-builds";
 
 const pnpm = defineAddon<ForgeConfig, "pnpm">({
 	id: "pnpm",
@@ -60,22 +60,9 @@ function buildWorkspaceYaml(config: ForgeConfig): string {
 	lines.push("");
 	lines.push("allowBuilds:");
 
-	if (config.orm === "prisma") {
-		lines.push(`  ${quote("@prisma/engines")}: true`);
+	for (const name of [...trustedBuildDependencies(config)].sort())
+		lines.push(`  ${quote(name)}: true`);
 
-		if (
-			resolveDatabaseProvider(config).prisma.clientTemplate === "better-sqlite3"
-		)
-			lines.push("  better-sqlite3: true");
-	}
-
-	lines.push("  esbuild: true");
-	lines.push("  lefthook: true");
-	lines.push("  msw: true");
-
-	if (config.orm === "prisma") lines.push("  prisma: true");
-
-	lines.push("  sharp: true");
 	lines.push("");
 
 	return lines.join("\n");

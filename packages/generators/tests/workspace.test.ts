@@ -10,6 +10,7 @@ import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 import { bun, type ForgeConfig, pnpm, root, yarn } from "../src/index";
 import { versions } from "../src/versions";
+import { trustedBuildDependencies } from "../src/workspace/trusted-builds";
 
 const commandVersions: Record<string, string> = {
 	node: "22.11.0",
@@ -374,5 +375,46 @@ describe("bun workspace", () => {
 			"prisma",
 			"sharp",
 		]);
+	});
+});
+
+describe("trusted-builds parity", () => {
+	it("pnpm allowBuilds and bun trustedDependencies use the same set for prisma + better-sqlite3", () => {
+		const config: ForgeConfig = {
+			database: "sqlite",
+			orm: "prisma",
+			packageManager: "Bun",
+		};
+
+		const bunNames = (
+			jsonSurface(syncContributions(bun, config), "rootPackageJson")
+				.trustedDependencies as string[]
+		).sort();
+
+		const pnpmYaml = leafFile(
+			syncContributions(pnpm, { database: "sqlite", orm: "prisma" }),
+			"pnpm-workspace.yaml",
+		);
+
+		const allowBuildsStart =
+			pnpmYaml.indexOf("allowBuilds:\n") + "allowBuilds:\n".length;
+
+		const allowBuildsBlock = pnpmYaml.slice(allowBuildsStart);
+		const pnpmNames = allowBuildsBlock
+			.split("\n")
+			.filter((line) => line.startsWith("  "))
+			.map((line) =>
+				line
+					.trim()
+					.replace(/^"(.+)":\s*true$/, "$1")
+					.replace(/:\s*true$/, ""),
+			)
+			.sort();
+
+		expect(pnpmNames).toEqual(
+			trustedBuildDependencies({ database: "sqlite", orm: "prisma" }).sort(),
+		);
+		expect(bunNames).toEqual(trustedBuildDependencies(config).sort());
+		expect(pnpmNames).toEqual(bunNames);
 	});
 });
