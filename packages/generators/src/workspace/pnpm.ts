@@ -60,7 +60,9 @@ function buildWorkspaceYaml(config: ForgeConfig): string {
 	lines.push("");
 	lines.push("allowBuilds:");
 
-	for (const name of [...trustedBuildDependencies(config)].sort())
+	for (const name of trustedBuildDependencies(config).sort((left, right) =>
+		left.localeCompare(right),
+	))
 		lines.push(`  ${quote(name)}: true`);
 
 	lines.push("");

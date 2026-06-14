@@ -379,27 +379,34 @@ describe("bun workspace", () => {
 });
 
 describe("trusted-builds parity", () => {
-	it("pnpm allowBuilds and bun trustedDependencies use the same set for prisma + better-sqlite3", () => {
-		const config: ForgeConfig = {
-			database: "sqlite",
-			orm: "prisma",
-			packageManager: "Bun",
-		};
+	const cases: ReadonlyArray<{ name: string; config: ForgeConfig }> = [
+		{ name: "non-prisma (base packages only)", config: { orm: "drizzle" } },
+		{
+			name: "prisma without better-sqlite3",
+			config: { orm: "prisma", database: "postgresql" },
+		},
+		{
+			name: "prisma with better-sqlite3",
+			config: { orm: "prisma", database: "sqlite" },
+		},
+	];
 
-		const bunNames = (
-			jsonSurface(syncContributions(bun, config), "rootPackageJson")
-				.trustedDependencies as string[]
-		).sort();
-
-		const pnpmYaml = leafFile(
-			syncContributions(pnpm, { database: "sqlite", orm: "prisma" }),
-			"pnpm-workspace.yaml",
+	it.each(
+		cases,
+	)("pnpm allowBuilds and bun trustedDependencies match for $name", ({
+		config,
+	}) => {
+		const expected = trustedBuildDependencies(config).sort((left, right) =>
+			left.localeCompare(right),
 		);
 
-		const allowBuildsStart =
-			pnpmYaml.indexOf("allowBuilds:\n") + "allowBuilds:\n".length;
-
-		const allowBuildsBlock = pnpmYaml.slice(allowBuildsStart);
+		const pnpmYaml = leafFile(
+			syncContributions(pnpm, config),
+			"pnpm-workspace.yaml",
+		);
+		const allowBuildsBlock = pnpmYaml.slice(
+			pnpmYaml.indexOf("allowBuilds:\n") + "allowBuilds:\n".length,
+		);
 		const pnpmNames = allowBuildsBlock
 			.split("\n")
 			.filter((line) => line.startsWith("  "))
@@ -408,13 +415,14 @@ describe("trusted-builds parity", () => {
 					.trim()
 					.replace(/^"(.+)":\s*true$/, "$1")
 					.replace(/:\s*true$/, ""),
-			)
-			.sort();
+			);
 
-		expect(pnpmNames).toEqual(
-			trustedBuildDependencies({ database: "sqlite", orm: "prisma" }).sort(),
-		);
-		expect(bunNames).toEqual(trustedBuildDependencies(config).sort());
-		expect(pnpmNames).toEqual(bunNames);
+		expect(pnpmNames).toEqual(expected);
+		expect(
+			jsonSurface(
+				syncContributions(bun, { ...config, packageManager: "Bun" }),
+				"rootPackageJson",
+			).trustedDependencies,
+		).toEqual(expected);
 	});
 });
