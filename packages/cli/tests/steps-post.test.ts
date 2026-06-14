@@ -206,17 +206,14 @@ describe("git init step", () => {
 
 	it("cancels git init when the message prompt is interrupted", async () => {
 		await withTempDir("git-init", async (directory) => {
-			await writeFile(join(directory, "README.md"), "# Forge\n", "utf-8");
 			const sentinel = Symbol("cancel");
 			promptMocks.confirm.mockResolvedValue(true);
 			promptMocks.text.mockResolvedValue(sentinel);
 			promptMocks.isCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
-			await withGitEnv(async () => {
-				await expect(
-					gitInitStep.execute({ path: directory }, true),
-				).rejects.toThrow("Cancelled");
-			});
+			await expect(
+				gitInitStep.execute({ path: directory }, true),
+			).rejects.toThrow("Cancelled");
 
 			expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
 			expect(existsSync(join(directory, ".git"))).toBe(false);
