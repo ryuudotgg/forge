@@ -11,6 +11,7 @@ import { SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
 	confirm: vi.fn(),
+	isCancel: vi.fn(() => false),
 	spinner: vi.fn(),
 	spinnerStart: vi.fn(),
 	spinnerStop: vi.fn(),
@@ -21,12 +22,20 @@ const commandMocks = vi.hoisted(() => ({
 	exitCode: vi.fn(),
 }));
 
+const cancelMocks = vi.hoisted(() => ({
+	cancel: vi.fn((): never => {
+		throw new Error("Cancelled");
+	}),
+}));
+
 vi.mock("@clack/prompts", () => ({
 	confirm: promptMocks.confirm,
-	isCancel: () => false,
+	isCancel: promptMocks.isCancel,
 	spinner: promptMocks.spinner,
 	text: promptMocks.text,
 }));
+
+vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 
 vi.mock("@effect/platform", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@effect/platform")>();
@@ -88,6 +97,8 @@ function lastCommitSubject(directory: string): string {
 
 beforeEach(() => {
 	promptMocks.confirm.mockReset();
+	promptMocks.isCancel.mockReset();
+	promptMocks.isCancel.mockReturnValue(false);
 	promptMocks.spinner.mockReset();
 	promptMocks.spinnerStart.mockReset();
 	promptMocks.spinnerStop.mockReset();
@@ -99,6 +110,7 @@ beforeEach(() => {
 	}));
 	commandMocks.exitCode.mockReset();
 	commandMocks.exitCode.mockReturnValue(Effect.succeed(0));
+	cancelMocks.cancel.mockClear();
 });
 
 describe("git init step", () => {
@@ -176,6 +188,40 @@ describe("git init step", () => {
 			expect(existsSync(join(directory, ".git"))).toBe(false);
 		});
 	});
+
+	it("cancels git init when the confirm prompt is interrupted", async () => {
+		await withTempDir("git-init", async (directory) => {
+			const sentinel = Symbol("cancel");
+			promptMocks.confirm.mockResolvedValue(sentinel);
+			promptMocks.isCancel.mockReturnValueOnce(true);
+
+			await expect(
+				gitInitStep.execute({ path: directory }, true),
+			).rejects.toThrow("Cancelled");
+
+			expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
+			expect(promptMocks.text).not.toHaveBeenCalled();
+		});
+	});
+
+	it("cancels git init when the message prompt is interrupted", async () => {
+		await withTempDir("git-init", async (directory) => {
+			await writeFile(join(directory, "README.md"), "# Forge\n", "utf-8");
+			const sentinel = Symbol("cancel");
+			promptMocks.confirm.mockResolvedValue(true);
+			promptMocks.text.mockResolvedValue(sentinel);
+			promptMocks.isCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+			await withGitEnv(async () => {
+				await expect(
+					gitInitStep.execute({ path: directory }, true),
+				).rejects.toThrow("Cancelled");
+			});
+
+			expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
+			expect(existsSync(join(directory, ".git"))).toBe(false);
+		});
+	});
 });
 
 describe("install deps step", () => {
@@ -201,6 +247,19 @@ describe("install deps step", () => {
 			inactive: "No",
 		});
 		expect(promptMocks.spinner).not.toHaveBeenCalled();
+		expect(commandMocks.exitCode).not.toHaveBeenCalled();
+	});
+
+	it("cancels dependency installation when the prompt is interrupted", async () => {
+		const sentinel = Symbol("cancel");
+		promptMocks.confirm.mockResolvedValue(sentinel);
+		promptMocks.isCancel.mockReturnValueOnce(true);
+
+		await expect(
+			installDepsStep.execute({ path: "./project" }, true),
+		).rejects.toThrow("Cancelled");
+
+		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
 		expect(commandMocks.exitCode).not.toHaveBeenCalled();
 	});
 
