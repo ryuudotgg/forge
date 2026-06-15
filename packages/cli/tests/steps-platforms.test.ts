@@ -6,17 +6,26 @@ import webStep from "../src/steps/platforms/web";
 import { type PartialConfig, SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
+	isCancel: vi.fn(() => false),
 	logWarn: vi.fn(),
 	multiselect: vi.fn(),
 	select: vi.fn(),
 }));
 
+const cancelMocks = vi.hoisted(() => ({
+	cancel: vi.fn((): never => {
+		throw new Error("Cancelled");
+	}),
+}));
+
 vi.mock("@clack/prompts", () => ({
-	isCancel: () => false,
+	isCancel: promptMocks.isCancel,
 	log: { warn: promptMocks.logWarn },
 	multiselect: promptMocks.multiselect,
 	select: promptMocks.select,
 }));
+
+vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 
 function rawConfig(entries: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
@@ -27,9 +36,12 @@ function rawConfig(entries: Record<string, unknown>): PartialConfig {
 }
 
 beforeEach(() => {
+	promptMocks.isCancel.mockReset();
+	promptMocks.isCancel.mockReturnValue(false);
 	promptMocks.logWarn.mockReset();
 	promptMocks.multiselect.mockReset();
 	promptMocks.select.mockReset();
+	cancelMocks.cancel.mockClear();
 });
 
 describe("platforms step", () => {
@@ -112,6 +124,15 @@ describe("platforms step", () => {
 		promptMocks.multiselect.mockResolvedValue([]);
 
 		await expect(platformsStep.execute({}, true)).resolves.toBe(SKIP);
+	});
+
+	it("cancels platform selection when the prompt is interrupted", async () => {
+		promptMocks.multiselect.mockResolvedValue(Symbol("cancel"));
+		promptMocks.isCancel.mockReturnValueOnce(true);
+
+		await expect(platformsStep.execute({}, true)).rejects.toThrow("Cancelled");
+
+		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -218,6 +239,15 @@ describe("desktop step", () => {
 			],
 		});
 	});
+
+	it("cancels the desktop prompt when interrupted", async () => {
+		promptMocks.select.mockResolvedValue(Symbol("cancel"));
+		promptMocks.isCancel.mockReturnValueOnce(true);
+
+		await expect(desktopStep.execute({}, true)).rejects.toThrow("Cancelled");
+
+		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("mobile step", () => {
@@ -255,5 +285,14 @@ describe("mobile step", () => {
 				{ label: "React Native", value: "react-native" },
 			],
 		});
+	});
+
+	it("cancels the mobile prompt when interrupted", async () => {
+		promptMocks.select.mockResolvedValue(Symbol("cancel"));
+		promptMocks.isCancel.mockReturnValueOnce(true);
+
+		await expect(mobileStep.execute({}, true)).rejects.toThrow("Cancelled");
+
+		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
 	});
 });
