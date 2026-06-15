@@ -4,6 +4,12 @@ on:
   push:
     branches: ["main"]
 
+  pull_request:
+    paths:
+      - "packages/generators/src/**"
+      - "packages/generators/templates/**"
+      - "tests/scenarios/src/scenarios/install.smoke.test.ts"
+
   schedule:
     - cron: "0 4 * * *"
 
