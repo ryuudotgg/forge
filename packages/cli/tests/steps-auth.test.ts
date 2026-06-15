@@ -11,6 +11,12 @@ const promptMocks = vi.hoisted(() => ({
 	select: vi.fn(),
 }));
 
+const cancelMocks = vi.hoisted(() => ({
+	cancel: vi.fn((): never => {
+		throw new Error("Cancelled");
+	}),
+}));
+
 vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
 	confirm: promptMocks.confirm,
@@ -18,6 +24,8 @@ vi.mock("@clack/prompts", () => ({
 	log: { warn: promptMocks.logWarn },
 	select: promptMocks.select,
 }));
+
+vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 
 function rawConfig(values: { [key: string]: unknown }): PartialConfig {
 	const config: PartialConfig = {};
@@ -120,6 +128,7 @@ describe("authenticationCustomUI step", () => {
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
 		promptMocks.isCancel.mockReturnValue(false);
+		cancelMocks.cancel.mockClear();
 	});
 
 	it("only runs for providers with a hosted UI", () => {
@@ -164,5 +173,16 @@ describe("authenticationCustomUI step", () => {
 			active: "Yes",
 			inactive: "No",
 		});
+	});
+
+	it("cancels the custom-UI prompt when interrupted", async () => {
+		promptMocks.confirm.mockResolvedValue(Symbol("cancel"));
+		promptMocks.isCancel.mockReturnValueOnce(true);
+
+		await expect(
+			authenticationCustomUIStep.execute({ authentication: "clerk" }, true),
+		).rejects.toThrow("Cancelled");
+
+		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
 	});
 });
