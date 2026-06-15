@@ -491,7 +491,9 @@ export const db = drizzle({ client, relations });
 			expect(db.client).toContain(
 				'const client = createPool({ uri: env.DATABASE_URL, timezone: "Z" });',
 			);
-			expect(db.client).toContain('mode: "default"');
+			expect(db.client).toContain(
+				"export const db = drizzle({ client, relations });",
+			);
 
 			expect(db.index).toContain(
 				'export type { MySql2Database } from "drizzle-orm/mysql2";',

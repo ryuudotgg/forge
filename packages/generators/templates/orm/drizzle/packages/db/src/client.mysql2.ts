@@ -4,4 +4,4 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { createPool } from "mysql2/promise";
 
 const client = createPool({ uri: env.DATABASE_URL, timezone: "Z" });
-export const db = drizzle({ client, relations, mode: "default" });
+export const db = drizzle({ client, relations });
