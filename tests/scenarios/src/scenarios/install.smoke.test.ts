@@ -10,10 +10,15 @@ import {
 } from "../utils/harness";
 
 async function expectTypecheckPasses(workspace: ScenarioProject) {
-	await runCommand("pnpm", ["install"], {
+	const installResult = await runCommand("pnpm", ["install"], {
 		cwd: workspace.projectRoot,
 		env: forgeEnvironment(workspace.workspaceRoot),
 	});
+
+	expect(
+		installResult.exitCode,
+		`pnpm install failed with code ${installResult.exitCode}\n${installResult.stdout}\n${installResult.stderr}`,
+	).toBe(0);
 
 	const result = await runCommand("pnpm", ["typecheck"], {
 		cwd: workspace.projectRoot,
