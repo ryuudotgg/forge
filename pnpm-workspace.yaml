@@ -46,7 +46,7 @@ catalogs:
   # ===== EFFECT =====
   effect:
     effect: ^3.21.4
-    "@effect/platform": ^0.96.1
+    "@effect/platform": ^0.96.2
     "@effect/platform-node": ^0.107.0
     "@effect/language-service": ^0.86.2
 
