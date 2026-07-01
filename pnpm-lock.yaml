@@ -43,13 +43,13 @@ catalogs:
       specifier: 2.5.1
       version: 2.5.1
     '@commitlint/cli':
-      specifier: ^21.0.2
+      specifier: ^21.1.0
       version: 21.1.0
     '@commitlint/config-conventional':
-      specifier: ^21.0.2
+      specifier: ^21.1.0
       version: 21.1.0
     '@commitlint/types':
-      specifier: ^21.0.1
+      specifier: ^21.1.0
       version: 21.1.0
   monorepo:
     turbo:
