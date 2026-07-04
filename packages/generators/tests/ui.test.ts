@@ -43,19 +43,44 @@ function leafFile(
 	);
 }
 
-function packageJsonSurface(contributions: ReadonlyArray<Contribution>) {
+function packageJsonSurface(
+	contributions: ReadonlyArray<Contribution>,
+	moduleKey = "ui",
+) {
 	return must(
 		contributions
 			.filter(byTag("ManagedJsonSurfaceContribution"))
-			.find((entry) => entry.surface === "packageJson"),
-		"packageJson",
+			.find(
+				(entry) =>
+					entry.surface === "packageJson" &&
+					entry.target._tag === "EnsuredModuleTarget" &&
+					entry.target.moduleKey === moduleKey,
+			),
+		`${moduleKey} packageJson`,
 	);
 }
 
-function dependencyEntries(contributions: ReadonlyArray<Contribution>) {
+function dependencySurface(
+	contributions: ReadonlyArray<Contribution>,
+	moduleKey = "ui",
+) {
+	return contributions
+		.filter(byTag("ManagedDependenciesSurfaceContribution"))
+		.find(
+			(entry) =>
+				entry.surface === "packageJson" &&
+				entry.target._tag === "EnsuredModuleTarget" &&
+				entry.target.moduleKey === moduleKey,
+		);
+}
+
+function dependencyEntries(
+	contributions: ReadonlyArray<Contribution>,
+	moduleKey = "ui",
+) {
 	return must(
-		contributions.find(byTag("ManagedDependenciesSurfaceContribution")),
-		"packageJson dependencies",
+		dependencySurface(contributions, moduleKey),
+		`${moduleKey} packageJson dependencies`,
 	).dependencies;
 }
 
@@ -131,7 +156,7 @@ describe("ui addon", () => {
 
 	it("gates the tailwind toolchain on the style selection", () => {
 		const withTailwind = contributionsFor(baseConfig);
-		expect(dependencyEntries(withTailwind)).toEqual(
+		expect(dependencyEntries(withTailwind, "ui")).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					name: "tailwindcss",
@@ -148,6 +173,18 @@ describe("ui addon", () => {
 				expect.objectContaining({ name: "shadcn", type: "devDependencies" }),
 			]),
 		);
+		expect(dependencyEntries(withTailwind, "web")).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					name: "tailwindcss",
+					type: "devDependencies",
+				}),
+				expect.objectContaining({
+					name: "@tailwindcss/postcss",
+					type: "devDependencies",
+				}),
+			]),
+		);
 
 		const ensure = must(
 			withTailwind.find(byTag("EnsureModuleContribution")),
@@ -160,7 +197,7 @@ describe("ui addon", () => {
 		});
 
 		const withoutStyle = contributionsFor({ slug: "acme", web: "nextjs" });
-		const names = dependencyEntries(withoutStyle).map(({ name }) => name);
+		const names = dependencyEntries(withoutStyle, "ui").map(({ name }) => name);
 		for (const name of [
 			"tailwindcss",
 			"@tailwindcss/postcss",
@@ -168,6 +205,12 @@ describe("ui addon", () => {
 			"shadcn",
 		])
 			expect(names).not.toContain(name);
+
+		const webNames = (
+			dependencySurface(withoutStyle, "web")?.dependencies ?? []
+		).map(({ name }) => name);
+		for (const name of ["tailwindcss", "@tailwindcss/postcss"])
+			expect(webNames).not.toContain(name);
 
 		const cssEnsure = must(
 			withoutStyle.find(byTag("EnsureModuleContribution")),
