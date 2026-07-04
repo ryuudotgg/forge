@@ -5,6 +5,7 @@ import {
 	type Contribution,
 	GeneratorError,
 	type ManagedSurfaceName,
+	runtimes,
 } from "@ryuujs/core";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
@@ -188,8 +189,67 @@ describe("root workspace", () => {
 		expect(bare).not.toHaveProperty("tasks.build.outputs");
 	});
 
-	it("pins the probed runtime version in .nvmrc", async () => {
-		expect(leafFile(await rootContributions({}), ".nvmrc")).toBe("22.11.0\n");
+	it("pins the probed node version in .nvmrc for Node.js projects", async () => {
+		expect(leafFile(await rootContributions({}), ".nvmrc")).toBe("v22.11.0\n");
+	});
+
+	it("pins the probed node version in .nvmrc for Bun projects", async () => {
+		const layer = Layer.succeed(
+			CommandProbe,
+			CommandProbe.make({
+				readVersion: (command: string) => {
+					const versions: Record<string, string> = {
+						bun: "1.3.2",
+						node: "24.1.0",
+						pnpm: "10.12.1",
+					};
+					const version = versions[command];
+
+					return version === undefined
+						? Effect.fail(
+								new CommandProbeError({
+									command,
+									message: "Command Probe Failed",
+									detail: "not found",
+								}),
+							)
+						: Effect.succeed(version);
+				},
+			}),
+		);
+		const contributions = await Effect.runPromise(
+			rootEffect({ runtime: "Bun" }).pipe(Effect.provide(layer)),
+		);
+
+		expect(leafFile(contributions, ".nvmrc")).toBe("v24.1.0\n");
+		expect(jsonSurface(contributions, "rootPackageJson")).toMatchObject({
+			engines: { bun: "1.3.2" },
+		});
+	});
+
+	it("falls back to the minimum node major for .nvmrc when node probing fails", async () => {
+		const layer = Layer.succeed(
+			CommandProbe,
+			CommandProbe.make({
+				readVersion: (command: string) =>
+					command === "node"
+						? Effect.fail(
+								new CommandProbeError({
+									command,
+									message: "Command Probe Failed",
+									detail: "not found",
+								}),
+							)
+						: Effect.succeed(command === "bun" ? "1.3.2" : "10.12.1"),
+			}),
+		);
+		const contributions = await Effect.runPromise(
+			rootEffect({ runtime: "Bun" }).pipe(Effect.provide(layer)),
+		);
+
+		expect(leafFile(contributions, ".nvmrc")).toBe(
+			`v${runtimes.node.minimumMajor}\n`,
+		);
 	});
 
 	it("fails with a generator error when the runtime probe fails", async () => {

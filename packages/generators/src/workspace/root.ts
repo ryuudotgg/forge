@@ -6,6 +6,7 @@ import {
 	packageManagerCommand,
 	projectTarget,
 	runtimeCommand,
+	runtimes,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceScripts,
@@ -44,6 +45,15 @@ const root = defineAddon<ForgeConfig, "root">({
 				),
 			);
 
+			const nodeVersion =
+				runtime === "Node.js"
+					? runtimeVersion
+					: yield* CommandProbe.readVersion("node").pipe(
+							Effect.catchTag("CommandProbeError", () =>
+								Effect.succeed(`${runtimes.node.minimumMajor}`),
+							),
+						);
+
 			const packageManagerVersion = yield* CommandProbe.readVersion(
 				packageManagerCommandName,
 			).pipe(
@@ -56,7 +66,12 @@ const root = defineAddon<ForgeConfig, "root">({
 				),
 			);
 
-			return buildContributions(config, runtimeVersion, packageManagerVersion);
+			return buildContributions(
+				config,
+				runtimeVersion,
+				packageManagerVersion,
+				nodeVersion,
+			);
 		}),
 });
 
@@ -76,6 +91,7 @@ function buildContributions(
 	config: ForgeConfig,
 	runtimeVersion: string,
 	packageManagerVersion: string,
+	nodeVersion: string,
 ) {
 	const slug = config.slug ?? "my-app";
 
@@ -144,7 +160,7 @@ function buildContributions(
 				dev: { cache: false, persistent: true },
 			},
 		}),
-		leafTextFile(projectTarget(), ".nvmrc", `${runtimeVersion}\n`),
+		leafTextFile(projectTarget(), ".nvmrc", `v${nodeVersion}\n`),
 	];
 }
 
