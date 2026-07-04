@@ -154,6 +154,14 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 			surfaceJson(ensuredModuleTarget("ui"), "packageJson", uiPackageJson),
 			surfaceJson(ensuredModuleTarget("ui"), "tsconfig", uiTsconfig),
 			surfaceDependencies(ensuredModuleTarget("ui"), "packageJson", uiDeps),
+			...(useTailwind
+				? [
+						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
+							{ ...deps.tailwindcss, type: "devDependencies" },
+							{ ...deps.tailwindPostcss, type: "devDependencies" },
+						]),
+					]
+				: []),
 
 			leafTextFile(
 				ensuredModuleTarget("ui"),
