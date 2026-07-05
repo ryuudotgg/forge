@@ -357,12 +357,14 @@ export const db = drizzle({ client, relations });
 			);
 
 			expect(authSchema).toContain(
-				'export const sessions = snakeCase.table("sessions", {',
+				'export const sessions = snakeCase.table(\n  "sessions",',
 			);
 			expect(authSchema).toContain('integer({ mode: "timestamp_ms" })');
 			expect(authSchema).toContain(
 				'.references(() => users.id, { onDelete: "cascade" })',
 			);
+			expect(authSchema).toContain("sessions_user_id_idx");
+			expect(authSchema).toContain("accounts_user_id_idx");
 
 			expect(schemaIndex).toContain('export * from "./auth";');
 

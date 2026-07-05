@@ -202,7 +202,8 @@ describe("prisma addon", () => {
 		const schema = leafFile(withAuth, "prisma/schema.prisma");
 		expect(schema).toContain("model Session");
 		expect(schema).toContain('@@map("sessions")');
-		expect(schema).not.toContain("@@index");
+		expect(schema).toContain("  @@index([userId])");
+		expect(schema).not.toContain("relationMode");
 		expect(schema).not.toContain("__");
 	});
 
@@ -336,9 +337,12 @@ describe("drizzle addon", () => {
 			authentication: "better-auth",
 		});
 
-		expect(leafFile(contributions, "src/schema/auth.ts")).toContain(
-			'export const sessions = snakeCase.table("sessions"',
+		const authSchema = leafFile(contributions, "src/schema/auth.ts");
+		expect(authSchema).toContain(
+			'export const sessions = snakeCase.table(\n  "sessions"',
 		);
+		expect(authSchema).toContain("sessions_user_id_idx");
+		expect(authSchema).toContain("accounts_user_id_idx");
 		expect(leafFile(contributions, "src/schema/index.ts")).toBe(
 			'export * from "./auth";\nexport * from "./users";\n',
 		);
@@ -388,6 +392,19 @@ describe("drizzle addon", () => {
 		expect(leafFile(contributions, "src/client.ts")).toContain(
 			"createClient({ url: env.DATABASE_URL })",
 		);
+	});
+
+	it("indexes userId on the sqlite auth schema for better-auth", () => {
+		const contributions = contributionsFor(drizzle, {
+			slug: "acme",
+			orm: "drizzle",
+			database: "sqlite",
+			authentication: "better-auth",
+		});
+
+		const authSchema = leafFile(contributions, "src/schema/auth.ts");
+		expect(authSchema).toContain("sessions_user_id_idx");
+		expect(authSchema).toContain("accounts_user_id_idx");
 	});
 
 	it("maps the planetscale mysql driver deps and templates", () => {
