@@ -6,9 +6,12 @@ on:
 
   pull_request:
     paths:
+      - "packages/cli/src/**"
+      - "packages/core/src/**"
       - "packages/generators/src/**"
       - "packages/generators/templates/**"
       - "tests/scenarios/src/scenarios/install.smoke.test.ts"
+      - "tests/scenarios/src/utils/**"
 
   schedule:
     - cron: "0 4 * * *"
