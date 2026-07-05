@@ -1,7 +1,7 @@
-import { confirm, isCancel, text } from "@clack/prompts";
+import { confirm, isCancel, log, text } from "@clack/prompts";
 import { Command } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
@@ -27,6 +27,15 @@ function gitInit(dir: string, message: string) {
 	}).pipe(Effect.provide(NodeContext.layer));
 }
 
+async function runGitInit(dir: string, message: string) {
+	const exit = await Effect.runPromiseExit(gitInit(dir, message));
+
+	if (Exit.isFailure(exit))
+		log.warn(
+			"We couldn't create the initial commit, so set up git yourself when you're ready.",
+		);
+}
+
 const gitInitStep = defineStep({
 	id: "gitInit",
 	group: "outro",
@@ -41,7 +50,7 @@ const gitInitStep = defineStep({
 		const dir = String(config.path);
 
 		if (!interactive) {
-			await Effect.runPromise(gitInit(dir, DEFAULT_MESSAGE));
+			await runGitInit(dir, DEFAULT_MESSAGE);
 			return SKIP;
 		}
 
@@ -62,7 +71,7 @@ const gitInitStep = defineStep({
 
 		if (isCancel(message)) cancel();
 
-		await Effect.runPromise(gitInit(dir, message || DEFAULT_MESSAGE));
+		await runGitInit(dir, message || DEFAULT_MESSAGE);
 	},
 });
 

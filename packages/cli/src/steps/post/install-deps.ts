@@ -1,8 +1,8 @@
-import { confirm, isCancel, spinner } from "@clack/prompts";
+import { confirm, isCancel, log, spinner } from "@clack/prompts";
 import { Command } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
 import { type PackageManager, packageManagerCommand } from "@ryuujs/core";
-import { Effect, Schema } from "effect";
+import { Effect, Exit, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
@@ -35,6 +35,28 @@ function installDeps(
 	}).pipe(Effect.provide(NodeContext.layer));
 }
 
+async function runInstall(
+	pm: PackageManager,
+	cmd: ReturnType<typeof packageManagerCommand>,
+	dir: string,
+) {
+	const s = spinner();
+	s.start("We're installing your dependencies...");
+
+	const exit = await Effect.runPromiseExit(installDeps(pm, cmd, dir));
+
+	if (Exit.isFailure(exit)) {
+		s.stop("We couldn't install your dependencies.");
+		log.warn(
+			`The ${pm} install didn't finish, so run it yourself inside the project when you're ready.`,
+		);
+
+		return;
+	}
+
+	s.stop("We've installed your dependencies!");
+}
+
 const installDepsStep = defineStep({
 	id: "installDeps",
 	group: "outro",
@@ -51,12 +73,7 @@ const installDepsStep = defineStep({
 		const dir = String(config.path);
 
 		if (!interactive) {
-			const s = spinner();
-
-			s.start("We're installing your dependencies...");
-			await Effect.runPromise(installDeps(pm, cmd, dir));
-			s.stop("We've installed your dependencies!");
-
+			await runInstall(pm, cmd, dir);
 			return SKIP;
 		}
 
@@ -69,11 +86,7 @@ const installDepsStep = defineStep({
 		if (isCancel(shouldInstall)) cancel();
 		if (!shouldInstall) return SKIP;
 
-		const s = spinner();
-
-		s.start("We're installing your dependencies...");
-		await Effect.runPromise(installDeps(pm, cmd, dir));
-		s.stop("We've installed your dependencies!");
+		await runInstall(pm, cmd, dir);
 	},
 });
 
