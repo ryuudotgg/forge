@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Command as PlatformCommand } from "@effect/platform";
 import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import gitInitStep from "../src/steps/post/git-init";
@@ -12,6 +13,7 @@ import { SKIP } from "../src/steps/types";
 const promptMocks = vi.hoisted(() => ({
 	confirm: vi.fn(),
 	isCancel: vi.fn(() => false),
+	log: { warn: vi.fn() },
 	spinner: vi.fn(),
 	spinnerStart: vi.fn(),
 	spinnerStop: vi.fn(),
@@ -20,6 +22,8 @@ const promptMocks = vi.hoisted(() => ({
 
 const commandMocks = vi.hoisted(() => ({
 	exitCode: vi.fn(),
+	failCommit: false,
+	string: vi.fn(),
 }));
 
 const cancelMocks = vi.hoisted(() => ({
@@ -31,6 +35,7 @@ const cancelMocks = vi.hoisted(() => ({
 vi.mock("@clack/prompts", () => ({
 	confirm: promptMocks.confirm,
 	isCancel: promptMocks.isCancel,
+	log: promptMocks.log,
 	spinner: promptMocks.spinner,
 	text: promptMocks.text,
 }));
@@ -40,11 +45,20 @@ vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 vi.mock("@effect/platform", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@effect/platform")>();
 
+	commandMocks.string.mockImplementation((command: PlatformCommand.Command) =>
+		commandMocks.failCommit &&
+		command._tag === "StandardCommand" &&
+		command.args[0] === "commit"
+			? Effect.fail("fatal: unable to auto-detect email address")
+			: original.Command.string(command),
+	);
+
 	return {
 		...original,
 		Command: {
 			...original.Command,
 			exitCode: commandMocks.exitCode,
+			string: commandMocks.string,
 		},
 	};
 });
@@ -99,6 +113,7 @@ beforeEach(() => {
 	promptMocks.confirm.mockReset();
 	promptMocks.isCancel.mockReset();
 	promptMocks.isCancel.mockReturnValue(false);
+	promptMocks.log.warn.mockReset();
 	promptMocks.spinner.mockReset();
 	promptMocks.spinnerStart.mockReset();
 	promptMocks.spinnerStop.mockReset();
@@ -110,6 +125,8 @@ beforeEach(() => {
 	}));
 	commandMocks.exitCode.mockReset();
 	commandMocks.exitCode.mockReturnValue(Effect.succeed(0));
+	commandMocks.string.mockClear();
+	commandMocks.failCommit = false;
 	cancelMocks.cancel.mockClear();
 });
 
@@ -219,6 +236,23 @@ describe("git init step", () => {
 			expect(existsSync(join(directory, ".git"))).toBe(false);
 		});
 	});
+
+	it("warns and resolves when the commit fails", async () => {
+		await withTempDir("git-init-fail", async (directory) => {
+			await writeFile(join(directory, "README.md"), "# Forge\n", "utf-8");
+			commandMocks.failCommit = true;
+
+			await withGitEnv(async () => {
+				await expect(
+					gitInitStep.execute({ path: directory }, false),
+				).resolves.toBe(SKIP);
+			});
+
+			expect(promptMocks.log.warn).toHaveBeenCalledWith(
+				"We couldn't create the initial commit, so set up git yourself when you're ready.",
+			);
+		});
+	});
 });
 
 describe("install deps step", () => {
@@ -279,7 +313,7 @@ describe("install deps step", () => {
 		);
 	});
 
-	it("fails with the install error when the command exits non-zero", async () => {
+	it("warns and resolves when the install command exits non-zero (non-interactive)", async () => {
 		commandMocks.exitCode.mockReturnValue(Effect.succeed(1));
 
 		await expect(
@@ -287,8 +321,30 @@ describe("install deps step", () => {
 				{ packageManager: "pnpm", path: "./project" },
 				false,
 			),
-		).rejects.toThrow("Install Failed: pnpm Exited With Code 1");
+		).resolves.toBe(SKIP);
 
-		expect(promptMocks.spinnerStop).not.toHaveBeenCalled();
+		expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
+			"We couldn't install your dependencies.",
+		);
+		expect(promptMocks.log.warn).toHaveBeenCalledWith(
+			"The pnpm install didn't finish, so run it yourself inside the project when you're ready.",
+		);
+	});
+
+	it("warns and resolves when the install command exits non-zero (interactive)", async () => {
+		promptMocks.confirm.mockResolvedValue(true);
+		commandMocks.exitCode.mockReturnValue(Effect.succeed(1));
+
+		await installDepsStep.execute(
+			{ packageManager: "pnpm", path: "./project" },
+			true,
+		);
+
+		expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
+			"We couldn't install your dependencies.",
+		);
+		expect(promptMocks.log.warn).toHaveBeenCalledWith(
+			"The pnpm install didn't finish, so run it yourself inside the project when you're ready.",
+		);
 	});
 });
