@@ -48,7 +48,6 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			RELATION_MODE: emulatesRelations
 				? `\n  relationMode = "${provider.prisma.relationMode}"`
 				: "",
-			RELATION_INDEX: emulatesRelations ? "  @@index([userId])\n\n" : "",
 			TEXT: provider.prisma.datasourceProvider === "mysql" ? " @db.Text" : "",
 			TIMESTAMPTZ:
 				provider.prisma.datasourceProvider === "postgresql"

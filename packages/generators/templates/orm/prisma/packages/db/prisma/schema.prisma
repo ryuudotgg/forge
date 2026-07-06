@@ -40,7 +40,9 @@ model Session {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-__RELATION_INDEX__  @@map("sessions")
+  @@index([userId])
+
+  @@map("sessions")
 }
 
 model Account {
@@ -63,7 +65,9 @@ model Account {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-__RELATION_INDEX__  @@map("accounts")
+  @@index([userId])
+
+  @@map("accounts")
 }
 
 model Verification {

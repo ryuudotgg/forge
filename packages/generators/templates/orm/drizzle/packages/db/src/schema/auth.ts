@@ -1,49 +1,57 @@
-import { snakeCase, text, timestamp } from "drizzle-orm/pg-core";
+import { index, snakeCase, text, timestamp } from "drizzle-orm/pg-core";
 
 import { users } from "./users";
 
-export const sessions = snakeCase.table("sessions", {
-  id: text().primaryKey(),
-  userId: text()
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+export const sessions = snakeCase.table(
+  "sessions",
+  {
+    id: text().primaryKey(),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
 
-  token: text().notNull().unique(),
-  expiresAt: timestamp({ withTimezone: true }).notNull(),
+    token: text().notNull().unique(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
 
-  ipAddress: text(),
-  userAgent: text(),
+    ipAddress: text(),
+    userAgent: text(),
 
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-});
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("sessions_user_id_idx").on(table.userId)],
+);
 
-export const accounts = snakeCase.table("accounts", {
-  id: text().primaryKey(),
-  userId: text()
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+export const accounts = snakeCase.table(
+  "accounts",
+  {
+    id: text().primaryKey(),
+    userId: text()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
 
-  accountId: text().notNull(),
-  providerId: text().notNull(),
+    accountId: text().notNull(),
+    providerId: text().notNull(),
 
-  accessToken: text(),
-  accessTokenExpiresAt: timestamp({ withTimezone: true }),
+    accessToken: text(),
+    accessTokenExpiresAt: timestamp({ withTimezone: true }),
 
-  refreshToken: text(),
-  refreshTokenExpiresAt: timestamp({ withTimezone: true }),
+    refreshToken: text(),
+    refreshTokenExpiresAt: timestamp({ withTimezone: true }),
 
-  scope: text(),
+    scope: text(),
 
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp({ withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-});
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("accounts_user_id_idx").on(table.userId)],
+);
 
 export const verifications = snakeCase.table("verifications", {
   id: text().primaryKey(),
