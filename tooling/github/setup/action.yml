@@ -10,10 +10,6 @@ runs:
         node-version-file: ".nvmrc"
         cache: "pnpm"
 
-    - name: Install Turbo
-      shell: bash
-      run: pnpm install -g turbo
-
     - name: Install Dependencies
       shell: bash
       run: pnpm install --frozen-lockfile
