@@ -50,6 +50,7 @@ interface TextPromptOptions {
 describe("project steps", () => {
 	beforeEach(() => {
 		coreMocks.checkPackageManager.mockReset();
+		coreMocks.checkPackageManager.mockReturnValue({ ok: true, message: "ok" });
 		promptMocks.logError.mockReset();
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
@@ -57,14 +58,6 @@ describe("project steps", () => {
 	});
 
 	describe("package manager", () => {
-		it("uses the configured package manager without prompting", async () => {
-			await expect(
-				packageManagerStep.execute({ packageManager: "npm" }, false),
-			).resolves.toBe("npm");
-
-			expect(promptMocks.select).not.toHaveBeenCalled();
-		});
-
 		it("defaults to Bun when the runtime is Bun", async () => {
 			await expect(
 				packageManagerStep.execute({ runtime: "Bun" }, false),
@@ -78,13 +71,73 @@ describe("project steps", () => {
 			await expect(packageManagerStep.execute({}, false)).resolves.toBe("pnpm");
 		});
 
-		it("silently falls back to the smart default for an invalid package manager", async () => {
+		it("validates a supplied package manager against the version gate", async () => {
 			await expect(
-				packageManagerStep.execute(
-					rawConfig({ packageManager: "yarn-classic" }),
-					false,
-				),
-			).resolves.toBe("pnpm");
+				Promise.resolve(packageManagerStep.validate?.("npm", {})),
+			).resolves.toBeUndefined();
+
+			expect(coreMocks.checkPackageManager).toHaveBeenCalledWith("npm");
+		});
+
+		it("exits from validate when the supplied package manager fails the version gate", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(((
+				code?: string | number | null,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+
+			try {
+				coreMocks.checkPackageManager.mockReturnValue({
+					ok: false,
+					message:
+						"You need Yarn v4 or later to forge a project, but you're running v1.22.22.",
+				});
+
+				expect(() => packageManagerStep.validate?.("Yarn", {})).toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"You need Yarn v4 or later to forge a project, but you're running v1.22.22.",
+				);
+			} finally {
+				exit.mockRestore();
+			}
+		});
+
+		it("leaves invalid supplied values to the schema decoder", async () => {
+			await expect(
+				Promise.resolve(packageManagerStep.validate?.("yarn-classic", {})),
+			).resolves.toBeUndefined();
+
+			expect(coreMocks.checkPackageManager).not.toHaveBeenCalled();
+			expect(promptMocks.logError).not.toHaveBeenCalled();
+		});
+
+		it("exits non-interactively when the smart default fails the version gate", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(((
+				code?: string | number | null,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+
+			try {
+				coreMocks.checkPackageManager.mockReturnValue({
+					ok: false,
+					message:
+						"You don't have pnpm installed, please install it and try again.",
+				});
+
+				await expect(packageManagerStep.execute({}, false)).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"You don't have pnpm installed, please install it and try again.",
+				);
+			} finally {
+				exit.mockRestore();
+			}
 		});
 
 		it("marks the smart default as recommended and returns the selection", async () => {

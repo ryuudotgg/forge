@@ -35,17 +35,27 @@ const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
 
 	shouldRun: () => true,
 
+	validate(value) {
+		const result = Schema.decodeUnknownEither(packageManagerSchema)(value);
+		if (Either.isLeft(result)) return;
+
+		const check = checkPackageManager(result.right);
+		if (!check.ok) {
+			log.error(check.message);
+			process.exit(1);
+		}
+	},
+
 	async execute(config, interactive) {
 		const smartDefault = getSmartDefault(config.runtime);
 
 		if (!interactive) {
-			if (config.packageManager) {
-				const result = Schema.decodeUnknownEither(packageManagerSchema)(
-					config.packageManager,
-				);
-
-				return Either.isRight(result) ? result.right : smartDefault;
+			const check = checkPackageManager(smartDefault);
+			if (!check.ok) {
+				log.error(check.message);
+				process.exit(1);
 			}
+
 			return smartDefault;
 		}
 
