@@ -8,8 +8,9 @@ import {
 	rm,
 	writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { expect } from "vitest";
 
 const forgeCliPath = resolve(
 	process.cwd(),
@@ -36,6 +37,9 @@ export function forgeEnvironment(workspaceRoot: string): NodeJS.ProcessEnv {
 	const cacheRoot = join(workspaceRoot, ".cache");
 
 	return {
+		COREPACK_HOME:
+			process.env.COREPACK_HOME ??
+			join(homedir(), ".cache", "node", "corepack"),
 		FORGE_CACHE_DIR: join(cacheRoot, "forge"),
 		XDG_CACHE_HOME: join(cacheRoot, "xdg"),
 	};
@@ -230,6 +234,51 @@ export async function updateProject(
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
 	});
+}
+
+const installArgsFor: Record<
+	"pnpm" | "npm" | "yarn" | "bun",
+	ReadonlyArray<string>
+> = {
+	bun: ["install"],
+	npm: ["install"],
+	pnpm: ["install"],
+	yarn: ["install"],
+};
+
+const typecheckArgsFor: Record<
+	"pnpm" | "npm" | "yarn" | "bun",
+	ReadonlyArray<string>
+> = {
+	bun: ["run", "typecheck"],
+	npm: ["run", "typecheck"],
+	pnpm: ["typecheck"],
+	yarn: ["typecheck"],
+};
+
+export async function expectInstallAndTypecheck(
+	workspace: ScenarioProject,
+	pm: "pnpm" | "npm" | "yarn" | "bun",
+) {
+	const installResult = await runCommand(pm, installArgsFor[pm], {
+		cwd: workspace.projectRoot,
+		env: forgeEnvironment(workspace.workspaceRoot),
+	});
+
+	expect(
+		installResult.exitCode,
+		`${pm} install failed with code ${installResult.exitCode}\n${installResult.stdout}\n${installResult.stderr}`,
+	).toBe(0);
+
+	const result = await runCommand(pm, typecheckArgsFor[pm], {
+		cwd: workspace.projectRoot,
+		env: forgeEnvironment(workspace.workspaceRoot),
+	});
+
+	expect(
+		result.exitCode,
+		`${pm} typecheck failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
+	).toBe(0);
 }
 
 export async function renameModuleRoot(

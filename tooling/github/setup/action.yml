@@ -10,6 +10,14 @@ runs:
         node-version-file: ".nvmrc"
         cache: "pnpm"
 
+    - uses: oven-sh/setup-bun@v2
+
+    - name: Setup Yarn
+      shell: bash
+      run: |
+        corepack enable
+        corepack install -g yarn@stable
+
     - name: Install Dependencies
       shell: bash
       run: pnpm install --frozen-lockfile

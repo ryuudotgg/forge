@@ -35,7 +35,7 @@ jobs:
   smoke:
     name: Install Smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
 
@@ -50,5 +50,11 @@ jobs:
 
       - name: Smoke Test
         run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/install.smoke.test.ts
+        env:
+          FORGE_SMOKE: "1"
+
+      - name: Multi-PM Smoke
+        if: ${{ github.event_name != 'pull_request' }}
+        run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/multi-pm.smoke.test.ts
         env:
           FORGE_SMOKE: "1"

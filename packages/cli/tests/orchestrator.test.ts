@@ -51,6 +51,48 @@ describe("orchestrate", () => {
 		expect(config.color).toBe("red");
 	});
 
+	it("awaits a step's validate hook when the config pre-supplies its key", async () => {
+		const validate = vi.fn(async () => undefined);
+		const execute = vi.fn(async () => "blue");
+		const step = makeStep({
+			id: "color",
+			configKey: "color",
+			schema: Schema.String,
+			validate,
+			execute,
+		});
+
+		const config = await orchestrate([step], {
+			interactive: false,
+			initialConfig: { color: "red" },
+		});
+
+		expect(validate).toHaveBeenCalledWith("red", { color: "red" });
+		expect(execute).not.toHaveBeenCalled();
+		expect(config.color).toBe("red");
+	});
+
+	it("skips a step's validate hook when the key is absent and runs execute", async () => {
+		const validate = vi.fn(async () => undefined);
+		const execute = vi.fn(async () => "blue");
+		const step = makeStep({
+			id: "color",
+			configKey: "color",
+			schema: Schema.String,
+			validate,
+			execute,
+		});
+
+		const config = await orchestrate([step], {
+			interactive: false,
+			initialConfig: {},
+		});
+
+		expect(validate).not.toHaveBeenCalled();
+		expect(execute).toHaveBeenCalled();
+		expect(config.color).toBe("blue");
+	});
+
 	it("stores results under the step id when no config key is given", async () => {
 		const step = makeStep({
 			id: "color",

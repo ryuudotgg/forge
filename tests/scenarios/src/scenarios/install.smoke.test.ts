@@ -2,34 +2,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	createProject,
-	forgeEnvironment,
+	expectInstallAndTypecheck,
 	pathExists,
-	runCommand,
-	type ScenarioProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
-
-async function expectTypecheckPasses(workspace: ScenarioProject) {
-	const installResult = await runCommand("pnpm", ["install"], {
-		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
-	});
-
-	expect(
-		installResult.exitCode,
-		`pnpm install failed with code ${installResult.exitCode}\n${installResult.stdout}\n${installResult.stderr}`,
-	).toBe(0);
-
-	const result = await runCommand("pnpm", ["typecheck"], {
-		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
-	});
-
-	expect(
-		result.exitCode,
-		`pnpm typecheck failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
-	).toBe(0);
-}
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it("installs a prisma project, generates the client, and typechecks", async () => {
@@ -54,7 +30,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				),
 			).toBe(true);
 
-			await expectTypecheckPasses(workspace);
+			await expectInstallAndTypecheck(workspace, "pnpm");
 		});
 	}, 600_000);
 
@@ -75,7 +51,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ install: true },
 			);
 
-			await expectTypecheckPasses(workspace);
+			await expectInstallAndTypecheck(workspace, "pnpm");
 		});
 	}, 600_000);
 
@@ -96,7 +72,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ install: true },
 			);
 
-			await expectTypecheckPasses(workspace);
+			await expectInstallAndTypecheck(workspace, "pnpm");
 		});
 	}, 600_000);
 
@@ -117,7 +93,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ install: true },
 			);
 
-			await expectTypecheckPasses(workspace);
+			await expectInstallAndTypecheck(workspace, "pnpm");
 		});
 	}, 600_000);
 });

@@ -31,6 +31,7 @@ export interface Step {
 	schemaDefault?: () => unknown;
 	dependencies?: string[];
 	shouldRun: (config: PartialConfig) => boolean;
+	validate?: (value: unknown, config: PartialConfig) => void | Promise<void>;
 	execute: (config: PartialConfig, interactive: boolean) => Promise<unknown>;
 }
 
@@ -43,6 +44,7 @@ export function defineStep<TOutput>(step: {
 	schemaDefault?: () => TOutput;
 	dependencies?: string[];
 	shouldRun: (config: PartialConfig) => boolean;
+	validate?: (value: unknown, config: PartialConfig) => void | Promise<void>;
 	execute: (
 		config: PartialConfig,
 		interactive: boolean,

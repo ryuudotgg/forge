@@ -21,7 +21,10 @@ export async function orchestrate(
 
 		const key = step.configKey === null ? null : (step.configKey ?? step.id);
 
-		if (key !== null && key in config && config[key] !== undefined) continue;
+		if (key !== null && key in config && config[key] !== undefined) {
+			await step.validate?.(config[key], config);
+			continue;
+		}
 
 		if (key === null && step.schemaShape) {
 			const shapeKeys = Object.keys(step.schemaShape);
