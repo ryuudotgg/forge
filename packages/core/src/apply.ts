@@ -3,6 +3,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { ApplyError } from "./errors";
+import { hashContentHex } from "./hash";
 import type { Lockfile, Manifest } from "./state";
 import { buildArtifactIndex, State } from "./state";
 
@@ -59,21 +60,14 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 		const hashContent = Effect.fn("Apply.hashContent")(function* (
 			content: string,
 		) {
-			const encoder = new TextEncoder();
-			const data = encoder.encode(content);
-
-			const buffer = yield* Effect.tryPromise({
-				try: () => globalThis.crypto.subtle.digest("SHA-256", data),
-				catch: () =>
+			return yield* hashContentHex(
+				content,
+				() =>
 					new ApplyError({
 						path: "content",
 						message: "Content Hash Failed",
 					}),
-			});
-
-			return Array.from(new Uint8Array(buffer))
-				.map((byte) => byte.toString(16).padStart(2, "0"))
-				.join("");
+			);
 		});
 
 		const applyPlan = Effect.fn("Apply.applyPlan")(function* (
