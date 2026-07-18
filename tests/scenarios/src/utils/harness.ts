@@ -42,6 +42,9 @@ export function forgeEnvironment(workspaceRoot: string): NodeJS.ProcessEnv {
 			join(homedir(), ".cache", "node", "corepack"),
 		FORGE_CACHE_DIR: join(cacheRoot, "forge"),
 		XDG_CACHE_HOME: join(cacheRoot, "xdg"),
+		// Yarn defaults to immutable installs when CI is set, but scenario
+		// installs create the lockfile for freshly scaffolded projects.
+		YARN_ENABLE_IMMUTABLE_INSTALLS: "0",
 	};
 }
 
