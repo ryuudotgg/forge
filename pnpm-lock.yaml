@@ -52,7 +52,7 @@ catalogs:
       specifier: ^21.2.0
       version: 21.2.0
     sherif:
-      specifier: ^1.11.1
+      specifier: ^1.13.0
       version: 1.13.0
   monorepo:
     turbo:

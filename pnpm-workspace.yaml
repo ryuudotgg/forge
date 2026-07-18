@@ -29,7 +29,7 @@ catalogs:
     "@commitlint/cli": ^21.2.0
     "@commitlint/config-conventional": ^21.2.0
     "@commitlint/types": ^21.2.0
-    sherif: ^1.11.1
+    sherif: ^1.13.0
 
   # ===== MONOREPO =====
   monorepo:
