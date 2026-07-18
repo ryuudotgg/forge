@@ -4,6 +4,7 @@
 		"biomejs.biome",
 		"bradlc.vscode-tailwindcss",
 		"effectful-tech.effect-vscode",
+		"typescriptteam.native-preview",
 		"yoavbls.pretty-ts-errors"
 	]
 }

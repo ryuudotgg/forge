@@ -8,7 +8,7 @@ export default defineConfig({
 	platform: "node",
 	target: "esnext",
 
-	dts: true,
+	dts: { tsconfig: "./tsconfig.build.json" },
 
 	minify: false,
 	treeshake: true,

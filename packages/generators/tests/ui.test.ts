@@ -248,7 +248,7 @@ describe("ui addon", () => {
 		});
 		expect(pnpm.value).toMatchObject({
 			scripts: {
-				typecheck: "tsgo --noEmit",
+				typecheck: "tsc --noEmit",
 				"ui-add": "pnpm dlx shadcn@latest add",
 			},
 		});

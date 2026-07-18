@@ -7,7 +7,7 @@ packages:
 catalogs:
   # ===== BUILD TOOLS =====
   build:
-    tsdown: ^0.22.3
+    tsdown: ^0.22.9
 
   # ===== DEVELOPMENT TOOLS =====
   dev:
@@ -16,7 +16,7 @@ catalogs:
 
     # TypeScript & Compilation
     "@types/node": 24.13.2
-    typescript: 6.0.3
+    typescript: 7.0.2
     vitest: 4.1.10
     "@vitest/coverage-v8": 4.1.10
 
@@ -49,7 +49,7 @@ catalogs:
     effect: ^3.21.4
     "@effect/platform": ^0.96.2
     "@effect/platform-node": ^0.107.0
-    "@effect/language-service": ^0.86.4
+    "@effect/tsgo": ^0.23.0
 
 nodeLinker: hoisted
 linkWorkspacePackages: true

@@ -135,7 +135,7 @@ describe("nextjs/base template", () => {
 			postinstall: "pnpm typegen",
 			pretypecheck: "pnpm with-env next typegen",
 			start: "pnpm with-env next start",
-			typecheck: "tsgo --noEmit",
+			typecheck: "tsc --noEmit",
 			typegen: "pnpm with-env next typegen",
 			"with-env": "dotenv -e ../../.env --",
 		});

@@ -143,7 +143,6 @@ function buildContributions(config: ForgeConfig) {
 		{ ...deps.typesNode, type: "devDependencies" as const },
 		{ ...deps.typesReact, type: "devDependencies" as const },
 		{ ...deps.typesReactDom, type: "devDependencies" as const },
-		{ ...deps.typescriptNativePreview, type: "devDependencies" as const },
 		{ ...deps.dotenvCli, type: "devDependencies" as const },
 		{ ...deps.typescript, type: "devDependencies" as const },
 	];
@@ -194,7 +193,7 @@ function buildContributions(config: ForgeConfig) {
 			postinstall: pmRun(pm, "typegen"),
 			pretypecheck: pmRun(pm, "with-env", "next typegen"),
 			start: pmRun(pm, "with-env", "next start"),
-			typecheck: "tsgo --noEmit",
+			typecheck: "tsc --noEmit",
 			typegen: pmRun(pm, "with-env", "next typegen"),
 			"with-env": "dotenv -e ../../.env --",
 		}),

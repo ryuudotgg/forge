@@ -32,7 +32,7 @@ const shared = defineAddon<ForgeConfig, "shared">({
 				"./*": "./src/*.ts",
 			},
 			scripts: {
-				typecheck: "tsgo --noEmit",
+				typecheck: "tsc --noEmit",
 			},
 		};
 
@@ -63,7 +63,6 @@ const shared = defineAddon<ForgeConfig, "shared">({
 					type: "devDependencies",
 				},
 				{ ...deps.typesNode, type: "devDependencies" },
-				{ ...deps.typescriptNativePreview, type: "devDependencies" },
 				{ ...deps.typescript, type: "devDependencies" },
 			]),
 			leafTextFile(

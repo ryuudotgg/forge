@@ -65,7 +65,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 					"./env": "./env.ts",
 					"./client": "./src/client.ts",
 				},
-				scripts: { typecheck: "tsgo --noEmit" },
+				scripts: { typecheck: "tsc --noEmit" },
 			}),
 			surfaceJson(ensuredModuleTarget("auth"), "tsconfig", {
 				extends: `@${slug}/tsconfig/base.json`,
@@ -91,7 +91,6 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 					type: "devDependencies",
 				},
 				{ ...deps.typesNode, type: "devDependencies" },
-				{ ...deps.typescriptNativePreview, type: "devDependencies" },
 				{ ...deps.typescript, type: "devDependencies" },
 			]),
 
