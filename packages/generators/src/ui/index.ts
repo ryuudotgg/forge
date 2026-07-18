@@ -90,7 +90,7 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 				"./*": "./src/components/*.tsx",
 			},
 			scripts: {
-				typecheck: "tsgo --noEmit",
+				typecheck: "tsc --noEmit",
 				"ui-add": pmDlx(pm, "shadcn@latest add"),
 			},
 		};
@@ -125,7 +125,6 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 			{ ...deps.typesNode, type: "devDependencies" },
 			{ ...deps.typesReact, type: "devDependencies" },
 			{ ...deps.typesReactDom, type: "devDependencies" },
-			{ ...deps.typescriptNativePreview, type: "devDependencies" },
 			{ ...deps.typescript, type: "devDependencies" },
 		];
 

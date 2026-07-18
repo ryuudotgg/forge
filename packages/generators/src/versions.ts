@@ -36,12 +36,7 @@ export const versions = {
 	lefthook: { name: "lefthook", version: "^2.1.9", group: "Tooling" },
 	sherif: { name: "sherif", version: "^1.11.1", group: "Tooling" },
 	turbo: { name: "turbo", version: "^2.9.18", group: "Tooling" },
-	typescript: { name: "typescript", version: "^6.0.3", group: "Tooling" },
-	typescriptNativePreview: {
-		name: "@typescript/native-preview",
-		version: "^7.0.0-dev.20260414.1",
-		group: "Tooling",
-	},
+	typescript: { name: "typescript", version: "^7.0.2", group: "Tooling" },
 
 	next: { name: "next", version: "16.2.10", group: "Framework" },
 	react: { name: "react", version: "^19.2.5", group: "Framework" },

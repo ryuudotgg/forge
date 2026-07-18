@@ -57,7 +57,7 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 				private: true,
 				type: "module",
 				exports: { ".": "./src/index.ts" },
-				scripts: { typecheck: "tsgo --noEmit" },
+				scripts: { typecheck: "tsc --noEmit" },
 			}),
 			surfaceJson(ensuredModuleTarget("trpc"), "tsconfig", {
 				extends: `@${slug}/tsconfig/base.json`,
@@ -79,7 +79,6 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 					type: "devDependencies",
 				},
 				{ ...deps.typesNode, type: "devDependencies" },
-				{ ...deps.typescriptNativePreview, type: "devDependencies" },
 				{ ...deps.typescript, type: "devDependencies" },
 			]),
 
