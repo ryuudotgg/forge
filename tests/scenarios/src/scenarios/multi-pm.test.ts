@@ -323,45 +323,49 @@ describe("multi-pm", () => {
 		});
 	}, 240_000);
 
-	it.each(
-		prismaCells,
-	)("wires prisma scripts and the db dependency for $pm", async ({
-		dbDependency,
-		dbGenerate,
-		migrate,
-		pm,
-		postinstall,
-		trustedDependencies,
-	}) => {
-		await withScenarioWorkspace(
-			`multi-pm-prisma-${pm.toLowerCase()}`,
-			async (workspace) => {
-				await createProject(workspace, {
-					...baseConfig,
-					database: "postgresql",
-					orm: "prisma",
-					packageManager: pm,
-				});
+	it.each(prismaCells)(
+		"wires prisma scripts and the db dependency for $pm",
+		async ({
+			dbDependency,
+			dbGenerate,
+			migrate,
+			pm,
+			postinstall,
+			trustedDependencies,
+		}) => {
+			await withScenarioWorkspace(
+				`multi-pm-prisma-${pm.toLowerCase()}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						...baseConfig,
+						database: "postgresql",
+						orm: "prisma",
+						packageManager: pm,
+					});
 
-				const root = await readJson<PackageJson>(
-					join(workspace.projectRoot, "package.json"),
-				);
-				const web = await readJson<PackageJson>(
-					join(workspace.projectRoot, "apps/web/package.json"),
-				);
-				const db = await readJson<PackageJson>(
-					join(workspace.projectRoot, "packages/db/package.json"),
-				);
+					const root = await readJson<PackageJson>(
+						join(workspace.projectRoot, "package.json"),
+					);
+					const web = await readJson<PackageJson>(
+						join(workspace.projectRoot, "apps/web/package.json"),
+					);
+					const db = await readJson<PackageJson>(
+						join(workspace.projectRoot, "packages/db/package.json"),
+					);
 
-				expect(root.scripts?.postinstall).toBe(postinstall);
-				expect(root.trustedDependencies).toEqual(trustedDependencies);
-				expect(db.scripts?.migrate).toBe(migrate);
-				expect(web.scripts?.["db:generate"]).toBe(dbGenerate);
-				expect(web.dependencies?.["@acme/db"]).toBe(dbDependency);
-				expect(
-					await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
-				).toBe(false);
-			},
-		);
-	}, 240_000);
+					expect(root.scripts?.postinstall).toBe(postinstall);
+					expect(root.trustedDependencies).toEqual(trustedDependencies);
+					expect(db.scripts?.migrate).toBe(migrate);
+					expect(web.scripts?.["db:generate"]).toBe(dbGenerate);
+					expect(web.dependencies?.["@acme/db"]).toBe(dbDependency);
+					expect(
+						await pathExists(
+							join(workspace.projectRoot, "pnpm-workspace.yaml"),
+						),
+					).toBe(false);
+				},
+			);
+		},
+		240_000,
+	);
 });
