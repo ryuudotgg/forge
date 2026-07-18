@@ -451,38 +451,37 @@ describe("trusted-builds parity", () => {
 		},
 	];
 
-	it.each(
-		cases,
-	)("pnpm allowBuilds and bun trustedDependencies match for $name", ({
-		config,
-	}) => {
-		const expected = trustedBuildDependencies(config).sort((left, right) =>
-			left.localeCompare(right),
-		);
-
-		const pnpmYaml = leafFile(
-			syncContributions(pnpm, config),
-			"pnpm-workspace.yaml",
-		);
-		const allowBuildsBlock = pnpmYaml.slice(
-			pnpmYaml.indexOf("allowBuilds:\n") + "allowBuilds:\n".length,
-		);
-		const pnpmNames = allowBuildsBlock
-			.split("\n")
-			.filter((line) => line.startsWith("  "))
-			.map((line) =>
-				line
-					.trim()
-					.replace(/^"(.+)":\s*true$/, "$1")
-					.replace(/:\s*true$/, ""),
+	it.each(cases)(
+		"pnpm allowBuilds and bun trustedDependencies match for $name",
+		({ config }) => {
+			const expected = trustedBuildDependencies(config).sort((left, right) =>
+				left.localeCompare(right),
 			);
 
-		expect(pnpmNames).toEqual(expected);
-		expect(
-			jsonSurface(
-				syncContributions(bun, { ...config, packageManager: "Bun" }),
-				"rootPackageJson",
-			).trustedDependencies,
-		).toEqual(expected);
-	});
+			const pnpmYaml = leafFile(
+				syncContributions(pnpm, config),
+				"pnpm-workspace.yaml",
+			);
+			const allowBuildsBlock = pnpmYaml.slice(
+				pnpmYaml.indexOf("allowBuilds:\n") + "allowBuilds:\n".length,
+			);
+			const pnpmNames = allowBuildsBlock
+				.split("\n")
+				.filter((line) => line.startsWith("  "))
+				.map((line) =>
+					line
+						.trim()
+						.replace(/^"(.+)":\s*true$/, "$1")
+						.replace(/:\s*true$/, ""),
+				);
+
+			expect(pnpmNames).toEqual(expected);
+			expect(
+				jsonSurface(
+					syncContributions(bun, { ...config, packageManager: "Bun" }),
+					"rootPackageJson",
+				).trustedDependencies,
+			).toEqual(expected);
+		},
+	);
 });
