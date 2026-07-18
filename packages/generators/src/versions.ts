@@ -173,7 +173,7 @@ export const versions = {
 	zod: { name: "zod", version: "^4.3.6", group: "Validation & Env" },
 
 	clsx: { name: "clsx", version: "^2.1.1", group: "Utilities" },
-	nanoid: { name: "nanoid", version: "^5.1.11", group: "Utilities" },
+	nanoid: { name: "nanoid", version: "^6.0.0", group: "Utilities" },
 	tailwindMerge: {
 		name: "tailwind-merge",
 		version: "^3.5.0",
