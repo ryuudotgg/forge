@@ -46,7 +46,7 @@ catalogs:
 
   # ===== EFFECT =====
   effect:
-    effect: ^3.21.4
+    effect: ^3.22.0
     "@effect/platform": ^0.97.0
     "@effect/platform-node": ^0.108.0
     "@effect/tsgo": ^0.24.1
