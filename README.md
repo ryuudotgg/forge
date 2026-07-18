@@ -33,14 +33,51 @@
 
 Ryuu's Forge is a powerful CLI tool designed to kickstart your new project in just a few minutes. It gives you complete control over your project's architecture, allowing you to set up all necessary components quickly, and the right way.
 
+## 🚀 Getting Started
+
+Run Forge with your package manager of choice, no install required:
+
+```bash
+pnpm dlx @ryuujs/forge
+# or
+npx @ryuujs/forge
+# or
+bunx @ryuujs/forge
+```
+
+`create` is the default command, so a bare invocation launches the interactive wizard and walks you through your framework, addons, and tooling.
+
+### Commands
+
+| Command | What it does |
+| --- | --- |
+| `forge` (`create`) | Forge a new project from a framework, template, and addons. |
+| `forge add [addon-id]` | Add an addon to your project. |
+| `forge remove [addon-id]` | Remove an addon from your project. |
+| `forge update` | Reconcile your installed addons and templates. |
+
+### Non-interactive
+
+Skip the prompts by pointing Forge at a JSON config file:
+
+```bash
+pnpm dlx @ryuujs/forge --config forge.json
+```
+
+Pass `--no-install` to skip dependency installation and `--no-git` to skip Git initialization.
+
 ## ✨ Key Features
 
-- 🏗️ **Type Safety** - Full type-safety with strict type checking
-- 📦 **PNPM** - Fast, disk-efficient package management
-- 🏃 **Turborepo** - High-performance build system
-- 📝 **Biome** - Fast and consistent code style
-- 🧪 **Testing** - Complete testing setup with Vitest
-- 🚀 **CI/CD** - Ready-to-use GitHub Actions workflows
+- 🧩 **Composable addons** - Mix and match frameworks, ORMs, auth, and tooling instead of settling for one fixed template.
+- 🔄 **Lifecycle management** - Add, remove, and update addons in an existing project with `add`, `remove`, and `update`.
+- 📦 **Your package manager** - Scaffold with pnpm, npm, Yarn, or Bun.
+- 🏗️ **Typed end to end** - Strict TypeScript across the whole monorepo.
+- ▲ **Next.js** - A modern React app wired up and ready to go.
+- 🗄️ **Database your way** - Drizzle or Prisma over PostgreSQL, MySQL, or SQLite, with providers like PlanetScale, Neon, Supabase, and Turso.
+- 🔌 **tRPC** - End-to-end typesafe APIs.
+- 🔐 **Better Auth** - Authentication ready out of the box.
+- 🎨 **Tailwind CSS** - Styling paired with Base UI or Radix components.
+- 🛠️ **Batteries included** - Biome, Turborepo, Vitest, and optional GitHub CI, Lefthook, and commitlint.
 
 ## 📚 Documentation
 
@@ -50,7 +87,7 @@ Visit our [Documentation](https://forge.ryuu.gg/docs) to view the full documenta
 
 We welcome and highly appreciate contributions! However, before you jump right into it, we
 would like you to review our [Contributing Guidelines](CONTRIBUTING.md) to make sure you
-hve a smooth experience.
+have a smooth experience.
 
 ### Good First Issues
 
