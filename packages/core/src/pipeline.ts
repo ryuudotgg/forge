@@ -8,6 +8,7 @@ import {
 	PipelineError,
 } from "./errors";
 import type { Generator } from "./generator";
+import { hashContentHex } from "./hash";
 import { Registry } from "./registry";
 import type { ResolvedFile } from "./virtual-fs";
 import { Vfs } from "./virtual-fs";
@@ -180,21 +181,14 @@ export class Pipeline extends Effect.Service<Pipeline>()("Pipeline", {
 		const hashContent = Effect.fn("Pipeline.hashContent")(function* (
 			content: string,
 		) {
-			const encoder = new TextEncoder();
-			const data = encoder.encode(content);
-
-			const buffer = yield* Effect.tryPromise({
-				try: () => globalThis.crypto.subtle.digest("SHA-256", data),
-				catch: () =>
+			return yield* hashContentHex(
+				content,
+				() =>
 					new PipelineError({
 						path: "content",
 						message: "Content Hash Failed",
 					}),
-			});
-
-			return Array.from(new Uint8Array(buffer))
-				.map((byte) => byte.toString(16).padStart(2, "0"))
-				.join("");
+			);
 		});
 
 		return { hashContent, run };

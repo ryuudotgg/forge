@@ -18,6 +18,7 @@ import {
 import { dependencyFormatFor } from "./environment";
 import { AggregateConflictError, GeneratorError, PlannerError } from "./errors";
 import { formatJson } from "./format/json";
+import { hashContentHex } from "./hash";
 import { type FileOperation, filePath } from "./operations";
 import {
 	type RenderBucket,
@@ -849,21 +850,14 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 		const hashString = Effect.fn("Planner.hashString")(function* (
 			content: string,
 		) {
-			const encoder = new TextEncoder();
-			const data = encoder.encode(content);
-
-			const buffer = yield* Effect.tryPromise({
-				try: () => globalThis.crypto.subtle.digest("SHA-256", data),
-				catch: () =>
+			return yield* hashContentHex(
+				content,
+				() =>
 					new PlannerError({
 						path: "content",
 						message: "Content Hash Failed",
 					}),
-			});
-
-			return Array.from(new Uint8Array(buffer))
-				.map((byte) => byte.toString(16).padStart(2, "0"))
-				.join("");
+			);
 		});
 
 		const buildLockfile = Effect.fn("Planner.buildLockfile")(function* (
