@@ -71,7 +71,7 @@ export const versions = {
 
 	drizzleOrm: {
 		name: "drizzle-orm",
-		version: "1.0.0-rc.4-5d5b77c",
+		version: "1.0.0-rc.4-de6c356",
 		group: "Database",
 	},
 	drizzleKit: {
