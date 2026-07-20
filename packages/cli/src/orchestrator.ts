@@ -16,44 +16,72 @@ export async function orchestrate(
 	const { interactive } = options;
 	const config: PartialConfig = { ...options.initialConfig };
 
-	for (const step of steps) {
-		if (!step.shouldRun(config)) continue;
+	const runSteps = async (stepsToRun: Step[]) => {
+		for (const step of stepsToRun) {
+			if (!step.shouldRun(config)) continue;
 
-		const key = step.configKey === null ? null : (step.configKey ?? step.id);
+			const key = step.configKey === null ? null : (step.configKey ?? step.id);
 
-		if (key !== null && key in config && config[key] !== undefined) {
-			await step.validate?.(config[key], config);
-			continue;
-		}
-
-		if (key === null && step.schemaShape) {
-			const shapeKeys = Object.keys(step.schemaShape);
-			if (shapeKeys.every((k) => k in config && config[k] !== undefined))
+			if (key !== null && key in config && config[key] !== undefined) {
+				await step.validate?.(config[key], config);
 				continue;
+			}
+
+			if (key === null && step.schemaShape) {
+				const shapeKeys = Object.keys(step.schemaShape);
+				if (shapeKeys.every((k) => k in config && config[k] !== undefined))
+					continue;
+			}
+
+			const result = await step.execute(config, interactive);
+			if (result === SKIP || result === undefined) continue;
+
+			if (key === null) Object.assign(config, result);
+			else config[key] = result;
+		}
+	};
+
+	const decodeConfig = () => {
+		const schema = assembleSchema(steps);
+		const result = Schema.decodeUnknownEither(schema)(config);
+
+		if (Either.isLeft(result)) {
+			const issues = ArrayFormatter.formatErrorSync(result.left);
+			const message = issues
+				.map((i) =>
+					i.path.length > 0
+						? `  ${i.path.join(".")}: ${i.message}`
+						: `  ${i.message}`,
+				)
+				.join("\n");
+
+			throw new Error(`Invalid Configuration:\n${message}`);
 		}
 
-		const result = await step.execute(config, interactive);
-		if (result === SKIP || result === undefined) continue;
+		return result.right;
+	};
 
-		if (key === null) Object.assign(config, result);
-		else config[key] = result;
-	}
+	const sideEffectingStepIds = new Set([
+		"generate",
+		"installDeps",
+		"gitInit",
+		"outro",
+	]);
 
-	const schema = assembleSchema(steps);
-	const result = Schema.decodeUnknownEither(schema)(config);
+	const preSideEffectSteps = steps.filter(
+		(step) => !sideEffectingStepIds.has(step.id),
+	);
 
-	if (Either.isLeft(result)) {
-		const issues = ArrayFormatter.formatErrorSync(result.left);
-		const message = issues
-			.map((i) =>
-				i.path.length > 0
-					? `  ${i.path.join(".")}: ${i.message}`
-					: `  ${i.message}`,
-			)
-			.join("\n");
+	const sideEffectingSteps = steps.filter((step) =>
+		sideEffectingStepIds.has(step.id),
+	);
 
-		throw new Error(`Invalid Configuration:\n${message}`);
-	}
+	await runSteps(preSideEffectSteps);
 
-	return result.right;
+	const decodedConfig = decodeConfig();
+	Object.assign(config, decodedConfig);
+
+	await runSteps(sideEffectingSteps);
+
+	return decodedConfig;
 }
