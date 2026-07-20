@@ -27,23 +27,46 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 		const slug = config.slug ?? "my-app";
 
 		const usesDb = config.orm !== undefined;
+		const usesAuth = config.authentication === "better-auth";
 		const vars = {
 			SLUG: slug,
 			DB_IMPORT: usesDb ? `import { db } from "@${slug}/db/client";\n` : "",
 			DB_CTX_TYPE: usesDb ? "\n  db: typeof db;" : "",
 			DB_CTX_VALUE: usesDb ? " db," : "",
+			AUTH_TYPE_IMPORT: usesAuth
+				? `import type { Auth } from "@${slug}/auth";\n`
+				: "",
+			AUTH_IMPORT: usesAuth ? `import { auth } from "@${slug}/auth";\n` : "",
+			SESSION_TYPE: usesAuth
+				? 'Awaited<ReturnType<Auth["api"]["getSession"]>>'
+				: "{ user: { id: string; email: string } } | null",
+			CTX_AUTH_PARAM: usesAuth ? "auth: Auth;\n  " : "",
+			SESSION_RESOLVE: usesAuth
+				? "const session = await opts.auth.api.getSession({ headers: opts.headers });"
+				: "const session = null;",
+			AUTH_ARG: usesAuth ? "auth, " : "",
 		};
 
 		const render = (path: string) =>
 			interpolate(readTemplate(`api/trpc/${path}`), vars);
 
-		const dbDeps: Array<{
+		const moduleDeps: Array<{
 			name: string;
 			version: string;
 			type: "dependencies";
-		}> = usesDb
-			? [{ name: `@${slug}/db`, version: "workspace:*", type: "dependencies" }]
-			: [];
+		}> = [];
+		if (usesDb)
+			moduleDeps.push({
+				name: `@${slug}/db`,
+				version: "workspace:*",
+				type: "dependencies",
+			});
+		if (usesAuth)
+			moduleDeps.push({
+				name: `@${slug}/auth`,
+				version: "workspace:*",
+				type: "dependencies",
+			});
 
 		return [
 			ensurePackageModule("trpc", "packages/trpc", {
@@ -69,7 +92,7 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 				exclude: ["node_modules"],
 			}),
 			surfaceDependencies(ensuredModuleTarget("trpc"), "packageJson", [
-				...dbDeps,
+				...moduleDeps,
 				{ ...deps.trpcServer, type: "dependencies" },
 				{ ...deps.superjson, type: "dependencies" },
 				{ ...deps.zod, type: "dependencies" },

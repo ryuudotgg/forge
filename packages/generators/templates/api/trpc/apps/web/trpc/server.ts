@@ -2,7 +2,7 @@ import "server-only";
 
 import type { AppRouter } from "@__SLUG__/trpc";
 import { createCaller, createTRPCContext } from "@__SLUG__/trpc";
-import { createHydrationHelpers } from "@trpc/react-query/rsc";
+__AUTH_IMPORT__import { createHydrationHelpers } from "@trpc/react-query/rsc";
 import { headers } from "next/headers";
 import { cache } from "react";
 
@@ -12,7 +12,7 @@ const createContext = cache(async () => {
   const heads = new Headers(await headers());
   heads.set("x-trpc-source", "rsc");
 
-  return createTRPCContext({ headers: heads, session: null });
+  return createTRPCContext({ __AUTH_ARG__headers: heads });
 });
 
 const getQueryClient = cache(createQueryClient);

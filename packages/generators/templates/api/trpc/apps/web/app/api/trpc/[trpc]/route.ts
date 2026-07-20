@@ -1,11 +1,11 @@
 import { appRouter, createTRPCContext } from "@__SLUG__/trpc";
-import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+__AUTH_IMPORT__import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { NextRequest } from "next/server";
 
 function createContext(req: NextRequest) {
   const headers = new Headers(req.headers);
   headers.set("x-trpc-source", "route");
-  return createTRPCContext({ headers, session: null });
+  return createTRPCContext({ __AUTH_ARG__headers });
 }
 
 function handler(req: NextRequest) {
