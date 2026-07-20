@@ -29,6 +29,157 @@ async function hashContent(content: string) {
 }
 
 describe("apply", () => {
+	it("refuses writes whose paths escape the project root", async () => {
+		await withTempDir("apply-write-escape", async (scratch) => {
+			const projectRoot = join(scratch, "project");
+			const outside = join(scratch, "escape.txt");
+
+			await mkdir(projectRoot, { recursive: true });
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(projectRoot, {
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [{ content: "escaped\n", path: "../escape.txt" }],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Path Escapes Project Root",
+				path: "../escape.txt",
+			});
+			expect(await pathExists(outside)).toBe(false);
+		});
+	});
+
+	it("refuses removals whose paths escape the project root", async () => {
+		await withTempDir("apply-remove-escape", async (scratch) => {
+			const projectRoot = join(scratch, "project");
+			const outside = join(scratch, "outside.txt");
+			const content = "managed\n";
+
+			await mkdir(projectRoot, { recursive: true });
+			await writeText(outside, content);
+			await Effect.runPromise(
+				State.writeLockfile(projectRoot, {
+					artifacts: {
+						"project:file:../outside.txt": {
+							definitionIds: ["test"],
+							hash: await hashContent(content),
+							kind: "file",
+							path: "../outside.txt",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(projectRoot, {
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: ["../outside.txt"],
+						writes: [],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Path Escapes Project Root",
+				path: "../outside.txt",
+			});
+			expect(await readFile(outside, "utf-8")).toBe(content);
+		});
+	});
+
+	it("refuses absolute write paths", async () => {
+		await withTempDir("apply-absolute-write", async (scratch) => {
+			const projectRoot = join(scratch, "project");
+			const outside = join(scratch, "absolute.txt");
+
+			await mkdir(projectRoot, { recursive: true });
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(projectRoot, {
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [{ content: "escaped\n", path: outside }],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Path Escapes Project Root",
+				path: outside,
+			});
+			expect(await pathExists(outside)).toBe(false);
+		});
+	});
+
+	it("allows nested writes and removals within the project root", async () => {
+		await withTempDir("apply-contained-paths", async (directory) => {
+			const removedPath = "packages/db/src/index.ts";
+			const removedContent = "export const oldValue = true;\n";
+			const writtenPath = "apps/web/app/page.tsx";
+			const writtenContent = "export default function Page() {}\n";
+
+			await writeText(join(directory, removedPath), removedContent);
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						[`project:file:${removedPath}`]: {
+							definitionIds: ["test"],
+							hash: await hashContent(removedContent),
+							kind: "file",
+							path: removedPath,
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [removedPath],
+					writes: [{ content: writtenContent, path: writtenPath }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await pathExists(join(directory, removedPath))).toBe(false);
+			expect(await readFile(join(directory, writtenPath), "utf-8")).toBe(
+				writtenContent,
+			);
+		});
+	});
+
+	it("creates a missing project root for contained writes", async () => {
+		await withTempDir("apply-create-root", async (scratch) => {
+			const projectRoot = join(scratch, "project");
+			const path = "apps/web/app/page.tsx";
+			const content = "export default function Page() {}\n";
+
+			await Effect.runPromise(
+				Apply.applyPlan(projectRoot, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ content, path }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(projectRoot, path), "utf-8")).toBe(content);
+		});
+	});
+
 	it("refuses to overwrite a modified managed file", async () => {
 		await withTempDir("apply-overwrite", async (directory) => {
 			await writeText(`${directory}/apps/web/app/layout.tsx`, "user-change\n");
@@ -436,7 +587,7 @@ describe("apply", () => {
 		});
 	});
 
-	it("does not prune directories that resolve outside the project root", async () => {
+	it("refuses to remove a file that resolves outside the project root", async () => {
 		await withTempDir("apply-prune-escape", async (scratch) => {
 			const projectRoot = join(scratch, "project");
 			const outside = join(scratch, "outside");
@@ -461,17 +612,23 @@ describe("apply", () => {
 				}).pipe(Effect.provide(coreLayer)),
 			);
 
-			await Effect.runPromise(
-				Apply.applyPlan(projectRoot, {
-					lockfile: { artifacts: {} },
-					manifest: { config: {}, installs: [], modules: {} },
-					removals: [removedFile],
-					writes: [],
-				}).pipe(Effect.provide(coreLayer)),
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(projectRoot, {
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [removedFile],
+						writes: [],
+					}).pipe(Effect.provide(coreLayer)),
+				),
 			);
 
-			expect(await pathExists(join(outside, "sub/index.ts"))).toBe(false);
-			expect(await pathExists(join(outside, "sub"))).toBe(true);
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Path Escapes Project Root",
+				path: removedFile,
+			});
+			expect(await pathExists(join(outside, "sub/index.ts"))).toBe(true);
 			expect(await pathExists(join(projectRoot, "packages/link"))).toBe(true);
 		});
 	});
