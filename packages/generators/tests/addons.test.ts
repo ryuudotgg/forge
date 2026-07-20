@@ -228,7 +228,7 @@ describe("trpc addon", () => {
 		expect(trpcFile.content).toContain('import { db } from "@acme/db/client";');
 		expect(trpcFile.content).toContain("db: typeof db;");
 		expect(trpcFile.content).toContain(
-			"return { db, headers: opts.headers, session: opts.session };",
+			"return { db, headers: opts.headers, session };",
 		);
 
 		const dependencies = moduleDependencySurface(contributions, "trpc");
