@@ -1,9 +1,10 @@
+import { Either, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import catalogsStep from "../src/steps/project/catalogs";
 import linterStep from "../src/steps/project/linter";
 import nameStep from "../src/steps/project/name";
 import packageManagerStep from "../src/steps/project/package-manager";
-import pathStep from "../src/steps/project/path";
+import pathStep, { pathSchema } from "../src/steps/project/path";
 import runtimeStep from "../src/steps/project/runtime";
 import { type PartialConfig, SKIP } from "../src/steps/types";
 
@@ -244,6 +245,35 @@ describe("project steps", () => {
 	});
 
 	describe("path", () => {
+		it("rejects paths that escape the current directory", () => {
+			for (const value of ["./../escape", "./.."]) {
+				const result = Schema.decodeUnknownEither(pathSchema)(value);
+				expect(Either.isLeft(result)).toBe(true);
+			}
+		});
+
+		it("accepts nested paths and the current directory", () => {
+			for (const value of ["./apps/web", "./my-app", "."]) {
+				const result = Schema.decodeUnknownEither(pathSchema)(value);
+				expect(Either.isRight(result)).toBe(true);
+			}
+		});
+
+		it("exits when a supplied path escapes the current directory", () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				expect(() => pathStep.validate?.("./../escape", {})).toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"You need to provide a path inside the current directory.",
+				);
+			} finally {
+				exit.mockRestore();
+			}
+		});
+
 		it("defaults to the slug directory when no path is configured", async () => {
 			await expect(pathStep.execute({ slug: "acme" }, false)).resolves.toBe(
 				"./acme",

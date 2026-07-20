@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { orchestrate } from "../src/orchestrator";
+import { pathSchema } from "../src/steps/project/path";
 import type { Step } from "../src/steps/types";
 import { SKIP } from "../src/steps/types";
 
@@ -163,7 +164,51 @@ describe("orchestrate", () => {
 		expect(config).not.toHaveProperty("b");
 	});
 
-	it("throws an invalid configuration error when the final decode fails", async () => {
+	it("throws an invalid configuration error before a side-effecting step runs", async () => {
+		const generate = vi.fn(async () => undefined);
+		const steps = [
+			makeStep({
+				id: "path",
+				configKey: "path",
+				schema: pathSchema,
+			}),
+			makeStep({ id: "generate", group: "generate", execute: generate }),
+		];
+
+		await expect(
+			orchestrate(steps, {
+				interactive: false,
+				initialConfig: { path: "./../x" },
+			}),
+		).rejects.toThrow(
+			"Invalid Configuration:\n  path: You need to provide a path inside the current directory.",
+		);
+
+		expect(generate).not.toHaveBeenCalled();
+	});
+
+	it("returns decoded pre-supplied config after side-effecting steps run", async () => {
+		const generate = vi.fn(async () => undefined);
+		const steps = [
+			makeStep({
+				id: "path",
+				configKey: "path",
+				schema: pathSchema,
+			}),
+			makeStep({ id: "generate", group: "generate", execute: generate }),
+		];
+
+		await expect(
+			orchestrate(steps, {
+				interactive: false,
+				initialConfig: { path: "./apps/web" },
+			}),
+		).resolves.toEqual({ path: "./apps/web" });
+
+		expect(generate).toHaveBeenCalledTimes(1);
+	});
+
+	it("throws an invalid configuration error when the decode fails", async () => {
 		const step = makeStep({
 			id: "color",
 			configKey: "color",
