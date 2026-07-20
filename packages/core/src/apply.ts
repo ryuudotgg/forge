@@ -60,7 +60,6 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 		const ensureContained = Effect.fn("Apply.ensureContained")(function* (
 			projectRoot: string,
 			relativePath: string,
-			operation: "remove" | "write",
 		) {
 			const rootPath = resolve(projectRoot);
 			const fullPath = resolve(rootPath, relativePath);
@@ -73,9 +72,6 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					path: relativePath,
 					message: "Path Escapes Project Root",
 				});
-
-			if (operation === "remove" && (yield* fs.exists(fullPath)))
-				return fullPath;
 
 			const realRoot = yield* fs
 				.realPath(rootPath)
@@ -134,11 +130,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 			const writesToApply: PlannedWrite[] = [];
 			for (const relativePath of plan.removals) {
-				const fullPath = yield* ensureContained(
-					projectRoot,
-					relativePath,
-					"remove",
-				);
+				const fullPath = yield* ensureContained(projectRoot, relativePath);
 
 				const exists = yield* fs.exists(fullPath);
 				if (!exists) continue;
@@ -170,11 +162,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			}
 
 			for (const file of plan.writes) {
-				const fullPath = yield* ensureContained(
-					projectRoot,
-					file.path,
-					"write",
-				);
+				const fullPath = yield* ensureContained(projectRoot, file.path);
 
 				const exists = yield* fs.exists(fullPath);
 				const nextHash = yield* hashContent(file.content);
@@ -236,11 +224,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 			const removedPaths: string[] = [];
 			for (const relativePath of plan.removals) {
-				const fullPath = yield* ensureContained(
-					projectRoot,
-					relativePath,
-					"remove",
-				);
+				const fullPath = yield* ensureContained(projectRoot, relativePath);
 
 				const exists = yield* fs.exists(fullPath);
 				if (!exists) continue;
@@ -292,11 +276,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			}
 
 			for (const file of writesToApply) {
-				const fullPath = yield* ensureContained(
-					projectRoot,
-					file.path,
-					"write",
-				);
+				const fullPath = yield* ensureContained(projectRoot, file.path);
 
 				const directory = dirname(fullPath);
 

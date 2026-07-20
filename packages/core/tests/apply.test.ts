@@ -587,7 +587,7 @@ describe("apply", () => {
 		});
 	});
 
-	it("does not prune directories that resolve outside the project root", async () => {
+	it("refuses to remove a file that resolves outside the project root", async () => {
 		await withTempDir("apply-prune-escape", async (scratch) => {
 			const projectRoot = join(scratch, "project");
 			const outside = join(scratch, "outside");
@@ -612,17 +612,23 @@ describe("apply", () => {
 				}).pipe(Effect.provide(coreLayer)),
 			);
 
-			await Effect.runPromise(
-				Apply.applyPlan(projectRoot, {
-					lockfile: { artifacts: {} },
-					manifest: { config: {}, installs: [], modules: {} },
-					removals: [removedFile],
-					writes: [],
-				}).pipe(Effect.provide(coreLayer)),
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(projectRoot, {
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [removedFile],
+						writes: [],
+					}).pipe(Effect.provide(coreLayer)),
+				),
 			);
 
-			expect(await pathExists(join(outside, "sub/index.ts"))).toBe(false);
-			expect(await pathExists(join(outside, "sub"))).toBe(true);
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Path Escapes Project Root",
+				path: removedFile,
+			});
+			expect(await pathExists(join(outside, "sub/index.ts"))).toBe(true);
 			expect(await pathExists(join(projectRoot, "packages/link"))).toBe(true);
 		});
 	});
