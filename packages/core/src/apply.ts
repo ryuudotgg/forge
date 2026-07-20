@@ -1,5 +1,5 @@
 import { rmdir } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { ApplyError } from "./errors";
@@ -57,6 +57,58 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 	effect: Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 
+		const ensureContained = Effect.fn("Apply.ensureContained")(function* (
+			projectRoot: string,
+			relativePath: string,
+			operation: "remove" | "write",
+		) {
+			const rootPath = resolve(projectRoot);
+			const fullPath = resolve(rootPath, relativePath);
+
+			if (
+				isAbsolute(relativePath) ||
+				(fullPath !== rootPath && !fullPath.startsWith(`${rootPath}${sep}`))
+			)
+				return yield* new ApplyError({
+					path: relativePath,
+					message: "Path Escapes Project Root",
+				});
+
+			if (operation === "remove" && (yield* fs.exists(fullPath)))
+				return fullPath;
+
+			const realRoot = yield* fs
+				.realPath(rootPath)
+				.pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+			if (realRoot === null) return fullPath;
+
+			let ancestor = fullPath;
+
+			while (ancestor !== rootPath) {
+				const realAncestor = yield* fs
+					.realPath(ancestor)
+					.pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+				if (realAncestor !== null) {
+					if (
+						realAncestor === realRoot ||
+						realAncestor.startsWith(`${realRoot}${sep}`)
+					)
+						return fullPath;
+
+					return yield* new ApplyError({
+						path: relativePath,
+						message: "Path Escapes Project Root",
+					});
+				}
+
+				ancestor = dirname(ancestor);
+			}
+
+			return fullPath;
+		});
+
 		const hashContent = Effect.fn("Apply.hashContent")(function* (
 			content: string,
 		) {
@@ -82,7 +134,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 			const writesToApply: PlannedWrite[] = [];
 			for (const relativePath of plan.removals) {
-				const fullPath = join(projectRoot, relativePath);
+				const fullPath = yield* ensureContained(
+					projectRoot,
+					relativePath,
+					"remove",
+				);
+
 				const exists = yield* fs.exists(fullPath);
 				if (!exists) continue;
 
@@ -113,7 +170,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			}
 
 			for (const file of plan.writes) {
-				const fullPath = join(projectRoot, file.path);
+				const fullPath = yield* ensureContained(
+					projectRoot,
+					file.path,
+					"write",
+				);
+
 				const exists = yield* fs.exists(fullPath);
 				const nextHash = yield* hashContent(file.content);
 
@@ -174,7 +236,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 			const removedPaths: string[] = [];
 			for (const relativePath of plan.removals) {
-				const fullPath = join(projectRoot, relativePath);
+				const fullPath = yield* ensureContained(
+					projectRoot,
+					relativePath,
+					"remove",
+				);
+
 				const exists = yield* fs.exists(fullPath);
 				if (!exists) continue;
 
@@ -225,7 +292,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			}
 
 			for (const file of writesToApply) {
-				const fullPath = join(projectRoot, file.path);
+				const fullPath = yield* ensureContained(
+					projectRoot,
+					file.path,
+					"write",
+				);
+
 				const directory = dirname(fullPath);
 
 				yield* fs.makeDirectory(directory, { recursive: true }).pipe(
