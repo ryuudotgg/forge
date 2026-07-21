@@ -1,3 +1,4 @@
+import type { SubcommandDef } from "./commands/registry";
 import type { PartialConfig } from "./steps/types";
 
 interface CLIOption {
@@ -139,11 +140,6 @@ export const options = {
 		configKey: "nativeStyleFramework",
 	},
 
-	"accept-incoming": {
-		type: "boolean",
-		description: "Accept all incoming changes on conflicts.",
-	},
-
 	"no-install": {
 		type: "boolean",
 		description: "Do not install dependencies.",
@@ -158,15 +154,7 @@ export const options = {
 export const sections: CLISection[] = [
 	{
 		title: "Options",
-		keys: [
-			"config",
-			"preset",
-			"accept-incoming",
-			"no-install",
-			"no-git",
-			"help",
-			"version",
-		],
+		keys: ["config", "preset", "no-install", "no-git", "help", "version"],
 	},
 	{
 		title: "Field Overrides",
@@ -209,6 +197,13 @@ export function getParseArgsOptions(): Record<
 	}
 
 	return result;
+}
+
+export function isUnknownCommand(
+	subcommand: string | undefined,
+	command: SubcommandDef | undefined,
+): boolean {
+	return subcommand !== undefined && command === undefined;
 }
 
 export function buildFlagOverrides(
