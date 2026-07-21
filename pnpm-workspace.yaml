@@ -49,7 +49,7 @@ catalogs:
     effect: ^3.22.0
     "@effect/platform": ^0.97.0
     "@effect/platform-node": ^0.108.0
-    "@effect/tsgo": ^0.24.1
+    "@effect/tsgo": ^0.24.2
 
 nodeLinker: hoisted
 linkWorkspacePackages: true
