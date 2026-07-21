@@ -189,11 +189,12 @@ export class State extends Effect.Service<State>()("State", {
 
 		const readManifestOrDefault = Effect.fn("State.readManifestOrDefault")(
 			function* (projectRoot: string) {
-				return yield* readManifest(projectRoot).pipe(
-					Effect.catchTag("StateError", () =>
-						Effect.succeed(defaultManifest()),
-					),
-				);
+				const path = manifestPath(projectRoot);
+				const exists = yield* fs.exists(path);
+
+				if (!exists) return defaultManifest();
+
+				return yield* readManifest(projectRoot);
 			},
 		);
 

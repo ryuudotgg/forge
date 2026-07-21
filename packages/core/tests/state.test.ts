@@ -186,7 +186,7 @@ describe("project state", () => {
 		});
 	});
 
-	it("fails to read a corrupt manifest and falls back to the default", async () => {
+	it("fails to read a corrupt manifest", async () => {
 		await withTempDir("manifest-corrupt", async (directory) => {
 			await writeText(join(directory, ".forge/manifest.json"), "{broken");
 
@@ -202,13 +202,19 @@ describe("project state", () => {
 			});
 			expect(error.message).toMatch(/^Manifest Parse Failed: /);
 
-			const fallback = await Effect.runPromise(
-				State.readManifestOrDefault(directory).pipe(
-					Effect.provide(projectLayer),
+			const fallbackError = await Effect.runPromise(
+				Effect.flip(
+					State.readManifestOrDefault(directory).pipe(
+						Effect.provide(projectLayer),
+					),
 				),
 			);
 
-			expect(fallback).toEqual({ config: {}, installs: [], modules: {} });
+			expect(fallbackError).toMatchObject({
+				_tag: "StateError",
+				filePath: join(directory, ".forge/manifest.json"),
+			});
+			expect(fallbackError.message).toMatch(/^Manifest Parse Failed: /);
 		});
 	});
 
@@ -230,6 +236,17 @@ describe("project state", () => {
 			expect(head).toBe("Invalid Manifest");
 			expect(issues.length).toBeGreaterThan(0);
 			for (const issue of issues) expect(issue).toMatch(/^ {2}\S/);
+
+			const fallbackError = await Effect.runPromise(
+				Effect.flip(
+					State.readManifestOrDefault(directory).pipe(
+						Effect.provide(projectLayer),
+					),
+				),
+			);
+
+			expect(fallbackError).toMatchObject({ _tag: "StateError" });
+			expect(fallbackError.message).toMatch(/^Invalid Manifest\n/);
 		});
 	});
 
@@ -277,6 +294,14 @@ describe("project state", () => {
 				_tag: "StateError",
 				message: "Manifest Not Found",
 			});
+
+			const manifest = await Effect.runPromise(
+				State.readManifestOrDefault(directory).pipe(
+					Effect.provide(projectLayer),
+				),
+			);
+
+			expect(manifest).toEqual({ config: {}, installs: [], modules: {} });
 
 			const lockfile = await Effect.runPromise(
 				State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
