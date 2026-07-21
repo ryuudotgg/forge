@@ -1,57 +1,50 @@
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { describe, expect, it } from "vitest";
-import { isUnknownCommand } from "../src/cli";
+import { getParseArgsOptions, isUnknownCommand } from "../src/cli";
 import { getSubcommand } from "../src/commands/registry";
 
-const cliPath = fileURLToPath(new URL("../dist/index.mjs", import.meta.url));
-
-function runCli(args: string[]) {
-	return spawnSync(process.execPath, [cliPath, ...args], { encoding: "utf8" });
+function parse(args: string[]) {
+	return parseArgs({
+		options: getParseArgsOptions(),
+		allowPositionals: true,
+		strict: true,
+		args,
+	});
 }
 
 describe("CLI argument parsing", () => {
-	it("uses create for a bare invocation and rejects unknown commands", () => {
+	it("classifies a bare invocation, known commands, and unknown commands", () => {
 		expect(isUnknownCommand(undefined, undefined)).toBe(false);
+		expect(isUnknownCommand("add", getSubcommand("add"))).toBe(false);
 		expect(
 			isUnknownCommand("definitely-not-a-command", getSubcommand("bogus")),
 		).toBe(true);
 	});
 
-	it("rejects unknown options with a helpful error", () => {
-		const result = runCli(["--no-such-flag"]);
-
-		expect(result.status).toBe(1);
-		expect(result.stderr).toContain(
-			"We don't recognize that option. Run forge --help to see the available flags.",
-		);
-		expect(result.stderr).not.toContain("node:internal");
+	it("rejects unknown options under strict parsing", () => {
+		expect(() => parse(["--no-such-flag"])).toThrow();
 	});
 
-	it("rejects unknown commands with a helpful error", () => {
-		const result = runCli(["definitely-not-a-command"]);
-
-		expect(result.status).toBe(1);
-		expect(result.stderr).toContain(
-			"We don't recognize that command. Run forge --help to see what forge can do.",
-		);
+	it("no longer accepts the removed accept-incoming flag", () => {
+		expect(() => parse(["--accept-incoming"])).toThrow();
 	});
 
-	it("accepts help and currently valid flags", () => {
-		const result = runCli([
-			"--config",
-			"forge.config.json",
-			"--preset",
-			"default",
-			"--no-install",
-			"--no-git",
-			"--web",
-			"nextjs",
-			"--help",
-		]);
+	it("accepts every currently valid flag", () => {
+		expect(() =>
+			parse([
+				"--config",
+				"forge.config.json",
+				"--preset",
+				"default",
+				"--no-install",
+				"--no-git",
+				"--web",
+				"nextjs",
+			]),
+		).not.toThrow();
 
-		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("--no-install");
-		expect(result.stdout).not.toContain("--accept-incoming");
+		const { values } = parse(["--config", "x.json", "--no-install"]);
+		expect(values.config).toBe("x.json");
+		expect(values["no-install"]).toBe(true);
 	});
 });
