@@ -1,5 +1,5 @@
 import { rmdir } from "node:fs/promises";
-import { dirname, isAbsolute, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, resolve, sep } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { ApplyError } from "./errors";
@@ -50,6 +50,10 @@ function movedModuleArtifactId(
 
 	const relative = write.path.slice(nextRoot.length + 1);
 	return `module:${moduleId}:file:${previousRoot}/${relative}`;
+}
+
+function isUserOwnedEnv(relativePath: string): boolean {
+	return basename(relativePath) === ".env";
 }
 
 export class Apply extends Effect.Service<Apply>()("Apply", {
@@ -131,6 +135,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const writesToApply: PlannedWrite[] = [];
 			for (const relativePath of plan.removals) {
 				const fullPath = yield* ensureContained(projectRoot, relativePath);
+				if (isUserOwnedEnv(relativePath)) continue;
 
 				const exists = yield* fs.exists(fullPath);
 				if (!exists) continue;
@@ -165,12 +170,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				const fullPath = yield* ensureContained(projectRoot, file.path);
 
 				const exists = yield* fs.exists(fullPath);
-				const nextHash = yield* hashContent(file.content);
-
 				if (!exists) {
 					writesToApply.push(file);
 					continue;
 				}
+
+				if (isUserOwnedEnv(file.path)) continue;
 
 				const currentContent = yield* fs.readFileString(fullPath).pipe(
 					Effect.catchTag(
@@ -182,7 +187,10 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+
 				const currentHash = yield* hashContent(currentContent);
+				const nextHash = yield* hashContent(file.content);
+
 				if (currentHash === nextHash) continue;
 
 				if (file.artifactId?.endsWith(":file:forge.json")) {
@@ -225,6 +233,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const removedPaths: string[] = [];
 			for (const relativePath of plan.removals) {
 				const fullPath = yield* ensureContained(projectRoot, relativePath);
+				if (isUserOwnedEnv(relativePath)) continue;
 
 				const exists = yield* fs.exists(fullPath);
 				if (!exists) continue;
