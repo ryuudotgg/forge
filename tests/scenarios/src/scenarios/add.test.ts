@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	addAddon,
@@ -79,6 +79,8 @@ async function expectMatchingProjects(
 			readFile(join(actualRoot, file), "utf-8"),
 			readFile(join(expectedRoot, file), "utf-8"),
 		]);
+
+		if (basename(file) === ".env") continue;
 
 		expect(actual, file).toBe(expected);
 	}

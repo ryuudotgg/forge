@@ -166,9 +166,18 @@ describe("better-auth addon", () => {
 		expect(rootEnv[0]?.lines[0]).toBe(
 			"# @use pnpm dlx @better-auth/cli secret",
 		);
-		expect(rootEnv[0]?.lines).toContain(
-			'AUTH_SECRET="change-me-locally-or-generate-with-the-cli-above"',
+		expect(rootEnv[0]?.lines[1]).toMatch(/^AUTH_SECRET="[0-9a-f]{64}"$/);
+
+		const secondRootEnv = linesSurfaces(
+			contributionsOf(betterAuth, {
+				authentication: "better-auth",
+				orm: "prisma",
+				slug: "acme",
+			}),
+			"rootEnv",
+			"Better Auth",
 		);
+		expect(secondRootEnv[0]?.lines[1]).not.toBe(rootEnv[0]?.lines[1]);
 
 		const rootEnvExample = linesSurfaces(
 			contributions,

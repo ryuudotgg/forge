@@ -180,6 +180,110 @@ describe("apply", () => {
 		});
 	});
 
+	it("creates a missing .env", async () => {
+		await withTempDir("apply-create-env", async (directory) => {
+			const content = 'AUTH_SECRET="generated"\n';
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ content, path: ".env" }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, ".env"), "utf-8")).toBe(content);
+		});
+	});
+
+	it("leaves an existing .env unchanged", async () => {
+		await withTempDir("apply-user-owned-env", async (directory) => {
+			const userContent = 'AUTH_SECRET="user-secret"\n';
+			await writeText(join(directory, ".env"), userContent);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ content: 'AUTH_SECRET="generated"\n', path: ".env" }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, ".env"), "utf-8")).toBe(
+				userContent,
+			);
+		});
+	});
+
+	it("does not remove a user-owned .env", async () => {
+		await withTempDir("apply-remove-user-owned-env", async (directory) => {
+			const userContent = 'AUTH_SECRET="user-secret"\n';
+			await writeText(join(directory, ".env"), userContent);
+
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						"project:file:.env": {
+							definitionIds: ["better-auth"],
+							hash: await hashContent('AUTH_SECRET="managed"\n'),
+							kind: "file",
+							path: ".env",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [".env"],
+					writes: [],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, ".env"), "utf-8")).toBe(
+				userContent,
+			);
+		});
+	});
+
+	it("continues to reconcile .env.example", async () => {
+		await withTempDir("apply-env-example", async (directory) => {
+			const oldContent = 'AUTH_SECRET=""\n';
+			const nextContent = 'AUTH_SECRET="new-template"\n';
+			await writeText(join(directory, ".env.example"), oldContent);
+
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						"project:file:.env.example": {
+							definitionIds: ["better-auth"],
+							hash: await hashContent(oldContent),
+							kind: "file",
+							path: ".env.example",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ content: nextContent, path: ".env.example" }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, ".env.example"), "utf-8")).toBe(
+				nextContent,
+			);
+		});
+	});
+
 	it("refuses to overwrite a modified managed file", async () => {
 		await withTempDir("apply-overwrite", async (directory) => {
 			await writeText(`${directory}/apps/web/app/layout.tsx`, "user-change\n");

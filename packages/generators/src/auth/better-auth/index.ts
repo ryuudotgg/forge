@@ -18,6 +18,13 @@ import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 
+function generateAuthSecret() {
+	const bytes = crypto.getRandomValues(new Uint8Array(32));
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+		"",
+	);
+}
+
 const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 	id: "better-auth",
 	name: "Better Auth",
@@ -128,7 +135,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 				"rootEnv",
 				[
 					`# @use ${secretCommand}`,
-					'AUTH_SECRET="change-me-locally-or-generate-with-the-cli-above"',
+					`AUTH_SECRET="${generateAuthSecret()}"`,
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
 					'APP_ORIGIN="http://localhost:3000"',
