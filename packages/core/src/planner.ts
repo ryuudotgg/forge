@@ -930,7 +930,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				readonly path: ReturnType<typeof filePath>;
 			}>,
 		) =>
-			Effect.sync(() => {
+			Effect.gen(function* () {
 				const writes: PlannedFile[] = [];
 
 				for (const module of modules)
@@ -978,9 +978,19 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 								: `${file.bucket.moduleId}:${String(file.path)}`,
 					});
 
-				const deduped = new Map<string, PlannedFile>();
-				for (const write of writes) deduped.set(write.path, write);
-				return [...deduped.values()];
+				const byPath = new Map<string, PlannedFile>();
+				for (const write of writes) {
+					const existing = byPath.get(write.path);
+					if (existing && existing.artifactId !== write.artifactId)
+						return yield* new PlannerError({
+							path: write.path,
+							message: `Write Path Collision: ${existing.artifactId} and ${write.artifactId}`,
+						});
+
+					byPath.set(write.path, write);
+				}
+
+				return [...byPath.values()];
 			});
 
 		const plan = Effect.fn("Planner.plan")(function* <
@@ -991,6 +1001,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			intent: PlanIntent<ConfigValue>,
 		) {
 			const discovered = yield* configStore.discover(projectRoot);
+
 			const existingManifest = yield* state.readManifestOrDefault(projectRoot);
 			const existingLockfile = yield* state.readLockfile(projectRoot);
 
@@ -1020,6 +1031,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				selection.templates,
 				selection.directAddons,
 			);
+
 			const evaluated = yield* evaluateDefinitions(
 				intent.config as Record<string, unknown>,
 				definitions as ReadonlyArray<Definition<Record<string, unknown>>>,
@@ -1046,6 +1058,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				const addon = registry.addons.find(
 					(entry) => entry.id === install.definitionId,
 				);
+
 				if (!addon)
 					return yield* new PlannerError({
 						path: install.definitionId,
@@ -1079,11 +1092,13 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				moduleIdsByKey,
 				selectedTargets,
 			);
+
 			const renderedSurfaces = yield* renderer.render(
 				managedInputs,
 				modules.map((module) => ({ ...module.config, root: module.root })),
 				dependencyFormatFor(intent.config.packageManager),
 			);
+
 			const leafFiles = yield* collectLeafFiles(
 				evaluated,
 				modules,
@@ -1097,6 +1112,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				defaultCreateInstalls.filter((install) => install.targets.length > 0),
 				modules,
 			);
+
 			const lockfile = yield* buildLockfile(
 				modules,
 				renderedSurfaces,
@@ -1106,7 +1122,9 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			const previousPaths = new Set(
 				buildArtifactIndex(existingLockfile).byPath.keys(),
 			);
+
 			const nextPaths = new Set(writes.map((write) => write.path));
+
 			const removals = [...previousPaths].filter(
 				(path) => !nextPaths.has(path),
 			);

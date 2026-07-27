@@ -36,6 +36,7 @@ import { readJson, withTempDir, writeJson, writeText } from "./harness";
 interface TestConfig extends Record<string, unknown> {
 	readonly audit?: boolean;
 	readonly auth?: boolean;
+	readonly collision?: boolean;
 	readonly dual?: boolean;
 	readonly kit?: boolean;
 	readonly logs?: boolean;
@@ -1308,6 +1309,63 @@ describe("planner", () => {
 				kind: "file",
 				path: "theme.config.ts",
 			});
+		});
+	});
+
+	it("fails when a surface and leaf file claim the same path", async () => {
+		await withTempDir("planner-write-collision", async (directory) => {
+			const collision = defineAddon<TestConfig>({
+				id: "collision",
+				name: "Collision",
+				version: "0.1.0",
+				category: "tooling",
+				exclusive: false,
+				targetMode: "single",
+				compatibility: {
+					app: {
+						frameworks: ["nextjs"],
+						requiredSlots: ["layout"],
+					},
+				},
+				when: (config) => config.collision === true,
+				contribute: () => [
+					leafTextFile(selectedModuleTarget(), "app/layout.tsx", "collision"),
+				],
+			});
+
+			const exit = await Effect.runPromiseExit(
+				planCreateEffect(
+					directory,
+					{ collision: true, web: "nextjs" },
+					testRegistry([collision]),
+				),
+			);
+
+			const error = plannerFailure(exit);
+
+			expect(error?.path).toBe("apps/web/app/layout.tsx");
+			expect(error?.message).toMatch(
+				/^Write Path Collision: module:[a-z]{5}:surface:layout and module:[a-z]{5}:file:apps\/web\/app\/layout\.tsx$/,
+			);
+		});
+	});
+
+	it("keeps every write in a non-colliding multi-module plan", async () => {
+		await withTempDir("planner-non-colliding-writes", async (directory) => {
+			const plan = await Effect.runPromise(
+				planCreateEffect(
+					directory,
+					{ ui: true, web: "nextjs" },
+					testRegistry(),
+				),
+			);
+
+			expect(plan.writes.map((write) => write.path).sort()).toEqual([
+				"apps/web/app/layout.tsx",
+				"apps/web/forge.json",
+				"packages/ui/forge.json",
+				"packages/ui/src/lib/utils.ts",
+			]);
 		});
 	});
 
