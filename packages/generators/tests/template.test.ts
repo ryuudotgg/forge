@@ -9,6 +9,31 @@ const TEMPLATE_DIR = join(
 	"..",
 	"templates",
 );
+const ROOT_DIR = join(TEMPLATE_DIR, "..", "..", "..");
+const GITHUB_TEMPLATE_DIR = join(TEMPLATE_DIR, "tooling", "github");
+
+const REPOSITORY_SETUP_ACTION = join(
+	ROOT_DIR,
+	"tooling",
+	"github",
+	"setup",
+	"action.yml",
+);
+
+const readActionMajors = (path: string) => {
+	const actions = new Map<string, string>();
+
+	for (const match of readFileSync(path, "utf-8").matchAll(
+		/^\s*- uses:\s+(?<depName>[\w.-]+\/[\w.-]+)@v(?<major>\d+)\s*$/gm,
+	)) {
+		const depName = match.groups?.depName;
+		const major = match.groups?.major;
+
+		if (depName && major) actions.set(depName, major);
+	}
+
+	return actions;
+};
 
 describe("interpolate", () => {
 	it("replaces every occurrence of every placeholder", () => {
@@ -56,6 +81,38 @@ describe("templateFiles", () => {
 			);
 
 			expect(file.content, file.path).toBe(readFileSync(source, "utf-8"));
+		}
+	});
+});
+
+describe("GitHub Actions templates", () => {
+	it("matches shared action majors with Forge's setup action", () => {
+		const repositoryActions = readActionMajors(REPOSITORY_SETUP_ACTION);
+		const sharedTemplateActions = new Map([
+			["setup-action.pnpm.yml", ["pnpm/action-setup", "actions/setup-node"]],
+			["setup-action.npm.yml", ["actions/setup-node"]],
+			["setup-action.bun.yml", ["oven-sh/setup-bun", "actions/setup-node"]],
+			["setup-action.yarn.yml", ["actions/setup-node"]],
+		]);
+
+		for (const [templateName, actionNames] of sharedTemplateActions) {
+			const templateActions = readActionMajors(
+				join(GITHUB_TEMPLATE_DIR, templateName),
+			);
+
+			for (const actionName of actionNames) {
+				const repositoryMajor = repositoryActions.get(actionName);
+				const templateMajor = templateActions.get(actionName);
+
+				expect(repositoryMajor, `${actionName} is used by Forge`).toBeDefined();
+				expect(
+					templateMajor,
+					`${templateName} uses ${actionName}`,
+				).toBeDefined();
+				expect(templateMajor, `${templateName} ${actionName}`).toBe(
+					repositoryMajor,
+				);
+			}
 		}
 	});
 });
