@@ -55,6 +55,14 @@ interface ManagedModuleRecord {
 	readonly root: string;
 }
 
+function withModuleId(
+	config: EnsureModuleContribution["module"],
+	id: ModuleId,
+): Config {
+	if (config.type === "app") return { ...config, id };
+	return { ...config, id };
+}
+
 interface PlanIntentCreate<ConfigValue> {
 	readonly _tag: "Create";
 	readonly config: ConfigValue;
@@ -181,7 +189,7 @@ function mergeEnsuredModule(
 
 	if (!existing)
 		return Effect.succeed({
-			config: { ...nextConfig, id: moduleId } as Config,
+			config: withModuleId(nextConfig, moduleId),
 			definitionIds: [definitionId],
 			id: moduleId,
 			root: ensured.root,

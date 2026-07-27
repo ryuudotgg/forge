@@ -55,6 +55,21 @@ describe("inferConfigSnapshot", () => {
 		});
 	});
 
+	it("falls back gracefully for malformed package.json files", async () => {
+		const cases = ["{", '{ "engines": 42 }'];
+
+		for (const contents of cases)
+			await withTempDir("infer-malformed-package-json", async (directory) => {
+				await writeText(join(directory, "package.json"), contents);
+
+				const config = await inferConfigSnapshot(directory, []);
+
+				expect(config.name).toBe("my-app");
+				expect(config.packageManager).toBe("pnpm");
+				expect(config.runtime).toBe("Node.js");
+			});
+	});
+
 	it("strips the scope from a scoped package name", async () => {
 		await withTempDir("infer-slug", async (directory) => {
 			await writeJson(join(directory, "package.json"), { name: "@acme/app" });
@@ -119,6 +134,16 @@ describe("inferConfigSnapshot", () => {
 			expect(config.web).toBe("nextjs");
 			expect(config.rpc).toBeUndefined();
 			expect(config.authentication).toBeUndefined();
+		});
+	});
+
+	it("leaves unknown app frameworks unset", async () => {
+		await withTempDir("infer-unknown-web", async (directory) => {
+			const config = await inferConfigSnapshot(directory, [
+				{ ...appModule, type: "app", framework: "unknown-framework" },
+			]);
+
+			expect(config.web).toBeUndefined();
 		});
 	});
 

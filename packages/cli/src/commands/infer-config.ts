@@ -6,11 +6,37 @@ import {
 	detectDatabaseProvider,
 	type ForgeConfig,
 	type OptionalAddon,
+	webFrameworks,
 } from "@ryuujs/generators";
+import { Either, Schema } from "effect";
 
-async function readJsonFile<T>(path: string): Promise<T | undefined> {
+const PackageJsonSchema = Schema.Struct({
+	dependencies: Schema.optional(
+		Schema.Record({ key: Schema.String, value: Schema.String }),
+	),
+	engines: Schema.optional(
+		Schema.Record({ key: Schema.String, value: Schema.String }),
+	),
+	name: Schema.optional(Schema.String),
+	packageManager: Schema.optional(Schema.String),
+});
+
+function hasOwnKey<T extends object>(
+	value: T,
+	key: PropertyKey,
+): key is keyof T {
+	return Object.hasOwn(value, key);
+}
+
+async function readPackageJson(
+	path: string,
+): Promise<typeof PackageJsonSchema.Type | undefined> {
 	try {
-		return JSON.parse(await readFile(path, "utf-8")) as T;
+		const result = Schema.decodeUnknownEither(PackageJsonSchema)(
+			JSON.parse(await readFile(path, "utf-8")),
+		);
+
+		return Either.isRight(result) ? result.right : undefined;
 	} catch {
 		return undefined;
 	}
@@ -29,11 +55,7 @@ export async function inferConfigSnapshot(
 	modules: ReadonlyArray<DiscoveredModule>,
 ): Promise<ForgeConfig> {
 	const packageJson =
-		(await readJsonFile<{
-			engines?: Record<string, string>;
-			name?: string;
-			packageManager?: string;
-		}>(join(projectRoot, "package.json"))) ?? {};
+		(await readPackageJson(join(projectRoot, "package.json"))) ?? {};
 
 	const packageName = packageJson.name;
 	const slug = packageName ? packageName.replace(/^@[^/]+\//, "") : "my-app";
@@ -48,8 +70,10 @@ export async function inferConfigSnapshot(
 
 	const packageManagerPrefix = packageJson.packageManager?.split("@")[0];
 	const packageManager =
-		packageManagers[packageManagerPrefix as keyof typeof packageManagers]
-			?.displayName || packageManagers.pnpm.displayName;
+		packageManagerPrefix !== undefined &&
+		hasOwnKey(packageManagers, packageManagerPrefix)
+			? packageManagers[packageManagerPrefix].displayName
+			: packageManagers.pnpm.displayName;
 
 	const webModule = modules.find((module) => module.type === "app");
 	const uiModule = modules.find(
@@ -60,8 +84,9 @@ export async function inferConfigSnapshot(
 	);
 
 	const web =
-		webModule?.type === "app"
-			? (webModule.framework as ForgeConfig["web"])
+		webModule?.type === "app" &&
+		hasOwnKey(webFrameworks.definitions, webModule.framework)
+			? webModule.framework
 			: undefined;
 
 	const style =
@@ -109,9 +134,7 @@ export async function inferConfigSnapshot(
 	const [dbPackageJson, dbClientSource, rootEnv] =
 		orm !== undefined && dbModule
 			? await Promise.all([
-					readJsonFile<{ dependencies?: Record<string, string> }>(
-						join(projectRoot, dbModule.root, "package.json"),
-					),
+					readPackageJson(join(projectRoot, dbModule.root, "package.json")),
 					readTextFile(join(projectRoot, dbModule.root, "src/client.ts")),
 					readTextFile(join(projectRoot, ".env")),
 				])
