@@ -17,6 +17,16 @@
 			"matchStrings": [
 				"name: \"(?<depName>[^\"]+)\",\\s+version: \"(?<currentValue>[^\"]+)\""
 			]
+		},
+		{
+			"customType": "regex",
+			"datasourceTemplate": "github-tags",
+			"managerFilePatterns": [
+				"/^packages/generators/templates/tooling/github/[^/]+\\.yml$/"
+			],
+			"matchStrings": [
+				"uses:\\s+(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentValue>v\\d+)"
+			]
 		}
 	],
 	"packageRules": [
@@ -27,6 +37,12 @@
 		{
 			"groupName": "scaffolded versions",
 			"matchFileNames": ["packages/generators/src/versions.ts"]
+		},
+		{
+			"groupName": "scaffolded actions",
+			"matchFileNames": [
+				"packages/generators/templates/tooling/github/*.yml"
+			]
 		}
 	],
 	"rangeStrategy": "bump",
