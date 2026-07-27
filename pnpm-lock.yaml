@@ -7,7 +7,7 @@ settings:
 catalogs:
   build:
     tsdown:
-      specifier: ^0.22.13
+      specifier: ^0.22.14
       version: 0.22.14
   dev:
     '@types/node':
