@@ -16,6 +16,8 @@ export interface CatalogEntry {
 	readonly group: CatalogGroup;
 }
 
+const nodeMajor = Number(process.versions.node.split(".")[0]);
+
 export const versions = {
 	biome: { name: "@biomejs/biome", version: "^2.4.16", group: "Tooling" },
 	commitlintCli: {
@@ -202,7 +204,11 @@ export const versions = {
 		version: "^7.6.13",
 		group: "Types",
 	},
-	typesNode: { name: "@types/node", version: "^26.0.0", group: "Types" },
+	typesNode: {
+		name: "@types/node",
+		version: `^${nodeMajor}.0.0`,
+		group: "Types",
+	},
 	typesPg: { name: "@types/pg", version: "^8.20.0", group: "Types" },
 	typesReact: { name: "@types/react", version: "^19.2.14", group: "Types" },
 	typesReactDom: {
