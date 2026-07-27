@@ -33,7 +33,7 @@ catalogs:
       specifier: ^0.108.0
       version: 0.108.0
     '@effect/tsgo':
-      specifier: ^0.24.2
+      specifier: ^0.24.3
       version: 0.24.3
     effect:
       specifier: ^3.22.0
