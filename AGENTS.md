@@ -22,6 +22,7 @@ addon definitions.
 
 - `pnpm check` / `pnpm check:fix`: Biome lint + format (fix mode writes).
 - `pnpm typecheck`: per-package tsc.
+- `pnpm test:unit`: fast package-only inner loop.
 - `pnpm test`: full suite. Scope with `--filter`, e.g.
   `pnpm test --filter=@ryuujs/core`.
 - `pnpm test:coverage`: coverage with enforced thresholds.

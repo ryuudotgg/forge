@@ -18,6 +18,11 @@ Ensure you have the following installed:
   - Version: [.nvmrc](../.nvmrc)
 - [PNPM](https://pnpm.io)
   - Version: [package.json#packageManager](../package.json)
+- [Bun](https://bun.sh)
+- [Yarn](https://yarnpkg.com)
+  - Version: 4 or later, managed through `corepack`
+
+The full `pnpm test` command runs scenarios with real Bun, npm, and Yarn package managers, so they must be available locally.
 
 ## Getting Started
 
@@ -51,6 +56,7 @@ pnpm dev
 - `pnpm dev` - Start a Development Server
 - `pnpm start` - Start Apps in Production
 - `pnpm test` - Run Tests
+- `pnpm test:unit` - Run Package Unit Tests
 - `pnpm test:coverage` - Run Tests With Coverage + Thresholds
 - `pnpm typecheck` - Run Type Checks
 
