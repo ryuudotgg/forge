@@ -1,75 +1,120 @@
-import { parseArgs } from "node:util";
-import { checkRuntime } from "@ryuujs/core";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { checkRuntime, type EnvironmentCheck } from "@ryuujs/core";
 import { version } from "../package.json" with { type: "json" };
-import { getParseArgsOptions, isUnknownCommand } from "./cli";
-import { defaultCommand, getSubcommand } from "./commands/registry";
+import { isUnknownCommand, parseCliArgs } from "./cli";
+import {
+	defaultCommand,
+	getSubcommand,
+	type SubcommandDef,
+} from "./commands/registry";
 import { printHelp } from "./utils/help";
 
-const runtimeCheck = checkRuntime();
-if (!runtimeCheck.ok) {
-	console.error(runtimeCheck.message);
-	process.exit(1);
+interface CliDependencies {
+	readonly checkRuntime: () => EnvironmentCheck;
+	readonly defaultCommand: readonly [string, SubcommandDef];
+	readonly error: (message: unknown) => void;
+	readonly exit: (code?: number) => void;
+	readonly getSubcommand: (name: string) => SubcommandDef | undefined;
+	readonly log: (message?: unknown) => void;
+	readonly printHelp: () => void;
+	readonly setExitCode: (code: number) => void;
 }
 
-const parsed = (() => {
+const dependencies: CliDependencies = {
+	checkRuntime,
+	defaultCommand,
+	error: console.error,
+	exit: process.exit,
+	getSubcommand,
+	log: console.log,
+	printHelp,
+	setExitCode: (code) => {
+		process.exitCode = code;
+	},
+};
+
+export function isEntryPoint(
+	entrypoint: string,
+	invokedPath: string | undefined,
+): boolean {
+	if (!invokedPath) return false;
+
 	try {
-		return parseArgs({
-			options: getParseArgsOptions(),
-			allowPositionals: true,
-			strict: true,
-		});
+		return realpathSync(invokedPath) === fileURLToPath(entrypoint);
 	} catch {
-		console.error(
+		return false;
+	}
+}
+
+export async function runCli(
+	args: readonly string[],
+	cli: CliDependencies = dependencies,
+): Promise<void> {
+	const runtimeCheck = cli.checkRuntime();
+	if (!runtimeCheck.ok) {
+		cli.error(runtimeCheck.message);
+		cli.exit(1);
+		return;
+	}
+
+	let parsed: ReturnType<typeof parseCliArgs>;
+	try {
+		parsed = parseCliArgs(args);
+	} catch {
+		cli.error(
 			"We don't recognize that option. Run forge --help to see the available flags.",
 		);
 
-		process.exitCode = 1;
-	}
-})();
+		cli.setExitCode(1);
 
-if (parsed) {
+		return;
+	}
+
 	const { values, positionals } = parsed;
 
 	if (values.help) {
-		printHelp();
-		process.exit(0);
+		cli.printHelp();
+		cli.exit(0);
+		return;
 	}
 
 	if (values.version) {
-		console.log(`We're on Forge v${version}`);
-		process.exit(0);
+		cli.log(`We're on Forge v${version}`);
+		cli.exit(0);
+		return;
 	}
 
 	const subcommand = positionals[0];
-	const cmd = subcommand ? getSubcommand(subcommand) : undefined;
+	const cmd = subcommand ? cli.getSubcommand(subcommand) : undefined;
 
 	try {
 		if (isUnknownCommand(subcommand, cmd)) {
-			console.error(
+			cli.error(
 				"We don't recognize that command. Run forge --help to see what forge can do.",
 			);
 
-			process.exitCode = 1;
-		} else {
-			console.log();
-
-			if (cmd) {
-				const args = positionals.slice(1);
-				if (cmd.arg && cmd.argRequired && args.length === 0) {
-					console.error(`Usage: forge ${subcommand} ${cmd.arg}`);
-					process.exit(1);
-				}
-
-				await cmd.run(args, values);
-			} else {
-				const [, defaultCmd] = defaultCommand;
-				await defaultCmd.run(positionals, values);
-			}
-
-			console.log();
+			cli.setExitCode(1);
+			return;
 		}
+
+		cli.log();
+
+		const command = cmd ?? cli.defaultCommand[1];
+		const commandArgs = cmd ? positionals.slice(1) : positionals;
+		if (command.arg && command.argRequired && commandArgs.length === 0) {
+			cli.error(`Usage: forge ${subcommand} ${command.arg}`);
+			cli.exit(1);
+			return;
+		}
+
+		await command.run(commandArgs, values);
+		cli.log();
 	} catch (error) {
-		console.error(error);
-		process.exitCode = 1;
+		cli.error(error);
+		cli.setExitCode(1);
 	}
 }
+
+if (isEntryPoint(import.meta.url, process.argv[1]))
+	await runCli(process.argv.slice(2));

@@ -1,4 +1,5 @@
-import type { SubcommandDef } from "./commands/registry";
+import { parseArgs } from "node:util";
+import type { ParsedValues, SubcommandDef } from "./commands/registry";
 import type { PartialConfig } from "./steps/types";
 
 interface CLIOption {
@@ -182,13 +183,20 @@ export const sections: CLISection[] = [
 
 export function getParseArgsOptions(): Record<
 	string,
-	{ type: "string" | "boolean"; short?: string }
+	{ type: "string" | "boolean"; short?: string; multiple: false }
 > {
-	const result: Record<string, { type: "string" | "boolean"; short?: string }> =
-		{};
+	const result: Record<
+		string,
+		{ type: "string" | "boolean"; short?: string; multiple: false }
+	> = {};
 
 	for (const [key, def] of Object.entries<CLIOption>(options)) {
-		const entry: { type: "string" | "boolean"; short?: string } = {
+		const entry: {
+			type: "string" | "boolean";
+			short?: string;
+			multiple: false;
+		} = {
+			multiple: false,
 			type: def.type,
 		};
 
@@ -197,6 +205,32 @@ export function getParseArgsOptions(): Record<
 	}
 
 	return result;
+}
+
+function isParsedValues(values: unknown): values is ParsedValues {
+	if (typeof values !== "object" || values === null) return false;
+	return Object.values(values).every(
+		(value) => typeof value === "string" || typeof value === "boolean",
+	);
+}
+
+export function parseCliArgs(args: readonly string[]): {
+	positionals: string[];
+	values: ParsedValues;
+} {
+	const parsed = parseArgs({
+		options: getParseArgsOptions(),
+		allowPositionals: true,
+		args,
+		strict: true,
+	});
+
+	if (!isParsedValues(parsed.values))
+		throw new Error(
+			"CLI Args Invalid: option values must be strings or booleans.",
+		);
+
+	return parsed;
 }
 
 export function isUnknownCommand(
