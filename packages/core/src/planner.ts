@@ -27,7 +27,6 @@ import {
 	type SurfaceRenderContribution,
 } from "./renderer";
 import {
-	buildArtifactIndex,
 	type InstallRecord,
 	type InstallTarget,
 	type Lockfile,
@@ -1128,7 +1127,9 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			);
 
 			const previousPaths = new Set(
-				buildArtifactIndex(existingLockfile).byPath.keys(),
+				Object.values(existingLockfile.artifacts).map(
+					(artifact) => artifact.path,
+				),
 			);
 
 			const nextPaths = new Set(writes.map((write) => write.path));

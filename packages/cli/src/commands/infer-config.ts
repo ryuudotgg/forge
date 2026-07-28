@@ -140,10 +140,10 @@ export async function inferConfigSnapshot(
 				])
 			: [undefined, undefined, undefined];
 
+	const envLines = rootEnv?.split(/\r?\n/);
 	const envValue = (name: string) =>
-		rootEnv
-			?.split(/\r?\n/)
-			.find((line) => line.startsWith(`${name}=`))
+		envLines
+			?.find((line) => line.startsWith(`${name}=`))
 			?.slice(name.length + 1)
 			.replace(/^["'`]|["'`]$/g, "");
 
