@@ -26,14 +26,6 @@
 		"url": "https://ryuu.gg"
 	},
 	"type": "module",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.mts",
-			"default": "./dist/index.mjs"
-		}
-	},
-	"main": "./dist/index.mjs",
-	"types": "./dist/index.d.mts",
 	"bin": "./dist/index.mjs",
 	"files": [
 		"dist"
@@ -43,7 +35,6 @@
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache coverage dist node_modules",
 		"dev": "tsdown --watch",
-		"prepare": "effect-tsgo patch",
 		"start": "node ./dist/index.mjs",
 		"test": "vitest run tests",
 		"test:coverage": "vitest run --coverage",
@@ -60,7 +51,6 @@
 		"picocolors": "catalog:node"
 	},
 	"devDependencies": {
-		"@effect/tsgo": "catalog:effect",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"@vitest/coverage-v8": "catalog:dev",
