@@ -15,11 +15,36 @@ export function deepMerge(
 		if (isPlainObject(sourceValue) && isPlainObject(targetValue))
 			result[key] = deepMerge(targetValue, sourceValue);
 		else if (Array.isArray(sourceValue) && Array.isArray(targetValue))
-			result[key] = [...new Set([...targetValue, ...sourceValue])];
+			result[key] = mergeArrays(targetValue, sourceValue);
 		else result[key] = sourceValue;
 	}
 
 	return result;
+}
+
+function mergeArrays(target: unknown[], source: unknown[]): unknown[] {
+	const primitives = new Set<unknown>();
+	const structures = new Set<string | undefined>();
+
+	const merged: unknown[] = [];
+	for (const value of [...target, ...source]) {
+		if (typeof value === "object" && value !== null) {
+			const serialized = JSON.stringify(value);
+			if (structures.has(serialized)) continue;
+
+			structures.add(serialized);
+			merged.push(value);
+
+			continue;
+		}
+
+		if (primitives.has(value)) continue;
+
+		primitives.add(value);
+		merged.push(value);
+	}
+
+	return merged;
 }
 
 export function mergeJson(

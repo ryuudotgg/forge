@@ -24,7 +24,7 @@ function serializeValue(
 	if (value === null) return "null";
 
 	if (typeof value === "boolean") return String(value);
-	if (typeof value === "number") return String(value);
+	if (typeof value === "number") return serializeNumber(value);
 
 	if (typeof value === "string") return JSON.stringify(value);
 
@@ -71,7 +71,7 @@ function serializeObject(
 	column: number,
 	compact: boolean,
 ): string {
-	const keys = Object.keys(obj);
+	const keys = Object.keys(obj).filter((key) => obj[key] !== undefined);
 	if (keys.length === 0) return "{}";
 
 	if (compact) {
@@ -96,9 +96,13 @@ function compactArray(arr: unknown[]): string {
 }
 
 function compactObject(obj: Record<string, unknown>): string {
-	const entries = Object.keys(obj).map(
+	const keys = Object.keys(obj).filter((key) => obj[key] !== undefined);
+	if (keys.length === 0) return "{}";
+
+	const entries = keys.map(
 		(key) => `${JSON.stringify(key)}: ${compactValue(obj[key])}`,
 	);
+
 	return `{ ${entries.join(", ")} }`;
 }
 
@@ -106,7 +110,7 @@ function compactValue(value: unknown): string {
 	if (value === null) return "null";
 
 	if (typeof value === "boolean") return String(value);
-	if (typeof value === "number") return String(value);
+	if (typeof value === "number") return serializeNumber(value);
 
 	if (typeof value === "string") return JSON.stringify(value);
 
@@ -115,6 +119,13 @@ function compactValue(value: unknown): string {
 		return compactObject(value as Record<string, unknown>);
 
 	return "null";
+}
+
+function serializeNumber(value: number): string {
+	if (!Number.isFinite(value))
+		throw new RangeError(`JSON Number Must Be Finite: ${value}`);
+
+	return String(value);
 }
 
 function indentWidth(depth: number): number {
