@@ -26,6 +26,18 @@ describe("merge helpers", () => {
 		});
 	});
 
+	it("de-duplicates structurally equal array values", () => {
+		expect(
+			mergeJson(
+				{ plugins: ["base", { name: "react" }, ["tailwind"]] },
+				{ plugins: ["base", { name: "react" }, ["tailwind"], "next"] },
+				"deep",
+			),
+		).toEqual({
+			plugins: ["base", { name: "react" }, ["tailwind"], "next"],
+		});
+	});
+
 	it("replaces top-level values without deep merging for the replace strategy", () => {
 		expect(
 			mergeJson(

@@ -193,7 +193,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 				if (currentHash === nextHash) continue;
 
-				if (file.artifactId?.endsWith(":file:forge.json")) {
+				if (/^module:[^:]+:file:forge\.json$/.test(file.artifactId ?? "")) {
 					writesToApply.push(file);
 					continue;
 				}

@@ -617,6 +617,54 @@ describe("apply", () => {
 		});
 	});
 
+	it("protects hand-edited project forge.json artifacts", async () => {
+		await withTempDir("apply-project-forge-json", async (directory) => {
+			const managedContent = '{\n\t"managed": true\n}\n';
+			const userContent = '{\n\t"edited": true\n}\n';
+			const nextContent = '{\n\t"next": true\n}\n';
+
+			await writeText(join(directory, "forge.json"), userContent);
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						"project:file:forge.json": {
+							definitionIds: ["test"],
+							hash: await hashContent(managedContent),
+							kind: "file",
+							path: "forge.json",
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, {
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [
+							{
+								artifactId: "project:file:forge.json",
+								content: nextContent,
+								path: "forge.json",
+							},
+						],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				message: "Managed File Modified",
+				path: "forge.json",
+			});
+			expect(await readFile(join(directory, "forge.json"), "utf-8")).toBe(
+				userContent,
+			);
+		});
+	});
+
 	it("prunes emptied directories after removals and stops at non-empty ancestors", async () => {
 		await withTempDir("apply-prune", async (directory) => {
 			const removedFile = "packages/db/src/schema/index.ts";
