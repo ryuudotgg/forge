@@ -98,28 +98,20 @@ function lockfilePath(projectRoot: string) {
 }
 
 export interface ArtifactIndex {
-	readonly byDefinition: Map<string, ReadonlyArray<LockfileArtifact>>;
 	readonly byId: Map<string, LockfileArtifact>;
 	readonly byPath: Map<string, LockfileArtifact>;
 }
 
 export function buildArtifactIndex(lockfile: Lockfile): ArtifactIndex {
-	const byDefinition = new Map<string, LockfileArtifact[]>();
 	const byId = new Map<string, LockfileArtifact>();
 	const byPath = new Map<string, LockfileArtifact>();
 
 	for (const [id, artifact] of Object.entries(lockfile.artifacts)) {
 		byId.set(id, artifact);
 		byPath.set(artifact.path, artifact);
-
-		for (const definitionId of artifact.definitionIds) {
-			const artifacts = byDefinition.get(definitionId) ?? [];
-			artifacts.push(artifact);
-			byDefinition.set(definitionId, artifacts);
-		}
 	}
 
-	return { byDefinition, byId, byPath };
+	return { byId, byPath };
 }
 
 function decodeManifest(raw: string, path: string) {

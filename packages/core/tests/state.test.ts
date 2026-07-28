@@ -368,17 +368,5 @@ describe("project state", () => {
 		);
 
 		expect(index.byPath.get("tsconfig.json")?.hash).toBe("def");
-
-		expect(
-			index.byDefinition.get("root")?.map((artifact) => artifact.path),
-		).toEqual(["package.json", "tsconfig.json"]);
-
-		expect(
-			index.byDefinition.get("lint")?.map((artifact) => artifact.path),
-		).toEqual(["biome.json"]);
-
-		expect(
-			index.byDefinition.get("format")?.map((artifact) => artifact.path),
-		).toEqual(["biome.json"]);
 	});
 });
