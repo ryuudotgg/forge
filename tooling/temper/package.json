@@ -3,6 +3,9 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
+	"exports": {
+		"./thresholds": "./src/thresholds.ts"
+	},
 	"scripts": {
 		"check": "biome check",
 		"clean": "git clean -xdf .turbo .cache node_modules",

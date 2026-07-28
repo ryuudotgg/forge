@@ -76,6 +76,7 @@ describe("registry loader", () => {
 			"github-ci",
 			"lefthook",
 			"shared",
+			"vitest",
 			"vscode",
 		];
 
@@ -84,11 +85,16 @@ describe("registry loader", () => {
 		for (const id of optInIds) expect(withoutIds).not.toContain(id);
 
 		const withAddons = await Effect.runPromise(
-			resolveBuiltins({ ...baseConfig, addons: ["lefthook", "shared"] }),
+			resolveBuiltins({
+				...baseConfig,
+				addons: ["lefthook", "shared", "vitest"],
+			}),
 		);
 		const withIds = withAddons.map((entry) => entry.id);
 
-		expect(withIds).toEqual(expect.arrayContaining(["lefthook", "shared"]));
+		expect(withIds).toEqual(
+			expect.arrayContaining(["lefthook", "shared", "vitest"]),
+		);
 		expect(withIds).not.toContain("vscode");
 		expect(withIds).not.toContain("github-ci");
 	});

@@ -1,5 +1,5 @@
+import { PACKAGES } from "@ryuujs/temper/thresholds";
 import { defineConfig } from "vitest/config";
-import { PACKAGES } from "../../tooling/temper/thresholds";
 
 const { perFileOverrides, ...thresholds } = PACKAGES["@ryuujs/forge"].temper;
 

@@ -9,7 +9,7 @@ import {
 	render,
 	tier,
 	toRanges,
-} from "../tempering.ts";
+} from "../src/tempering.ts";
 
 const TEMPER = { branches: 40, lines: 50 };
 

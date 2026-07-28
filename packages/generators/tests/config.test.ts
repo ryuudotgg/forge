@@ -34,6 +34,7 @@ describe("generator config choices", () => {
 		expect(mobileFrameworks.label("react-native")).toBe("React Native");
 		expect(nativeStyleFrameworks.label("nativewind")).toBe("NativeWind");
 		expect(optionalAddons.label("github-ci")).toBe("GitHub CI");
+		expect(optionalAddons.label("vitest")).toBe("Vitest");
 		expect(optionalAddons.label("vscode")).toBe("VS Code");
 	});
 
@@ -54,6 +55,7 @@ describe("generator config choices", () => {
 		expect(mobileFrameworks.normalize("React Native")).toBe("react-native");
 		expect(nativeStyleFrameworks.normalize("NativeWind")).toBe("nativewind");
 		expect(optionalAddons.normalize("GitHub CI")).toBe("github-ci");
+		expect(optionalAddons.normalize("Vitest")).toBe("vitest");
 		expect(optionalAddons.normalize("VS Code")).toBe("vscode");
 	});
 

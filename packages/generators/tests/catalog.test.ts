@@ -24,6 +24,7 @@ const visibleAddonIds = [
 	"trpc",
 	"typescript",
 	"ui",
+	"vitest",
 	"vscode",
 	"yarn",
 ];
@@ -65,6 +66,16 @@ describe("catalog", () => {
 		});
 
 		expect(await getCatalogEntry("does-not-exist")).toBeUndefined();
+	});
+
+	it("describes the Vitest addon", async () => {
+		expect(await getCatalogEntry("vitest")).toMatchObject({
+			experimental: false,
+			hidden: false,
+			id: "vitest",
+			kind: "addon",
+			name: "Vitest",
+		});
 	});
 
 	it("keeps catalog ids unique across kinds", async () => {

@@ -51,6 +51,7 @@
 		"picocolors": "catalog:node"
 	},
 	"devDependencies": {
+		"@ryuujs/temper": "workspace:*",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"@vitest/coverage-v8": "catalog:dev",

@@ -15,10 +15,12 @@ import {
 	typescript,
 } from "../src";
 import { readTemplate } from "../src/template";
+import { versions } from "../src/versions";
 
 const commitlint = loadAddonDefinition("commitlint").addon;
 const githubCi = loadAddonDefinition("github-ci").addon;
 const lefthook = loadAddonDefinition("lefthook").addon;
+const vitest = loadAddonDefinition("vitest").addon;
 const vscode = loadAddonDefinition("vscode").addon;
 
 const placeholderPattern = /__[A-Z_]+__/;
@@ -461,6 +463,91 @@ pre-commit:
 		expect(projectDependencySurface(contributions).dependencies).toEqual([
 			expect.objectContaining({ name: "lefthook", type: "devDependencies" }),
 		]);
+	});
+});
+
+describe("vitest addon", () => {
+	it("emits per-package test wiring and a starter test when selected", () => {
+		const contributions = contributionsOf(vitest, {
+			addons: ["vitest"],
+			platforms: ["web"],
+			web: "nextjs",
+		});
+
+		const config = leafFile(contributions, "vitest.config.ts");
+		expect(config.target).toEqual({
+			_tag: "EnsuredModuleTarget",
+			moduleKey: "web",
+		});
+		expect(config.content).toBe(
+			readTemplate("tooling/vitest/vitest.config.ts"),
+		);
+
+		const starter = leafFile(contributions, "src/forge.test.ts");
+		expect(starter.target).toEqual(config.target);
+		expect(starter.content).toBe(
+			readTemplate("tooling/vitest/src/forge.test.ts"),
+		);
+
+		const packageScripts = ofTag(
+			contributions,
+			"ManagedScriptsSurfaceContribution",
+		).find(
+			(contribution) =>
+				contribution.target._tag === "EnsuredModuleTarget" &&
+				contribution.target.moduleKey === "web",
+		);
+		expect(packageScripts?.scripts).toEqual({ test: "vitest run" });
+
+		const rootScripts = ofTag(
+			contributions,
+			"ManagedScriptsSurfaceContribution",
+		).find((contribution) => contribution.target._tag === "ProjectTarget");
+		expect(rootScripts?.scripts).toEqual({ test: "turbo run test" });
+
+		expect(moduleDependencySurface(contributions, "web").dependencies).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					name: versions.vitest.name,
+					type: "devDependencies",
+					version: versions.vitest.version,
+				}),
+			]),
+		);
+
+		expect(jsonSurface(contributions, "workspaceConfig").value).toEqual({
+			tasks: { test: { dependsOn: ["^test"] } },
+		});
+	});
+
+	it("does not contribute when selected without a web app", () => {
+		const config: ForgeConfig = {
+			addons: ["vitest"],
+			backend: "nextjs",
+			platforms: [],
+		};
+
+		expect(vitest.when(config)).toBe(false);
+		expect(() => contributionsOf(vitest, config)).not.toThrow();
+		expect(contributionsOf(vitest, config)).toEqual([]);
+	});
+
+	it("does not activate or resolve when it is not selected", async () => {
+		expect(vitest.when({})).toBe(false);
+
+		const resolved = await Effect.runPromise(
+			resolveBuiltins({
+				name: "Acme",
+				packageManager: "pnpm",
+				path: ".",
+				platforms: ["web"],
+				runtime: "Node.js",
+				slug: "acme",
+				web: "nextjs",
+			}),
+		);
+
+		expect(resolved.map((addon) => addon.id)).not.toContain("vitest");
 	});
 });
 
