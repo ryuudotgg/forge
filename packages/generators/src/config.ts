@@ -205,6 +205,7 @@ export const optionalAddons = defineChoices({
 	"github-ci": "GitHub CI",
 	lefthook: "Lefthook",
 	shared: "Shared Package",
+	vitest: "Vitest",
 	vscode: "VS Code",
 } as const);
 

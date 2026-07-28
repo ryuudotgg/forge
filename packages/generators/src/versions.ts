@@ -39,6 +39,7 @@ export const versions = {
 	sherif: { name: "sherif", version: "^1.11.1", group: "Tooling" },
 	turbo: { name: "turbo", version: "^2.9.18", group: "Tooling" },
 	typescript: { name: "typescript", version: "^7.0.2", group: "Tooling" },
+	vitest: { name: "vitest", version: "^4.1.10", group: "Tooling" },
 
 	next: { name: "next", version: "16.2.12", group: "Framework" },
 	react: { name: "react", version: "^19.2.5", group: "Framework" },

@@ -13,6 +13,7 @@ export const deps = {
 	sherif: dep("sherif"),
 	turbo: dep("turbo"),
 	typescript: dep("typescript"),
+	vitest: dep("vitest"),
 
 	next: dep("next"),
 	react: dep("react"),

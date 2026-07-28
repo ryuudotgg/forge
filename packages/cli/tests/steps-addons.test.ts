@@ -98,6 +98,11 @@ describe("addons step", () => {
 					value: "shared",
 				},
 				{
+					hint: "Test the generated web app with Vitest.",
+					label: "Vitest",
+					value: "vitest",
+				},
+				{
 					hint: "Configure VS Code workspace.",
 					label: "VS Code",
 					value: "vscode",
@@ -125,6 +130,7 @@ describe("addons step", () => {
 					expect.objectContaining({ value: "commitlint" }),
 					expect.objectContaining({ value: "github-ci" }),
 					expect.objectContaining({ value: "shared" }),
+					expect.objectContaining({ value: "vitest" }),
 					expect.objectContaining({ value: "vscode" }),
 				],
 			}),

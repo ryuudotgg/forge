@@ -17,6 +17,7 @@ import githubCi, { githubCiMetadata } from "../tooling/github-ci";
 import gitignore, { gitignoreMetadata } from "../tooling/gitignore";
 import lefthook, { lefthookMetadata } from "../tooling/lefthook";
 import typescript, { typescriptMetadata } from "../tooling/typescript";
+import vitest, { vitestMetadata } from "../tooling/vitest";
 import vscode, { vscodeMetadata } from "../tooling/vscode";
 import ui, { uiMetadata } from "../ui";
 import bun, { bunMetadata } from "../workspace/bun";
@@ -43,6 +44,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		gitignore,
 		commitlint,
 		lefthook,
+		vitest,
 		vscode,
 		githubCi,
 		shared,
@@ -67,6 +69,7 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(gitignore, gitignoreMetadata),
 	addonCatalogEntry(commitlint, commitlintMetadata),
 	addonCatalogEntry(lefthook, lefthookMetadata),
+	addonCatalogEntry(vitest, vitestMetadata),
 	addonCatalogEntry(vscode, vscodeMetadata),
 	addonCatalogEntry(githubCi, githubCiMetadata),
 	addonCatalogEntry(shared, sharedMetadata),
