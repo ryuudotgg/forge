@@ -3,12 +3,15 @@ import {
 	CommandProbe,
 	CommandProbeError,
 	type Contribution,
+	defineFramework,
+	type FrameworkDefinition,
 	GeneratorError,
 	type ManagedSurfaceName,
 	runtimes,
 } from "@ryuujs/core";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
+import { nextjsFramework } from "../src/frameworks/nextjs";
 import { bun, type ForgeConfig, pnpm, root, yarn } from "../src/index";
 import { versions } from "../src/versions";
 import { trustedBuildDependencies } from "../src/workspace/trusted-builds";
@@ -51,23 +54,31 @@ const failingProbeLayer = Layer.succeed(
 	}),
 );
 
-function rootEffect(config: ForgeConfig) {
-	const result = root.contribute({ config });
+function rootEffect(
+	config: ForgeConfig,
+	frameworks: ReadonlyArray<FrameworkDefinition> = [nextjsFramework],
+) {
+	const result = root.contribute({ config, frameworks });
 	if (!Effect.isEffect(result))
 		throw new Error("Missing Effect Contribution: root");
 
 	return result;
 }
 
-function rootContributions(config: ForgeConfig) {
-	return Effect.runPromise(rootEffect(config).pipe(Effect.provide(probeLayer)));
+function rootContributions(
+	config: ForgeConfig,
+	frameworks: ReadonlyArray<FrameworkDefinition> = [nextjsFramework],
+) {
+	return Effect.runPromise(
+		rootEffect(config, frameworks).pipe(Effect.provide(probeLayer)),
+	);
 }
 
 function syncContributions(
 	addon: AddonDefinition<ForgeConfig>,
 	config: ForgeConfig,
 ): ReadonlyArray<Contribution> {
-	const result = addon.contribute({ config });
+	const result = addon.contribute({ config, frameworks: [nextjsFramework] });
 	if (Effect.isEffect(result) || result instanceof Promise)
 		throw new Error(`Unexpected Async Contribution: ${addon.id}`);
 
@@ -187,6 +198,28 @@ describe("root workspace", () => {
 		});
 		expect(bare).not.toHaveProperty("tasks.build.env");
 		expect(bare).not.toHaveProperty("tasks.build.outputs");
+	});
+
+	it("reads turbo build outputs from the selected framework", async () => {
+		const framework = defineFramework({
+			buildOutputs: ["dist/client/**", "dist/server/**"],
+			configFile: "start.config.ts",
+			id: "tanstack-start",
+			ignoreDirs: [".tanstack/"],
+			name: "TanStack Start",
+			slots: [],
+			tsconfigPreset: { content: {}, name: "tanstack-start" },
+		});
+		const workspace = jsonSurface(
+			await rootContributions({ web: "tanstack-start" }, [framework]),
+			"workspaceConfig",
+		);
+
+		expect(workspace).toMatchObject({
+			tasks: {
+				build: { outputs: ["dist/client/**", "dist/server/**"] },
+			},
+		});
 	});
 
 	it("pins the probed node version in .nvmrc for Node.js projects", async () => {

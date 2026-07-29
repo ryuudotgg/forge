@@ -10,13 +10,14 @@ import type {
 } from "@ryuujs/core";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src/config";
+import { nextjsFramework } from "../src/frameworks/nextjs";
 import { drizzle, prisma } from "../src/index";
 
 function contributionsFor(
 	addon: AddonDefinition<ForgeConfig>,
 	config: ForgeConfig,
 ): ReadonlyArray<Contribution> {
-	const result = addon.contribute({ config });
+	const result = addon.contribute({ config, frameworks: [nextjsFramework] });
 	if (!Array.isArray(result))
 		throw new Error(`Unexpected Contribution Result: ${addon.id}`);
 

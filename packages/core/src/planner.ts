@@ -8,6 +8,7 @@ import type {
 	TemplateDefinition,
 } from "./authoring";
 import { isAddonCompatibleWithModule } from "./authoring";
+import { CommandProbe } from "./command";
 import {
 	type Config,
 	ConfigStore,
@@ -289,8 +290,8 @@ function normalizeContributionResult<ConfigValue>(
 	result:
 		| ReadonlyArray<Contribution>
 		| Promise<ReadonlyArray<Contribution>>
-		| Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, never>,
-): Effect.Effect<ReadonlyArray<Contribution>, GeneratorError> {
+		| Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, CommandProbe>,
+): Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, CommandProbe> {
 	if (Effect.isEffect(result)) return result;
 	if (result instanceof Promise)
 		return Effect.tryPromise({
@@ -362,6 +363,7 @@ function mergeInstallRecords(installs: ReadonlyArray<InstallRecord>) {
 export class Planner extends Effect.Service<Planner>()("Planner", {
 	accessors: false,
 	effect: Effect.gen(function* () {
+		const commandProbe = yield* CommandProbe;
 		const configStore = yield* ConfigStore;
 		const renderer = yield* Renderer;
 		const state = yield* State;
@@ -502,21 +504,16 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			function* <ConfigValue extends Record<string, unknown>>(
 				config: ConfigValue,
 				definitions: ReadonlyArray<Definition<ConfigValue>>,
+				frameworks: DefinitionRegistry<ConfigValue>["frameworks"],
 			) {
 				const ordered = yield* orderDefinitions(definitions);
 
 				return yield* Effect.forEach(ordered, (definition, order) =>
 					normalizeContributionResult(
 						definition,
-						definition.contribute({ config }) as
-							| ReadonlyArray<Contribution>
-							| Promise<ReadonlyArray<Contribution>>
-							| Effect.Effect<
-									ReadonlyArray<Contribution>,
-									GeneratorError,
-									never
-							  >,
+						definition.contribute({ config, frameworks }),
 					).pipe(
+						Effect.provideService(CommandProbe, commandProbe),
 						Effect.map(
 							(contributions) =>
 								({
@@ -1042,6 +1039,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			const evaluated = yield* evaluateDefinitions(
 				intent.config as Record<string, unknown>,
 				definitions as ReadonlyArray<Definition<Record<string, unknown>>>,
+				registry.frameworks,
 			);
 
 			const { moduleIdsByKey, modules: mergedModules } = yield* collectModules(
@@ -1104,6 +1102,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				managedInputs,
 				modules.map((module) => ({ ...module.config, root: module.root })),
 				dependencyFormatFor(intent.config.packageManager),
+				registry.frameworks,
 			);
 
 			const leafFiles = yield* collectLeafFiles(

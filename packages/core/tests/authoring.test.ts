@@ -40,8 +40,12 @@ const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 const framework = defineFramework({
 	id: "nextjs",
+	configFile: "next.config.ts",
+	buildOutputs: [".next/**", "!.next/cache/**"],
+	ignoreDirs: [".next/"],
 	name: "Next.js",
 	slots: ["layout", "page"],
+	tsconfigPreset: { content: {}, name: "nextjs" },
 });
 
 const template = defineTemplate<TestConfig>({

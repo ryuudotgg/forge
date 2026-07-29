@@ -520,6 +520,7 @@ export function leafTextFile(
 
 export interface DefinitionContext<Config> {
 	readonly config: Config;
+	readonly frameworks: ReadonlyArray<FrameworkDefinition>;
 }
 
 type ContributionResult<Capability extends CapabilityId = CapabilityId> =
@@ -541,9 +542,16 @@ export interface FrameworkDefinition<
 	Slot extends AppSlotName = AppSlotName,
 > {
 	readonly _tag: "FrameworkDefinition";
+	readonly buildOutputs: ReadonlyArray<string>;
+	readonly configFile: string;
 	readonly id: Id;
+	readonly ignoreDirs: ReadonlyArray<string>;
 	readonly name: string;
 	readonly slots: ReadonlyArray<Slot>;
+	readonly tsconfigPreset: {
+		readonly content: Record<string, unknown>;
+		readonly name: string;
+	};
 }
 
 export interface TemplateDefinition<
@@ -596,9 +604,16 @@ export function defineFramework<
 	const Id extends FrameworkId,
 	const Slots extends ReadonlyArray<AppSlotName>,
 >(framework: {
+	readonly buildOutputs: ReadonlyArray<string>;
+	readonly configFile: string;
 	readonly id: Id;
+	readonly ignoreDirs: ReadonlyArray<string>;
 	readonly name: string;
 	readonly slots: Slots;
+	readonly tsconfigPreset: {
+		readonly content: Record<string, unknown>;
+		readonly name: string;
+	};
 }): FrameworkDefinition<Id, Slots[number]> {
 	return { _tag: "FrameworkDefinition", ...framework };
 }
@@ -947,6 +962,7 @@ function validateAddonAgainstSelection<Config>(
 
 function lowerTemplateDefinition<Config>(
 	template: TemplateDefinition<Config>,
+	frameworks: ReadonlyArray<FrameworkDefinition>,
 ): Generator<Config> {
 	return {
 		id: template.id,
@@ -959,7 +975,7 @@ function lowerTemplateDefinition<Config>(
 		generate: (config) =>
 			normalizeContributionResult(
 				template.id,
-				template.contribute({ config }),
+				template.contribute({ config, frameworks }),
 			).pipe(
 				Effect.flatMap((contributions) =>
 					lowerContributions(template.id, contributions),
@@ -970,6 +986,7 @@ function lowerTemplateDefinition<Config>(
 
 function lowerAddonDefinition<Config>(
 	addon: AddonDefinition<Config>,
+	frameworks: ReadonlyArray<FrameworkDefinition>,
 ): Generator<Config> {
 	return {
 		id: addon.id,
@@ -980,7 +997,10 @@ function lowerAddonDefinition<Config>(
 		dependencies: addon.dependencies.map((dependency) => dependency.id),
 		appliesTo: () => true,
 		generate: (config) =>
-			normalizeContributionResult(addon.id, addon.contribute({ config })).pipe(
+			normalizeContributionResult(
+				addon.id,
+				addon.contribute({ config, frameworks }),
+			).pipe(
 				Effect.flatMap((contributions) =>
 					lowerContributions(addon.id, contributions),
 				),
@@ -1020,8 +1040,11 @@ export function resolveDefinitions<Config>(
 
 		const resolved: Generator<Config>[] = [];
 
-		if (template) resolved.push(lowerTemplateDefinition(template));
-		for (const addon of addons) resolved.push(lowerAddonDefinition(addon));
+		if (template)
+			resolved.push(lowerTemplateDefinition(template, registry.frameworks));
+
+		for (const addon of addons)
+			resolved.push(lowerAddonDefinition(addon, registry.frameworks));
 
 		return resolved;
 	});

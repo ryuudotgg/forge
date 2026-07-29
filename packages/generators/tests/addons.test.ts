@@ -1,5 +1,13 @@
-import type { AddonDefinition, Contribution } from "@ryuujs/core";
-import { moduleCapabilities, templateModuleTarget } from "@ryuujs/core";
+import type {
+	AddonDefinition,
+	Contribution,
+	FrameworkDefinition,
+} from "@ryuujs/core";
+import {
+	defineFramework,
+	moduleCapabilities,
+	templateModuleTarget,
+} from "@ryuujs/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
@@ -14,6 +22,7 @@ import {
 	trpc,
 	typescript,
 } from "../src";
+import { nextjsFramework } from "../src/frameworks/nextjs";
 import { readTemplate } from "../src/template";
 import { versions } from "../src/versions";
 
@@ -28,8 +37,9 @@ const placeholderPattern = /__[A-Z_]+__/;
 function contributionsOf(
 	addon: AddonDefinition<ForgeConfig>,
 	config: ForgeConfig,
+	frameworks: ReadonlyArray<FrameworkDefinition> = [nextjsFramework],
 ): ReadonlyArray<Contribution> {
-	const result = addon.contribute({ config });
+	const result = addon.contribute({ config, frameworks });
 	if (Effect.isEffect(result) || result instanceof Promise)
 		throw new Error(`Unexpected Contribution Shape: ${addon.id}`);
 
@@ -301,7 +311,7 @@ describe("trpc addon", () => {
 describe("typescript addon", () => {
 	it("emits the root tsconfig and the tooling package", () => {
 		const contributions = contributionsOf(typescript, { slug: "acme" });
-		expect(contributions).toHaveLength(5);
+		expect(contributions).toHaveLength(4);
 
 		const rootTsconfig = jsonSurface(contributions, "rootTsconfig");
 		expect(rootTsconfig.target).toEqual({ _tag: "ProjectTarget" });
@@ -332,8 +342,11 @@ describe("typescript addon", () => {
 		});
 	});
 
-	it("extends base.json from the nextjs and react-library configs", () => {
-		const contributions = contributionsOf(typescript, { slug: "acme" });
+	it("extends base.json from the selected framework and react-library configs", () => {
+		const contributions = contributionsOf(typescript, {
+			slug: "acme",
+			web: "nextjs",
+		});
 
 		const nextjs = leafFile(contributions, "tooling/tsconfig/nextjs.json");
 		expect(parseJson(nextjs.content)).toMatchObject({
@@ -349,6 +362,41 @@ describe("typescript addon", () => {
 			extends: "./base.json",
 			compilerOptions: { jsx: "react-jsx" },
 		});
+	});
+
+	it("emits only the selected framework's tsconfig preset", () => {
+		const framework = defineFramework({
+			buildOutputs: ["dist/**"],
+			configFile: "start.config.ts",
+			id: "tanstack-start",
+			ignoreDirs: [".tanstack/"],
+			name: "TanStack Start",
+			slots: [],
+			tsconfigPreset: {
+				name: "tanstack-start",
+				content: {
+					display: "TanStack Start",
+					extends: "./base.json",
+					compilerOptions: { jsx: "react-jsx" },
+				},
+			},
+		});
+		const contributions = contributionsOf(
+			typescript,
+			{ slug: "acme", web: "tanstack-start" },
+			[framework],
+		);
+		const paths = ofTag(contributions, "LeafTextFileContribution").map(
+			(contribution) => contribution.path,
+		);
+
+		expect(paths).toContain("tooling/tsconfig/tanstack-start.json");
+		expect(paths).not.toContain("tooling/tsconfig/nextjs.json");
+		expect(
+			parseJson(
+				leafFile(contributions, "tooling/tsconfig/tanstack-start.json").content,
+			),
+		).toEqual(framework.tsconfigPreset.content);
 	});
 });
 
@@ -401,6 +449,33 @@ describe("gitignore addon", () => {
 			"Build",
 		);
 		expect(expo[0]?.lines).toEqual([...baseLines, ".expo/"]);
+	});
+
+	it("reads ignored directories from the selected framework", () => {
+		const framework = defineFramework({
+			buildOutputs: ["dist/**"],
+			configFile: "start.config.ts",
+			id: "tanstack-start",
+			ignoreDirs: [".tanstack/", ".output/"],
+			name: "TanStack Start",
+			slots: [],
+			tsconfigPreset: { content: {}, name: "tanstack-start" },
+		});
+		const build = linesSurfaces(
+			contributionsOf(gitignore, { web: "tanstack-start" }, [framework]),
+			"gitignore",
+			"Build",
+		);
+
+		expect(build[0]?.lines).toEqual([
+			"dist/",
+			"build/",
+			"out/",
+			".turbo/",
+			".cache/",
+			".tanstack/",
+			".output/",
+		]);
 	});
 
 	it("emits the static sections exactly once", () => {

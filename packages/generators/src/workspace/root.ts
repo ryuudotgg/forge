@@ -1,6 +1,7 @@
 import {
 	CommandProbe,
 	defineAddon,
+	type FrameworkDefinition,
 	GeneratorError,
 	leafTextFile,
 	packageManagerCommand,
@@ -25,7 +26,7 @@ const root = defineAddon<ForgeConfig, "root">({
 	exclusive: true,
 	targetMode: "single",
 	when: () => true,
-	contribute: ({ config }) =>
+	contribute: ({ config, frameworks }) =>
 		Effect.gen(function* () {
 			const runtime = config.runtime ?? "Node.js";
 			const runtimeCommandName = runtimeCommand(runtime);
@@ -71,6 +72,7 @@ const root = defineAddon<ForgeConfig, "root">({
 				runtimeVersion,
 				packageManagerVersion,
 				nodeVersion,
+				frameworks,
 			);
 		}),
 });
@@ -92,6 +94,7 @@ function buildContributions(
 	runtimeVersion: string,
 	packageManagerVersion: string,
 	nodeVersion: string,
+	frameworks: ReadonlyArray<FrameworkDefinition>,
 ) {
 	const slug = config.slug ?? "my-app";
 
@@ -138,9 +141,14 @@ function buildContributions(
 		dependsOn: ["^build"],
 		inputs: ["$TURBO_DEFAULT$", ".env*"],
 	};
+
 	if (dbEnv.length > 0) buildTask.env = dbEnv;
-	if (config.web === "nextjs")
-		buildTask.outputs = [".next/**", "!.next/cache/**"];
+
+	const framework = frameworks.find((entry) => entry.id === config.web);
+	if (config.web !== undefined && !framework)
+		throw new Error(`Framework Definition Missing: ${config.web}`);
+
+	if (framework) buildTask.outputs = framework.buildOutputs;
 
 	return [
 		surfaceJson(projectTarget(), "rootPackageJson", packageJson),
