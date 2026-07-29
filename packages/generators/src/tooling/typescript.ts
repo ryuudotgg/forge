@@ -16,8 +16,12 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 	exclusive: false,
 	targetMode: "single",
 	when: () => true,
-	contribute: ({ config }) => {
+	contribute: ({ config, frameworks }) => {
 		const slug = config.slug ?? "my-app";
+
+		const framework = frameworks.find((entry) => entry.id === config.web);
+		if (config.web !== undefined && !framework)
+			throw new Error(`Framework Definition Missing: ${config.web}`);
 
 		const baseTsconfig = {
 			$schema: "https://json.schemastore.org/tsconfig",
@@ -37,22 +41,6 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 				skipLibCheck: true,
 				strict: true,
 				target: "ESNext",
-			},
-		};
-
-		const nextjsTsconfig = {
-			$schema: "https://json.schemastore.org/tsconfig",
-			display: "Next.js",
-			extends: "./base.json",
-			compilerOptions: {
-				declaration: false,
-				declarationMap: false,
-				plugins: [{ name: "next" }],
-				module: "ESNext",
-				moduleResolution: "Bundler",
-				allowJs: true,
-				jsx: "preserve",
-				noEmit: true,
 			},
 		};
 
@@ -82,11 +70,15 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 				"tooling/tsconfig/base.json",
 				formatJson(baseTsconfig, { compact: true }),
 			),
-			leafTextFile(
-				projectTarget(),
-				"tooling/tsconfig/nextjs.json",
-				formatJson(nextjsTsconfig, { compact: true }),
-			),
+			...(framework
+				? [
+						leafTextFile(
+							projectTarget(),
+							`tooling/tsconfig/${framework.tsconfigPreset.name}.json`,
+							formatJson(framework.tsconfigPreset.content, { compact: true }),
+						),
+					]
+				: []),
 			leafTextFile(
 				projectTarget(),
 				"tooling/tsconfig/react-library.json",

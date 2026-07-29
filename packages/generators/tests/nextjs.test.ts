@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
 import { loadDefinitionRegistry } from "../src";
+import { nextjsFramework } from "../src/frameworks/nextjs";
 
 const template = (() => {
 	const found = loadDefinitionRegistry().registry.templates.find(
@@ -13,9 +14,10 @@ const template = (() => {
 })();
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
-	const result = template.contribute({ config });
+	const result = template.contribute({ config, frameworks: [nextjsFramework] });
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: nextjs/base");
+
 	return result;
 }
 

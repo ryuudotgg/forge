@@ -10,9 +10,14 @@ const gitignore = defineAddon<ForgeConfig, "gitignore">({
 	exclusive: false,
 	targetMode: "single",
 	when: () => true,
-	contribute: ({ config }) => {
+	contribute: ({ config, frameworks }) => {
 		const buildLines = ["dist/", "build/", "out/", ".turbo/", ".cache/"];
-		if (config.web === "nextjs") buildLines.push(".next/");
+
+		const framework = frameworks.find((entry) => entry.id === config.web);
+		if (config.web !== undefined && !framework)
+			throw new Error(`Framework Definition Missing: ${config.web}`);
+
+		if (framework) buildLines.push(...framework.ignoreDirs);
 		if (config.mobile) buildLines.push(".expo/");
 
 		return [

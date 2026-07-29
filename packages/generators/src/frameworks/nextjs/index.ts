@@ -22,8 +22,29 @@ import { interpolate, readTemplate } from "../../template";
 
 export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	id: "nextjs",
+	configFile: "next.config.ts",
+	buildOutputs: [".next/**", "!.next/cache/**"],
+	ignoreDirs: [".next/"],
 	name: "Next.js",
 	slots: ["layout", "page", "api", "trpc", "db", "auth", "authClient"],
+	tsconfigPreset: {
+		name: "nextjs",
+		content: {
+			$schema: "https://json.schemastore.org/tsconfig",
+			display: "Next.js",
+			extends: "./base.json",
+			compilerOptions: {
+				declaration: false,
+				declarationMap: false,
+				plugins: [{ name: "next" }],
+				module: "ESNext",
+				moduleResolution: "Bundler",
+				allowJs: true,
+				jsx: "preserve",
+				noEmit: true,
+			},
+		},
+	},
 });
 
 export const nextjsFrameworkMetadata = {

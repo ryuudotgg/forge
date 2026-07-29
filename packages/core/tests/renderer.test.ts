@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
 	type DependencyFormat,
 	type DiscoveredModule,
+	defineFramework,
+	type FrameworkDefinition,
 	projectTarget,
 	Renderer,
 	type SurfaceRenderContribution,
@@ -44,9 +46,10 @@ function render(
 	inputs: ReadonlyArray<SurfaceRenderContribution>,
 	modules: ReadonlyArray<DiscoveredModule>,
 	format?: DependencyFormat,
+	frameworks: ReadonlyArray<FrameworkDefinition> = [],
 ) {
 	return Effect.runPromise(
-		Renderer.render(inputs, modules, format).pipe(
+		Renderer.render(inputs, modules, format, frameworks).pipe(
 			Effect.provide(Renderer.Default),
 		),
 	);
@@ -55,9 +58,12 @@ function render(
 async function renderFailure(
 	inputs: ReadonlyArray<SurfaceRenderContribution>,
 	modules: ReadonlyArray<DiscoveredModule>,
+	frameworks: ReadonlyArray<FrameworkDefinition> = [],
 ) {
 	const exit = await Effect.runPromiseExit(
-		Renderer.render(inputs, modules).pipe(Effect.provide(Renderer.Default)),
+		Renderer.render(inputs, modules, undefined, frameworks).pipe(
+			Effect.provide(Renderer.Default),
+		),
 	);
 
 	if (!Exit.isFailure(exit)) throw new Error("Expected Render Failure");
@@ -322,7 +328,16 @@ describe("renderer", () => {
 		);
 	});
 
-	it("resolves the framework config surface for nextjs apps", async () => {
+	it("resolves the framework config surface from the framework definition", async () => {
+		const framework = defineFramework({
+			buildOutputs: ["dist/**"],
+			configFile: "forge.config.ts",
+			id: "forge-web",
+			ignoreDirs: [".forge-web/"],
+			name: "Forge Web",
+			slots: [],
+			tsconfigPreset: { content: {}, name: "forge-web" },
+		});
 		const inputs = [
 			{
 				bucket: { kind: "module", moduleId: "abcde" },
@@ -331,15 +346,17 @@ describe("renderer", () => {
 					"frameworkConfig",
 					"export default {};\n",
 				),
-				definitionId: "nextjs/config",
+				definitionId: "forge-web/config",
 				order: 0,
 			},
 		] satisfies ReadonlyArray<SurfaceRenderContribution>;
 
-		const rendered = await render(inputs, [appModule("nextjs")]);
+		const rendered = await render(inputs, [appModule("forge-web")], undefined, [
+			framework,
+		]);
 
 		expect(rendered).toHaveLength(1);
-		expect(rendered[0]?.path).toBe("apps/web/next.config.ts");
+		expect(rendered[0]?.path).toBe("apps/web/forge.config.ts");
 	});
 
 	it("fails the framework config surface for unsupported frameworks", async () => {

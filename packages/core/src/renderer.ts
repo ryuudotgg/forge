@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type {
 	AppSurfaceName,
+	FrameworkDefinition,
 	ManagedDependenciesSurfaceContribution,
 	ManagedJsonSurfaceContribution,
 	ManagedLinesSurfaceContribution,
@@ -170,6 +171,7 @@ function resolveProjectSurfacePath(surface: ProjectSurfaceName) {
 function resolveAppSurfacePath(
 	module: DiscoveredModule & AppConfig,
 	surface: AppSurfaceName,
+	frameworksById: ReadonlyMap<string, FrameworkDefinition>,
 ) {
 	switch (surface) {
 		case "packageJson":
@@ -185,8 +187,8 @@ function resolveAppSurfacePath(
 			return filePath(`${module.root}/.env.example`);
 
 		case "frameworkConfig": {
-			if (module.framework === "nextjs")
-				return filePath(`${module.root}/next.config.ts`);
+			const framework = frameworksById.get(module.framework);
+			if (framework) return filePath(`${module.root}/${framework.configFile}`);
 
 			throw new Error("Unsupported Framework Config Surface");
 		}
@@ -224,6 +226,7 @@ function resolveManagedPath(
 	surface: ManagedSurfaceName,
 	bucket: RenderBucket,
 	modulesById: ReadonlyMap<ModuleId, DiscoveredModule>,
+	frameworksById: ReadonlyMap<string, FrameworkDefinition>,
 ) {
 	if (bucket.kind === "project") {
 		if (!isProjectSurface(surface)) throw new Error("Project Surface Mismatch");
@@ -235,7 +238,7 @@ function resolveManagedPath(
 
 	if (module.type === "app") {
 		if (!isAppSurface(surface)) throw new Error("App Surface Mismatch");
-		return resolveAppSurfacePath(module, surface);
+		return resolveAppSurfacePath(module, surface, frameworksById);
 	}
 
 	if (!isPackageSurface(surface)) throw new Error("Package Surface Mismatch");
@@ -336,6 +339,7 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 			inputs: ReadonlyArray<SurfaceRenderContribution>,
 			modules: ReadonlyArray<DiscoveredModule>,
 			dependencyFormat?: DependencyFormat,
+			frameworks: ReadonlyArray<FrameworkDefinition> = [],
 		) =>
 			Effect.try({
 				try: () => {
@@ -343,6 +347,11 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 					const modulesById = new Map(
 						modules.map((module) => [module.id, module]),
 					);
+
+					const frameworksById = new Map(
+						frameworks.map((framework) => [framework.id, framework]),
+					);
+
 					const groups = new Map<string, SurfaceRenderContribution[]>();
 
 					for (const input of inputs) {
@@ -362,6 +371,7 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 							first.contribution.surface,
 							first.bucket,
 							modulesById,
+							frameworksById,
 						);
 
 						const definitionIds = [
