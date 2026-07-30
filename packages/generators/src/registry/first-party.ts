@@ -1,4 +1,4 @@
-import { defineRegistry, resolveDefinitions } from "@ryuujs/core";
+import { defineRegistry } from "@ryuujs/core";
 import trpc, { trpcMetadata } from "../api/trpc";
 import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
 import type { ForgeConfig } from "../config";
@@ -90,7 +90,3 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(prisma, prismaMetadata),
 	addonCatalogEntry(betterAuth, betterAuthMetadata),
 ] as const satisfies ReadonlyArray<CatalogEntry>;
-
-export function resolveFirstPartyDefinitions(config: ForgeConfig) {
-	return resolveDefinitions(config, firstPartyRegistry);
-}

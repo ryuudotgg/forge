@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import backendStep from "../src/steps/backend/framework";
 import rpcStep from "../src/steps/backend/rpc";
-import rpcPublicStep from "../src/steps/backend/rpc-public";
 import { type PartialConfig, SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
 	cancel: vi.fn(),
-	confirm: vi.fn(),
 	isCancel: vi.fn(),
 	logWarn: vi.fn(),
 	select: vi.fn(),
@@ -14,7 +12,6 @@ const promptMocks = vi.hoisted(() => ({
 
 vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
-	confirm: promptMocks.confirm,
 	isCancel: promptMocks.isCancel,
 	log: { warn: promptMocks.logWarn },
 	select: promptMocks.select,
@@ -28,7 +25,6 @@ function rawConfig(values: { [key: string]: unknown }): PartialConfig {
 describe("backend step", () => {
 	beforeEach(() => {
 		promptMocks.cancel.mockReset();
-		promptMocks.confirm.mockReset();
 		promptMocks.isCancel.mockReset();
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
@@ -127,7 +123,6 @@ describe("backend step", () => {
 describe("rpc step", () => {
 	beforeEach(() => {
 		promptMocks.cancel.mockReset();
-		promptMocks.confirm.mockReset();
 		promptMocks.isCancel.mockReset();
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
@@ -186,71 +181,5 @@ describe("rpc step", () => {
 		promptMocks.select.mockResolvedValue("none");
 
 		await expect(rpcStep.execute({}, true)).resolves.toBe(SKIP);
-	});
-});
-
-describe("rpcPublic step", () => {
-	beforeEach(() => {
-		promptMocks.cancel.mockReset();
-		promptMocks.confirm.mockReset();
-		promptMocks.isCancel.mockReset();
-		promptMocks.logWarn.mockReset();
-		promptMocks.select.mockReset();
-		promptMocks.isCancel.mockReturnValue(false);
-	});
-
-	it("only runs when an rpc provider is selected", () => {
-		expect(rpcPublicStep.shouldRun({})).toBe(false);
-		expect(rpcPublicStep.shouldRun({ rpc: "trpc" })).toBe(true);
-	});
-
-	it("always skips in non-interactive mode", async () => {
-		await expect(rpcPublicStep.execute({ rpc: "trpc" }, false)).resolves.toBe(
-			SKIP,
-		);
-
-		expect(promptMocks.confirm).not.toHaveBeenCalled();
-	});
-
-	it("returns a declined confirm as false instead of skipping", async () => {
-		promptMocks.confirm.mockResolvedValue(false);
-
-		await expect(rpcPublicStep.execute({ rpc: "trpc" }, true)).resolves.toBe(
-			false,
-		);
-
-		expect(promptMocks.confirm).toHaveBeenCalledWith({
-			message: "Do you want your API to be publicly available?",
-			active: "Yes (OpenAPI Specification)",
-			inactive: "No",
-			initialValue: false,
-		});
-	});
-
-	it("returns an accepted confirm as true", async () => {
-		promptMocks.confirm.mockResolvedValue(true);
-
-		await expect(rpcPublicStep.execute({ rpc: "trpc" }, true)).resolves.toBe(
-			true,
-		);
-	});
-
-	it("exits when the confirm is cancelled", async () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation(((
-			code?: string | number | null,
-		) => {
-			throw new Error(`exit:${code ?? 0}`);
-		}) as never);
-
-		try {
-			promptMocks.confirm.mockResolvedValue(Symbol.for("clack:cancel"));
-			promptMocks.isCancel.mockReturnValue(true);
-
-			await expect(
-				rpcPublicStep.execute({ rpc: "trpc" }, true),
-			).rejects.toThrow("exit:0");
-		} finally {
-			exit.mockRestore();
-		}
 	});
 });

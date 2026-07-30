@@ -1,45 +1,11 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Contribution } from "@ryuujs/core";
-import { filePath, textFile } from "@ryuujs/core";
-import { Array as Arr, pipe } from "effect";
 
 const __filename = fileURLToPath(import.meta.url);
 
 const PKG_ROOT = join(dirname(__filename), "..");
 const TEMPLATE_DIR = join(PKG_ROOT, "templates");
-
-function collectFiles(dir: string): ReadonlyArray<string> {
-	const entries = readdirSync(dir);
-	const files: string[] = [];
-
-	for (const entry of entries) {
-		const full = join(dir, entry);
-		if (statSync(full).isDirectory()) files.push(...collectFiles(full));
-		else files.push(full);
-	}
-
-	return files;
-}
-
-export function templateFiles(
-	templatePath: string,
-	outputPrefix: string,
-): ReadonlyArray<Contribution> {
-	const templateDir = join(TEMPLATE_DIR, templatePath);
-	const files = collectFiles(templateDir);
-
-	return pipe(
-		files,
-		Arr.map((file) =>
-			textFile(
-				filePath(`${outputPrefix}/${relative(templateDir, file)}`),
-				readFileSync(file, "utf-8"),
-			),
-		),
-	);
-}
 
 export function readTemplate(templatePath: string): string {
 	return readFileSync(join(TEMPLATE_DIR, templatePath), "utf-8");

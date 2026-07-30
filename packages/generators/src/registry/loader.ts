@@ -1,9 +1,4 @@
-import {
-	type AddonDefinition,
-	type DependencyRef,
-	resolveDefinitions,
-	type TemplateRef,
-} from "@ryuujs/core";
+import type { AddonDefinition, DependencyRef, TemplateRef } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import { firstPartyCatalog, firstPartyRegistry } from "./first-party";
 import type {
@@ -128,8 +123,4 @@ export function findRemovalBlockers(
 	];
 
 	return { dependents, frameworks };
-}
-
-export function resolveBuiltins(config: ForgeConfig) {
-	return resolveDefinitions(config, firstPartyRegistry);
 }

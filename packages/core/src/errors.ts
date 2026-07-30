@@ -14,48 +14,6 @@ export class CommandProbeError extends Schema.TaggedError<CommandProbeError>()(
 	},
 ) {}
 
-export class ConflictError extends Schema.TaggedError<ConflictError>()(
-	"ConflictError",
-	{
-		path: Schema.String,
-		generators: Schema.Array(Schema.String),
-		message: Schema.String,
-	},
-) {}
-
-export class CyclicDependencyError extends Schema.TaggedError<CyclicDependencyError>()(
-	"CyclicDependencyError",
-	{ cycle: Schema.Array(Schema.String), message: Schema.String },
-) {}
-
-export class AggregateConflictError extends Schema.TaggedError<AggregateConflictError>()(
-	"AggregateConflictError",
-	{
-		conflicts: Schema.Array(
-			Schema.Struct({
-				path: Schema.String,
-				generators: Schema.Array(Schema.String),
-				message: Schema.String,
-			}),
-		),
-		message: Schema.String,
-	},
-) {}
-
-export class ExclusiveCategoryError extends Schema.TaggedError<ExclusiveCategoryError>()(
-	"ExclusiveCategoryError",
-	{
-		category: Schema.String,
-		generators: Schema.Array(Schema.String),
-		message: Schema.String,
-	},
-) {}
-
-export class ParseError extends Schema.TaggedError<ParseError>()("ParseError", {
-	filePath: Schema.String,
-	message: Schema.String,
-}) {}
-
 export class ModuleConfigError extends Schema.TaggedError<ModuleConfigError>()(
 	"ModuleConfigError",
 	{ filePath: Schema.String, message: Schema.String },
@@ -83,11 +41,6 @@ export class StateError extends Schema.TaggedError<StateError>()("StateError", {
 
 export class DiscoveryError extends Schema.TaggedError<DiscoveryError>()(
 	"DiscoveryError",
-	{ path: Schema.String, message: Schema.String },
-) {}
-
-export class PipelineError extends Schema.TaggedError<PipelineError>()(
-	"PipelineError",
 	{ path: Schema.String, message: Schema.String },
 ) {}
 
