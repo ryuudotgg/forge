@@ -12,6 +12,7 @@ import {
 	defineRegistry,
 	defineTemplate,
 	dependencies,
+	ensuredModuleTarget,
 	envEntries,
 	filePath,
 	GeneratorError,
@@ -24,8 +25,11 @@ import {
 	type PackageConfig,
 	projectTarget,
 	resolveDefinitions,
+	resolveSlotPath,
+	SlotPathError,
 	scripts,
 	selectedModuleTarget,
+	slotPath,
 	surfaceLines,
 	surfaceText,
 	textFile,
@@ -136,6 +140,27 @@ const packageModule: PackageConfig = {
 };
 
 describe("authoring", () => {
+	it("resolves a filled app slot path", async () => {
+		const web = ensuredModuleTarget("web");
+		const resolved = await Effect.runPromise(
+			resolveSlotPath(appModule, slotPath(web, "layout")),
+		);
+
+		expect(resolved).toBe("app/layout.tsx");
+	});
+
+	it("fails with slot and module details when an app slot is unfilled", async () => {
+		const web = ensuredModuleTarget("web");
+		const error = await Effect.runPromise(
+			Effect.flip(resolveSlotPath(appModule, slotPath(web, "trpc"))),
+		);
+
+		expect(error).toBeInstanceOf(SlotPathError);
+		expect(error.moduleKey).toBe("web");
+		expect(error.slot).toBe("trpc");
+		expect(error.message).toBe("Module Slot Missing: trpc in web");
+	});
+
 	it("resolves templates and addons through the public definitions", async () => {
 		const addon = defineAddon<TestConfig>({
 			id: "tailwind",
@@ -246,7 +271,9 @@ describe("authoring", () => {
 
 		expect(error).toBeInstanceOf(GeneratorError);
 		expect(error.generatorId).toBe("tailwind");
-		expect(error.message).toBe("Template Required");
+		expect(error.message).toBe(
+			"Tailwind CSS requires a web framework template.",
+		);
 	});
 
 	it("fails when the addon requires a different framework", async () => {
@@ -256,7 +283,7 @@ describe("authoring", () => {
 
 		expect(error).toBeInstanceOf(GeneratorError);
 		expect(error.generatorId).toBe("tailwind");
-		expect(error.message).toBe("Framework Compatibility Failed");
+		expect(error.message).toBe("Tailwind CSS does not support Next.js.");
 	});
 
 	it("fails when the addon requires a different template version", async () => {
@@ -268,7 +295,9 @@ describe("authoring", () => {
 
 		expect(error).toBeInstanceOf(GeneratorError);
 		expect(error.generatorId).toBe("tailwind");
-		expect(error.message).toBe("Template Compatibility Failed");
+		expect(error.message).toBe(
+			"Tailwind CSS does not support the selected Next.js template.",
+		);
 	});
 
 	it("fails when the framework lacks a required slot", async () => {
@@ -278,7 +307,9 @@ describe("authoring", () => {
 
 		expect(error).toBeInstanceOf(GeneratorError);
 		expect(error.generatorId).toBe("tailwind");
-		expect(error.message).toBe("Required Slots Missing");
+		expect(error.message).toBe(
+			"Tailwind CSS requires the db slot, but Next.js does not provide it.",
+		);
 	});
 
 	it("fails when multiple templates match the configuration", async () => {

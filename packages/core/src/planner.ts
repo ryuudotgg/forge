@@ -4,10 +4,15 @@ import type {
 	Contribution,
 	DefinitionRegistry,
 	EnsureModuleContribution,
+	SlotPath,
 	TargetRef,
 	TemplateDefinition,
 } from "./authoring";
-import { isAddonCompatibleWithModule } from "./authoring";
+import {
+	isAddonCompatibleWithModule,
+	resolveSlotPath,
+	validateAddonAgainstSelection,
+} from "./authoring";
 import { CommandProbe } from "./command";
 import {
 	type Config,
@@ -309,6 +314,10 @@ function createFileOp(path: string, content: string): FileOperation {
 	return { _tag: "CreateFile", path: filePath(path), content };
 }
 
+function isSlotPath(path: string | SlotPath): path is SlotPath {
+	return typeof path !== "string";
+}
+
 function isProjectTarget(target: InstallTarget) {
 	return target.kind === "project";
 }
@@ -320,6 +329,7 @@ function installTargetKey(target: InstallTarget) {
 function buildTargetCandidates(
 	addon: AddonDefinition<Record<string, unknown>>,
 	modules: ReadonlyArray<ManagedModuleRecord>,
+	frameworks: DefinitionRegistry<Record<string, unknown>>["frameworks"],
 ): ReadonlyArray<InstallTarget> {
 	if (!addon.compatibility) return [{ kind: "project" }];
 
@@ -328,6 +338,7 @@ function buildTargetCandidates(
 			isAddonCompatibleWithModule(
 				addon as AddonDefinition<Record<string, unknown>>,
 				module.config,
+				frameworks,
 			),
 		)
 		.map((module) => ({ kind: "module", moduleId: module.id }) as const);
@@ -385,6 +396,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			const directAddons = registry.addons.filter((entry) =>
 				entry.when(config),
 			);
+
 			return Effect.succeed({
 				directAddons,
 				templates: template,
@@ -401,6 +413,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				const templateById = new Map(
 					registry.templates.map((template) => [template.id, template]),
 				);
+
 				const addonById = new Map(
 					registry.addons.map((addon) => [addon.id, addon]),
 				);
@@ -466,8 +479,10 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			const byId = new Map(
 				definitions.map((definition) => [definition.id, definition]),
 			);
+
 			const visited = new Set<string>();
 			const visiting = new Set<string>();
+
 			const ordered: Definition<ConfigValue>[] = [];
 
 			const visit = (
@@ -491,6 +506,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 					visiting.delete(definitionKey(definition));
 					visited.add(definitionKey(definition));
+
 					ordered.push(definition);
 				});
 
@@ -630,6 +646,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			switch (target._tag) {
 				case "ProjectTarget":
 					return Effect.succeed([{ kind: "project" }]);
+
 				case "SelectedModuleTarget": {
 					const installTargets = selectedTargets.get(definitionId) ?? [];
 					const moduleTargets = installTargets
@@ -652,6 +669,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 					return Effect.succeed(moduleTargets);
 				}
+
 				case "EnsuredModuleTarget": {
 					const moduleId = moduleIdsByKey.get(target.moduleKey);
 					if (!moduleId)
@@ -664,6 +682,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 					return Effect.succeed([{ kind: "module", moduleId }]);
 				}
+
 				case "TemplateModuleTarget": {
 					const matches = modules
 						.filter(
@@ -796,10 +815,48 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					);
 
 					for (const target of targets) {
+						const leafPath = contribution.path;
+						const contributionPath = isSlotPath(leafPath)
+							? yield* Effect.gen(function* () {
+									if (target.kind !== "module")
+										return yield* new PlannerError({
+											path: entry.definition.id,
+											message: "Slot Path Requires Module Target",
+										});
+
+									const module = byId.get(target.moduleId);
+									if (!module)
+										return yield* new PlannerError({
+											path: entry.definition.id,
+											message: "Slot Path Module Missing",
+										});
+
+									const expectedModuleId = moduleIdsByKey.get(
+										leafPath.moduleKey,
+									);
+
+									if (expectedModuleId !== target.moduleId)
+										return yield* new PlannerError({
+											path: entry.definition.id,
+											message: "Slot Path Target Mismatch",
+										});
+
+									return yield* resolveSlotPath(module.config, leafPath).pipe(
+										Effect.mapError(
+											(error) =>
+												new PlannerError({
+													path: entry.definition.id,
+													message: error.message,
+												}),
+										),
+									);
+								})
+							: leafPath;
+
 						const relativePath =
 							target.kind === "project"
-								? contribution.path
-								: `${byId.get(target.moduleId)?.root ?? ""}/${contribution.path}`;
+								? contributionPath
+								: `${byId.get(target.moduleId)?.root ?? ""}/${contributionPath}`;
 
 						bucketsByPath.set(relativePath, target);
 						leafVfs = yield* vfs.addOperations(leafVfs, entry.definition.id, [
@@ -1029,6 +1086,26 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							),
 						};
 
+			const selectedTemplate = selection.templates[0];
+			const selectedFramework = selectedTemplate
+				? registry.frameworks.find(
+						(framework) => framework.id === selectedTemplate.framework,
+					)
+				: undefined;
+
+			const hasUnmatchedInstalledAppTemplate =
+				intent._tag === "Installed" &&
+				selection.templates.length === 0 &&
+				discovered.some((module) => module.type === "app");
+
+			if (!hasUnmatchedInstalledAppTemplate)
+				for (const addon of selection.directAddons)
+					yield* validateAddonAgainstSelection(
+						addon,
+						selectedFramework,
+						selectedTemplate,
+					);
+
 			const definitions = yield* resolveDependencies(
 				intent.config,
 				registry,
@@ -1055,6 +1132,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							targets: buildTargetCandidates(
 								addon as AddonDefinition<Record<string, unknown>>,
 								mergedModules,
+								registry.frameworks,
 							),
 						}))
 					: intent.installs;

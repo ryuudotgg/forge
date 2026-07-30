@@ -20,9 +20,16 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 	exclusive: true,
 	dependencies: [{ id: "typescript", type: "addon" }],
 	targetMode: "single",
+	compatibility: {
+		app: {
+			frameworks: ["nextjs"],
+		},
+	},
 	when: (config) => !!config.web,
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
+		if (config.web !== "nextjs")
+			throw new Error("The UI package requires a supported web framework.");
 
 		const pm = resolvePackageManager(config);
 		const useTailwind = config.style === "tailwind";
@@ -32,9 +39,13 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 
 		const shadcnStyle = useBaseUi ? "base-vega" : "radix-vega";
 
-		const vars = { SLUG: slug };
+		const vars = { SHADCN_STYLE: shadcnStyle, SLUG: slug };
+
 		const render = (path: string) =>
 			interpolate(readTemplate(`ui/${path}`), vars);
+
+		const renderWeb = (path: string) =>
+			interpolate(readTemplate(`ui/${config.web}/${path}`), vars);
 
 		const uiComponentsJson = {
 			$schema: "https://ui.shadcn.com/schema.json",
@@ -53,27 +64,6 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 				utils: `@${slug}/ui/lib/utils`,
 				hooks: `@${slug}/ui/hooks`,
 				lib: `@${slug}/ui/lib`,
-				ui: `@${slug}/ui/components`,
-			},
-		};
-
-		const appComponentsJson = {
-			$schema: "https://ui.shadcn.com/schema.json",
-			style: shadcnStyle,
-			rsc: true,
-			tsx: true,
-			tailwind: {
-				config: "",
-				css: "../../packages/ui/src/styles/globals.css",
-				baseColor: "neutral",
-				cssVariables: true,
-			},
-			iconLibrary: "lucide",
-			aliases: {
-				components: "@/components",
-				hooks: "@/hooks",
-				lib: "@/lib",
-				utils: `@${slug}/ui/lib/utils`,
 				ui: `@${slug}/ui/components`,
 			},
 		};
@@ -191,7 +181,7 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs">({
 			leafTextFile(
 				ensuredModuleTarget("web"),
 				"components.json",
-				`${JSON.stringify(appComponentsJson, null, 2)}\n`,
+				renderWeb("apps/web/components.json"),
 			),
 			leafTextFile(
 				ensuredModuleTarget("web"),

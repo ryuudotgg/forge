@@ -276,8 +276,13 @@ describe("ui addon", () => {
 			]),
 		);
 
-		for (const leaf of leaves)
-			expect(leaf.content, leaf.path).not.toMatch(/__[A-Z_]+__/);
+		for (const leaf of leaves) {
+			const path =
+				typeof leaf.path === "string"
+					? leaf.path
+					: `${leaf.path.moduleKey}:${leaf.path.slot}`;
+			expect(leaf.content, path).not.toMatch(/__[A-Z_]+__/);
+		}
 
 		const utils = leafFile(contributions, "ui", "src/lib/utils.ts");
 		expect(utils.content).toContain("export function cn(");

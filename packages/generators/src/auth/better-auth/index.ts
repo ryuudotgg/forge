@@ -4,6 +4,7 @@ import {
 	ensurePackageModule,
 	leafTextFile,
 	projectTarget,
+	slotPath,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,
@@ -37,12 +38,21 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 		{ id: "prisma", type: "addon" },
 	],
 	targetMode: "single",
+	compatibility: {
+		app: {
+			frameworks: ["nextjs"],
+			requiredSlots: ["auth"],
+		},
+	},
 	when: (config) => config.authentication === "better-auth",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
 
 		if (config.orm === undefined)
 			throw new Error("You need to add an ORM before you can use Better Auth.");
+
+		if (config.web !== "nextjs")
+			throw new Error("Better Auth requires a supported web framework.");
 
 		const pm = resolvePackageManager(config);
 		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
@@ -53,8 +63,14 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 			DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 			DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
 		};
-		const render = (path: string) =>
+
+		const renderPackage = (path: string) =>
 			interpolate(readTemplate(`auth/better-auth/${path}`), vars);
+
+		const renderWeb = (path: string) =>
+			interpolate(readTemplate(`auth/better-auth/${config.web}/${path}`), vars);
+
+		const web = ensuredModuleTarget("web");
 
 		return [
 			ensurePackageModule("auth", "packages/auth", {
@@ -104,24 +120,24 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 			leafTextFile(
 				ensuredModuleTarget("auth"),
 				"env.ts",
-				render("packages/auth/env.ts"),
+				renderPackage("packages/auth/env.ts"),
 			),
 			leafTextFile(
 				ensuredModuleTarget("auth"),
 				"src/index.ts",
-				render(`packages/auth/src/index.${config.orm}.ts`),
+				renderWeb(`packages/auth/src/index.${config.orm}.ts`),
 			),
 			leafTextFile(
 				ensuredModuleTarget("auth"),
 				"src/client.ts",
-				render("packages/auth/src/client.ts"),
+				renderPackage("packages/auth/src/client.ts"),
 			),
 			leafTextFile(
-				ensuredModuleTarget("web"),
-				"app/api/auth/[...all]/route.ts",
-				render("apps/web/app/api/auth/[...all]/route.ts"),
+				web,
+				slotPath(web, "auth"),
+				renderWeb("apps/web/app/api/auth/[...all]/route.ts"),
 			),
-			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
+			surfaceDependencies(web, "packageJson", [
 				{
 					name: `@${slug}/auth`,
 					version: "workspace:*",

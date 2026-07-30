@@ -45,6 +45,15 @@ describe("interpolate", () => {
 	it("leaves unknown placeholders intact", () => {
 		expect(interpolate("__UNKNOWN__", { SLUG: "acme" })).toBe("__UNKNOWN__");
 	});
+
+	it("replaces comment-position placeholders without leaving whitespace", () => {
+		expect(
+			interpolate("// __AUTH_IMPORT__\n{ /* __AUTH_ARG__ */ headers }\n", {
+				"// __AUTH_IMPORT__\n": 'import { auth } from "@acme/auth";\n',
+				"/* __AUTH_ARG__ */ ": "auth, ",
+			}),
+		).toBe('import { auth } from "@acme/auth";\n{ auth, headers }\n');
+	});
 });
 
 describe("readTemplate", () => {

@@ -1,11 +1,4 @@
-import {
-	intro,
-	isCancel,
-	log,
-	multiselect,
-	select,
-	text,
-} from "@clack/prompts";
+import { intro, isCancel, log, select, text } from "@clack/prompts";
 import {
 	type AddonDefinition,
 	type InstallRecord,
@@ -18,20 +11,12 @@ import {
 	installConflict,
 	listVisibleAddons,
 	loadAddonDefinition,
+	loadDefinitionRegistry,
 	orms,
 	RegistryLoadError,
 } from "@ryuujs/generators";
 import { cancel } from "../utils/cancel";
 import { applyInstalledPlan, loadManagedProject } from "./lifecycle";
-
-function moduleLabel(module: {
-	readonly packageName?: string;
-	readonly root: string;
-}) {
-	return module.packageName
-		? `${module.packageName} (${module.root})`
-		: module.root;
-}
 
 function mergeInstallRecord(
 	existing: ReadonlyArray<InstallRecord>,
@@ -149,7 +134,8 @@ export async function runAdd(
 	let addon: AddonDefinition<ForgeConfig>;
 
 	try {
-		addon = (await loadAddonDefinition(resolvedAddonId)).addon;
+		const loadedAddon = await loadAddonDefinition(resolvedAddonId);
+		addon = loadedAddon.addon;
 	} catch (error) {
 		if (error instanceof RegistryLoadError) {
 			log.error(`We couldn't find the "${resolvedAddonId}" addon.`);
@@ -186,8 +172,9 @@ export async function runAdd(
 	if (addon.compatibility === undefined) {
 		record = buildProjectInstallRecord(addon);
 	} else {
+		const frameworks = loadDefinitionRegistry().registry.frameworks;
 		const targets = project.modules.filter((module) =>
-			isAddonCompatibleWithModule(addon, module),
+			isAddonCompatibleWithModule(addon, module, frameworks),
 		);
 
 		if (targets.length === 0) {
@@ -195,7 +182,7 @@ export async function runAdd(
 			process.exit(1);
 		}
 
-		if (targets.length === 1) {
+		if (targets.length === 1 || addon.targetMode === "single") {
 			const target = targets[0];
 			if (!target) {
 				log.error(`We couldn't find a compatible target for "${addon.name}".`);
@@ -206,38 +193,12 @@ export async function runAdd(
 				definitionId: addon.id,
 				targets: [{ kind: "module", moduleId: target.id }],
 			};
-		} else if (addon.targetMode === "single") {
-			const selectedTarget = await select({
-				message: `Where should we add "${addon.name}"?`,
-				options: targets.map((module) => ({
-					label: moduleLabel(module),
-					value: module.id,
-				})),
-			});
-
-			if (isCancel(selectedTarget)) cancel();
-
-			record = {
-				definitionId: addon.id,
-				targets: [{ kind: "module", moduleId: String(selectedTarget) }],
-			};
 		} else {
-			const selectedTargets = await multiselect({
-				message: `Where should we add "${addon.name}"?`,
-				options: targets.map((module) => ({
-					label: moduleLabel(module),
-					value: module.id,
-				})),
-				required: true,
-			});
-
-			if (isCancel(selectedTargets)) cancel();
-
 			record = {
 				definitionId: addon.id,
-				targets: selectedTargets.map((moduleId) => ({
+				targets: targets.map((target) => ({
 					kind: "module" as const,
-					moduleId: String(moduleId),
+					moduleId: target.id,
 				})),
 			};
 		}

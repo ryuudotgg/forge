@@ -26,7 +26,7 @@ export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	buildOutputs: [".next/**", "!.next/cache/**"],
 	ignoreDirs: [".next/"],
 	name: "Next.js",
-	slots: ["layout", "page", "api", "trpc", "db", "auth", "authClient"],
+	slots: ["layout", "page", "api", "trpc", "auth"],
 	tsconfigPreset: {
 		name: "nextjs",
 		content: {
@@ -189,6 +189,8 @@ function buildContributions(config: ForgeConfig) {
 				layout: "app/layout.tsx",
 				page: "app/page.tsx",
 				api: "app/api",
+				trpc: "app/api/trpc/[trpc]/route.ts",
+				auth: "app/api/auth/[...all]/route.ts",
 			},
 		}),
 
