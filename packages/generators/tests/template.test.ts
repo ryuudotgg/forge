@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { interpolate, readTemplate, templateFiles } from "../src/template";
+import { interpolate, readTemplate } from "../src/template";
 
 const TEMPLATE_DIR = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -65,32 +65,6 @@ describe("readTemplate", () => {
 
 	it("throws when the template does not exist", () => {
 		expect(() => readTemplate("does/not/exist.ts")).toThrow(/ENOENT/);
-	});
-});
-
-describe("templateFiles", () => {
-	it("emits one text file per template file, including nested directories", () => {
-		const contributions = templateFiles("shared", "out");
-		const files = contributions.flatMap((contribution) =>
-			contribution._tag === "TextFileContribution" ? [contribution] : [],
-		);
-
-		expect(files).toHaveLength(contributions.length);
-		expect(files.map((file) => file.path).sort()).toEqual([
-			"out/packages/shared/src/id.ts",
-			"out/packages/shared/src/index.ts",
-			"out/packages/shared/src/types.ts",
-		]);
-
-		for (const file of files) {
-			const source = join(
-				TEMPLATE_DIR,
-				"shared",
-				file.path.slice("out/".length),
-			);
-
-			expect(file.content, file.path).toBe(readFileSync(source, "utf-8"));
-		}
 	});
 });
 

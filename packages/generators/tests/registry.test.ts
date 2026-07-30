@@ -1,4 +1,3 @@
-import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	addonConfigBindings,
@@ -8,8 +7,8 @@ import {
 	loadAddonDefinition,
 	loadDefinitionRegistry,
 	optionalAddons,
-	resolveBuiltins,
 } from "../src";
+import { plannedDefinitionIds } from "./planner-harness";
 
 describe("registry loader", () => {
 	it("loads first-party definitions only", () => {
@@ -42,20 +41,18 @@ describe("registry loader", () => {
 	});
 
 	it("resolves first-party definitions for a config", async () => {
-		const resolved = await Effect.runPromise(
-			resolveBuiltins({
-				name: "Acme",
-				packageManager: "pnpm",
-				path: ".",
-				platforms: ["web"],
-				runtime: "Node.js",
-				slug: "acme",
-				style: "tailwind",
-				web: "nextjs",
-			}),
-		);
+		const resolved = await plannedDefinitionIds({
+			name: "Acme",
+			packageManager: "pnpm",
+			path: ".",
+			platforms: ["web"],
+			runtime: "Node.js",
+			slug: "acme",
+			style: "tailwind",
+			web: "nextjs",
+		});
 
-		expect(resolved.map((entry) => entry.id)).toEqual(
+		expect(resolved).toEqual(
 			expect.arrayContaining(["nextjs/base", "root", "pnpm", "tailwind"]),
 		);
 	});
@@ -80,17 +77,13 @@ describe("registry loader", () => {
 			"vscode",
 		];
 
-		const withoutAddons = await Effect.runPromise(resolveBuiltins(baseConfig));
-		const withoutIds = withoutAddons.map((entry) => entry.id);
+		const withoutIds = await plannedDefinitionIds(baseConfig);
 		for (const id of optInIds) expect(withoutIds).not.toContain(id);
 
-		const withAddons = await Effect.runPromise(
-			resolveBuiltins({
-				...baseConfig,
-				addons: ["lefthook", "shared", "vitest"],
-			}),
-		);
-		const withIds = withAddons.map((entry) => entry.id);
+		const withIds = await plannedDefinitionIds({
+			...baseConfig,
+			addons: ["lefthook", "shared", "vitest"],
+		});
 
 		expect(withIds).toEqual(
 			expect.arrayContaining(["lefthook", "shared", "vitest"]),

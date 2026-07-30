@@ -15,9 +15,9 @@ import type { ForgeConfig } from "../src";
 import {
 	betterAuth,
 	biome,
+	builtins,
 	gitignore,
 	loadAddonDefinition,
-	resolveBuiltins,
 	shared,
 	tailwind,
 	trpc,
@@ -27,6 +27,7 @@ import { nextjsFramework } from "../src/frameworks/nextjs";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 import { readTemplate } from "../src/template";
 import { versions } from "../src/versions";
+import { plannedDefinitionIds } from "./planner-harness";
 
 const commitlint = loadAddonDefinition("commitlint").addon;
 const githubCi = loadAddonDefinition("github-ci").addon;
@@ -685,19 +686,17 @@ describe("vitest addon", () => {
 	it("does not activate or resolve when it is not selected", async () => {
 		expect(vitest.when({})).toBe(false);
 
-		const resolved = await Effect.runPromise(
-			resolveBuiltins({
-				name: "Acme",
-				packageManager: "pnpm",
-				path: ".",
-				platforms: ["web"],
-				runtime: "Node.js",
-				slug: "acme",
-				web: "nextjs",
-			}),
-		);
+		const resolved = await plannedDefinitionIds({
+			name: "Acme",
+			packageManager: "pnpm",
+			path: ".",
+			platforms: ["web"],
+			runtime: "Node.js",
+			slug: "acme",
+			web: "nextjs",
+		});
 
-		expect(resolved.map((addon) => addon.id)).not.toContain("vitest");
+		expect(resolved).not.toContain("vitest");
 	});
 });
 
@@ -877,23 +876,24 @@ describe("tailwind addon", () => {
 
 describe("first-party resolution", () => {
 	it("resolves zero auth addons for clerk even with an orm installed", async () => {
-		const resolved = await Effect.runPromise(
-			resolveBuiltins({
-				authentication: "clerk",
-				name: "Acme",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				path: ".",
-				platforms: ["web"],
-				runtime: "Node.js",
-				slug: "acme",
-				web: "nextjs",
-			}),
-		);
+		const ids = await plannedDefinitionIds({
+			authentication: "clerk",
+			name: "Acme",
+			orm: "drizzle",
+			packageManager: "pnpm",
+			path: ".",
+			platforms: ["web"],
+			runtime: "Node.js",
+			slug: "acme",
+			web: "nextjs",
+		});
 
-		const ids = resolved.map((entry) => entry.id);
 		expect(ids).toContain("drizzle");
 		expect(ids).not.toContain("better-auth");
-		expect(resolved.filter((entry) => entry.category === "auth")).toEqual([]);
+		expect(
+			builtins.addons.filter(
+				(entry) => entry.category === "auth" && ids.includes(entry.id),
+			),
+		).toEqual([]);
 	});
 });

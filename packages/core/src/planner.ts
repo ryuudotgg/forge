@@ -22,10 +22,10 @@ import {
 	type Slots,
 } from "./config";
 import { dependencyFormatFor } from "./environment";
-import { AggregateConflictError, GeneratorError, PlannerError } from "./errors";
+import { GeneratorError, PlannerError } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
-import { type FileOperation, filePath } from "./operations";
+import { filePath } from "./operations";
 import {
 	type RenderBucket,
 	type RenderedArtifact,
@@ -41,7 +41,6 @@ import {
 	type ModuleRecord,
 	State,
 } from "./state";
-import { Vfs } from "./virtual-fs";
 
 type Definition<ConfigValue> =
 	| TemplateDefinition<ConfigValue>
@@ -310,10 +309,6 @@ function normalizeContributionResult<ConfigValue>(
 	return Effect.succeed(result);
 }
 
-function createFileOp(path: string, content: string): FileOperation {
-	return { _tag: "CreateFile", path: filePath(path), content };
-}
-
 function isSlotPath(path: string | SlotPath): path is SlotPath {
 	return typeof path !== "string";
 }
@@ -378,7 +373,6 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 		const configStore = yield* ConfigStore;
 		const renderer = yield* Renderer;
 		const state = yield* State;
-		const vfs = yield* Vfs;
 
 		const resolveCreateSelection = <ConfigValue>(
 			config: ConfigValue,
@@ -799,8 +793,14 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
 		) {
 			const byId = new Map(modules.map((module) => [module.id, module]));
-			const bucketsByPath = new Map<string, RenderBucket>();
-			let leafVfs = yield* vfs.empty();
+			const leafFiles = new Map<
+				string,
+				{
+					readonly bucket: RenderBucket;
+					readonly content: string;
+					readonly definitionIds: ReadonlyArray<string>;
+				}
+			>();
 
 			for (const entry of evaluated)
 				for (const contribution of entry.contributions) {
@@ -858,34 +858,26 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 								? contributionPath
 								: `${byId.get(target.moduleId)?.root ?? ""}/${contributionPath}`;
 
-						bucketsByPath.set(relativePath, target);
-						leafVfs = yield* vfs.addOperations(leafVfs, entry.definition.id, [
-							createFileOp(relativePath, contribution.content),
-						]);
+						if (leafFiles.has(relativePath))
+							return yield* new PlannerError({
+								path: "leaf-files",
+								message: "Leaf File Conflict",
+							});
+
+						leafFiles.set(relativePath, {
+							bucket: target,
+							content: contribution.content,
+							definitionIds: [entry.definition.id],
+						});
 					}
 				}
 
-			return yield* vfs.resolve(leafVfs, { onConflict: "error" }).pipe(
-				Effect.map((files) =>
-					files.map((file) => ({
-						...file,
-						bucket: bucketsByPath.get(String(file.path)) ?? {
-							kind: "project" as const,
-						},
-					})),
-				),
-				Effect.mapError((error) =>
-					error instanceof AggregateConflictError
-						? new PlannerError({
-								path: "leaf-files",
-								message: "Leaf File Conflict",
-							})
-						: new PlannerError({
-								path: "leaf-files",
-								message: "Leaf File Resolution Failed",
-							}),
-				),
-			);
+			return [...leafFiles.entries()].map(([path, file]) => ({
+				bucket: file.bucket,
+				content: file.content,
+				generators: file.definitionIds,
+				path: filePath(path),
+			}));
 		});
 
 		const buildManifest = Effect.fn("Planner.buildManifest")(function* (

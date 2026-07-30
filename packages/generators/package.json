@@ -53,6 +53,7 @@
 		"effect": "catalog:effect"
 	},
 	"devDependencies": {
+		"@effect/platform-node": "catalog:effect",
 		"@effect/tsgo": "catalog:effect",
 		"@ryuujs/temper": "workspace:*",
 		"@ryuujs/tsconfig": "workspace:*",

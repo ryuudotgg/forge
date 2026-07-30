@@ -2,18 +2,7 @@ import { Effect, Schema } from "effect";
 import type { CommandProbe } from "./command";
 import type { AppConfig, PackageConfig } from "./config";
 import { GeneratorError } from "./errors";
-import type { Generator, GeneratorCategory } from "./generator";
-import type {
-	AddDependencies,
-	AddScripts,
-	AppendLines,
-	CreateFile,
-	CreateJson,
-	Dependency,
-	FileOperation,
-	FilePath,
-	MergeJson,
-} from "./operations";
+import type { Dependency } from "./operations";
 
 export const appSlotNames = {
 	layout: "layout",
@@ -44,6 +33,21 @@ export type TemplateId = string;
 export type AddonId = string;
 export type CapabilityId = string;
 export type TargetMode = "single" | "multiple";
+
+export type GeneratorCategory =
+	| "workspace"
+	| "tooling"
+	| "linter"
+	| "web"
+	| "backend"
+	| "orm"
+	| "database"
+	| "auth"
+	| "style"
+	| "ui"
+	| "runtime"
+	| "packageManager"
+	| "addon";
 
 export const projectSurfaceNames = {
 	rootPackageJson: "rootPackageJson",
@@ -178,89 +182,6 @@ export interface Compatibility<
 	readonly package?: PackageCompatibility<Capability>;
 }
 
-export interface TextFileContribution {
-	readonly _tag: "TextFileContribution";
-	readonly path: FilePath;
-	readonly content: string;
-}
-
-export interface JsonFileContribution {
-	readonly _tag: "JsonFileContribution";
-	readonly path: FilePath;
-	readonly value: Record<string, unknown>;
-}
-
-export interface DependencyContribution {
-	readonly _tag: "DependencyContribution";
-	readonly path: FilePath;
-	readonly dependencies: ReadonlyArray<Dependency>;
-}
-
-export interface ScriptContribution {
-	readonly _tag: "ScriptContribution";
-	readonly path: FilePath;
-	readonly scripts: Record<string, string>;
-}
-
-export interface EnvEntriesContribution {
-	readonly _tag: "EnvEntriesContribution";
-	readonly path: FilePath;
-	readonly section: string;
-	readonly entries: ReadonlyArray<string>;
-}
-
-export interface LinesContribution {
-	readonly _tag: "LinesContribution";
-	readonly path: FilePath;
-	readonly lines: ReadonlyArray<string>;
-	readonly section?: string;
-	readonly position?: "start" | "end";
-}
-
-export interface ProviderWrapperContribution {
-	readonly _tag: "ProviderWrapperContribution";
-	readonly path: FilePath;
-	readonly content: string;
-}
-
-export interface RouteHandlerContribution {
-	readonly _tag: "RouteHandlerContribution";
-	readonly path: FilePath;
-	readonly content: string;
-}
-
-export interface CssContribution {
-	readonly _tag: "CssContribution";
-	readonly path: FilePath;
-	readonly content: string;
-}
-
-export interface UtilityExportContribution {
-	readonly _tag: "UtilityExportContribution";
-	readonly path: FilePath;
-	readonly content: string;
-}
-
-export interface DbSchemaContribution {
-	readonly _tag: "DbSchemaContribution";
-	readonly path: FilePath;
-	readonly content: string;
-}
-
-export interface ConfigFragmentContribution {
-	readonly _tag: "ConfigFragmentContribution";
-	readonly path: FilePath;
-	readonly value: Record<string, unknown>;
-	readonly strategy: "deep" | "replace";
-}
-
-export interface PackageCapabilityContribution<
-	Capability extends CapabilityId = CapabilityId,
-> {
-	readonly _tag: "PackageCapabilityContribution";
-	readonly capabilities: ReadonlyArray<Capability>;
-}
-
 type EnsuredModuleShape = Omit<AppConfig, "id"> | Omit<PackageConfig, "id">;
 
 export interface EnsureModuleContribution {
@@ -331,19 +252,6 @@ export interface LeafTextFileContribution {
 }
 
 export type Contribution<Capability extends CapabilityId = CapabilityId> =
-	| TextFileContribution
-	| JsonFileContribution
-	| DependencyContribution
-	| ScriptContribution
-	| EnvEntriesContribution
-	| LinesContribution
-	| ProviderWrapperContribution
-	| RouteHandlerContribution
-	| CssContribution
-	| UtilityExportContribution
-	| DbSchemaContribution
-	| ConfigFragmentContribution
-	| PackageCapabilityContribution<Capability>
 	| EnsureModuleContribution
 	| ManagedTextSurfaceContribution
 	| ManagedJsonSurfaceContribution
@@ -352,67 +260,6 @@ export type Contribution<Capability extends CapabilityId = CapabilityId> =
 	| ManagedScriptsSurfaceContribution
 	| ModuleCapabilitiesContribution<Capability>
 	| LeafTextFileContribution;
-
-export function textFile(
-	path: FilePath,
-	content: string,
-): TextFileContribution {
-	return { _tag: "TextFileContribution", path, content };
-}
-
-export function jsonFile(
-	path: FilePath,
-	value: Record<string, unknown>,
-): JsonFileContribution {
-	return { _tag: "JsonFileContribution", path, value };
-}
-
-export function dependencies(
-	path: FilePath,
-	items: ReadonlyArray<Dependency>,
-): DependencyContribution {
-	return { _tag: "DependencyContribution", path, dependencies: items };
-}
-
-export function scripts(
-	path: FilePath,
-	items: Record<string, string>,
-): ScriptContribution {
-	return { _tag: "ScriptContribution", path, scripts: items };
-}
-
-export function envEntries(
-	path: FilePath,
-	section: string,
-	entries: ReadonlyArray<string>,
-): EnvEntriesContribution {
-	return { _tag: "EnvEntriesContribution", path, section, entries };
-}
-
-export function lines(
-	path: FilePath,
-	items: ReadonlyArray<string>,
-	options?: {
-		readonly position?: "start" | "end";
-		readonly section?: string;
-	},
-): LinesContribution {
-	return {
-		_tag: "LinesContribution",
-		path,
-		lines: items,
-		position: options?.position,
-		section: options?.section,
-	};
-}
-
-export function configFragment(
-	path: FilePath,
-	value: Record<string, unknown>,
-	strategy: "deep" | "replace" = "deep",
-): ConfigFragmentContribution {
-	return { _tag: "ConfigFragmentContribution", path, value, strategy };
-}
 
 export function ensureAppModule(
 	moduleKey: string,
@@ -712,152 +559,6 @@ export function defineRegistry<Config>(
 	return registry;
 }
 
-function normalizeContributionResult<Capability extends CapabilityId>(
-	definitionId: string,
-	result: ContributionResult<Capability>,
-): Effect.Effect<
-	ReadonlyArray<Contribution<Capability>>,
-	GeneratorError,
-	CommandProbe
-> {
-	if (Effect.isEffect(result)) return result;
-	if (result instanceof Promise)
-		return Effect.tryPromise({
-			try: () => result,
-			catch: (error) =>
-				new GeneratorError({
-					generatorId: definitionId,
-					message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
-				}),
-		});
-
-	return Effect.succeed(result);
-}
-
-function createFileOperation(
-	path: FilePath,
-	content: string,
-): ReadonlyArray<CreateFile> {
-	return [{ _tag: "CreateFile", path, content }];
-}
-
-function createJsonOperation(
-	path: FilePath,
-	value: Record<string, unknown>,
-): ReadonlyArray<CreateJson> {
-	return [{ _tag: "CreateJson", path, value }];
-}
-
-function createDependenciesOperation(
-	path: FilePath,
-	items: ReadonlyArray<Dependency>,
-): ReadonlyArray<AddDependencies> {
-	return [{ _tag: "AddDependencies", path, dependencies: items }];
-}
-
-function createScriptsOperation(
-	path: FilePath,
-	items: Record<string, string>,
-): ReadonlyArray<AddScripts> {
-	return [{ _tag: "AddScripts", path, scripts: items }];
-}
-
-function createAppendLinesOperation(
-	contribution: EnvEntriesContribution | LinesContribution,
-): ReadonlyArray<AppendLines> {
-	return [
-		{
-			_tag: "AppendLines",
-			path: contribution.path,
-			lines:
-				contribution._tag === "EnvEntriesContribution"
-					? contribution.entries
-					: contribution.lines,
-			position:
-				contribution._tag === "LinesContribution"
-					? contribution.position
-					: undefined,
-			section: contribution.section,
-		},
-	];
-}
-
-function createMergeJsonOperation(
-	path: FilePath,
-	value: Record<string, unknown>,
-	strategy: "deep" | "replace",
-): ReadonlyArray<MergeJson> {
-	return [{ _tag: "MergeJson", path, value, strategy }];
-}
-
-function lowerContribution(
-	_definitionId: string,
-	contribution: Contribution,
-): Effect.Effect<ReadonlyArray<FileOperation>, GeneratorError> {
-	switch (contribution._tag) {
-		case "TextFileContribution":
-		case "ProviderWrapperContribution":
-		case "RouteHandlerContribution":
-		case "CssContribution":
-		case "UtilityExportContribution":
-		case "DbSchemaContribution":
-			return Effect.succeed(
-				createFileOperation(contribution.path, contribution.content),
-			);
-
-		case "JsonFileContribution":
-			return Effect.succeed(
-				createJsonOperation(contribution.path, contribution.value),
-			);
-
-		case "DependencyContribution":
-			return Effect.succeed(
-				createDependenciesOperation(
-					contribution.path,
-					contribution.dependencies,
-				),
-			);
-
-		case "ScriptContribution":
-			return Effect.succeed(
-				createScriptsOperation(contribution.path, contribution.scripts),
-			);
-
-		case "EnvEntriesContribution":
-		case "LinesContribution":
-			return Effect.succeed(createAppendLinesOperation(contribution));
-
-		case "ConfigFragmentContribution":
-			return Effect.succeed(
-				createMergeJsonOperation(
-					contribution.path,
-					contribution.value,
-					contribution.strategy,
-				),
-			);
-
-		case "PackageCapabilityContribution":
-		case "EnsureModuleContribution":
-		case "ManagedTextSurfaceContribution":
-		case "ManagedJsonSurfaceContribution":
-		case "ManagedLinesSurfaceContribution":
-		case "ManagedDependenciesSurfaceContribution":
-		case "ManagedScriptsSurfaceContribution":
-		case "ModuleCapabilitiesContribution":
-		case "LeafTextFileContribution":
-			return Effect.succeed([]);
-	}
-}
-
-export function lowerContributions(
-	definitionId: string,
-	contributions: ReadonlyArray<Contribution>,
-): Effect.Effect<ReadonlyArray<FileOperation>, GeneratorError> {
-	return Effect.forEach(contributions, (contribution) =>
-		lowerContribution(definitionId, contribution),
-	).pipe(Effect.map((groups) => groups.flat()));
-}
-
 function templateMatches<Config>(
 	expected: TemplateRef,
 	template: TemplateDefinition<Config>,
@@ -1013,94 +714,4 @@ export function validateAddonAgainstSelection<Config>(
 	}
 
 	return Effect.void;
-}
-
-function lowerTemplateDefinition<Config>(
-	template: TemplateDefinition<Config>,
-	frameworks: ReadonlyArray<FrameworkDefinition>,
-): Generator<Config> {
-	return {
-		id: template.id,
-		name: template.name,
-		version: String(template.version),
-		category: template.category,
-		exclusive: template.exclusive,
-		dependencies: template.dependencies.map((dependency) => dependency.id),
-		appliesTo: () => true,
-		generate: (config) =>
-			normalizeContributionResult(
-				template.id,
-				template.contribute({ config, frameworks }),
-			).pipe(
-				Effect.flatMap((contributions) =>
-					lowerContributions(template.id, contributions),
-				),
-			),
-	};
-}
-
-function lowerAddonDefinition<Config>(
-	addon: AddonDefinition<Config>,
-	frameworks: ReadonlyArray<FrameworkDefinition>,
-): Generator<Config> {
-	return {
-		id: addon.id,
-		name: addon.name,
-		version: addon.version,
-		category: addon.category,
-		exclusive: addon.exclusive,
-		dependencies: addon.dependencies.map((dependency) => dependency.id),
-		appliesTo: () => true,
-		generate: (config) =>
-			normalizeContributionResult(
-				addon.id,
-				addon.contribute({ config, frameworks }),
-			).pipe(
-				Effect.flatMap((contributions) =>
-					lowerContributions(addon.id, contributions),
-				),
-			),
-	};
-}
-
-export function resolveDefinitions<Config>(
-	config: Config,
-	registry: DefinitionRegistry<Config>,
-): Effect.Effect<ReadonlyArray<Generator<Config>>, GeneratorError> {
-	return Effect.gen(function* () {
-		const templates = registry.templates.filter((template) =>
-			template.when(config),
-		);
-
-		if (templates.length > 1)
-			return yield* new GeneratorError({
-				generatorId: "registry",
-				message: "Multiple Templates Selected",
-			});
-
-		const template = templates[0];
-		const framework = template
-			? registry.frameworks.find((entry) => entry.id === template.framework)
-			: undefined;
-
-		if (template && !framework)
-			return yield* new GeneratorError({
-				generatorId: template.id,
-				message: "Framework Definition Missing",
-			});
-
-		const addons = registry.addons.filter((addon) => addon.when(config));
-		for (const addon of addons)
-			yield* validateAddonAgainstSelection(addon, framework, template);
-
-		const resolved: Generator<Config>[] = [];
-
-		if (template)
-			resolved.push(lowerTemplateDefinition(template, registry.frameworks));
-
-		for (const addon of addons)
-			resolved.push(lowerAddonDefinition(addon, registry.frameworks));
-
-		return resolved;
-	});
 }

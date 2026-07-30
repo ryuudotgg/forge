@@ -8,21 +8,15 @@ export type {
 	AppSurfaceName,
 	CapabilityId,
 	Compatibility,
-	ConfigFragmentContribution,
 	Contribution,
-	CssContribution,
-	DbSchemaContribution,
 	DefinitionRegistry,
-	DependencyContribution,
 	DependencyRef,
 	EnsuredModuleTarget,
 	EnsureModuleContribution,
-	EnvEntriesContribution,
 	FrameworkDefinition,
 	FrameworkId,
-	JsonFileContribution,
+	GeneratorCategory,
 	LeafTextFileContribution,
-	LinesContribution,
 	ManagedDependenciesSurfaceContribution,
 	ManagedJsonSurfaceContribution,
 	ManagedLinesSurfaceContribution,
@@ -31,51 +25,37 @@ export type {
 	ManagedTextSurfaceContribution,
 	ModuleCapabilitiesContribution,
 	ModuleTarget,
-	PackageCapabilityContribution,
 	PackageCompatibility,
 	PackageManagedSurfaceName,
 	PackageSlotName,
 	PackageSurfaceName,
 	ProjectSurfaceName,
 	ProjectTarget,
-	ProviderWrapperContribution,
-	RouteHandlerContribution,
-	ScriptContribution,
 	SlotPath,
 	TargetMode,
 	TemplateDefinition,
 	TemplateId,
 	TemplateRef,
-	TextFileContribution,
-	UtilityExportContribution,
 } from "./authoring";
 export {
 	appManagedSurfaceNames,
 	appSlotNames,
-	configFragment,
 	defineAddon,
 	defineFramework,
 	defineRegistry,
 	defineTemplate,
-	dependencies,
 	ensureAppModule,
 	ensuredModuleTarget,
 	ensurePackageModule,
-	envEntries,
 	isAddonCompatibleWithModule,
-	jsonFile,
 	leafTextFile,
-	lines,
-	lowerContributions,
 	moduleCapabilities,
 	packageManagedSurfaceNames,
 	packageSlotNames,
 	projectSurfaceNames,
 	projectTarget,
-	resolveDefinitions,
 	resolveSlotPath,
 	SlotPathError,
-	scripts,
 	selectedModuleTarget,
 	slotPath,
 	surfaceDependencies,
@@ -84,7 +64,6 @@ export {
 	surfaceScripts,
 	surfaceText,
 	templateModuleTarget,
-	textFile,
 	validateAddonAgainstSelection,
 } from "./authoring";
 export { CommandProbe } from "./command";
@@ -107,16 +86,6 @@ export {
 	TemplateSchema,
 } from "./config";
 export type {
-	AcceptIncoming,
-	BothModified,
-	FileConflict,
-	KeepCurrent,
-	Merge,
-	Resolution,
-	UserDeleted,
-	UserModified,
-} from "./conflicts";
-export type {
 	EnvironmentCheck,
 	PackageManager,
 	PackageManagerId,
@@ -134,27 +103,19 @@ export {
 	runtimes,
 } from "./environment";
 export {
-	AggregateConflictError,
 	ApplyError,
 	CommandProbeError,
-	ConflictError,
-	CyclicDependencyError,
 	DiscoveryError,
 	DuplicateModuleIdError,
-	ExclusiveCategoryError,
 	GeneratorError,
 	ModuleConfigError,
 	ModuleIdGenerationError,
-	ParseError,
-	PipelineError,
 	PlannerError,
 	RendererError,
 	StateError,
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
-export type { Generator, GeneratorCategory } from "./generator";
-export { defineGenerator } from "./generator";
 export { decodeJsonString, formatSchemaIssues } from "./json";
 export { CoreLive } from "./layer";
 export {
@@ -165,26 +126,17 @@ export {
 export type { LineMergeResult } from "./merge/lines";
 export { appendLines, threeWayMergeLines } from "./merge/lines";
 export type {
-	AddDependencies,
-	AddScripts,
-	AppendLines,
-	CreateFile,
-	CreateJson,
 	Dependency,
 	DependencyFormat,
-	FileOperation,
 	FilePath,
-	MergeJson,
 } from "./operations";
 export {
 	defaultDependencyFormat,
 	dependencyValue,
 	filePath,
 } from "./operations";
-export { hashContent, Pipeline, run, topologicalSort } from "./pipeline";
 export type { PlannedFile, ProjectPlan } from "./planner";
 export { Planner } from "./planner";
-export { Registry, resolve as resolveGenerators } from "./registry";
 export type {
 	ModuleBucketTarget,
 	ProjectBucketTarget,
@@ -211,16 +163,3 @@ export {
 	ManifestSchema,
 	State,
 } from "./state";
-export type {
-	ConflictStrategy,
-	ResolvedFile,
-	ResolveOptions,
-	VirtualFs,
-} from "./virtual-fs";
-export {
-	addOperations,
-	detectConflicts,
-	empty as emptyVfs,
-	resolve as resolveVfs,
-	Vfs,
-} from "./virtual-fs";

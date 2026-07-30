@@ -89,7 +89,6 @@ export {
 	loadAddonDefinition,
 	loadDefinitionRegistry,
 	RegistryLoadError,
-	resolveBuiltins,
 } from "./registry";
 export type { RemovalBlockers } from "./registry/loader";
 export type {

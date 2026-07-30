@@ -3,7 +3,6 @@ export { authenticationCustomUISchema as authenticationCustomUI } from "./auth/c
 export { authenticationSchema as authentication } from "./auth/provider";
 export { backendSchema as backend } from "./backend/framework";
 export { rpcSchema as rpc } from "./backend/rpc";
-export { publicRPCSchema as rpcPublic } from "./backend/rpc-public";
 export { databaseSchema as database } from "./data/database";
 export { databaseProviderSchema as databaseProvider } from "./data/database-provider";
 export { ormSchema as orm } from "./data/orm";

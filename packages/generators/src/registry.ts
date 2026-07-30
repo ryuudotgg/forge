@@ -4,5 +4,4 @@ export {
 	loadAddonDefinition,
 	loadDefinitionRegistry,
 	RegistryLoadError,
-	resolveBuiltins,
 } from "./registry/loader";
