@@ -7,7 +7,7 @@ import {
 	applyInstalledPlan,
 	loadManagedProject,
 } from "../src/commands/lifecycle";
-import { withTempDir, writeJson, writeText } from "./lifecycle-fixtures";
+import { withTempDir, writeJson } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
@@ -98,60 +98,36 @@ describe("lifecycle", () => {
 		});
 	});
 
-	it("infers the config snapshot when the manifest config is empty", async () => {
-		await withTempDir("lifecycle-legacy", async (directory) => {
-			await writeJson(join(directory, "package.json"), {
-				engines: { bun: "1.2.19" },
-				name: "acme",
-				packageManager: "yarn@4.1.0",
-			});
-			await writeText(join(directory, "biome.json"), "{}\n");
-			await writeText(join(directory, "lefthook.yml"), "pre-commit:\n");
-			await writeJson(join(directory, ".forge/manifest.json"), {
-				config: {},
-				installs: [{ definitionId: "drizzle", targets: [{ kind: "project" }] }],
-				modules: { ddddd: { definitionIds: ["drizzle"], root: "packages/db" } },
-			});
-			await writeJson(join(directory, "packages/db/forge.json"), {
-				capabilities: [],
-				id: "ddddd",
-				packageType: "library",
-				slots: {},
-				template: { id: "db", version: 1 },
-				type: "package",
-			});
-			await writeText(
-				join(directory, "packages/db/drizzle.config.ts"),
-				"export default {};\n",
-			);
-			await writeJson(join(directory, "packages/db/package.json"), {
-				dependencies: { mysql2: "^3.11.0" },
-				name: "@acme/db",
-			});
-			await writeText(
-				join(directory, ".env"),
-				'DATABASE_URL="mysql://root:password@localhost:3306/acme"\n',
-			);
+	it("exits when the manifest config is empty", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
 
-			const project = await loadManagedProject(directory, "add");
+		try {
+			await withTempDir("lifecycle-legacy", async (directory) => {
+				await writeJson(join(directory, ".forge/manifest.json"), {
+					config: {},
+					installs: [
+						{ definitionId: "drizzle", targets: [{ kind: "project" }] },
+					],
+					modules: {
+						ddddd: { definitionIds: ["drizzle"], root: "packages/db" },
+					},
+					schemaVersion: 1,
+				});
 
-			expect(project.config).toStrictEqual({
-				addons: ["lefthook"],
-				authentication: undefined,
-				database: "mysql",
-				databaseProvider: undefined,
-				linter: "biome",
-				name: "acme",
-				orm: "drizzle",
-				packageManager: "Yarn",
-				path: directory,
-				rpc: undefined,
-				runtime: "Bun",
-				slug: "acme",
-				style: undefined,
-				web: undefined,
+				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+					"exit:1",
+				);
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"We couldn't find a Forge project here. The .forge directory is missing or incomplete.",
+				);
 			});
-		});
+		} finally {
+			exit.mockRestore();
+		}
 	});
 
 	it("exits when the directory is not a managed project", async () => {
@@ -169,7 +145,7 @@ describe("lifecycle", () => {
 			});
 
 			expect(promptMocks.logError).toHaveBeenCalledWith(
-				"We couldn't run \"update\" here because this project hasn't been bootstrapped with the current Forge metadata yet.",
+				"We couldn't find a Forge project here. The .forge directory is missing or incomplete.",
 			);
 		} finally {
 			exit.mockRestore();

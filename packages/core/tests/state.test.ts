@@ -135,6 +135,7 @@ describe("project state", () => {
 	it("writes and reads manifest and lockfile", async () => {
 		await withTempDir("state", async (directory) => {
 			const manifest: Manifest = {
+				schemaVersion: 1,
 				config: { slug: "acme" },
 				installs: [{ definitionId: "root", targets: [{ kind: "project" }] }],
 				modules: {
@@ -143,6 +144,7 @@ describe("project state", () => {
 			};
 
 			const lockfile: Lockfile = {
+				schemaVersion: 1,
 				artifacts: {
 					"project:file:package.json": {
 						definitionIds: ["root"],
@@ -221,6 +223,7 @@ describe("project state", () => {
 	it("rejects a manifest with invalid field values", async () => {
 		await withTempDir("manifest-invalid", async (directory) => {
 			await writeJson(join(directory, ".forge/manifest.json"), {
+				schemaVersion: 1,
 				modules: { abcde: { definitionIds: "nextjs/base" } },
 			});
 
@@ -250,9 +253,62 @@ describe("project state", () => {
 		});
 	});
 
+	it("rejects missing and unsupported state schema versions", async () => {
+		await withTempDir("state-schema-version", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				modules: {},
+			});
+			const missingManifest = await Effect.runPromise(
+				Effect.flip(
+					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
+				),
+			);
+			expect(missingManifest.message).toContain(
+				"We can't read this project's metadata because it was saved by a different version of Forge.",
+			);
+
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				modules: {},
+				schemaVersion: 2,
+			});
+			const unsupportedManifest = await Effect.runPromise(
+				Effect.flip(
+					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
+				),
+			);
+			expect(unsupportedManifest.message).toContain(
+				"We can't read this project's metadata because it was saved by a different version of Forge.",
+			);
+
+			await writeJson(join(directory, ".forge/lock.json"), { artifacts: {} });
+			const missingLockfile = await Effect.runPromise(
+				Effect.flip(
+					State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
+				),
+			);
+			expect(missingLockfile.message).toContain(
+				"We can't read this project's metadata because it was saved by a different version of Forge.",
+			);
+
+			await writeJson(join(directory, ".forge/lock.json"), {
+				artifacts: {},
+				schemaVersion: 2,
+			});
+			const unsupportedLockfile = await Effect.runPromise(
+				Effect.flip(
+					State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
+				),
+			);
+			expect(unsupportedLockfile.message).toContain(
+				"We can't read this project's metadata because it was saved by a different version of Forge.",
+			);
+		});
+	});
+
 	it("drops manifest module keys that fail id validation", async () => {
 		await withTempDir("manifest-bad-key", async (directory) => {
 			await writeJson(join(directory, ".forge/manifest.json"), {
+				schemaVersion: 1,
 				modules: { TOOLONG: { definitionIds: ["nextjs/base"] } },
 			});
 
@@ -301,13 +357,18 @@ describe("project state", () => {
 				),
 			);
 
-			expect(manifest).toEqual({ config: {}, installs: [], modules: {} });
+			expect(manifest).toEqual({
+				config: {},
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			});
 
 			const lockfile = await Effect.runPromise(
 				State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
 			);
 
-			expect(lockfile).toEqual({ artifacts: {} });
+			expect(lockfile).toEqual({ artifacts: {}, schemaVersion: 1 });
 		});
 	});
 
@@ -341,6 +402,7 @@ describe("project state", () => {
 
 	it("indexes artifacts by id, path, and definition", () => {
 		const index = buildArtifactIndex({
+			schemaVersion: 1,
 			artifacts: {
 				"project:file:package.json": {
 					definitionIds: ["root"],
