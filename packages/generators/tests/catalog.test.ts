@@ -43,8 +43,14 @@ describe("catalog", () => {
 		const templates = await listCatalogEntries("template");
 		const addons = await listCatalogEntries("addon");
 
-		expect(frameworks.map((entry) => entry.id)).toEqual(["nextjs"]);
-		expect(templates.map((entry) => entry.id)).toEqual(["nextjs/base"]);
+		expect(frameworks.map((entry) => entry.id)).toEqual([
+			"nextjs",
+			"tanstack-start",
+		]);
+		expect(templates.map((entry) => entry.id)).toEqual([
+			"nextjs/base",
+			"tanstack-start/base",
+		]);
 		expect(addons.every((entry) => entry.kind === "addon")).toBe(true);
 		expect(frameworks.length + templates.length + addons.length).toBe(
 			(await listCatalogEntries()).length,

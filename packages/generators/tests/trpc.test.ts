@@ -5,9 +5,12 @@ import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
 import { trpc } from "../src";
 import { nextjsFramework } from "../src/frameworks/nextjs";
+import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
-	const result = trpc.contribute({ config, frameworks: [nextjsFramework] });
+	const framework =
+		config.web === "tanstack-start" ? tanstackStartFramework : nextjsFramework;
+	const result = trpc.contribute({ config, frameworks: [framework] });
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: trpc");
 	return result;
@@ -189,6 +192,114 @@ const serverWithoutAuth = expectedContent([
 	");",
 ]);
 
+const tanstackRouteWithAuth = expectedContent([
+	"// Loads the server-route type augmentation for createFileRoute.",
+	'import "@tanstack/react-start";',
+	"",
+	'import { appRouter, createTRPCContext } from "@acme/trpc";',
+	'import { auth } from "@acme/auth";',
+	'import { createFileRoute } from "@tanstack/react-router";',
+	'import { fetchRequestHandler } from "@trpc/server/adapters/fetch";',
+	"",
+	"function createContext(request: Request) {",
+	"  const headers = new Headers(request.headers);",
+	'  headers.set("x-trpc-source", "route");',
+	"  return createTRPCContext({ auth, headers });",
+	"}",
+	"",
+	"function handler({ request }: { readonly request: Request }) {",
+	"  return fetchRequestHandler({",
+	"    req: request,",
+	"    router: appRouter,",
+	'    endpoint: "/api/trpc",',
+	"    createContext: () => createContext(request),",
+	"    onError:",
+	'      process.env.NODE_ENV === "development"',
+	"        ? ({ path, error }) => {",
+	"            console.error(",
+	'              `❌ tRPC failed on \u0024{path ?? "<no-path>"}: \u0024{error.message}`,',
+	"            );",
+	"          }",
+	"        : undefined,",
+	"  });",
+	"}",
+	"",
+	'export const Route = createFileRoute("/api/trpc/$")({',
+	"  server: {",
+	"    handlers: {",
+	"      GET: handler,",
+	"      POST: handler,",
+	"    },",
+	"  },",
+	"});",
+]);
+
+const tanstackRouteWithoutAuth = expectedContent([
+	"// Loads the server-route type augmentation for createFileRoute.",
+	'import "@tanstack/react-start";',
+	"",
+	'import { appRouter, createTRPCContext } from "@acme/trpc";',
+	'import { createFileRoute } from "@tanstack/react-router";',
+	'import { fetchRequestHandler } from "@trpc/server/adapters/fetch";',
+	"",
+	"function createContext(request: Request) {",
+	"  const headers = new Headers(request.headers);",
+	'  headers.set("x-trpc-source", "route");',
+	"  return createTRPCContext({ headers });",
+	"}",
+	"",
+	"function handler({ request }: { readonly request: Request }) {",
+	"  return fetchRequestHandler({",
+	"    req: request,",
+	"    router: appRouter,",
+	'    endpoint: "/api/trpc",',
+	"    createContext: () => createContext(request),",
+	"    onError:",
+	'      process.env.NODE_ENV === "development"',
+	"        ? ({ path, error }) => {",
+	"            console.error(",
+	'              `❌ tRPC failed on \u0024{path ?? "<no-path>"}: \u0024{error.message}`,',
+	"            );",
+	"          }",
+	"        : undefined,",
+	"  });",
+	"}",
+	"",
+	'export const Route = createFileRoute("/api/trpc/$")({',
+	"  server: {",
+	"    handlers: {",
+	"      GET: handler,",
+	"      POST: handler,",
+	"    },",
+	"  },",
+	"});",
+]);
+
+const tanstackServerWithAuth = expectedContent([
+	'import { createCaller, createTRPCContext } from "@acme/trpc";',
+	'import { auth } from "@acme/auth";',
+	"",
+	"export async function createServerCaller(request: Request) {",
+	"  const headers = new Headers(request.headers);",
+	'  headers.set("x-trpc-source", "server");',
+	"  const context = await createTRPCContext({ auth, headers });",
+	"",
+	"  return createCaller(context);",
+	"}",
+]);
+
+const tanstackServerWithoutAuth = expectedContent([
+	'import { createCaller, createTRPCContext } from "@acme/trpc";',
+	"",
+	"export async function createServerCaller(request: Request) {",
+	"  const headers = new Headers(request.headers);",
+	'  headers.set("x-trpc-source", "server");',
+	"  const context = await createTRPCContext({ headers });",
+	"",
+	"  return createCaller(context);",
+	"}",
+]);
+
 describe("trpc auth context", () => {
 	it("resolves and passes the full better-auth session when auth is active", () => {
 		const contributions = contributionsFor({
@@ -244,5 +355,72 @@ describe("trpc auth context", () => {
 		expect(server).toBe(serverWithoutAuth);
 
 		expect(trpcDependencyNames(contributions)).not.toContain("@acme/auth");
+	});
+});
+
+describe("trpc tanstack-start variant", () => {
+	const tanstackConfig: ForgeConfig = {
+		orm: "drizzle",
+		rpc: "trpc",
+		slug: "acme",
+		web: "tanstack-start",
+	};
+
+	it("renders the fetch route and server caller with auth", () => {
+		const contributions = contributionsFor({
+			...tanstackConfig,
+			authentication: "better-auth",
+		});
+		const route = leafFile(
+			contributions,
+			"web",
+			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
+		);
+		const server = leafFile(contributions, "web", "src/trpc/server.ts");
+
+		expect(route).toBe(tanstackRouteWithAuth);
+		expect(server).toBe(tanstackServerWithAuth);
+		expect(route).not.toContain("next/");
+		expect(server).not.toContain("next/");
+		expect(server).not.toContain("server-only");
+	});
+
+	it("removes both auth markers exactly when auth is inactive", () => {
+		const contributions = contributionsFor(tanstackConfig);
+		const route = leafFile(
+			contributions,
+			"web",
+			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
+		);
+		const server = leafFile(contributions, "web", "src/trpc/server.ts");
+
+		expect(route).toBe(tanstackRouteWithoutAuth);
+		expect(server).toBe(tanstackServerWithoutAuth);
+		expect(route).not.toMatch(/__[A-Z_]+__/);
+		expect(server).not.toMatch(/__[A-Z_]+__/);
+	});
+
+	it("writes tRPC support files beneath src/trpc", () => {
+		const contributions = contributionsFor(tanstackConfig);
+		const queryClient = leafFile(
+			contributions,
+			"web",
+			"src/trpc/query-client.ts",
+		);
+		const provider = leafFile(contributions, "web", "src/trpc/react.tsx");
+
+		expect(queryClient).toContain("export function createQueryClient");
+		expect(provider).toContain("import.meta.env.DEV");
+		expect(provider).not.toContain('"use client"');
+		expect(provider).not.toContain("process.env.NODE_ENV");
+	});
+
+	it("declares both framework base templates as dependency alternatives", () => {
+		expect(trpc.dependencies).toEqual(
+			expect.arrayContaining([
+				{ id: "nextjs/base", type: "template" },
+				{ id: "tanstack-start/base", type: "template" },
+			]),
+		);
 	});
 });

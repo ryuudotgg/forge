@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createProject,
 	expectInstallAndTypecheck,
+	expectInstallBuildAndTypecheck,
 	pathExists,
 	withScenarioWorkspace,
 } from "../utils/harness";
@@ -94,6 +95,25 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			);
 
 			await expectInstallAndTypecheck(workspace, "pnpm");
+		});
+	}, 600_000);
+
+	// The framework dimension gets one pnpm-only acceptance case; the
+	// package-manager matrix remains Next.js-only to keep smoke cost bounded.
+	it("installs, builds, and typechecks a full TanStack Start project", async () => {
+		await withScenarioWorkspace("smoke-tanstack-start", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				database: "postgresql",
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "tanstack-start",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 		});
 	}, 600_000);
 });

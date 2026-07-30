@@ -61,7 +61,7 @@ export const webFrameworks = defineChoices(
 		"tanstack-start": "TanStack Start",
 	} as const,
 	{
-		unavailable: ["react-router", "tanstack-router", "tanstack-start"],
+		unavailable: ["react-router", "tanstack-router"],
 	},
 );
 

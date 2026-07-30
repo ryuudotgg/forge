@@ -17,12 +17,12 @@ describe("registry loader", () => {
 
 		expect(loaded.registry).toBe(builtins);
 
-		expect(loaded.registry.frameworks.map((entry) => entry.id)).toContain(
-			"nextjs",
+		expect(loaded.registry.frameworks.map((entry) => entry.id)).toEqual(
+			expect.arrayContaining(["nextjs", "tanstack-start"]),
 		);
 
-		expect(loaded.registry.templates.map((entry) => entry.id)).toContain(
-			"nextjs/base",
+		expect(loaded.registry.templates.map((entry) => entry.id)).toEqual(
+			expect.arrayContaining(["nextjs/base", "tanstack-start/base"]),
 		);
 
 		expect(loaded.registry.addons.map((entry) => entry.id)).toEqual(
@@ -165,7 +165,10 @@ describe("removal blockers", () => {
 				[{ id: "base", version: 1 }],
 			);
 
-			expect(blockers.frameworks, addonId).toEqual(["Next.js"]);
+			expect(blockers.frameworks, addonId).toEqual([
+				"Next.js",
+				"TanStack Start",
+			]);
 		}
 
 		const blockers = findRemovalBlockers(

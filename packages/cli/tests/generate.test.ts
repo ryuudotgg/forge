@@ -72,6 +72,77 @@ describe("generate step", () => {
 		});
 	}, 120_000);
 
+	it("plans a full TanStack Start project at framework slot paths", async () => {
+		await withTempDir("generate-tanstack-start", async (directory) => {
+			const result = await generateStep.execute(
+				{
+					authentication: "better-auth",
+					database: "postgresql",
+					linter: "biome",
+					name: "Acme",
+					orm: "drizzle",
+					packageManager: "npm",
+					path: directory,
+					platforms: ["web"],
+					rpc: "trpc",
+					runtime: "Node.js",
+					slug: "acme",
+					style: "tailwind",
+					web: "tanstack-start",
+				},
+				false,
+			);
+
+			expect(result).toBe(SKIP);
+
+			const expectedWebFiles = [
+				"src/routes/__root.tsx",
+				"src/routes/index.tsx",
+				"src/routes/api/trpc/$.ts",
+				"src/routes/api/auth/$.ts",
+				"src/providers.tsx",
+				"src/router.tsx",
+				"src/routeTree.gen.ts",
+				"components.json",
+			];
+			for (const path of expectedWebFiles)
+				expect(
+					await readFile(join(directory, "apps/web", path), "utf-8"),
+					path,
+				).not.toHaveLength(0);
+
+			const manifest = await readJson(
+				join(directory, ".forge", "manifest.json"),
+			);
+			expect(manifest).toMatchObject({
+				config: expect.objectContaining({ web: "tanstack-start" }),
+			});
+			expect(JSON.stringify(manifest)).toContain(
+				'"definitionIds":["tanstack-start/base"]',
+			);
+
+			const trpcRoute = await readFile(
+				join(directory, "apps/web/src/routes/api/trpc/$.ts"),
+				"utf-8",
+			);
+			expect(trpcRoute).toContain('createFileRoute("/api/trpc/$")');
+			expect(trpcRoute).toContain('import { auth } from "@acme/auth";');
+
+			const authIndex = await readFile(
+				join(directory, "packages/auth/src/index.ts"),
+				"utf-8",
+			);
+			expect(authIndex).toContain(
+				'import { tanstackStartCookies } from "better-auth/tanstack-start";',
+			);
+
+			const components = await readJson(
+				join(directory, "apps/web/components.json"),
+			);
+			expect(components).toMatchObject({ rsc: false });
+		});
+	}, 120_000);
+
 	it("requires an orm before generating with better auth", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(((
 			code?: string | number | null,

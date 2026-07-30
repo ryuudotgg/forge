@@ -26,7 +26,11 @@ function generateAuthSecret() {
 	);
 }
 
-const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
+const betterAuthAddon = defineAddon<
+	ForgeConfig,
+	"better-auth",
+	"nextjs" | "tanstack-start"
+>({
 	id: "better-auth",
 	name: "Better Auth",
 	version: "0.1.0",
@@ -34,13 +38,14 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 	exclusive: true,
 	dependencies: [
 		{ id: "nextjs/base", type: "template" },
+		{ id: "tanstack-start/base", type: "template" },
 		{ id: "drizzle", type: "addon" },
 		{ id: "prisma", type: "addon" },
 	],
 	targetMode: "single",
 	compatibility: {
 		app: {
-			frameworks: ["nextjs"],
+			frameworks: ["nextjs", "tanstack-start"],
 			requiredSlots: ["auth"],
 		},
 	},
@@ -51,8 +56,10 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 		if (config.orm === undefined)
 			throw new Error("You need to add an ORM before you can use Better Auth.");
 
-		if (config.web !== "nextjs")
+		if (config.web !== "nextjs" && config.web !== "tanstack-start")
 			throw new Error("Better Auth requires a supported web framework.");
+
+		const framework = config.web;
 
 		const pm = resolvePackageManager(config);
 		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
@@ -68,9 +75,13 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 			interpolate(readTemplate(`auth/better-auth/${path}`), vars);
 
 		const renderWeb = (path: string) =>
-			interpolate(readTemplate(`auth/better-auth/${config.web}/${path}`), vars);
+			interpolate(readTemplate(`auth/better-auth/${framework}/${path}`), vars);
 
 		const web = ensuredModuleTarget("web");
+		const routeTemplate =
+			framework === "tanstack-start"
+				? "apps/web/src/routes/api/auth/$.ts"
+				: "apps/web/app/api/auth/[...all]/route.ts";
 
 		return [
 			ensurePackageModule("auth", "packages/auth", {
@@ -132,11 +143,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth", "nextjs">({
 				"src/client.ts",
 				renderPackage("packages/auth/src/client.ts"),
 			),
-			leafTextFile(
-				web,
-				slotPath(web, "auth"),
-				renderWeb("apps/web/app/api/auth/[...all]/route.ts"),
-			),
+			leafTextFile(web, slotPath(web, "auth"), renderWeb(routeTemplate)),
 			surfaceDependencies(web, "packageJson", [
 				{
 					name: `@${slug}/auth`,

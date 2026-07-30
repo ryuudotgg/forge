@@ -72,7 +72,7 @@ Pass `--no-install` to skip dependency installation and `--no-git` to skip Git i
 - 🔄 **Lifecycle management** - Add, remove, and update addons in an existing project with `add`, `remove`, and `update`.
 - 📦 **Your package manager** - Scaffold with pnpm, npm, Yarn, or Bun.
 - 🏗️ **Typed end to end** - Strict TypeScript across the whole monorepo.
-- ▲ **Next.js** - A modern React app wired up and ready to go.
+- ▲ **Next.js and TanStack Start** - Modern React apps wired up and ready to go.
 - 🗄️ **Database your way** - Drizzle or Prisma over PostgreSQL, MySQL, or SQLite, with providers like PlanetScale, Neon, Supabase, and Turso.
 - 🔌 **tRPC** - End-to-end typesafe APIs.
 - 🔐 **Better Auth** - Authentication ready out of the box.

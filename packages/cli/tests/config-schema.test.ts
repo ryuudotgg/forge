@@ -76,6 +76,21 @@ describe("assembleSchema", () => {
 		);
 	});
 
+	it("accepts TanStack Start in a complete create config", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			path: "./acme",
+			platforms: ["web"],
+			web: "tanstack-start",
+		});
+
+		expect(Either.getOrThrow(result)).toMatchObject({
+			platforms: ["web"],
+			web: "tanstack-start",
+		});
+	});
+
 	it("rejects unavailable backends with a friendly sentence", () => {
 		const result = decodeConfig({
 			name: "Acme",

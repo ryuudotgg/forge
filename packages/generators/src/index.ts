@@ -76,6 +76,10 @@ export {
 	resolveDatabaseProvider,
 } from "./data/providers";
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
+export {
+	default as tanstackStart,
+	tanstackStartFramework,
+} from "./frameworks/tanstack-start";
 export { default as biome } from "./linters/biome";
 export { default as drizzle } from "./orm/drizzle";
 export { default as prisma } from "./orm/prisma";
