@@ -886,6 +886,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			modules: ReadonlyArray<ManagedModuleRecord>,
 		) {
 			return {
+				schemaVersion: 1,
 				config,
 				installs: mergeInstallRecords(installs),
 				modules: Object.fromEntries(
@@ -970,7 +971,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				};
 			}
 
-			return { artifacts } satisfies Lockfile;
+			return { schemaVersion: 1, artifacts } satisfies Lockfile;
 		});
 
 		const buildWrites = (

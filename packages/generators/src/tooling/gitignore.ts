@@ -24,9 +24,6 @@ const gitignore = defineAddon<ForgeConfig, "gitignore">({
 			surfaceLines(projectTarget(), "gitignore", ["node_modules/"], {
 				section: "Dependencies",
 			}),
-			surfaceLines(projectTarget(), "gitignore", [".forge/"], {
-				section: "Forge",
-			}),
 			surfaceLines(projectTarget(), "gitignore", buildLines, {
 				section: "Build",
 			}),

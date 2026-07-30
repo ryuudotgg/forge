@@ -559,7 +559,6 @@ describe("gitignore addon", () => {
 
 		const sections = [
 			["Dependencies", ["node_modules/"]],
-			["Forge", [".forge/"]],
 			["Testing", ["coverage/"]],
 		] as const;
 

@@ -4,7 +4,7 @@ import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 import { ApplyError } from "./errors";
 import { hashContentHex } from "./hash";
-import type { Lockfile, Manifest } from "./state";
+import type { LockfileInput, Manifest, ManifestInput } from "./state";
 import { buildArtifactIndex, State } from "./state";
 
 export interface PlannedWrite {
@@ -14,15 +14,15 @@ export interface PlannedWrite {
 }
 
 export interface ApplyPlan {
-	readonly lockfile: Lockfile;
-	readonly manifest: Manifest;
+	readonly lockfile: LockfileInput;
+	readonly manifest: ManifestInput;
 	readonly removals: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedWrite>;
 }
 
 function movedModuleArtifactId(
 	write: PlannedWrite,
-	current: Manifest,
+	current: ManifestInput,
 	previous: Manifest,
 ): string | undefined {
 	if (write.artifactId === undefined) return undefined;
@@ -84,7 +84,6 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			if (realRoot === null) return fullPath;
 
 			let ancestor = fullPath;
-
 			while (ancestor !== rootPath) {
 				const realAncestor = yield* fs
 					.realPath(ancestor)
@@ -128,6 +127,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 		) {
 			const previousLockfile = yield* State.readLockfile(projectRoot);
 			const previousManifest = yield* State.readManifestOrDefault(projectRoot);
+
 			const previousArtifactIndex = buildArtifactIndex(previousLockfile);
 			const previousArtifacts = previousArtifactIndex.byPath;
 			const previousArtifactsById = previousArtifactIndex.byId;
@@ -248,6 +248,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+
 				removedPaths.push(relativePath);
 			}
 
@@ -288,7 +289,6 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				const fullPath = yield* ensureContained(projectRoot, file.path);
 
 				const directory = dirname(fullPath);
-
 				yield* fs.makeDirectory(directory, { recursive: true }).pipe(
 					Effect.catchTag(
 						"SystemError",

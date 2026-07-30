@@ -10,6 +10,11 @@ const PROJECT_STATE_DIR = ".forge";
 const MANIFEST_FILE = "manifest.json";
 const LOCKFILE_FILE = "lock.json";
 
+const StateSchemaVersion = Schema.Literal(1).annotations({
+	message: () =>
+		"We can't read this project's metadata because it was saved by a different version of Forge.",
+});
+
 const ModuleRecordSchema = Schema.Struct({
 	root: Schema.optional(Schema.String),
 	definitionIds: Schema.optionalWith(Schema.Array(Schema.String), {
@@ -54,6 +59,10 @@ const LockfileArtifactSchema = Schema.Struct({
 export type LockfileArtifact = typeof LockfileArtifactSchema.Type;
 
 export const ManifestSchema = Schema.Struct({
+	schemaVersion: Schema.propertySignature(StateSchemaVersion).annotations({
+		missingMessage: () =>
+			"We can't read this project's metadata because it was saved by a different version of Forge.",
+	}),
 	config: Schema.optionalWith(ConfigSnapshotSchema, {
 		default: () => ({}),
 	}),
@@ -67,8 +76,15 @@ export const ManifestSchema = Schema.Struct({
 });
 
 export type Manifest = typeof ManifestSchema.Type;
+export type ManifestInput = Omit<Manifest, "schemaVersion"> & {
+	readonly schemaVersion?: number;
+};
 
 export const LockfileSchema = Schema.Struct({
+	schemaVersion: Schema.propertySignature(StateSchemaVersion).annotations({
+		missingMessage: () =>
+			"We can't read this project's metadata because it was saved by a different version of Forge.",
+	}),
 	artifacts: Schema.optionalWith(
 		Schema.Record({ key: Schema.String, value: LockfileArtifactSchema }),
 		{ default: () => ({}) },
@@ -76,9 +92,13 @@ export const LockfileSchema = Schema.Struct({
 });
 
 export type Lockfile = typeof LockfileSchema.Type;
+export type LockfileInput = Omit<Lockfile, "schemaVersion"> & {
+	readonly schemaVersion?: number;
+};
 
 export function defaultManifest(): Manifest {
 	return {
+		schemaVersion: 1,
 		config: {},
 		installs: [],
 		modules: {},
@@ -86,7 +106,7 @@ export function defaultManifest(): Manifest {
 }
 
 export function defaultLockfile(): Lockfile {
-	return { artifacts: {} };
+	return { schemaVersion: 1, artifacts: {} };
 }
 
 function manifestPath(projectRoot: string) {
@@ -183,7 +203,6 @@ export class State extends Effect.Service<State>()("State", {
 			function* (projectRoot: string) {
 				const path = manifestPath(projectRoot);
 				const exists = yield* fs.exists(path);
-
 				if (!exists) return defaultManifest();
 
 				return yield* readManifest(projectRoot);
@@ -192,9 +211,10 @@ export class State extends Effect.Service<State>()("State", {
 
 		const writeManifest = Effect.fn("State.writeManifest")(function* (
 			projectRoot: string,
-			manifest: Manifest,
+			manifest: ManifestInput,
 		) {
 			const path = manifestPath(projectRoot);
+			const versionedManifest: Manifest = { ...manifest, schemaVersion: 1 };
 
 			yield* fs
 				.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
@@ -212,7 +232,10 @@ export class State extends Effect.Service<State>()("State", {
 				);
 
 			yield* fs
-				.writeFileString(path, formatJson(manifest, { compact: false }))
+				.writeFileString(
+					path,
+					formatJson(versionedManifest, { compact: false }),
+				)
 				.pipe(
 					Effect.catchTag(
 						"SystemError",
@@ -249,9 +272,10 @@ export class State extends Effect.Service<State>()("State", {
 
 		const writeLockfile = Effect.fn("State.writeLockfile")(function* (
 			projectRoot: string,
-			lockfile: Lockfile,
+			lockfile: LockfileInput,
 		) {
 			const path = lockfilePath(projectRoot);
+			const versionedLockfile: Lockfile = { ...lockfile, schemaVersion: 1 };
 
 			yield* fs
 				.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
@@ -269,7 +293,10 @@ export class State extends Effect.Service<State>()("State", {
 				);
 
 			yield* fs
-				.writeFileString(path, formatJson(lockfile, { compact: false }))
+				.writeFileString(
+					path,
+					formatJson(versionedLockfile, { compact: false }),
+				)
 				.pipe(
 					Effect.catchTag(
 						"SystemError",

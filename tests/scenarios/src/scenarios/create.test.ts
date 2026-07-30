@@ -47,6 +47,10 @@ describe("create", () => {
 			const lockfile = await readJson<{
 				artifacts: Record<string, { path: string }>;
 			}>(join(workspace.projectRoot, ".forge/lock.json"));
+			const gitignore = await readFile(
+				join(workspace.projectRoot, ".gitignore"),
+				"utf-8",
+			);
 
 			const appConfig = await readJson<{
 				framework: string;
@@ -59,6 +63,7 @@ describe("create", () => {
 			}>(join(workspace.projectRoot, "packages/ui/forge.json"));
 
 			expect(manifest.config.slug).toBe("acme");
+			expect(gitignore).not.toContain(".forge/");
 			expect(
 				manifest.installs.map((entry) => entry.definitionId).sort(),
 			).toEqual([

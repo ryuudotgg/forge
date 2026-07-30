@@ -289,6 +289,7 @@ describe("apply", () => {
 			await writeText(`${directory}/apps/web/app/layout.tsx`, "user-change\n");
 
 			const previousLockfile: Lockfile = {
+				schemaVersion: 1,
 				artifacts: {
 					"project:file:apps/web/app/layout.tsx": {
 						definitionIds: ["nextjs/base"],
@@ -346,6 +347,7 @@ describe("apply", () => {
 			await writeText(`${directory}/packages/ui/forge.json`, "{\n}\n");
 
 			const previousLockfile: Lockfile = {
+				schemaVersion: 1,
 				artifacts: {
 					"project:file:packages/ui/forge.json": {
 						definitionIds: ["ui"],
@@ -458,8 +460,8 @@ describe("apply", () => {
 	it("re-applies an identical plan without touching matching files", async () => {
 		await withTempDir("apply-idempotent", async (directory) => {
 			const plan = {
-				lockfile: { artifacts: {} },
-				manifest: { config: {}, installs: [], modules: {} },
+				lockfile: { artifacts: {}, schemaVersion: 1 },
+				manifest: { config: {}, installs: [], modules: {}, schemaVersion: 1 },
 				removals: [],
 				writes: [{ content: "export {};\n", path: "packages/db/src/index.ts" }],
 			};

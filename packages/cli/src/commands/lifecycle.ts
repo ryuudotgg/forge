@@ -10,14 +10,13 @@ import {
 	Planner,
 	State,
 } from "@ryuujs/core";
-import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
+import { loadDefinitionRegistry } from "@ryuujs/generators";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
-import { inferConfigSnapshot } from "./infer-config";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
-function lifecycleUnavailableMessage(command: string) {
-	return `We couldn't run "${command}" here because this project hasn't been bootstrapped with the current Forge metadata yet.`;
+function lifecycleUnavailableMessage() {
+	return "We couldn't find a Forge project here. The .forge directory is missing or incomplete.";
 }
 
 async function runLifecycleEffect<A, E extends { readonly message: string }>(
@@ -41,7 +40,7 @@ async function runLifecycleEffect<A, E extends { readonly message: string }>(
 }
 
 export interface ManagedProject {
-	readonly config: ForgeConfig;
+	readonly config: Manifest["config"];
 	readonly manifest: Manifest;
 	readonly modules: ReadonlyArray<DiscoveredModule>;
 	readonly projectRoot: string;
@@ -49,64 +48,38 @@ export interface ManagedProject {
 
 export async function loadManagedProject(
 	projectRoot: string,
-	command: string,
+	_command: string,
 ): Promise<ManagedProject> {
-	const isManagedProject = await runLifecycleEffect(
-		State.isManagedProject(projectRoot).pipe(Effect.provide(coreLayer)),
+	const manifest = await runLifecycleEffect(
+		State.readManifest(projectRoot).pipe(
+			Effect.catchTag("StateError", (error) =>
+				error.message === "Manifest Not Found"
+					? Effect.succeed(undefined)
+					: Effect.fail(error),
+			),
+			Effect.provide(coreLayer),
+		),
 		"We couldn't read this project's Forge metadata.",
 	);
 
-	if (!isManagedProject) {
-		log.error(lifecycleUnavailableMessage(command));
+	if (manifest === undefined) {
+		log.error(lifecycleUnavailableMessage());
 		process.exit(1);
 	}
 
-	const [manifest, modules] = await Promise.all([
-		runLifecycleEffect(
-			State.readManifest(projectRoot).pipe(Effect.provide(coreLayer)),
-			"We couldn't read this project's Forge metadata.",
-		),
-		runLifecycleEffect(
-			ConfigStore.discover(projectRoot).pipe(Effect.provide(coreLayer)),
-			"We couldn't read this project's modules.",
-		),
-	]);
+	const modules = await runLifecycleEffect(
+		ConfigStore.discover(projectRoot).pipe(Effect.provide(coreLayer)),
+		"We couldn't read this project's modules.",
+	);
 
-	const config =
-		Object.keys(manifest.config).length > 0
-			? (manifest.config as ForgeConfig)
-			: await inferConfigSnapshot(projectRoot, modules);
-
-	const needsNormalization =
-		manifest.installs.length === 0 ||
-		Object.values(manifest.modules).some(
-			(record) =>
-				record.definitionIds.length === 0 || record.root === undefined,
-		);
-
-	const normalizedManifest = needsNormalization
-		? (
-				await runLifecycleEffect(
-					Effect.flatMap(Planner, (planner) =>
-						Effect.sync(() => loadDefinitionRegistry()).pipe(
-							Effect.flatMap((loadedRegistry) =>
-								planner.planInstalled(
-									projectRoot,
-									config,
-									manifest.installs,
-									loadedRegistry.registry,
-								),
-							),
-						),
-					).pipe(Effect.provide(coreLayer)),
-					"We couldn't plan this change.",
-				)
-			).manifest
-		: manifest;
+	if (Object.keys(manifest.config).length === 0) {
+		log.error(lifecycleUnavailableMessage());
+		process.exit(1);
+	}
 
 	return {
-		config,
-		manifest: normalizedManifest,
+		config: manifest.config,
+		manifest,
 		modules,
 		projectRoot,
 	};
@@ -114,7 +87,7 @@ export async function loadManagedProject(
 
 export async function applyInstalledPlan(
 	projectRoot: string,
-	config: ForgeConfig,
+	config: Manifest["config"],
 	installs: ReadonlyArray<InstallRecord>,
 ) {
 	const loadedRegistry = await loadDefinitionRegistry();
