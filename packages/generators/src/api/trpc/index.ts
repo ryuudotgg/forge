@@ -12,7 +12,7 @@ import { deps } from "../../deps";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 
-const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
+const trpc = defineAddon<ForgeConfig, "trpc", "nextjs" | "tanstack-start">({
 	id: "trpc",
 	name: "tRPC",
 	version: "0.1.0",
@@ -20,20 +20,23 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 	exclusive: false,
 	dependencies: [
 		{ id: "nextjs/base", type: "template" },
+		{ id: "tanstack-start/base", type: "template" },
 		{ id: "typescript", type: "addon" },
 	],
 	targetMode: "single",
 	compatibility: {
 		app: {
-			frameworks: ["nextjs"],
+			frameworks: ["nextjs", "tanstack-start"],
 			requiredSlots: ["trpc"],
 		},
 	},
 	when: (config) => config.rpc === "trpc",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
-		if (config.web !== "nextjs")
+		if (config.web !== "nextjs" && config.web !== "tanstack-start")
 			throw new Error("tRPC requires a supported web framework.");
+
+		const framework = config.web;
 
 		const usesDb = config.orm !== undefined;
 		const usesAuth = config.authentication === "better-auth";
@@ -62,9 +65,20 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 			interpolate(readTemplate(`api/trpc/${path}`), vars);
 
 		const renderWeb = (path: string) =>
-			interpolate(readTemplate(`api/trpc/${config.web}/${path}`), vars);
+			interpolate(readTemplate(`api/trpc/${framework}/${path}`), vars);
 
 		const web = ensuredModuleTarget("web");
+
+		const supportDirectory =
+			framework === "tanstack-start" ? "src/trpc" : "trpc";
+
+		const supportTemplateDirectory =
+			framework === "tanstack-start" ? "apps/web/src/trpc" : "apps/web/trpc";
+
+		const routeTemplate =
+			framework === "tanstack-start"
+				? "apps/web/src/routes/api/trpc/$.ts"
+				: "apps/web/app/api/trpc/[trpc]/route.ts";
 
 		const moduleDeps: Array<{
 			name: string;
@@ -141,16 +155,20 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 
 			leafTextFile(
 				web,
-				"trpc/query-client.ts",
-				renderWeb("apps/web/trpc/query-client.ts"),
+				`${supportDirectory}/query-client.ts`,
+				renderWeb(`${supportTemplateDirectory}/query-client.ts`),
 			),
-			leafTextFile(web, "trpc/server.ts", renderWeb("apps/web/trpc/server.ts")),
-			leafTextFile(web, "trpc/react.tsx", renderWeb("apps/web/trpc/react.tsx")),
 			leafTextFile(
 				web,
-				slotPath(web, "trpc"),
-				renderWeb("apps/web/app/api/trpc/[trpc]/route.ts"),
+				`${supportDirectory}/server.ts`,
+				renderWeb(`${supportTemplateDirectory}/server.ts`),
 			),
+			leafTextFile(
+				web,
+				`${supportDirectory}/react.tsx`,
+				renderWeb(`${supportTemplateDirectory}/react.tsx`),
+			),
+			leafTextFile(web, slotPath(web, "trpc"), renderWeb(routeTemplate)),
 			surfaceDependencies(web, "packageJson", [
 				{
 					name: `@${slug}/trpc`,

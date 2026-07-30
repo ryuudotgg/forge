@@ -208,7 +208,7 @@ describe("remove command", () => {
 			await expect(runRemove("ui", {})).rejects.toThrow("exit:1");
 
 			expect(promptMocks.logError).toHaveBeenCalledWith(
-				"We can't remove UI Package because your Next.js app needs it.",
+				"We can't remove UI Package because your Next.js and TanStack Start app needs it.",
 			);
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {

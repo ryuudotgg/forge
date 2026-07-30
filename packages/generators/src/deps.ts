@@ -19,11 +19,20 @@ export const deps = {
 	react: dep("react"),
 	reactDom: dep("reactDom"),
 	serverOnly: dep("serverOnly"),
+
+	tanstackReactRouter: dep("tanstackReactRouter"),
+	tanstackReactStart: dep("tanstackReactStart"),
+	tanstackRouterCli: dep("tanstackRouterCli"),
+
+	vite: dep("vite"),
+	viteReact: dep("viteReact"),
+
 	typesNode: dep("typesNode"),
 	typesReact: dep("typesReact"),
 	typesReactDom: dep("typesReactDom"),
 
 	tailwindcss: dep("tailwindcss"),
+	tailwindVite: dep("tailwindVite"),
 	tailwindPostcss: dep("tailwindPostcss"),
 	twAnimateCss: dep("twAnimateCss"),
 

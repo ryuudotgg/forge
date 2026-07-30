@@ -46,7 +46,35 @@ export const versions = {
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
 
+	tanstackReactRouter: {
+		name: "@tanstack/react-router",
+		version: "1.170.18",
+		group: "Framework",
+	},
+	tanstackReactStart: {
+		name: "@tanstack/react-start",
+		version: "1.168.32",
+		group: "Framework",
+	},
+	tanstackRouterCli: {
+		name: "@tanstack/router-cli",
+		version: "1.167.21",
+		group: "Tooling",
+	},
+
+	vite: { name: "vite", version: "8.1.5", group: "Tooling" },
+	viteReact: {
+		name: "@vitejs/plugin-react",
+		version: "6.0.4",
+		group: "Tooling",
+	},
+
 	tailwindcss: { name: "tailwindcss", version: "^4.2.2", group: "Styling" },
+	tailwindVite: {
+		name: "@tailwindcss/vite",
+		version: "^4.1.18",
+		group: "Styling",
+	},
 	tailwindPostcss: {
 		name: "@tailwindcss/postcss",
 		version: "^4.2.2",

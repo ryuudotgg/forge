@@ -58,6 +58,16 @@ describe("catalogRef", () => {
 	});
 });
 
+describe("Tailwind Vite", () => {
+	it("pins the version verified against the official TanStack scaffold", () => {
+		expect(versions.tailwindVite).toEqual({
+			name: "@tailwindcss/vite",
+			version: "^4.1.18",
+			group: "Styling",
+		});
+	});
+});
+
 describe("typesNode", () => {
 	it("tracks the current Node.js major within the supported range", () => {
 		const match = versions.typesNode.version.match(/^\^(\d+)\.0\.0$/);

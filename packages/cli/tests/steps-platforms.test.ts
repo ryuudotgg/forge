@@ -147,6 +147,9 @@ describe("web step", () => {
 		await expect(webStep.execute({ web: "nextjs" }, false)).resolves.toBe(
 			"nextjs",
 		);
+		await expect(
+			webStep.execute({ web: "tanstack-start" }, false),
+		).resolves.toBe("tanstack-start");
 	});
 
 	it("defaults to nextjs when web is missing", async () => {
@@ -183,7 +186,6 @@ describe("web step", () => {
 				{
 					label: "TanStack Start",
 					value: "tanstack-start",
-					hint: "coming soon",
 				},
 			],
 		});

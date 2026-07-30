@@ -24,6 +24,7 @@ import {
 	typescript,
 } from "../src";
 import { nextjsFramework } from "../src/frameworks/nextjs";
+import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 import { readTemplate } from "../src/template";
 import { versions } from "../src/versions";
 
@@ -248,6 +249,54 @@ describe("better-auth addon", () => {
 					version: "workspace:*",
 				}),
 				expect.objectContaining({ name: "better-auth", type: "dependencies" }),
+			]),
+		);
+	});
+
+	it("renders TanStack Start handlers and cookie plugins for both ORMs", () => {
+		const authOrms: ReadonlyArray<"drizzle" | "prisma"> = ["drizzle", "prisma"];
+
+		for (const orm of authOrms) {
+			const contributions = contributionsOf(
+				betterAuth,
+				{
+					authentication: "better-auth",
+					database: "postgresql",
+					orm,
+					slug: "acme",
+					web: "tanstack-start",
+				},
+				[tanstackStartFramework],
+			);
+			const index = leafFile(contributions, "src/index.ts");
+
+			expect(index.content, orm).toContain(
+				'import { tanstackStartCookies } from "better-auth/tanstack-start";',
+			);
+			expect(index.content, orm).toContain("plugins: [tanstackStartCookies()]");
+			expect(index.content, orm).not.toContain("nextCookies");
+
+			const route = ofTag(contributions, "LeafTextFileContribution").find(
+				(contribution) =>
+					typeof contribution.path !== "string" &&
+					contribution.path.slot === "auth",
+			);
+			if (!route) throw new Error("Missing Leaf File: auth slot");
+
+			expect(route.content, orm).toContain(
+				'// Loads the server-route type augmentation for createFileRoute.\nimport "@tanstack/react-start";',
+			);
+			expect(route.content, orm).toContain('createFileRoute("/api/auth/$")');
+			expect(route.content, orm).toContain("return auth.handler(request);");
+			expect(route.content, orm).not.toContain("toNextJsHandler");
+		}
+	});
+
+	it("declares both framework base templates as dependency alternatives", () => {
+		expect(betterAuth.dependencies).toEqual(
+			expect.arrayContaining([
+				{ id: "nextjs/base", type: "template" },
+				{ id: "tanstack-start/base", type: "template" },
 			]),
 		);
 	});

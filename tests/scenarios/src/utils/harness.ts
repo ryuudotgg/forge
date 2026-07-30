@@ -259,6 +259,16 @@ const typecheckArgsFor: Record<
 	yarn: ["typecheck"],
 };
 
+const buildArgsFor: Record<
+	"pnpm" | "npm" | "yarn" | "bun",
+	ReadonlyArray<string>
+> = {
+	bun: ["run", "build"],
+	npm: ["run", "build"],
+	pnpm: ["build"],
+	yarn: ["build"],
+};
+
 export async function expectInstallAndTypecheck(
 	workspace: ScenarioProject,
 	pm: "pnpm" | "npm" | "yarn" | "bun",
@@ -281,6 +291,41 @@ export async function expectInstallAndTypecheck(
 	expect(
 		result.exitCode,
 		`${pm} typecheck failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
+	).toBe(0);
+}
+
+export async function expectInstallBuildAndTypecheck(
+	workspace: ScenarioProject,
+	pm: "pnpm" | "npm" | "yarn" | "bun",
+) {
+	const installResult = await runCommand(pm, installArgsFor[pm], {
+		cwd: workspace.projectRoot,
+		env: forgeEnvironment(workspace.workspaceRoot),
+	});
+
+	expect(
+		installResult.exitCode,
+		`${pm} install failed with code ${installResult.exitCode}\n${installResult.stdout}\n${installResult.stderr}`,
+	).toBe(0);
+
+	const buildResult = await runCommand(pm, buildArgsFor[pm], {
+		cwd: workspace.projectRoot,
+		env: forgeEnvironment(workspace.workspaceRoot),
+	});
+
+	expect(
+		buildResult.exitCode,
+		`${pm} build failed with code ${buildResult.exitCode}\n${buildResult.stdout}\n${buildResult.stderr}`,
+	).toBe(0);
+
+	const typecheckResult = await runCommand(pm, typecheckArgsFor[pm], {
+		cwd: workspace.projectRoot,
+		env: forgeEnvironment(workspace.workspaceRoot),
+	});
+
+	expect(
+		typecheckResult.exitCode,
+		`${pm} typecheck failed with code ${typecheckResult.exitCode}\n${typecheckResult.stdout}\n${typecheckResult.stderr}`,
 	).toBe(0);
 }
 

@@ -107,6 +107,33 @@ describe("create command", () => {
 		});
 	});
 
+	it("passes TanStack Start through from a config file", async () => {
+		await withTempDir("create-tanstack-start", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+
+			await writeFile(
+				configPath,
+				JSON.stringify({
+					name: "Acme",
+					platforms: ["web"],
+					web: "tanstack-start",
+				}),
+				"utf-8",
+			);
+
+			await runCreate({ config: configPath });
+
+			expect(orchestratorMocks.orchestrate).toHaveBeenCalledWith(steps, {
+				initialConfig: {
+					name: "Acme",
+					platforms: ["web"],
+					web: "tanstack-start",
+				},
+				interactive: false,
+			});
+		});
+	});
+
 	it("logs a helpful error when the preset is unknown", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(((
 			code?: string | number | null,

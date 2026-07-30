@@ -4,11 +4,14 @@ import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
 import { loadAddonDefinition } from "../src";
 import { nextjsFramework } from "../src/frameworks/nextjs";
+import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 
 const { addon } = loadAddonDefinition("ui");
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
-	const result = addon.contribute({ config, frameworks: [nextjsFramework] });
+	const framework =
+		config.web === "tanstack-start" ? tanstackStartFramework : nextjsFramework;
+	const result = addon.contribute({ config, frameworks: [framework] });
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: ui");
 
@@ -108,6 +111,7 @@ describe("ui addon", () => {
 		const uiJson: unknown = JSON.parse(uiComponents.content);
 		expect(uiJson).toMatchObject({
 			$schema: "https://ui.shadcn.com/schema.json",
+			rsc: true,
 			style: "base-vega",
 			tailwind: { css: "src/styles/globals.css", baseColor: "neutral" },
 			aliases: {
@@ -122,6 +126,7 @@ describe("ui addon", () => {
 		const appComponents = leafFile(contributions, "web", "components.json");
 		const appJson: unknown = JSON.parse(appComponents.content);
 		expect(appJson).toMatchObject({
+			rsc: true,
 			style: "base-vega",
 			tailwind: { css: "../../packages/ui/src/styles/globals.css" },
 			aliases: {
@@ -132,6 +137,22 @@ describe("ui addon", () => {
 				utils: "@acme/ui/lib/utils",
 			},
 		});
+	});
+
+	it("disables React Server Components for TanStack Start", () => {
+		const contributions = contributionsFor({
+			...baseConfig,
+			web: "tanstack-start",
+		});
+		const uiJson: unknown = JSON.parse(
+			leafFile(contributions, "ui", "components.json").content,
+		);
+		const appJson: unknown = JSON.parse(
+			leafFile(contributions, "web", "components.json").content,
+		);
+
+		expect(uiJson).toMatchObject({ rsc: false });
+		expect(appJson).toMatchObject({ rsc: false });
 	});
 
 	it("flips to the radix style and drops the base-ui dependency", () => {
@@ -188,6 +209,31 @@ describe("ui addon", () => {
 			]),
 		);
 
+		const tanstackWithTailwind = contributionsFor({
+			...baseConfig,
+			web: "tanstack-start",
+		});
+		const tanstackUiNames = dependencyEntries(tanstackWithTailwind, "ui").map(
+			({ name }) => name,
+		);
+		expect(tanstackUiNames).toContain("tailwindcss");
+		expect(tanstackUiNames).not.toContain("@tailwindcss/postcss");
+		expect(dependencyEntries(tanstackWithTailwind, "web")).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					name: "tailwindcss",
+					type: "devDependencies",
+				}),
+				expect.objectContaining({
+					name: "@tailwindcss/vite",
+					type: "devDependencies",
+				}),
+			]),
+		);
+		expect(
+			dependencyEntries(tanstackWithTailwind, "web").map(({ name }) => name),
+		).not.toContain("@tailwindcss/postcss");
+
 		const ensure = must(
 			withTailwind.find(byTag("EnsureModuleContribution")),
 			"ui module",
@@ -223,7 +269,7 @@ describe("ui addon", () => {
 		});
 	});
 
-	it("re-exports the ui postcss config into the web app", () => {
+	it("keeps PostCSS config writes exclusive to Next.js", () => {
 		const postcss = leafFile(
 			contributionsFor(baseConfig),
 			"web",
@@ -234,6 +280,23 @@ describe("ui addon", () => {
 		expect(postcss.content).toBe(
 			'export { default } from "@acme/ui/postcss.config";\n',
 		);
+
+		const tanstack = contributionsFor({
+			...baseConfig,
+			web: "tanstack-start",
+		});
+		const tanstackPostcssFiles = tanstack
+			.filter(byTag("LeafTextFileContribution"))
+			.filter((entry) => entry.path === "postcss.config.mjs");
+		expect(tanstackPostcssFiles).toEqual([]);
+		expect(packageJsonSurface(tanstack).value.exports).not.toHaveProperty(
+			"./postcss.config",
+		);
+		const ensure = must(
+			tanstack.find(byTag("EnsureModuleContribution")),
+			"ui module",
+		);
+		expect(ensure.module.slots).not.toHaveProperty("postcssConfig");
 	});
 
 	it("shapes the ui package exports and the shadcn add script per package manager", () => {

@@ -7,6 +7,11 @@ import nextjsBaseTemplate, {
 	nextjsFramework,
 	nextjsFrameworkMetadata,
 } from "../frameworks/nextjs";
+import tanstackStartBaseTemplate, {
+	tanstackStartBaseTemplateMetadata,
+	tanstackStartFramework,
+	tanstackStartFrameworkMetadata,
+} from "../frameworks/tanstack-start";
 import biome, { biomeMetadata } from "../linters/biome";
 import drizzle, { drizzleMetadata } from "../orm/drizzle";
 import prisma, { prismaMetadata } from "../orm/prisma";
@@ -32,8 +37,8 @@ import {
 } from "./types";
 
 export const firstPartyRegistry = defineRegistry<ForgeConfig>({
-	frameworks: [nextjsFramework],
-	templates: [nextjsBaseTemplate],
+	frameworks: [nextjsFramework, tanstackStartFramework],
+	templates: [nextjsBaseTemplate, tanstackStartBaseTemplate],
 	addons: [
 		root,
 		pnpm,
@@ -60,6 +65,11 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 export const firstPartyCatalog = [
 	frameworkCatalogEntry(nextjsFramework, nextjsFrameworkMetadata),
 	templateCatalogEntry(nextjsBaseTemplate, nextjsBaseTemplateMetadata),
+	frameworkCatalogEntry(tanstackStartFramework, tanstackStartFrameworkMetadata),
+	templateCatalogEntry(
+		tanstackStartBaseTemplate,
+		tanstackStartBaseTemplateMetadata,
+	),
 	addonCatalogEntry(root, rootMetadata),
 	addonCatalogEntry(pnpm, pnpmMetadata),
 	addonCatalogEntry(yarn, yarnMetadata),
