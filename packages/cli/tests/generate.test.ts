@@ -1,6 +1,14 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+	defineAddon,
+	defineFramework,
+	defineRegistry,
+	defineTemplate,
+	ensureAppModule,
+} from "@ryuujs/core";
+import * as generators from "@ryuujs/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import generateStep from "../src/steps/generate";
 import { SKIP } from "../src/steps/types";
@@ -109,4 +117,76 @@ describe("generate step", () => {
 			).rejects.toThrow(/^Generation Failed: /);
 		});
 	}, 120_000);
+
+	it("surfaces a missing framework slot as a natural sentence", async () => {
+		const fakeFramework = defineFramework({
+			id: "fake",
+			configFile: "fake.config.ts",
+			buildOutputs: [],
+			ignoreDirs: [],
+			name: "Fake Framework",
+			slots: ["layout"],
+			tsconfigPreset: { content: {}, name: "fake" },
+		});
+		const fakeTemplate = defineTemplate<generators.ForgeConfig>({
+			id: "fake/base",
+			framework: "fake",
+			name: "Fake Base",
+			version: 1,
+			category: "web",
+			exclusive: true,
+			when: (config) => config.web === "nextjs",
+			contribute: () => [
+				ensureAppModule("web", "apps/web", {
+					framework: "fake",
+					template: { id: "base", version: 1 },
+					slots: { layout: "app/layout.tsx" },
+				}),
+			],
+		});
+		const trpc = defineAddon<generators.ForgeConfig>({
+			id: "trpc",
+			name: "tRPC",
+			version: "0.1.0",
+			category: "addon",
+			exclusive: false,
+			targetMode: "single",
+			compatibility: {
+				app: {
+					frameworks: ["fake"],
+					requiredSlots: ["trpc"],
+				},
+			},
+			when: (config) => config.rpc === "trpc",
+			contribute: () => [],
+		});
+		const loadRegistry = vi
+			.spyOn(generators, "loadDefinitionRegistry")
+			.mockReturnValue({
+				registry: defineRegistry({
+					frameworks: [fakeFramework],
+					templates: [fakeTemplate],
+					addons: [trpc],
+				}),
+			});
+
+		try {
+			await withTempDir("generate-missing-slot", async (directory) => {
+				await expect(
+					generateStep.execute(
+						{
+							path: directory,
+							rpc: "trpc",
+							web: "nextjs",
+						},
+						false,
+					),
+				).rejects.toThrow(
+					"Generation Failed: tRPC requires the trpc slot, but Fake Framework does not provide it.",
+				);
+			});
+		} finally {
+			loadRegistry.mockRestore();
+		}
+	});
 });

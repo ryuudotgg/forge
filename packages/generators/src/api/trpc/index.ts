@@ -3,6 +3,7 @@ import {
 	ensuredModuleTarget,
 	ensurePackageModule,
 	leafTextFile,
+	slotPath,
 	surfaceDependencies,
 	surfaceJson,
 } from "@ryuujs/core";
@@ -22,9 +23,17 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 		{ id: "typescript", type: "addon" },
 	],
 	targetMode: "single",
+	compatibility: {
+		app: {
+			frameworks: ["nextjs"],
+			requiredSlots: ["trpc"],
+		},
+	},
 	when: (config) => config.rpc === "trpc",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
+		if (config.web !== "nextjs")
+			throw new Error("tRPC requires a supported web framework.");
 
 		const usesDb = config.orm !== undefined;
 		const usesAuth = config.authentication === "better-auth";
@@ -36,7 +45,9 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 			AUTH_TYPE_IMPORT: usesAuth
 				? `import type { Auth } from "@${slug}/auth";\n`
 				: "",
-			AUTH_IMPORT: usesAuth ? `import { auth } from "@${slug}/auth";\n` : "",
+			"// __AUTH_IMPORT__\n": usesAuth
+				? `import { auth } from "@${slug}/auth";\n`
+				: "",
 			SESSION_TYPE: usesAuth
 				? 'Awaited<ReturnType<Auth["api"]["getSession"]>>'
 				: "{ user: { id: string; email: string } } | null",
@@ -44,23 +55,30 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 			SESSION_RESOLVE: usesAuth
 				? "const session = await opts.auth.api.getSession({ headers: opts.headers });"
 				: "const session = null;",
-			AUTH_ARG: usesAuth ? "auth, " : "",
+			"/* __AUTH_ARG__ */ ": usesAuth ? "auth, " : "",
 		};
 
-		const render = (path: string) =>
+		const renderPackage = (path: string) =>
 			interpolate(readTemplate(`api/trpc/${path}`), vars);
+
+		const renderWeb = (path: string) =>
+			interpolate(readTemplate(`api/trpc/${config.web}/${path}`), vars);
+
+		const web = ensuredModuleTarget("web");
 
 		const moduleDeps: Array<{
 			name: string;
 			version: string;
 			type: "dependencies";
 		}> = [];
+
 		if (usesDb)
 			moduleDeps.push({
 				name: `@${slug}/db`,
 				version: "workspace:*",
 				type: "dependencies",
 			});
+
 		if (usesAuth)
 			moduleDeps.push({
 				name: `@${slug}/auth`,
@@ -108,40 +126,32 @@ const trpc = defineAddon<ForgeConfig, "trpc", "nextjs">({
 			leafTextFile(
 				ensuredModuleTarget("trpc"),
 				"src/index.ts",
-				render("packages/trpc/src/index.ts"),
+				renderPackage("packages/trpc/src/index.ts"),
 			),
 			leafTextFile(
 				ensuredModuleTarget("trpc"),
 				"src/trpc.ts",
-				render("packages/trpc/src/trpc.ts"),
+				renderPackage("packages/trpc/src/trpc.ts"),
 			),
 			leafTextFile(
 				ensuredModuleTarget("trpc"),
 				"src/root.ts",
-				render("packages/trpc/src/root.ts"),
+				renderPackage("packages/trpc/src/root.ts"),
 			),
 
 			leafTextFile(
-				ensuredModuleTarget("web"),
+				web,
 				"trpc/query-client.ts",
-				render("apps/web/trpc/query-client.ts"),
+				renderWeb("apps/web/trpc/query-client.ts"),
 			),
+			leafTextFile(web, "trpc/server.ts", renderWeb("apps/web/trpc/server.ts")),
+			leafTextFile(web, "trpc/react.tsx", renderWeb("apps/web/trpc/react.tsx")),
 			leafTextFile(
-				ensuredModuleTarget("web"),
-				"trpc/server.ts",
-				render("apps/web/trpc/server.ts"),
+				web,
+				slotPath(web, "trpc"),
+				renderWeb("apps/web/app/api/trpc/[trpc]/route.ts"),
 			),
-			leafTextFile(
-				ensuredModuleTarget("web"),
-				"trpc/react.tsx",
-				render("apps/web/trpc/react.tsx"),
-			),
-			leafTextFile(
-				ensuredModuleTarget("web"),
-				"app/api/trpc/[trpc]/route.ts",
-				render("apps/web/app/api/trpc/[trpc]/route.ts"),
-			),
-			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
+			surfaceDependencies(web, "packageJson", [
 				{
 					name: `@${slug}/trpc`,
 					version: "workspace:*",

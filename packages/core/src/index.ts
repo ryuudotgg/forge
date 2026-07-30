@@ -41,6 +41,7 @@ export type {
 	ProviderWrapperContribution,
 	RouteHandlerContribution,
 	ScriptContribution,
+	SlotPath,
 	TargetMode,
 	TemplateDefinition,
 	TemplateId,
@@ -72,8 +73,11 @@ export {
 	projectSurfaceNames,
 	projectTarget,
 	resolveDefinitions,
+	resolveSlotPath,
+	SlotPathError,
 	scripts,
 	selectedModuleTarget,
+	slotPath,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,
@@ -81,6 +85,7 @@ export {
 	surfaceText,
 	templateModuleTarget,
 	textFile,
+	validateAddonAgainstSelection,
 } from "./authoring";
 export { CommandProbe } from "./command";
 export type {

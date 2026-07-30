@@ -13,10 +13,26 @@ import {
 
 interface ManifestSnapshot {
 	readonly config: Record<string, unknown>;
-	readonly installs: Array<{
-		definitionId: string;
-		targets: Array<{ kind: string }>;
-	}>;
+	readonly installs: Array<ManifestInstall>;
+	readonly modules: Record<string, { readonly root?: string }>;
+}
+
+type ManifestInstallTarget =
+	| { readonly kind: "project" }
+	| { readonly kind: "module"; readonly moduleId: string };
+
+interface ManifestInstall {
+	readonly definitionId: string;
+	readonly targets: Array<ManifestInstallTarget>;
+}
+
+type NormalizedInstallTarget =
+	| { readonly kind: "project" }
+	| { readonly kind: "module"; readonly root: string };
+
+interface NormalizedInstall {
+	readonly definitionId: string;
+	readonly targets: Array<NormalizedInstallTarget>;
 }
 
 interface UiModuleConfig {
@@ -44,10 +60,33 @@ async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 	return files.sort();
 }
 
-function sortInstalls(installs: ManifestSnapshot["installs"]) {
+function sortInstalls<Install extends { readonly definitionId: string }>(
+	installs: ReadonlyArray<Install>,
+) {
 	return [...installs].sort((a, b) =>
 		a.definitionId.localeCompare(b.definitionId),
 	);
+}
+
+function moduleRoot(manifest: ManifestSnapshot, moduleId: string) {
+	const root = manifest.modules[moduleId]?.root;
+
+	if (root === undefined) throw new Error(`Module Root Not Found: ${moduleId}`);
+
+	return root;
+}
+
+function normalizeInstalls(
+	manifest: ManifestSnapshot,
+): Array<NormalizedInstall> {
+	return manifest.installs.map((install) => ({
+		definitionId: install.definitionId,
+		targets: install.targets.map((target) =>
+			target.kind === "module"
+				? { kind: "module", root: moduleRoot(manifest, target.moduleId) }
+				: target,
+		),
+	}));
 }
 
 async function expectMatchingProjects(
@@ -90,8 +129,8 @@ async function expectMatchingProjects(
 		readJson<ManifestSnapshot>(join(expectedRoot, ".forge/manifest.json")),
 	]);
 
-	expect(sortInstalls(actualManifest.installs)).toEqual(
-		sortInstalls(expectedManifest.installs),
+	expect(sortInstalls(normalizeInstalls(actualManifest))).toEqual(
+		sortInstalls(normalizeInstalls(expectedManifest)),
 	);
 
 	const actualConfig = { ...actualManifest.config };

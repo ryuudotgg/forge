@@ -6,6 +6,7 @@ import type {
 import {
 	defineFramework,
 	moduleCapabilities,
+	slotPath,
 	templateModuleTarget,
 } from "@ryuujs/core";
 import { Effect } from "effect";
@@ -125,6 +126,7 @@ describe("better-auth addon", () => {
 			contributionsOf(betterAuth, {
 				authentication: "better-auth",
 				slug: "acme",
+				web: "nextjs",
 			}),
 		).toThrow("You need to add an ORM before you can use Better Auth.");
 	});
@@ -134,6 +136,7 @@ describe("better-auth addon", () => {
 			authentication: "better-auth",
 			orm: "prisma",
 			slug: "acme",
+			web: "nextjs",
 		});
 
 		const index = leafFile(contributions, "src/index.ts");
@@ -155,6 +158,7 @@ describe("better-auth addon", () => {
 			databaseProvider: "planetscale",
 			orm: "drizzle",
 			slug: "acme",
+			web: "nextjs",
 		});
 
 		const index = leafFile(contributions, "src/index.ts");
@@ -171,6 +175,7 @@ describe("better-auth addon", () => {
 			authentication: "better-auth",
 			orm: "prisma",
 			slug: "acme",
+			web: "nextjs",
 		});
 
 		const rootEnv = linesSurfaces(contributions, "rootEnv", "Better Auth");
@@ -185,6 +190,7 @@ describe("better-auth addon", () => {
 				authentication: "better-auth",
 				orm: "prisma",
 				slug: "acme",
+				web: "nextjs",
 			}),
 			"rootEnv",
 			"Better Auth",
@@ -204,6 +210,7 @@ describe("better-auth addon", () => {
 			orm: "prisma",
 			packageManager: "npm",
 			slug: "acme",
+			web: "nextjs",
 		});
 		const npmEnv = linesSurfaces(npmContributions, "rootEnv", "Better Auth");
 		expect(npmEnv[0]?.lines[0]).toBe("# @use npx @better-auth/cli secret");
@@ -214,13 +221,22 @@ describe("better-auth addon", () => {
 			authentication: "better-auth",
 			orm: "prisma",
 			slug: "acme",
+			web: "nextjs",
 		});
 
-		const route = leafFile(contributions, "app/api/auth/[...all]/route.ts");
+		const route = ofTag(contributions, "LeafTextFileContribution").find(
+			(contribution) =>
+				typeof contribution.path !== "string" &&
+				contribution.path.slot === "auth",
+		);
+		if (!route) throw new Error("Missing Leaf File: auth slot");
 		expect(route.target).toEqual({
 			_tag: "EnsuredModuleTarget",
 			moduleKey: "web",
 		});
+		expect(route.path).toEqual(
+			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "auth"),
+		);
 		expect(route.content).toContain('import { auth } from "@acme/auth";');
 
 		const webDependencies = moduleDependencySurface(contributions, "web");
@@ -243,6 +259,7 @@ describe("trpc addon", () => {
 			orm: "drizzle",
 			rpc: "trpc",
 			slug: "acme",
+			web: "nextjs",
 		});
 
 		const trpcFile = leafFile(contributions, "src/trpc.ts");
@@ -265,7 +282,11 @@ describe("trpc addon", () => {
 	});
 
 	it("omits the db context without an orm", () => {
-		const contributions = contributionsOf(trpc, { rpc: "trpc", slug: "acme" });
+		const contributions = contributionsOf(trpc, {
+			rpc: "trpc",
+			slug: "acme",
+			web: "nextjs",
+		});
 
 		const trpcFile = leafFile(contributions, "src/trpc.ts");
 		expect(trpcFile.content).not.toContain("@acme/db");
@@ -284,14 +305,10 @@ describe("trpc addon", () => {
 			orm: "drizzle",
 			rpc: "trpc",
 			slug: "acme",
+			web: "nextjs",
 		});
 
-		const paths = [
-			"trpc/query-client.ts",
-			"trpc/server.ts",
-			"trpc/react.tsx",
-			"app/api/trpc/[trpc]/route.ts",
-		];
+		const paths = ["trpc/query-client.ts", "trpc/server.ts", "trpc/react.tsx"];
 
 		for (const path of paths) {
 			const file = leafFile(contributions, path);
@@ -304,6 +321,15 @@ describe("trpc addon", () => {
 
 		expect(leafFile(contributions, "trpc/server.ts").content).toContain(
 			'from "@acme/trpc"',
+		);
+
+		const route = ofTag(contributions, "LeafTextFileContribution").find(
+			(contribution) =>
+				typeof contribution.path !== "string" &&
+				contribution.path.slot === "trpc",
+		);
+		expect(route?.path).toEqual(
+			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
 		);
 	});
 });

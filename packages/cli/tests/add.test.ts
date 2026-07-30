@@ -278,7 +278,10 @@ describe("add command", () => {
 			},
 			[
 				{ definitionId: "drizzle", targets: [{ kind: "project" }] },
-				{ definitionId: "better-auth", targets: [{ kind: "project" }] },
+				{
+					definitionId: "better-auth",
+					targets: [{ kind: "module", moduleId: appModule.id }],
+				},
 			],
 		);
 	});
@@ -316,21 +319,14 @@ describe("add command", () => {
 		);
 	});
 
-	it("prompts for a single module when multiple targets are compatible", async () => {
+	it("uses the first compatible module for a single-target addon", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ modules: [appModule, adminModule] }),
 		);
-		promptMocks.select.mockResolvedValue(adminModule.id);
 
 		await runAdd("mock-single", {});
 
-		expect(promptMocks.select).toHaveBeenCalledWith({
-			message: 'Where should we add "Mock Single"?',
-			options: [
-				{ label: "@acme/web (apps/web)", value: appModule.id },
-				{ label: "@acme/admin (apps/admin)", value: adminModule.id },
-			],
-		});
+		expect(promptMocks.select).not.toHaveBeenCalled();
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -338,13 +334,13 @@ describe("add command", () => {
 			[
 				{
 					definitionId: "mock-single",
-					targets: [{ kind: "module", moduleId: adminModule.id }],
+					targets: [{ kind: "module", moduleId: appModule.id }],
 				},
 			],
 		);
 	});
 
-	it("replaces the install record when a single-target addon moves modules", async () => {
+	it("replaces the install record with the first compatible module", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -354,10 +350,9 @@ describe("add command", () => {
 						targets: [{ kind: "module", moduleId: appModule.id }],
 					},
 				],
-				modules: [appModule, adminModule],
+				modules: [adminModule, appModule],
 			}),
 		);
-		promptMocks.select.mockResolvedValue(adminModule.id);
 
 		await runAdd("mock-single", {});
 
@@ -374,24 +369,15 @@ describe("add command", () => {
 		);
 	});
 
-	it("multi-selects modules for addons that support multiple targets", async () => {
+	it("records every compatible module for a multiple-target addon", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ modules: [appModule, adminModule] }),
 		);
 
-		promptMocks.multiselect.mockResolvedValue([appModule.id, adminModule.id]);
-
 		await runAdd("mock-multi", {});
 
 		expect(promptMocks.select).not.toHaveBeenCalled();
-		expect(promptMocks.multiselect).toHaveBeenCalledWith({
-			message: 'Where should we add "Mock Multi"?',
-			options: [
-				{ label: "@acme/web (apps/web)", value: appModule.id },
-				{ label: "@acme/admin (apps/admin)", value: adminModule.id },
-			],
-			required: true,
-		});
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", web: "nextjs" },

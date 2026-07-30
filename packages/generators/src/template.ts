@@ -50,7 +50,8 @@ export function interpolate(
 	vars: Record<string, string>,
 ): string {
 	return Object.entries(vars).reduce(
-		(result, [key, value]) => result.replaceAll(`__${key}__`, value),
+		(result, [key, value]) =>
+			result.replaceAll(key.includes("__") ? key : `__${key}__`, value),
 		template,
 	);
 }

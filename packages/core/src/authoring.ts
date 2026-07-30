@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import type { CommandProbe } from "./command";
 import type { AppConfig, PackageConfig } from "./config";
 import { GeneratorError } from "./errors";
@@ -104,6 +104,21 @@ export interface EnsuredModuleTarget {
 	readonly moduleKey: string;
 }
 
+export interface SlotPath {
+	readonly _tag: "SlotPath";
+	readonly moduleKey: string;
+	readonly slot: AppSlotName;
+}
+
+export class SlotPathError extends Schema.TaggedError<SlotPathError>()(
+	"SlotPathError",
+	{
+		message: Schema.String,
+		moduleKey: Schema.String,
+		slot: Schema.String,
+	},
+) {}
+
 export interface TemplateModuleTarget<Id extends TemplateId = TemplateId> {
 	readonly _tag: "TemplateModuleTarget";
 	readonly template: TemplateRef<Id>;
@@ -126,6 +141,13 @@ export function selectedModuleTarget(): SelectedModuleTarget {
 
 export function ensuredModuleTarget(moduleKey: string): EnsuredModuleTarget {
 	return { _tag: "EnsuredModuleTarget", moduleKey };
+}
+
+export function slotPath(
+	module: EnsuredModuleTarget,
+	slot: AppSlotName,
+): SlotPath {
+	return { _tag: "SlotPath", moduleKey: module.moduleKey, slot };
 }
 
 export function templateModuleTarget<Id extends TemplateId>(
@@ -304,7 +326,7 @@ export interface ModuleCapabilitiesContribution<
 export interface LeafTextFileContribution {
 	readonly _tag: "LeafTextFileContribution";
 	readonly target: TargetRef;
-	readonly path: string;
+	readonly path: string | SlotPath;
 	readonly content: string;
 }
 
@@ -512,10 +534,26 @@ export function moduleCapabilities<Capability extends CapabilityId>(
 
 export function leafTextFile(
 	target: TargetRef,
-	path: string,
+	path: string | SlotPath,
 	content: string,
 ): LeafTextFileContribution {
 	return { _tag: "LeafTextFileContribution", target, path, content };
+}
+
+export function resolveSlotPath(
+	module: EnsuredModuleShape,
+	path: SlotPath,
+): Effect.Effect<string, SlotPathError> {
+	const resolved = module.slots[path.slot];
+	if (resolved !== undefined) return Effect.succeed(resolved);
+
+	return Effect.fail(
+		new SlotPathError({
+			message: `Module Slot Missing: ${path.slot} in ${path.moduleKey}`,
+			moduleKey: path.moduleKey,
+			slot: path.slot,
+		}),
+	);
 }
 
 export interface DefinitionContext<Config> {
@@ -854,6 +892,7 @@ function packageHasCapabilities(
 export function isAddonCompatibleWithModule<Config>(
 	addon: AddonDefinition<Config>,
 	module: AppConfig | PackageConfig,
+	frameworks: ReadonlyArray<FrameworkDefinition> = [],
 ): boolean {
 	const compatibility = addon.compatibility;
 	if (!compatibility) return true;
@@ -879,11 +918,17 @@ export function isAddonCompatibleWithModule<Config>(
 		)
 			return false;
 
-		if (
-			appCompatibility.requiredSlots &&
-			!appCompatibility.requiredSlots.every((slot) => slot in module.slots)
-		)
-			return false;
+		if (appCompatibility.requiredSlots) {
+			const framework = frameworks.find(
+				(definition) => definition.id === module.framework,
+			);
+
+			const hasRequiredSlots = framework
+				? frameworkHasRequiredSlots(framework, appCompatibility.requiredSlots)
+				: appCompatibility.requiredSlots.every((slot) => slot in module.slots);
+
+			if (!hasRequiredSlots) return false;
+		}
 
 		return true;
 	}
@@ -906,7 +951,7 @@ export function isAddonCompatibleWithModule<Config>(
 	return true;
 }
 
-function validateAddonAgainstSelection<Config>(
+export function validateAddonAgainstSelection<Config>(
 	addon: AddonDefinition<Config>,
 	framework: FrameworkDefinition | undefined,
 	template: TemplateDefinition<Config> | undefined,
@@ -918,7 +963,7 @@ function validateAddonAgainstSelection<Config>(
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,
-				message: "Template Required",
+				message: `${addon.name} requires a web framework template.`,
 			}),
 		);
 
@@ -929,7 +974,7 @@ function validateAddonAgainstSelection<Config>(
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,
-				message: "Framework Compatibility Failed",
+				message: `${addon.name} does not support ${framework.name}.`,
 			}),
 		);
 
@@ -942,20 +987,30 @@ function validateAddonAgainstSelection<Config>(
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,
-				message: "Template Compatibility Failed",
+				message: `${addon.name} does not support the selected ${framework.name} template.`,
 			}),
 		);
 
 	if (
 		compatibility.app.requiredSlots &&
 		!frameworkHasRequiredSlots(framework, compatibility.app.requiredSlots)
-	)
+	) {
+		const missingSlots = compatibility.app.requiredSlots.filter(
+			(slot) => !framework.slots.includes(slot),
+		);
+
+		const formattedSlots = new Intl.ListFormat("en", {
+			style: "long",
+			type: "conjunction",
+		}).format(missingSlots.map((slot) => `${slot} slot`));
+
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,
-				message: "Required Slots Missing",
+				message: `${addon.name} requires the ${formattedSlots}, but ${framework.name} does not provide ${missingSlots.length === 1 ? "it" : "them"}.`,
 			}),
 		);
+	}
 
 	return Effect.void;
 }

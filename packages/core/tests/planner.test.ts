@@ -16,6 +16,7 @@ import {
 	ensureAppModule,
 	ensuredModuleTarget,
 	ensurePackageModule,
+	GeneratorError,
 	type InstallRecord,
 	leafTextFile,
 	type ModuleRecord,
@@ -43,6 +44,7 @@ interface TestConfig extends Record<string, unknown> {
 	readonly metrics?: boolean;
 	readonly orm?: "a" | "b";
 	readonly packageManager?: string;
+	readonly rpc?: "trpc";
 	readonly theme?: boolean;
 	readonly ui?: boolean;
 	readonly web?: "nextjs";
@@ -105,6 +107,15 @@ function plannerFailure(exit: Exit.Exit<unknown, unknown>) {
 	return failure.value instanceof PlannerError ? failure.value : undefined;
 }
 
+function generatorFailure(exit: Exit.Exit<unknown, unknown>) {
+	if (!Exit.isFailure(exit)) return undefined;
+
+	const failure = Cause.failureOption(exit.cause);
+	if (Option.isNone(failure)) return undefined;
+
+	return failure.value instanceof GeneratorError ? failure.value : undefined;
+}
+
 function moduleIdByRoot(
 	modules: Readonly<Record<string, ModuleRecord>>,
 	root: string,
@@ -116,6 +127,7 @@ function moduleIdByRoot(
 
 function testRegistry(
 	extraAddons: ReadonlyArray<AddonDefinition<TestConfig>> = [],
+	templateVersion = 1,
 ) {
 	const framework = defineFramework({
 		id: "nextjs",
@@ -131,14 +143,14 @@ function testRegistry(
 		id: "nextjs/base",
 		framework: "nextjs",
 		name: "Base",
-		version: 1,
+		version: templateVersion,
 		category: "web",
 		exclusive: true,
 		when: (config) => config.web === "nextjs",
 		contribute: () => [
 			ensureAppModule("web", "apps/web", {
 				framework: "nextjs",
-				template: { id: "base", version: 1 },
+				template: { id: "base", version: templateVersion },
 				slots: { layout: "app/layout.tsx" },
 			}),
 			surfaceText(ensuredModuleTarget("web"), "layout", "base-layout"),
@@ -241,6 +253,53 @@ function alternativesRegistry() {
 		frameworks: [],
 		templates: [],
 		addons: [ormAddon("orm-a", "a"), ormAddon("orm-b", "b"), auth],
+	});
+}
+
+function templateDependencyRegistry(includeActiveAlternative: boolean) {
+	const nextjs = defineTemplate<TestConfig>({
+		id: "nextjs/base",
+		framework: "nextjs",
+		name: "Next.js Base",
+		version: 1,
+		category: "web",
+		exclusive: true,
+		when: (config) => config.web === "nextjs",
+		contribute: () => [],
+	});
+	const tanstack = defineTemplate<TestConfig>({
+		id: "tanstack/base",
+		framework: "tanstack",
+		name: "TanStack Base",
+		version: 1,
+		category: "web",
+		exclusive: true,
+		when: () => false,
+		contribute: () => [],
+	});
+	const rpc = defineAddon<TestConfig>({
+		id: "rpc",
+		name: "RPC",
+		version: "0.1.0",
+		category: "addon",
+		exclusive: false,
+		dependencies: includeActiveAlternative
+			? [
+					{ id: "nextjs/base", type: "template" },
+					{ id: "tanstack/base", type: "template" },
+				]
+			: [{ id: "tanstack/base", type: "template" }],
+		targetMode: "single",
+		when: (config) => config.rpc === "trpc",
+		contribute: () => [
+			leafTextFile(projectTarget(), "rpc.ts", "export const rpc = true;\n"),
+		],
+	});
+
+	return defineRegistry({
+		frameworks: [],
+		templates: [nextjs, tanstack],
+		addons: [rpc],
 	});
 }
 
@@ -511,6 +570,43 @@ describe("planner", () => {
 		});
 	});
 
+	it("resolves an active same-category template dependency alternative", async () => {
+		await withTempDir(
+			"planner-template-dependency-alternatives",
+			async (directory) => {
+				const plan = await Effect.runPromise(
+					planCreateEffect(
+						directory,
+						{ rpc: "trpc", web: "nextjs" },
+						templateDependencyRegistry(true),
+					),
+				);
+
+				expect(plan.writes.some((write) => write.path === "rpc.ts")).toBe(true);
+			},
+		);
+	});
+
+	it("fails when a single template dependency is inactive", async () => {
+		await withTempDir(
+			"planner-template-dependency-inactive",
+			async (directory) => {
+				const exit = await Effect.runPromiseExit(
+					planCreateEffect(
+						directory,
+						{ rpc: "trpc", web: "nextjs" },
+						templateDependencyRegistry(false),
+					),
+				);
+
+				const error = plannerFailure(exit);
+
+				expect(error?.message).toBe("Definition Dependency Inactive");
+				expect(error?.path).toBe("rpc");
+			},
+		);
+	});
+
 	it("fails when no dependency alternative is active", async () => {
 		await withTempDir("planner-dependency-inactive", async (directory) => {
 			const exit = await Effect.runPromiseExit(
@@ -563,6 +659,38 @@ describe("planner", () => {
 
 			expect(error?.message).toBe("Multiple Targets Selected");
 			expect(error?.path).toBe("ui");
+		});
+	});
+
+	it("allows installed addons when the app template version is stale", async () => {
+		await withTempDir("planner-installed-stale-template", async (directory) => {
+			await writeJson(`${directory}/apps/web/forge.json`, {
+				id: "abcde",
+				type: "app",
+				framework: "nextjs",
+				template: { id: "base", version: 1 },
+				slots: { layout: "app/layout.tsx" },
+			});
+
+			const plan = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					{ ui: true, web: "nextjs" },
+					[
+						{
+							definitionId: "ui",
+							targets: [{ kind: "module", moduleId: "abcde" }],
+						},
+					],
+					testRegistry([], 2),
+				),
+			);
+
+			expect(
+				plan.writes.some(
+					(write) => write.path === "packages/ui/src/lib/utils.ts",
+				),
+			).toBe(true);
 		});
 	});
 
@@ -1313,6 +1441,67 @@ describe("planner", () => {
 				kind: "file",
 				path: "theme.config.ts",
 			});
+		});
+	});
+
+	it("rejects an addon when the selected framework lacks its required slot", async () => {
+		await withTempDir("planner-required-slot", async (directory) => {
+			const fakeFramework = defineFramework({
+				id: "fake",
+				configFile: "fake.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Fake Framework",
+				slots: ["layout"],
+				tsconfigPreset: { content: {}, name: "fake" },
+			});
+			const fakeTemplate = defineTemplate<TestConfig>({
+				id: "fake/base",
+				framework: "fake",
+				name: "Fake Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "nextjs",
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "fake",
+						template: { id: "base", version: 1 },
+						slots: { layout: "app/layout.tsx" },
+					}),
+				],
+			});
+			const trpc = defineAddon<TestConfig>({
+				id: "trpc",
+				name: "tRPC",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "single",
+				compatibility: {
+					app: {
+						frameworks: ["fake"],
+						requiredSlots: ["trpc"],
+					},
+				},
+				when: (config) => config.rpc === "trpc",
+				contribute: () => [],
+			});
+			const registry = defineRegistry({
+				frameworks: [fakeFramework],
+				templates: [fakeTemplate],
+				addons: [trpc],
+			});
+
+			const exit = await Effect.runPromiseExit(
+				planCreateEffect(directory, { rpc: "trpc", web: "nextjs" }, registry),
+			);
+			const error = generatorFailure(exit);
+
+			expect(error?.generatorId).toBe("trpc");
+			expect(error?.message).toBe(
+				"tRPC requires the trpc slot, but Fake Framework does not provide it.",
+			);
 		});
 	});
 

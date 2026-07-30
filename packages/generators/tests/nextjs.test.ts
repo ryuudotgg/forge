@@ -181,6 +181,13 @@ describe("nextjs/base template", () => {
 		);
 		expect(ensure.moduleKey).toBe("web");
 		expect(ensure.root).toBe("apps/web");
+		expect(ensure.module.slots).toEqual({
+			layout: "app/layout.tsx",
+			page: "app/page.tsx",
+			api: "app/api",
+			trpc: "app/api/trpc/[trpc]/route.ts",
+			auth: "app/api/auth/[...all]/route.ts",
+		});
 	});
 
 	it("maps the ui tsconfig path and names the web package", () => {
