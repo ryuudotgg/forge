@@ -43,6 +43,7 @@ import {
 	type Manifest,
 	type ModuleRecord,
 	State,
+	SURFACE_MERGE_SEMANTICS_VERSION,
 } from "./state";
 
 type Definition<ConfigValue> =
@@ -1117,12 +1118,22 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 			for (const artifact of renderedSurfaces) {
 				const hash = yield* hashString(artifact.content);
+				const mergeKind = artifact.mergeKind;
 				const targetKey =
 					artifact.bucket.kind === "project"
 						? "project"
 						: `module:${artifact.bucket.moduleId}`;
 
 				artifacts[`${targetKey}:surface:${artifact.key}`] = {
+					...(mergeKind === undefined
+						? {}
+						: {
+								base: {
+									hash,
+									mergeKind,
+									semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
+								},
+							}),
 					definitionIds: [...artifact.definitionIds],
 					hash,
 					kind: "surface",

@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
 	appendLines,
+	envResidue,
+	jsonResidue,
 	mergeJson,
+	parseSections,
+	sectionResidue,
+	threeWayMergeEnv,
 	threeWayMergeJson,
 	threeWayMergeLines,
+	threeWayMergeSections,
 } from "../src/index";
 
 describe("merge helpers", () => {
@@ -87,7 +93,7 @@ describe("merge helpers", () => {
 				{ name: "incoming-acme" },
 			),
 		).toEqual({
-			conflicts: ["name"],
+			conflicts: [["name"]],
 			merged: { name: "incoming-acme" },
 		});
 	});
@@ -111,8 +117,33 @@ describe("merge helpers", () => {
 				{ scripts: { dev: "vite --port 4000" } },
 			),
 		).toEqual({
-			conflicts: ["scripts.dev"],
+			conflicts: [["scripts", "dev"]],
 			merged: { scripts: { dev: "vite --port 4000" } },
+		});
+	});
+
+	it("keeps dotted json keys distinct in conflict paths", () => {
+		expect(
+			threeWayMergeJson(
+				{ scripts: { "dev.web": "vite" } },
+				{ scripts: { "dev.web": "vite --host" } },
+				{ scripts: { "dev.web": "vite --port 4000" } },
+			),
+		).toMatchObject({ conflicts: [["scripts", "dev.web"]] });
+	});
+
+	it("treats object key order as equal inside arrays", () => {
+		expect(
+			threeWayMergeJson(
+				{ plugins: [{ name: "react", options: { fast: true } }] },
+				{ plugins: [{ options: { fast: true }, name: "react" }] },
+				{ plugins: [{ name: "react", options: { fast: true } }, "next"] },
+			),
+		).toEqual({
+			conflicts: [],
+			merged: {
+				plugins: [{ name: "react", options: { fast: true } }, "next"],
+			},
 		});
 	});
 
@@ -137,6 +168,162 @@ describe("merge helpers", () => {
 		).toEqual({
 			conflicts: [],
 			merged: { plugins: ["a", "c"] },
+		});
+	});
+
+	it("honors user array and dependency removals", () => {
+		expect(
+			threeWayMergeJson(
+				{ plugins: ["a", "b"] },
+				{ plugins: ["a"] },
+				{ plugins: ["a", "b", "c"] },
+			),
+		).toEqual({ conflicts: [], merged: { plugins: ["a", "c"] } });
+
+		expect(
+			threeWayMergeJson(
+				{ dependencies: { react: "19.0.0" } },
+				{ dependencies: {} },
+				{ dependencies: { react: "19.1.0" } },
+				{ preserveDependencyRemovals: true },
+			),
+		).toEqual({ conflicts: [], merged: { dependencies: {} } });
+	});
+
+	it("conflicts on divergent modifications to the same generic array entry", () => {
+		expect(
+			threeWayMergeJson(
+				{ commands: ["build --fast"] },
+				{ commands: ["build --user"] },
+				{ commands: ["build --forge"] },
+			),
+		).toEqual({
+			conflicts: [["commands"]],
+			merged: { commands: ["build --forge"] },
+		});
+		expect(
+			threeWayMergeJson(
+				{ commands: ["build --fast"] },
+				{ commands: ["build --forge"] },
+				{ commands: ["build --user"] },
+			),
+		).toMatchObject({ conflicts: [["commands"]] });
+		expect(
+			threeWayMergeJson(
+				{ commands: ["build", "test"] },
+				{ commands: ["build --user", "test"] },
+				{ commands: ["build", "test --forge"] },
+			),
+		).toEqual({
+			conflicts: [],
+			merged: { commands: ["build --user", "test --forge"] },
+		});
+
+		expect(
+			threeWayMergeJson(
+				{ commands: ["build --fast"] },
+				{ commands: ["build --fast", "test --user"] },
+				{ commands: ["build --fast", "lint --forge"] },
+			),
+		).toEqual({
+			conflicts: [],
+			merged: {
+				commands: ["build --fast", "test --user", "lint --forge"],
+			},
+		});
+	});
+
+	it("merges a removed dependency domain per package name", () => {
+		expect(
+			threeWayMergeJson(
+				{ dependencies: { react: "19.0.0" } },
+				{},
+				{ dependencies: { react: "19.1.0", vite: "7.0.0" } },
+				{ preserveDependencyRemovals: true },
+			),
+		).toEqual({
+			conflicts: [],
+			merged: { dependencies: { vite: "7.0.0" } },
+		});
+
+		expect(
+			threeWayMergeJson(
+				{ dependencies: { react: "19.0.0" } },
+				{ dependencies: { react: "19.0.0", local: "1.0.0" } },
+				{},
+				{ preserveDependencyRemovals: true },
+			),
+		).toEqual({
+			conflicts: [],
+			merged: { dependencies: { local: "1.0.0" } },
+		});
+	});
+
+	it("keeps script removals conflict-aware", () => {
+		expect(
+			threeWayMergeJson(
+				{ scripts: { dev: "vite" } },
+				{ scripts: {} },
+				{ scripts: { dev: "vite --host" } },
+			),
+		).toEqual({
+			conflicts: [["scripts", "dev"]],
+			merged: { scripts: { dev: "vite --host" } },
+		});
+	});
+
+	it("merges a removed scripts domain per script name", () => {
+		expect(
+			threeWayMergeJson(
+				{ scripts: { dev: "vite" } },
+				{},
+				{ scripts: { dev: "vite", test: "vitest" } },
+			),
+		).toEqual({
+			conflicts: [],
+			merged: { scripts: { test: "vitest" } },
+		});
+
+		expect(
+			threeWayMergeJson(
+				{ scripts: { dev: "vite" } },
+				{},
+				{ scripts: { dev: "vite --host" } },
+			),
+		).toEqual({
+			conflicts: [["scripts", "dev"]],
+			merged: { scripts: { dev: "vite --host" } },
+		});
+	});
+
+	it("ignores json object key ordering as formatter drift", () => {
+		expect(
+			threeWayMergeJson(
+				{ config: { alpha: true, beta: true } },
+				{ config: { beta: true, alpha: true } },
+				{ config: { alpha: true, beta: true, gamma: true } },
+			),
+		).toEqual({
+			conflicts: [],
+			merged: { config: { alpha: true, beta: true, gamma: true } },
+		});
+	});
+
+	it("keeps only user json residue when forge removes a surface", () => {
+		expect(
+			jsonResidue(
+				{
+					plugins: ["forge"],
+					settings: { forge: true, shared: "old" },
+				},
+				{
+					plugins: ["forge", "user"],
+					settings: { forge: true, shared: "user", user: true },
+				},
+			),
+		).toEqual({
+			plugins: ["user"],
+			settings: { shared: "user", user: true },
 		});
 	});
 
@@ -182,6 +369,13 @@ describe("merge helpers", () => {
 			threeWayMergeLines("a\nb\n", "a\nlocal\nb\n", "a\nincoming\nb\n"),
 		).toEqual({
 			conflicts: ["concurrent insertion"],
+			conflictValues: [
+				{
+					forge: "incoming",
+					label: "concurrent insertion",
+					user: "local",
+				},
+			],
 			merged: "a\nincoming\nb\n",
 		});
 	});
@@ -206,7 +400,217 @@ describe("merge helpers", () => {
 			),
 		).toEqual({
 			conflicts: ["b"],
+			conflictValues: [{ base: "b", forge: "X", label: "b", user: "B" }],
 			merged: "a\nX\nc\nd\ne\nf\n",
 		});
+	});
+
+	it("merges independent additions within one section", () => {
+		expect(
+			threeWayMergeSections(
+				"# Build\ndist/\n",
+				"# Build\ndist/\n.cache/\n",
+				"# Build\ndist/\ncoverage/\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "# Build\ndist/\n.cache/\ncoverage/\n",
+		});
+	});
+
+	it("merges independent section deletion and addition entry-wise", () => {
+		expect(
+			threeWayMergeSections(
+				"# Build\ndist/\n",
+				"# Build\n",
+				"# Build\ndist/\ncoverage/\n",
+			),
+		).toEqual({ conflicts: [], merged: "# Build\ncoverage/\n" });
+
+		expect(
+			threeWayMergeSections(
+				"# Build\ndist/\n",
+				"# Build\ndist/\nlocal/\n",
+				"# Build\n",
+			),
+		).toEqual({ conflicts: [], merged: "# Build\nlocal/\n" });
+	});
+
+	it("preserves consecutive comment banners and header-only sections", () => {
+		const banner = "# ===\n# Custom stuff";
+		expect(parseSections(`${banner}\nmine/\n`)).toEqual([
+			{ header: banner, lines: ["mine/"] },
+		]);
+		expect(
+			threeWayMergeSections(
+				"# Build\ndist/\n",
+				"# Build\ndist/\n# ===\n# Custom stuff\nmine/\n",
+				"# Build\ndist/\ncoverage/\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "# Build\ndist/\ncoverage/\n\n# ===\n# Custom stuff\nmine/\n",
+		});
+		expect(
+			threeWayMergeSections(
+				"# Empty\n# Banner line\n",
+				"# Empty\n# Banner line\n",
+				"# Empty\n# Banner line\n",
+			),
+		).toEqual({ conflicts: [], merged: "# Empty\n# Banner line\n" });
+		expect(
+			threeWayMergeSections(
+				"# Empty\n# Next\nvalue\n",
+				"# Empty\n# Next\nvalue\n",
+				"# Empty\n# Next\nvalue\n",
+			),
+		).toEqual({ conflicts: [], merged: "# Empty\n# Next\nvalue\n" });
+		expect(sectionResidue("", "# User header\n# Second line\n")).toBe(
+			"# User header\n# Second line\n",
+		);
+	});
+
+	it("normalizes section formatter drift before merging", () => {
+		expect(
+			threeWayMergeSections(
+				"# Build\r\ndist/\r\n\r\n",
+				"# Build\n\ndist/\n",
+				"# Build\ndist/\ncoverage/\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "# Build\ndist/\ncoverage/\n",
+		});
+	});
+
+	it("reports divergent edits to the same section entry", () => {
+		expect(
+			threeWayMergeSections(
+				"# Build\ndist/\n",
+				"# Build\nbuild/\n",
+				"# Build\noutput/\n",
+			),
+		).toEqual({
+			conflicts: ["Build -> dist/"],
+			conflictValues: [
+				{
+					base: "dist/",
+					forge: "output/",
+					label: "Build -> dist/",
+					user: "build/",
+				},
+			],
+			merged: "# Build\noutput/\n",
+		});
+	});
+
+	it("refuses a user reorder instead of silently restoring forge order", () => {
+		const result = threeWayMergeSections(
+			"# Build\na\nb\n",
+			"# Build\nb\na\n",
+			"# Build\na\nb\nc\n",
+		);
+		expect(result.conflicts).not.toEqual([]);
+	});
+
+	it("falls back without collapsing duplicate section headers", () => {
+		const result = threeWayMergeSections(
+			"# Build\na\n# Build\nb\n",
+			"# Build\na\nlocal\n# Build\nb\n",
+			"# Build\na\n# Build\nb\nincoming\n",
+		);
+		expect(result.merged).toContain("# Build\nb\nincoming\n");
+		expect(result.merged.match(/# Build/g)).toHaveLength(2);
+	});
+
+	it("normalizes formatter drift before duplicate-header fallback", () => {
+		expect(
+			threeWayMergeSections(
+				"# Build\r\na\r\n\r\n# Build\r\nb\r\n",
+				"# Build\na\n\n# Build\nb\n",
+				"# Build\na\n\n# Build\nb\nincoming\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "# Build\na\n\n# Build\nb\nincoming\n",
+		});
+	});
+
+	it("preserves only user line residue when forge removes a surface", () => {
+		expect(
+			sectionResidue(
+				"# Build\ndist/\n\n# Test\ncoverage/\n",
+				"# Build\ndist/\n.cache/\n\n# Test\ncoverage/\n",
+			),
+		).toBe("# Build\n.cache/\n");
+	});
+
+	it("merges env examples by variable name", () => {
+		expect(
+			threeWayMergeEnv(
+				"DATABASE_URL=old\nREMOVED=unchanged\nEDITED=old\n",
+				"DATABASE_URL=user\nREMOVED=unchanged\nEDITED=user\nUSER_ONLY=value\n",
+				"DATABASE_URL=forge\nADDED=new\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "DATABASE_URL=user\nADDED=new\nEDITED=user\nUSER_ONLY=value\n",
+		});
+	});
+
+	it("removes obsolete env variables only when users left them unchanged", () => {
+		expect(
+			threeWayMergeEnv(
+				"UNCHANGED=old\nEDITED=old\n",
+				"UNCHANGED=old\nEDITED=user\n",
+				"",
+			),
+		).toEqual({ conflicts: [], merged: "EDITED=user\n" });
+	});
+
+	it("uses new forge env values when users left the base untouched", () => {
+		expect(
+			threeWayMergeEnv("VALUE=old\n", "VALUE=old\n", "VALUE=new\n"),
+		).toEqual({
+			conflicts: [],
+			merged: "VALUE=new\n",
+		});
+	});
+
+	it("keeps only user env residue when forge removes a surface", () => {
+		expect(envResidue("FORGE=old\n", "FORGE=user\nUSER=value\n")).toBe(
+			"FORGE=user\nUSER=value\n",
+		);
+		expect(
+			envResidue(
+				"# Forge\nFORGE=old\n",
+				"# Forge\nFORGE=old\n# User note\nUSER=value\n",
+			),
+		).toBe("# User note\nUSER=value\n");
+		expect(envResidue("VALUE=old\n", "VALUE=old\n")).toBe("");
+	});
+
+	it("refuses ambiguous duplicate env variables", () => {
+		expect(
+			threeWayMergeEnv(
+				"VALUE=old\n",
+				"VALUE=user-one\nVALUE=user-two\n",
+				"VALUE=forge\n",
+			),
+		).toEqual({
+			conflicts: ["duplicate variable VALUE"],
+			conflictValues: [
+				{
+					base: "VALUE=old",
+					forge: "VALUE=forge",
+					label: "duplicate variable VALUE",
+					user: "VALUE=user-one\nVALUE=user-two",
+				},
+			],
+			merged: "VALUE=forge\n",
+		});
+		expect(envResidue("VALUE=old\n", "VALUE=user-one\nVALUE=user-two\n")).toBe(
+			"VALUE=user-one\nVALUE=user-two\n",
+		);
 	});
 });

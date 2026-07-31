@@ -313,6 +313,7 @@ describe("renderer", () => {
 				definitionIds: ["base", "turbo", "nextjs"],
 				key: "gitignore",
 				kind: "surface",
+				mergeKind: "lines",
 				path: ".gitignore",
 			},
 		]);
@@ -350,6 +351,42 @@ describe("renderer", () => {
 
 		expect(rendered).toHaveLength(1);
 		expect(rendered[0]?.content).toBe("override layout\n");
+	});
+
+	it("leaves JSONC tsconfig surfaces non-mergeable", async () => {
+		const rendered = await render(
+			[
+				{
+					bucket: { kind: "module", moduleId: "abcde" },
+					contribution: surfaceJson(selectedModuleTarget(), "tsconfig", {
+						compilerOptions: { strict: true },
+					}),
+					definitionId: "nextjs/tsconfig",
+					order: 0,
+				},
+			],
+			[appModule("nextjs")],
+		);
+		expect(rendered[0]?.path).toBe("apps/web/tsconfig.json");
+		expect(rendered[0]?.mergeKind).toBeUndefined();
+	});
+
+	it("never marks .env mergeable regardless of contribution kind", async () => {
+		const rendered = await render(
+			[
+				{
+					bucket: { kind: "project" },
+					contribution: surfaceJson(projectTarget(), "rootEnv", {
+						SECRET: "generated",
+					}),
+					definitionId: "malformed-env",
+					order: 0,
+				},
+			],
+			[],
+		);
+		expect(rendered[0]?.path).toBe(".env");
+		expect(rendered[0]?.mergeKind).toBeUndefined();
 	});
 
 	it("fails when text contributions tie at the top priority", async () => {

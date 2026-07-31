@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -42,6 +42,25 @@ interface UiModuleConfig {
 interface UiPackageJson {
 	readonly dependencies?: Record<string, string>;
 	readonly devDependencies?: Record<string, string>;
+}
+
+interface AppPackageJson {
+	readonly dependencies?: Record<string, string>;
+	readonly scripts?: Record<string, string>;
+}
+
+interface LockfileSnapshot {
+	readonly artifacts: Record<
+		string,
+		{
+			readonly base?: {
+				readonly hash: string;
+				readonly mergeKind: string;
+				readonly semanticsVersion: number;
+			};
+			readonly path: string;
+		}
+	>;
 }
 
 async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
@@ -163,6 +182,117 @@ async function expectMatchingProjects(
 }
 
 describe("add", () => {
+	it("preserves edited mergeable surfaces while adding adapter contributions", async () => {
+		await withScenarioWorkspace("add-edited-surfaces", async (workspace) => {
+			await createProject(workspace, {
+				database: "postgresql",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+			const lockfile = await readJson<LockfileSnapshot>(
+				join(workspace.projectRoot, ".forge/lock.json"),
+			);
+			const envArtifact = Object.values(lockfile.artifacts).find(
+				(artifact) => artifact.path === ".env",
+			);
+			const envExampleArtifact = Object.values(lockfile.artifacts).find(
+				(artifact) => artifact.path === ".env.example",
+			);
+			expect(envArtifact?.base).toBeUndefined();
+			expect(envExampleArtifact?.base).toMatchObject({ mergeKind: "env" });
+
+			const packagePath = join(workspace.projectRoot, "apps/web/package.json");
+			const packageJson = await readJson<AppPackageJson>(packagePath);
+			const dev = packageJson.scripts?.dev;
+			if (dev === undefined) throw new Error("Missing Dev Script");
+			await writeFile(
+				packagePath,
+				`${JSON.stringify(
+					{
+						...packageJson,
+						scripts: { ...packageJson.scripts, dev: `${dev} --user-edit` },
+					},
+					null,
+					2,
+				)}\n`,
+			);
+
+			const gitignorePath = join(workspace.projectRoot, ".gitignore");
+			const gitignore = await readFile(gitignorePath, "utf-8");
+			await writeFile(gitignorePath, `${gitignore}user-cache/\n`);
+
+			const envExamplePath = join(workspace.projectRoot, ".env.example");
+			const envExample = await readFile(envExamplePath, "utf-8");
+			await writeFile(
+				envExamplePath,
+				envExample.replace(/^DATABASE_URL=.*$/m, "DATABASE_URL=user-value"),
+			);
+
+			await addAddon(workspace.projectRoot, "better-auth");
+
+			const mergedPackage = await readJson<AppPackageJson>(packagePath);
+			expect(mergedPackage.scripts?.dev).toBe(`${dev} --user-edit`);
+			expect(mergedPackage.dependencies).toHaveProperty("better-auth");
+			expect(mergedPackage.dependencies).toHaveProperty("@acme/auth");
+			expect(await readFile(gitignorePath, "utf-8")).toContain("user-cache/");
+			const mergedEnvExample = await readFile(envExamplePath, "utf-8");
+			expect(mergedEnvExample).toContain("DATABASE_URL=user-value");
+			expect(mergedEnvExample).toContain("AUTH_SECRET=");
+		});
+	}, 240_000);
+
+	it("refuses same-key divergence before mutating the project", async () => {
+		await withScenarioWorkspace("add-merge-conflict", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+			const packagePath = join(workspace.projectRoot, "apps/web/package.json");
+			const packageJson = await readJson<AppPackageJson>(packagePath);
+			const userPackage = `${JSON.stringify(
+				{
+					...packageJson,
+					scripts: {
+						...packageJson.scripts,
+						"db:generate": "user command",
+					},
+				},
+				null,
+				2,
+			)}\n`;
+			await writeFile(packagePath, userPackage);
+			const manifestPath = join(workspace.projectRoot, ".forge/manifest.json");
+			const lockfilePath = join(workspace.projectRoot, ".forge/lock.json");
+			const [manifestBefore, lockfileBefore] = await Promise.all([
+				readFile(manifestPath, "utf-8"),
+				readFile(lockfilePath, "utf-8"),
+			]);
+
+			const result = await tryRunForge(
+				workspace.projectRoot,
+				["add", "prisma"],
+				{
+					workspaceRoot: workspace.workspaceRoot,
+				},
+			);
+			const output = result.stdout + result.stderr;
+			expect(result.exitCode).toBe(1);
+			expect(output).toContain("Semantic merge conflicts were found:");
+			expect(output).toContain(
+				'apps/web/package.json -> scripts["db:generate"]:',
+			);
+			expect(output).toContain('base was missing, user has "user command"');
+			expect(output).toContain("Resolve each conflict, then run Forge again.");
+			expect(await readFile(packagePath, "utf-8")).toBe(userPackage);
+			expect(await readFile(manifestPath, "utf-8")).toBe(manifestBefore);
+			expect(await readFile(lockfilePath, "utf-8")).toBe(lockfileBefore);
+			expect(await pathExists(join(workspace.projectRoot, "packages/db"))).toBe(
+				false,
+			);
+		});
+	}, 240_000);
+
 	it("installs tailwind as a project record without prompting", async () => {
 		await withScenarioWorkspace("add", async (workspace) => {
 			await createProject(workspace, {
