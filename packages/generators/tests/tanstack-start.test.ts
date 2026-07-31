@@ -16,6 +16,7 @@ const template = (() => {
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const result = template.contribute({
+		commandVersions: {},
 		config,
 		frameworks: [tanstackStartFramework],
 	});
@@ -97,6 +98,10 @@ describe("tanstack-start/base template", () => {
 
 		expect(ensure.moduleKey).toBe("web");
 		expect(ensure.root).toBe("apps/web");
+		expect(ensure.module.template).toEqual({
+			id: "tanstack-start/base",
+			version: 1,
+		});
 		expect(ensure.module.slots).toEqual({
 			layout: "src/routes/__root.tsx",
 			page: "src/routes/index.tsx",

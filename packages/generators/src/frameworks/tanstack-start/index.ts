@@ -172,7 +172,7 @@ function buildContributions(config: ForgeConfig) {
 	return [
 		ensureAppModule("web", "apps/web", {
 			framework: "tanstack-start",
-			template: { id: "base", version: 1 },
+			template: { id: "tanstack-start/base", version: 1 },
 			slots: {
 				layout: "src/routes/__root.tsx",
 				page: "src/routes/index.tsx",

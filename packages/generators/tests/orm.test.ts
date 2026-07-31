@@ -17,7 +17,11 @@ function contributionsFor(
 	addon: AddonDefinition<ForgeConfig>,
 	config: ForgeConfig,
 ): ReadonlyArray<Contribution> {
-	const result = addon.contribute({ config, frameworks: [nextjsFramework] });
+	const result = addon.contribute({
+		commandVersions: {},
+		config,
+		frameworks: [nextjsFramework],
+	});
 	if (!Array.isArray(result))
 		throw new Error(`Unexpected Contribution Result: ${addon.id}`);
 

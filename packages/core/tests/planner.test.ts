@@ -78,7 +78,7 @@ function planCreateEffect(
 	registry: DefinitionRegistry<TestConfig>,
 ) {
 	return Effect.flatMap(Planner, (planner) =>
-		planner.planCreate(directory, config, registry),
+		planner.planCreate(directory, config, registry, {}),
 	).pipe(Effect.provide(coreLayer));
 }
 
@@ -89,7 +89,7 @@ function planInstalledEffect(
 	registry: DefinitionRegistry<TestConfig>,
 ) {
 	return Effect.flatMap(Planner, (planner) =>
-		planner.planInstalled(directory, config, installs, registry),
+		planner.planInstalled(directory, config, installs, registry, {}),
 	).pipe(Effect.provide(coreLayer));
 }
 
@@ -120,7 +120,7 @@ function planInstalledWithDiscoveryEffect(
 	);
 
 	return Effect.flatMap(Planner, (planner) =>
-		planner.planInstalled(directory, config, installs, registry),
+		planner.planInstalled(directory, config, installs, registry, {}),
 	).pipe(Effect.provide(plannerLayer));
 }
 
@@ -189,7 +189,7 @@ function testRegistry(
 		contribute: () => [
 			ensureAppModule("web", "apps/web", {
 				framework: "nextjs",
-				template: { id: "base", version: templateVersion },
+				template: { id: "nextjs/base", version: templateVersion },
 				slots: { layout: "app/layout.tsx" },
 			}),
 			surfaceText(ensuredModuleTarget("web"), "layout", "base-layout"),
@@ -564,6 +564,106 @@ const adapterGuardUnsupportedRegistry = defineRegistry({
 });
 
 describe("planner", () => {
+	it("maps synchronous definition throws to typed generator failures", async () => {
+		await withTempDir("planner-definition-throw", async (directory) => {
+			const addon = defineAddon<TestConfig>({
+				id: "throwing-addon",
+				name: "Throwing Addon",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "single",
+				when: () => true,
+				contribute: () => {
+					throw new Error("definition exploded");
+				},
+			});
+			const registry = defineRegistry({
+				adapters: [],
+				frameworks: [],
+				templates: [],
+				addons: [addon],
+			});
+
+			const exit = await Effect.runPromiseExit(
+				planCreateEffect(directory, {}, registry),
+			);
+			const error = generatorFailure(exit);
+
+			expect(error).toBeDefined();
+			expect(error?.generatorId).toBe("throwing-addon");
+			expect(error?.message).toBe("Definition Failed: definition exploded");
+			expect(
+				Exit.isFailure(exit) && Option.isNone(Cause.dieOption(exit.cause)),
+			).toBe(true);
+		});
+	});
+
+	it("maps synchronous adapter throws to typed generator failures", async () => {
+		await withTempDir("planner-adapter-throw", async (directory) => {
+			const framework = defineFramework({
+				id: "nextjs",
+				configFile: "next.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Next.js",
+				slots: ["layout"],
+				tsconfigPreset: { content: {}, name: "nextjs" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: () => true,
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "nextjs",
+						template: { id: "nextjs/base", version: 1 },
+						slots: { layout: "app/layout.tsx" },
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "throwing-adapter",
+				name: "Throwing Adapter",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "single",
+				when: () => true,
+				contribute: () => [],
+			});
+			const adapter = defineAdapter<TestConfig>({
+				addon: "throwing-adapter",
+				framework: "nextjs",
+				contribute: () => {
+					throw new Error("adapter exploded");
+				},
+			});
+			const registry = defineRegistry({
+				adapters: [adapter],
+				frameworks: [framework],
+				templates: [template],
+				addons: [addon],
+			});
+
+			const exit = await Effect.runPromiseExit(
+				planCreateEffect(directory, {}, registry),
+			);
+			const error = generatorFailure(exit);
+
+			expect(error).toBeDefined();
+			expect(error?.generatorId).toBe("throwing-adapter");
+			expect(error?.message).toBe("Definition Failed: adapter exploded");
+			expect(
+				Exit.isFailure(exit) && Option.isNone(Cause.dieOption(exit.cause)),
+			).toBe(true);
+		});
+	});
+
 	it("reconstructs legacy empty installs and retracts inactive ensured modules", async () => {
 		await withTempDir("planner-legacy-installs", async (directory) => {
 			const registry = testRegistry();
@@ -717,7 +817,7 @@ describe("planner", () => {
 				id: "abcde",
 				type: "app",
 				framework: "nextjs",
-				template: { id: "base", version: 1 },
+				template: { id: "nextjs/base", version: 1 },
 				slots: { layout: "app/layout.tsx" },
 			});
 
@@ -725,7 +825,7 @@ describe("planner", () => {
 				id: "fghij",
 				type: "app",
 				framework: "nextjs",
-				template: { id: "base", version: 1 },
+				template: { id: "nextjs/base", version: 1 },
 				slots: { layout: "app/layout.tsx" },
 			});
 
@@ -759,7 +859,7 @@ describe("planner", () => {
 				id: "abcde",
 				type: "app",
 				framework: "nextjs",
-				template: { id: "base", version: 1 },
+				template: { id: "nextjs/base", version: 1 },
 				slots: { layout: "app/layout.tsx" },
 			});
 
@@ -1557,12 +1657,12 @@ describe("planner", () => {
 				contribute: () => [
 					ensureAppModule("first", "apps/first", {
 						framework: "nextjs",
-						template: { id: "base", version: 1 },
+						template: { id: "nextjs/base", version: 1 },
 						slots: { integration: "src/integration.ts" },
 					}),
 					ensureAppModule("second", "apps/second", {
 						framework: "nextjs",
-						template: { id: "base", version: 1 },
+						template: { id: "nextjs/base", version: 1 },
 						slots: { integration: "src/integration.ts" },
 					}),
 				],
@@ -1643,7 +1743,7 @@ describe("planner", () => {
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
 						framework: "nextjs",
-						template: { id: "base", version: 1 },
+						template: { id: "nextjs/base", version: 1 },
 						slots: { layout: "app/layout.tsx" },
 					}),
 				],
@@ -1740,7 +1840,7 @@ describe("planner", () => {
 					contribute: () => [
 						ensureAppModule("web", "apps/web", {
 							framework: "nextjs",
-							template: { id: "base", version: 1 },
+							template: { id: "nextjs/base", version: 1 },
 							slots: { layout: "app/layout.tsx" },
 						}),
 					],
@@ -1914,14 +2014,14 @@ describe("planner", () => {
 					id: "aaaaa",
 					type: "app",
 					framework: "first",
-					template: { id: "base", version: 1 },
+					template: { id: "first/base", version: 1 },
 					slots: { integration: "src/integration.ts" },
 				});
 				await writeJson(join(directory, "apps/second/forge.json"), {
 					id: "bbbbb",
 					type: "app",
 					framework: "second",
-					template: { id: "base", version: 1 },
+					template: { id: "second/base", version: 1 },
 					slots: { integration: "src/integration.ts" },
 				});
 
@@ -2026,7 +2126,7 @@ describe("planner", () => {
 						id: fixture.id,
 						type: "app",
 						framework: "nextjs",
-						template: { id: "base", version: 1 },
+						template: { id: "nextjs/base", version: 1 },
 						slots: { integration: "src/integration.ts" },
 					});
 
@@ -2104,7 +2204,7 @@ describe("planner", () => {
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
 						framework: "tanstack-start",
-						template: { id: "base", version: 1 },
+						template: { id: "tanstack-start/base", version: 1 },
 						slots: { trpc: "src/routes/api/trpc/$.ts" },
 					}),
 				],
@@ -2284,7 +2384,7 @@ describe("planner", () => {
 					id: "abcde",
 					type: "app",
 					framework: "nextjs",
-					template: { id: "base", version: 1 },
+					template: { id: "nextjs/base", version: 1 },
 					slots: { integration: "src/integration.ts" },
 				});
 				const adapter = defineAdapter<TestConfig>({
@@ -2354,7 +2454,7 @@ describe("planner", () => {
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
 						framework: "nextjs",
-						template: { id: "base", version: 1 },
+						template: { id: "nextjs/base", version: 1 },
 						slots: {},
 					}),
 				],

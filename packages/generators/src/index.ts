@@ -99,6 +99,7 @@ export { default as gitignore } from "./tooling/gitignore";
 export { default as typescript } from "./tooling/typescript";
 export { default as ui } from "./ui";
 export { default as bun } from "./workspace/bun";
+export { probeWorkspaceCommandVersions } from "./workspace/command-versions";
 export { default as pnpm } from "./workspace/pnpm";
 export { default as root } from "./workspace/root";
 export { default as yarn } from "./workspace/yarn";

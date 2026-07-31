@@ -14,7 +14,11 @@ const template = (() => {
 })();
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
-	const result = template.contribute({ config, frameworks: [nextjsFramework] });
+	const result = template.contribute({
+		commandVersions: {},
+		config,
+		frameworks: [nextjsFramework],
+	});
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: nextjs/base");
 
@@ -181,6 +185,7 @@ describe("nextjs/base template", () => {
 		);
 		expect(ensure.moduleKey).toBe("web");
 		expect(ensure.root).toBe("apps/web");
+		expect(ensure.module.template).toEqual({ id: "nextjs/base", version: 1 });
 		expect(ensure.module.slots).toEqual({
 			layout: "app/layout.tsx",
 			page: "app/page.tsx",

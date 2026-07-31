@@ -1,5 +1,5 @@
 import { log } from "@clack/prompts";
-import { NodeContext } from "@effect/platform-node";
+import { NodeContext, NodeFileSystem } from "@effect/platform-node";
 import {
 	Apply,
 	ConfigStore,
@@ -8,12 +8,39 @@ import {
 	type InstallRecord,
 	type Manifest,
 	Planner,
+	packageManagerCommand,
+	readPersistedCommandVersions,
+	runtimeCommand,
 	State,
 } from "@ryuujs/core";
-import { loadDefinitionRegistry } from "@ryuujs/generators";
+import {
+	type ForgeConfig,
+	loadDefinitionRegistry,
+	probeWorkspaceCommandVersions,
+} from "@ryuujs/generators";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+
+function readWorkspaceCommandVersions(
+	projectRoot: string,
+	config: ForgeConfig,
+) {
+	return Effect.gen(function* () {
+		const runtimeCommandName = runtimeCommand(config.runtime ?? "Node.js");
+		const packageManagerCommandName = packageManagerCommand(
+			config.packageManager ?? "pnpm",
+		);
+
+		const persisted = yield* readPersistedCommandVersions(
+			projectRoot,
+			runtimeCommandName,
+			packageManagerCommandName,
+		);
+
+		return yield* probeWorkspaceCommandVersions(config, persisted);
+	});
+}
 
 function lifecycleUnavailableMessage() {
 	return "We couldn't find a Forge project here. The .forge directory is missing or incomplete.";
@@ -89,17 +116,27 @@ export async function applyInstalledPlan(
 	projectRoot: string,
 	config: Manifest["config"],
 	installs: ReadonlyArray<InstallRecord>,
+	providedCommandVersions?: Readonly<Record<string, string>>,
 ) {
 	const loadedRegistry = await loadDefinitionRegistry();
 	const plan = await runLifecycleEffect(
-		Effect.flatMap(Planner, (planner) =>
-			planner.planInstalled(
+		Effect.gen(function* () {
+			const commandVersions =
+				providedCommandVersions ??
+				(yield* readWorkspaceCommandVersions(
+					projectRoot,
+					config satisfies ForgeConfig,
+				));
+
+			const planner = yield* Planner;
+			return yield* planner.planInstalled(
 				projectRoot,
 				config,
 				installs,
 				loadedRegistry.registry,
-			),
-		).pipe(Effect.provide(coreLayer)),
+				commandVersions,
+			);
+		}).pipe(Effect.provide(Layer.mergeAll(coreLayer, NodeFileSystem.layer))),
 		"We couldn't plan this change.",
 	);
 

@@ -12,9 +12,17 @@ import {
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 import { nextjsFramework } from "../src/frameworks/nextjs";
-import { bun, type ForgeConfig, pnpm, root, yarn } from "../src/index";
+import {
+	bun,
+	type ForgeConfig,
+	pnpm,
+	probeWorkspaceCommandVersions,
+	root,
+	yarn,
+} from "../src/index";
 import { versions } from "../src/versions";
 import { trustedBuildDependencies } from "../src/workspace/trusted-builds";
+import { plannedProject, replannedProject } from "./planner-harness";
 
 const commandVersions: Record<string, string> = {
 	node: "22.11.0",
@@ -57,8 +65,13 @@ const failingProbeLayer = Layer.succeed(
 function rootEffect(
 	config: ForgeConfig,
 	frameworks: ReadonlyArray<FrameworkDefinition> = [nextjsFramework],
+	versions: Readonly<Record<string, string>> = commandVersions,
 ) {
-	const result = root.contribute({ config, frameworks });
+	const result = root.contribute({
+		commandVersions: versions,
+		config,
+		frameworks,
+	});
 	if (!Effect.isEffect(result))
 		throw new Error("Missing Effect Contribution: root");
 
@@ -78,7 +91,11 @@ function syncContributions(
 	addon: AddonDefinition<ForgeConfig>,
 	config: ForgeConfig,
 ): ReadonlyArray<Contribution> {
-	const result = addon.contribute({ config, frameworks: [nextjsFramework] });
+	const result = addon.contribute({
+		commandVersions: {},
+		config,
+		frameworks: [nextjsFramework],
+	});
 	if (Effect.isEffect(result) || result instanceof Promise)
 		throw new Error(`Unexpected Async Contribution: ${addon.id}`);
 
@@ -128,6 +145,45 @@ function leafFile(
 }
 
 describe("root workspace", () => {
+	it("probes create plans but reuses persisted versions for installed plans", async () => {
+		const config = { slug: "acme", web: "nextjs" } satisfies ForgeConfig;
+		const firstVersions = {
+			node: "22.11.0",
+			pnpm: "10.12.1",
+		};
+		const secondVersions = {
+			node: "24.1.0",
+			pnpm: "11.0.0",
+		};
+
+		const firstCreate = await plannedProject(config, firstVersions);
+		const secondCreate = await plannedProject(config, secondVersions);
+		const firstPackageJson = firstCreate.writes.find(
+			(write) => write.path === "package.json",
+		)?.content;
+		const secondPackageJson = secondCreate.writes.find(
+			(write) => write.path === "package.json",
+		)?.content;
+
+		expect(firstPackageJson).not.toBe(secondPackageJson);
+
+		const { createPlan, installedPlan } = await replannedProject(
+			config,
+			firstVersions,
+			secondVersions,
+		);
+
+		expect(
+			installedPlan.writes
+				.map(({ content, path }) => ({ content, path }))
+				.sort((left, right) => left.path.localeCompare(right.path)),
+		).toEqual(
+			createPlan.writes
+				.map(({ content, path }) => ({ content, path }))
+				.sort((left, right) => left.path.localeCompare(right.path)),
+		);
+	});
+
 	it("pins the probed pnpm toolchain without workspaces", async () => {
 		const packageJson = jsonSurface(
 			await rootContributions({ slug: "acme" }),
@@ -250,8 +306,15 @@ describe("root workspace", () => {
 				},
 			}),
 		);
+		const versions = await Effect.runPromise(
+			probeWorkspaceCommandVersions({ runtime: "Bun" }).pipe(
+				Effect.provide(layer),
+			),
+		);
 		const contributions = await Effect.runPromise(
-			rootEffect({ runtime: "Bun" }).pipe(Effect.provide(layer)),
+			rootEffect({ runtime: "Bun" }, [nextjsFramework], versions).pipe(
+				Effect.provide(layer),
+			),
 		);
 
 		expect(leafFile(contributions, ".nvmrc")).toBe("v24.1.0\n");
@@ -276,8 +339,15 @@ describe("root workspace", () => {
 						: Effect.succeed(command === "bun" ? "1.3.2" : "10.12.1"),
 			}),
 		);
+		const versions = await Effect.runPromise(
+			probeWorkspaceCommandVersions({ runtime: "Bun" }).pipe(
+				Effect.provide(layer),
+			),
+		);
 		const contributions = await Effect.runPromise(
-			rootEffect({ runtime: "Bun" }).pipe(Effect.provide(layer)),
+			rootEffect({ runtime: "Bun" }, [nextjsFramework], versions).pipe(
+				Effect.provide(layer),
+			),
 		);
 
 		expect(leafFile(contributions, ".nvmrc")).toBe(
@@ -287,7 +357,10 @@ describe("root workspace", () => {
 
 	it("fails with a generator error when the runtime probe fails", async () => {
 		const error = await Effect.runPromise(
-			rootEffect({}).pipe(Effect.flip, Effect.provide(failingProbeLayer)),
+			probeWorkspaceCommandVersions({}).pipe(
+				Effect.flip,
+				Effect.provide(failingProbeLayer),
+			),
 		);
 
 		expect(error).toBeInstanceOf(GeneratorError);
@@ -297,7 +370,7 @@ describe("root workspace", () => {
 
 	it("fails with a generator error when the package manager probe fails", async () => {
 		const error = await Effect.runPromise(
-			rootEffect({ packageManager: "Bun" }).pipe(
+			probeWorkspaceCommandVersions({ packageManager: "Bun" }).pipe(
 				Effect.flip,
 				Effect.provide(probeLayer),
 			),

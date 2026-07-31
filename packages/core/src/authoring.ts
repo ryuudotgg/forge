@@ -405,6 +405,7 @@ export function resolveSlotPath(
 }
 
 export interface DefinitionContext<Config> {
+	readonly commandVersions: Readonly<Record<string, string>>;
 	readonly config: Config;
 	readonly frameworks: ReadonlyArray<FrameworkDefinition>;
 }
@@ -728,8 +729,7 @@ export function isAddonCompatibleWithModule<Config>(
 			appCompatibility.templates &&
 			!appCompatibility.templates.some(
 				(template) =>
-					(template.id === module.template.id ||
-						template.id.endsWith(`/${module.template.id}`)) &&
+					template.id === module.template.id &&
 					template.version === module.template.version,
 			)
 		)
@@ -739,6 +739,7 @@ export function isAddonCompatibleWithModule<Config>(
 			const framework = frameworks.find(
 				(definition) => definition.id === module.framework,
 			);
+
 			const hasRequiredSlots = framework
 				? appCompatibility.requiredSlots.every((slot) =>
 						framework.slots.includes(slot),

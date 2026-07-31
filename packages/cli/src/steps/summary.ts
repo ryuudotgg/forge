@@ -1,6 +1,11 @@
 import { note } from "@clack/prompts";
 import { NodeContext } from "@effect/platform-node";
-import { CoreLive, Planner } from "@ryuujs/core";
+import {
+	CoreLive,
+	Planner,
+	packageManagerCommand,
+	runtimeCommand,
+} from "@ryuujs/core";
 import {
 	type ForgeConfig,
 	listVisibleAddons,
@@ -13,6 +18,13 @@ const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 function formatLine(label: string, value: string) {
 	return `${label}: ${value}`;
+}
+
+function summaryCommandVersions(config: ForgeConfig) {
+	const runtime = runtimeCommand(config.runtime ?? "Node.js");
+	const packageManager = packageManagerCommand(config.packageManager ?? "pnpm");
+
+	return { node: "0", [packageManager]: "0", [runtime]: "0" };
 }
 
 const summaryStep = defineStep({
@@ -31,11 +43,13 @@ const summaryStep = defineStep({
 		const template = loadedRegistry.registry.templates.find((entry) =>
 			entry.when(forgeConfig),
 		);
+
 		const framework = template
 			? loadedRegistry.registry.frameworks.find(
 					(entry) => entry.id === template.framework,
 				)
 			: undefined;
+
 		const addons = (await listVisibleAddons())
 			.filter((entry) =>
 				loadedRegistry.registry.addons.some(
@@ -53,13 +67,15 @@ const summaryStep = defineStep({
 
 		try {
 			const plan = await Effect.runPromise(
-				Effect.flatMap(Planner, (planner) =>
-					planner.planCreate(
+				Effect.gen(function* () {
+					const planner = yield* Planner;
+					return yield* planner.planCreate(
 						String(forgeConfig.path ?? "."),
 						forgeConfig,
 						loadedRegistry.registry,
-					),
-				).pipe(Effect.provide(coreLayer)),
+						summaryCommandVersions(forgeConfig),
+					);
+				}).pipe(Effect.provide(coreLayer)),
 			);
 
 			const moduleRoots = Object.values(plan.manifest.modules)

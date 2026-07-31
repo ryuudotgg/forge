@@ -68,7 +68,7 @@ export {
 	validateAdapterAgainstModule,
 	validateAddonAgainstSelection,
 } from "./authoring";
-export { CommandProbe } from "./command";
+export { CommandProbe, readPersistedCommandVersions } from "./command";
 export type {
 	AppConfig,
 	Config,

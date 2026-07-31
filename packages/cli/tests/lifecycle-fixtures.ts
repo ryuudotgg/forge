@@ -64,7 +64,7 @@ export const appModule: DiscoveredModule = {
 		layout: "app/layout.tsx",
 		trpc: "app/api/trpc/[trpc]/route.ts",
 	},
-	template: { id: "base", version: 1 },
+	template: { id: "nextjs/base", version: 1 },
 	type: "app",
 };
 
@@ -81,7 +81,7 @@ export const reactRouterModule: DiscoveredModule = {
 	packageName: "@acme/legacy",
 	root: "apps/legacy",
 	slots: { layout: "app/layout.tsx" },
-	template: { id: "base", version: 1 },
+	template: { id: "react-router/base", version: 1 },
 	type: "app",
 };
 

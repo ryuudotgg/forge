@@ -107,7 +107,7 @@ const appModule: AppConfig = {
 	id: "abcde",
 	type: "app",
 	framework: "nextjs",
-	template: { id: "base", version: 1 },
+	template: { id: "nextjs/base", version: 1 },
 	slots: { layout: "app/layout.tsx" },
 };
 
@@ -231,7 +231,7 @@ describe("authoring", () => {
 		expect(isAddonCompatibleWithModule(packageAddon, appModule)).toBe(false);
 	});
 
-	it("matches app templates by exact id or short id suffix", () => {
+	it("matches app templates by exact id", () => {
 		expect(
 			isAddonCompatibleWithModule(appAddon, {
 				...appModule,
@@ -249,7 +249,14 @@ describe("authoring", () => {
 		expect(
 			isAddonCompatibleWithModule(appAddon, {
 				...appModule,
-				template: { id: "base", version: 2 },
+				template: { id: "nextjs/base", version: 2 },
+			}),
+		).toBe(false);
+
+		expect(
+			isAddonCompatibleWithModule(appAddon, {
+				...appModule,
+				template: { id: "other/base", version: 1 },
 			}),
 		).toBe(false);
 	});

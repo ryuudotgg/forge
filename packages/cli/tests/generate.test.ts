@@ -9,7 +9,8 @@ import {
 	ensureAppModule,
 } from "@ryuujs/core";
 import * as generators from "@ryuujs/generators";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Effect } from "effect";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import generateStep from "../src/steps/generate";
 import { SKIP } from "../src/steps/types";
 
@@ -41,6 +42,13 @@ async function readJson(path: string): Promise<unknown> {
 describe("generate step", () => {
 	beforeEach(() => {
 		promptMocks.logError.mockReset();
+		vi.spyOn(generators, "probeWorkspaceCommandVersions").mockReturnValue(
+			Effect.succeed({ node: "22.11.0", npm: "11.0.0", pnpm: "10.12.1" }),
+		);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
 	it("writes the planned project to disk and returns SKIP", async () => {
@@ -210,7 +218,7 @@ describe("generate step", () => {
 			contribute: () => [
 				ensureAppModule("web", "apps/web", {
 					framework: "fake",
-					template: { id: "base", version: 1 },
+					template: { id: "fake/base", version: 1 },
 					slots: { layout: "app/layout.tsx" },
 				}),
 			],

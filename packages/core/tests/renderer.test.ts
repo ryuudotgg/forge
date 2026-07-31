@@ -381,6 +381,33 @@ describe("renderer", () => {
 		);
 	});
 
+	it("fails when definitions contribute mixed kinds to one surface", async () => {
+		const error = await renderFailure(
+			[
+				{
+					bucket: { kind: "module", moduleId: "abcde" },
+					contribution: surfaceText(selectedModuleTarget(), "layout", "left\n"),
+					definitionId: "left",
+					order: 0,
+				},
+				{
+					bucket: { kind: "module", moduleId: "abcde" },
+					contribution: surfaceJson(selectedModuleTarget(), "layout", {
+						side: "right",
+					}),
+					definitionId: "right",
+					order: 1,
+				},
+			],
+			[appModule("nextjs", { layout: "app/layout.tsx" })],
+		);
+
+		expect(error._tag).toBe("RendererError");
+		expect(error.message).toBe(
+			"Render Failed: Error: Managed Surface Kind Conflict: layout received mixed contribution kinds from left, right",
+		);
+	});
+
 	it("resolves the framework config surface from the framework definition", async () => {
 		const framework = defineFramework({
 			buildOutputs: ["dist/**"],

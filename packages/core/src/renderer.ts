@@ -355,6 +355,20 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 							entries.map((entry) => entry.contribution._tag),
 						);
 
+						const kindCount =
+							Number(tags.has("ManagedTextSurfaceContribution")) +
+							Number(tags.has("ManagedLinesSurfaceContribution")) +
+							Number(
+								tags.has("ManagedJsonSurfaceContribution") ||
+									tags.has("ManagedDependenciesSurfaceContribution") ||
+									tags.has("ManagedScriptsSurfaceContribution"),
+							);
+
+						if (kindCount > 1)
+							throw new Error(
+								`Managed Surface Kind Conflict: ${first.contribution.surface} received mixed contribution kinds from ${definitionIds.join(", ")}`,
+							);
+
 						const content = tags.has("ManagedTextSurfaceContribution")
 							? renderTextSurface(entries)
 							: tags.has("ManagedLinesSurfaceContribution")
