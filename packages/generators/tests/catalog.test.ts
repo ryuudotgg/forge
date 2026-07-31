@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+	authenticationProviders,
 	getCatalogEntry,
+	linters,
 	listCatalogEntries,
 	listVisibleAddons,
 	loadAddonDefinition,
 	loadDefinitionRegistry,
 	RegistryLoadError,
+	styleFrameworks,
+	webFrameworks,
 } from "../src/index";
 
 const visibleAddonIds = [
@@ -46,6 +50,8 @@ describe("catalog", () => {
 		expect(frameworks.map((entry) => entry.id)).toEqual([
 			"nextjs",
 			"tanstack-start",
+			"react-router",
+			"tanstack-router",
 		]);
 		expect(templates.map((entry) => entry.id)).toEqual([
 			"nextjs/base",
@@ -100,6 +106,64 @@ describe("catalog", () => {
 		});
 	});
 
+	it("derives announced entries from unavailable catalog-backed choices", async () => {
+		const catalog = await listCatalogEntries();
+		const mappings = [
+			{
+				category: "web",
+				expectedIds: webFrameworks.ids.filter(
+					(id) => !webFrameworks.available(id),
+				),
+				kind: "framework",
+			},
+			{
+				category: "auth",
+				expectedIds: authenticationProviders.ids.filter(
+					(id) => !authenticationProviders.available(id),
+				),
+				kind: "addon",
+			},
+			{
+				category: "style",
+				expectedIds: styleFrameworks.ids.filter(
+					(id) => !styleFrameworks.available(id),
+				),
+				kind: "addon",
+			},
+			{
+				category: "linter",
+				expectedIds: linters.ids.filter((id) => !linters.available(id)),
+				kind: "addon",
+			},
+		];
+
+		for (const mapping of mappings) {
+			const announced = catalog.filter(
+				(entry) =>
+					!entry.available &&
+					entry.kind === mapping.kind &&
+					entry.category === mapping.category,
+			);
+
+			expect(announced.map((entry) => entry.id)).toEqual(mapping.expectedIds);
+			expect(announced.every((entry) => entry.available === false)).toBe(true);
+		}
+	});
+
+	it("marks every definition-backed entry as available", async () => {
+		const catalog = await listCatalogEntries();
+		const { registry } = await loadDefinitionRegistry();
+		const definitionIds = new Set([
+			...registry.addons.map((definition) => definition.id),
+			...registry.frameworks.map((definition) => definition.id),
+			...registry.templates.map((definition) => definition.id),
+		]);
+
+		for (const entry of catalog) {
+			expect(entry.available, entry.id).toBe(definitionIds.has(entry.id));
+		}
+	});
+
 	it("keeps catalog ids unique across kinds", async () => {
 		const ids = (await listCatalogEntries()).map((entry) => entry.id);
 
@@ -130,7 +194,7 @@ describe("catalog", () => {
 
 		const catalogIds = (kind: "addon" | "framework" | "template") =>
 			catalog
-				.filter((entry) => entry.kind === kind)
+				.filter((entry) => entry.kind === kind && entry.available)
 				.map((entry) => entry.id)
 				.sort();
 
@@ -144,7 +208,9 @@ describe("catalog", () => {
 			registry.addons.map((definition) => definition.id).sort(),
 		);
 
-		for (const entry of catalog.filter((value) => value.kind === "addon")) {
+		for (const entry of catalog.filter(
+			(value) => value.kind === "addon" && value.available,
+		)) {
 			const loaded = await loadAddonDefinition(entry.id);
 
 			expect(loaded.addon.id).toBe(entry.id);

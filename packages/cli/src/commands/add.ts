@@ -8,6 +8,7 @@ import {
 	type AddonCatalogEntry,
 	configWithInstall,
 	type ForgeConfig,
+	getCatalogEntry,
 	installConflict,
 	listVisibleAddons,
 	loadAddonDefinition,
@@ -85,8 +86,8 @@ async function promptForAddonId() {
 
 	if (isCancel(query)) cancel();
 
-	const filtered = visibleAddons.filter((entry) =>
-		matchQuery(entry, String(query ?? "")),
+	const filtered = visibleAddons.filter(
+		(entry) => entry.available && matchQuery(entry, String(query ?? "")),
 	);
 
 	if (filtered.length === 0) {
@@ -138,6 +139,12 @@ export async function runAdd(
 		addon = loadedAddon.addon;
 	} catch (error) {
 		if (error instanceof RegistryLoadError) {
+			const catalogEntry = getCatalogEntry(resolvedAddonId);
+			if (catalogEntry?.kind === "addon" && !catalogEntry.available) {
+				log.error(`"${catalogEntry.name}" isn't available yet.`);
+				process.exit(1);
+			}
+
 			log.error(`We couldn't find the "${resolvedAddonId}" addon.`);
 			process.exit(1);
 		}
