@@ -6,8 +6,11 @@ import { describe, expect, it } from "vitest";
 import {
 	type AddonDefinition,
 	Apply,
+	CommandProbe,
+	ConfigStore,
 	CoreLive,
 	type DefinitionRegistry,
+	type DiscoveredModule,
 	defineAdapter,
 	defineAddon,
 	defineFramework,
@@ -29,7 +32,10 @@ import {
 	type ProjectPlan,
 	projectTarget,
 	type RenderBucket,
+	Renderer,
+	State,
 	selectedModuleTarget,
+	slotPath,
 	surfaceDependencies,
 	surfaceText,
 	templateModuleTarget,
@@ -85,6 +91,37 @@ function planInstalledEffect(
 	return Effect.flatMap(Planner, (planner) =>
 		planner.planInstalled(directory, config, installs, registry),
 	).pipe(Effect.provide(coreLayer));
+}
+
+function planInstalledWithDiscoveryEffect(
+	directory: string,
+	config: TestConfig,
+	installs: ReadonlyArray<InstallRecord>,
+	registry: DefinitionRegistry<TestConfig>,
+	discovered: ReadonlyArray<DiscoveredModule>,
+) {
+	const syntheticConfigStore = Layer.effect(
+		ConfigStore,
+		Effect.map(ConfigStore, (configStore) => ({
+			...configStore,
+			discover: () => Effect.succeed([...discovered]),
+		})),
+	).pipe(Layer.provide(ConfigStore.Default));
+	const plannerLayer = Planner.Default.pipe(
+		Layer.provide(
+			Layer.mergeAll(
+				CommandProbe.Default,
+				syntheticConfigStore,
+				Renderer.Default,
+				State.Default,
+			),
+		),
+		Layer.provide(NodeContext.layer),
+	);
+
+	return Effect.flatMap(Planner, (planner) =>
+		planner.planInstalled(directory, config, installs, registry),
+	).pipe(Effect.provide(plannerLayer));
 }
 
 function applyPlanEffect(directory: string, plan: ProjectPlan) {
@@ -473,6 +510,58 @@ function ensureConflictRegistry(
 		addons: [ensureAddon("first", first), ensureAddon("second", second)],
 	});
 }
+
+const adapterGuardNextjs = defineFramework({
+	id: "nextjs",
+	configFile: "next.config.ts",
+	buildOutputs: [],
+	ignoreDirs: [],
+	name: "Next.js",
+	slots: ["integration"],
+	tsconfigPreset: { content: {}, name: "nextjs" },
+});
+
+const adapterGuardAstro = defineFramework({
+	id: "astro",
+	configFile: "astro.config.ts",
+	buildOutputs: [],
+	ignoreDirs: [],
+	name: "Astro",
+	slots: ["integration"],
+	tsconfigPreset: { content: {}, name: "astro" },
+});
+
+const adapterGuardAddon = defineAddon<TestConfig>({
+	id: "integration",
+	name: "Integration",
+	version: "0.1.0",
+	category: "addon",
+	exclusive: false,
+	targetMode: "multiple",
+	when: () => false,
+	contribute: () => [],
+});
+
+const adapterGuardNextjsAdapter = defineAdapter<TestConfig>({
+	addon: "integration",
+	framework: "nextjs",
+	requiredSlots: ["integration"],
+	contribute: () => [],
+});
+
+const adapterGuardRegistry = defineRegistry({
+	adapters: [adapterGuardNextjsAdapter],
+	frameworks: [adapterGuardNextjs],
+	templates: [],
+	addons: [adapterGuardAddon],
+});
+
+const adapterGuardUnsupportedRegistry = defineRegistry({
+	adapters: [adapterGuardNextjsAdapter],
+	frameworks: [adapterGuardNextjs, adapterGuardAstro],
+	templates: [],
+	addons: [adapterGuardAddon],
+});
 
 describe("planner", () => {
 	it("reconstructs legacy empty installs and retracts inactive ensured modules", async () => {
@@ -2055,6 +2144,192 @@ describe("planner", () => {
 				"tRPC does not support TanStack Start yet.",
 			);
 		});
+	});
+
+	it("rejects a project install target for an adapter addon", async () => {
+		await withTempDir("planner-adapter-project-target", async (directory) => {
+			const exit = await Effect.runPromiseExit(
+				planInstalledEffect(
+					directory,
+					{},
+					[
+						{
+							definitionId: "integration",
+							targets: [{ kind: "project" }],
+						},
+					],
+					adapterGuardRegistry,
+				),
+			);
+			const error = plannerFailure(exit);
+
+			expect(error?.message).toBe("Adapter Target Must Be Module");
+			expect(error?.path).toBe("integration");
+		});
+	});
+
+	it("rejects a missing app install target for an adapter addon", async () => {
+		await withTempDir("planner-adapter-app-missing", async (directory) => {
+			const exit = await Effect.runPromiseExit(
+				planInstalledEffect(
+					directory,
+					{},
+					[
+						{
+							definitionId: "integration",
+							targets: [{ kind: "module", moduleId: "abcde" }],
+						},
+					],
+					adapterGuardRegistry,
+				),
+			);
+			const error = plannerFailure(exit);
+
+			expect(error?.message).toBe("Adapter Target App Missing");
+			expect(error?.path).toBe("integration");
+		});
+	});
+
+	it("rejects an installed adapter target with an unregistered framework", async () => {
+		await withTempDir(
+			"planner-adapter-framework-missing",
+			async (directory) => {
+				const exit = await Effect.runPromiseExit(
+					planInstalledWithDiscoveryEffect(
+						directory,
+						{},
+						[
+							{
+								definitionId: "integration",
+								targets: [{ kind: "module", moduleId: "abcde" }],
+							},
+						],
+						adapterGuardRegistry,
+						[
+							{
+								id: "abcde",
+								type: "app",
+								framework: "nextjs",
+								root: "apps/nextjs",
+								template: { id: "base", version: 1 },
+								slots: { integration: "src/integration.ts" },
+							},
+							{
+								id: "abcde",
+								type: "app",
+								framework: "missing",
+								root: "apps/missing",
+								template: { id: "base", version: 1 },
+								slots: { integration: "src/integration.ts" },
+							},
+						],
+					),
+				);
+				const error = plannerFailure(exit);
+
+				expect(error?.message).toBe("Adapter Framework Missing");
+				expect(error?.path).toBe("integration");
+			},
+		);
+	});
+
+	it("reports an unsupported installed adapter framework naturally", async () => {
+		await withTempDir(
+			"planner-installed-adapter-missing",
+			async (directory) => {
+				const exit = await Effect.runPromiseExit(
+					planInstalledWithDiscoveryEffect(
+						directory,
+						{},
+						[
+							{
+								definitionId: "integration",
+								targets: [{ kind: "module", moduleId: "abcde" }],
+							},
+						],
+						adapterGuardUnsupportedRegistry,
+						[
+							{
+								id: "abcde",
+								type: "app",
+								framework: "nextjs",
+								root: "apps/nextjs",
+								template: { id: "base", version: 1 },
+								slots: { integration: "src/integration.ts" },
+							},
+							{
+								id: "abcde",
+								type: "app",
+								framework: "astro",
+								root: "apps/astro",
+								template: { id: "base", version: 1 },
+								slots: { integration: "src/integration.ts" },
+							},
+						],
+					),
+				);
+
+				expect(generatorFailure(exit)?.message).toBe(
+					"Integration does not support Astro yet.",
+				);
+			},
+		);
+	});
+
+	it("collects an adapter leaf file from a resolved module slot path", async () => {
+		await withTempDir(
+			"planner-adapter-resolved-slot-path",
+			async (directory) => {
+				await writeJson(join(directory, "apps/web/forge.json"), {
+					id: "abcde",
+					type: "app",
+					framework: "nextjs",
+					template: { id: "base", version: 1 },
+					slots: { integration: "src/integration.ts" },
+				});
+				const adapter = defineAdapter<TestConfig>({
+					addon: "integration",
+					framework: "nextjs",
+					requiredSlots: ["integration"],
+					contribute: (context) => {
+						const target = moduleTarget(context.module);
+						return [
+							leafTextFile(
+								target,
+								slotPath(target, "integration"),
+								"integrated\n",
+							),
+						];
+					},
+				});
+				const registry = defineRegistry({
+					adapters: [adapter],
+					frameworks: [adapterGuardNextjs],
+					templates: [],
+					addons: [adapterGuardAddon],
+				});
+
+				const plan = await Effect.runPromise(
+					planInstalledEffect(
+						directory,
+						{},
+						[
+							{
+								definitionId: "integration",
+								targets: [{ kind: "module", moduleId: "abcde" }],
+							},
+						],
+						registry,
+					),
+				);
+
+				expect(
+					plan.writes.find(
+						(write) => write.path === "apps/web/src/integration.ts",
+					)?.content,
+				).toBe("integrated\n");
+			},
+		);
 	});
 
 	it("validates adapter slots against the filled module map", async () => {

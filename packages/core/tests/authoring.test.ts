@@ -351,6 +351,33 @@ describe("authoring", () => {
 		expect(error.message).toBe("tRPC does not support Next.js yet.");
 	});
 
+	it("requires a framework selection when an addon has adapters", async () => {
+		const addon = defineAddon<TestConfig>({
+			id: "trpc",
+			name: "tRPC",
+			version: "0.1.0",
+			category: "addon",
+			exclusive: false,
+			targetMode: "single",
+			when: () => true,
+			contribute: () => [],
+		});
+		const adapter = defineAdapter<TestConfig>({
+			addon: "trpc",
+			framework: "nextjs",
+			contribute: () => [],
+		});
+
+		const error = await Effect.runPromise(
+			Effect.flip(
+				validateAddonAgainstSelection(addon, undefined, undefined, [adapter]),
+			),
+		);
+
+		expect(error).toBeInstanceOf(GeneratorError);
+		expect(error.message).toBe("tRPC requires a web framework template.");
+	});
+
 	it("defaults an explicitly undefined adapter slot list", () => {
 		const adapter = defineAdapter<TestConfig>({
 			addon: "tailwind",
@@ -415,6 +442,24 @@ describe("authoring", () => {
 				addons: [appAddon],
 			}),
 		).toThrow("Adapter Duplicate: tailwind:nextjs");
+	});
+
+	it("rejects an adapter for a missing addon", () => {
+		const adapter = defineAdapter<TestConfig>({
+			addon: "missing",
+			framework: "nextjs",
+			contribute: () => [],
+		});
+		const register = () =>
+			defineRegistry({
+				adapters: [adapter],
+				frameworks: [framework],
+				templates: [],
+				addons: [appAddon],
+			});
+
+		expect(register).toThrow(RegistryError);
+		expect(register).toThrow("Adapter Addon Missing: missing");
 	});
 
 	it("rejects an adapter for a missing framework", () => {
