@@ -6,6 +6,7 @@ import {
 	type ForgeConfig,
 	loadDefinitionRegistry,
 	orms,
+	probeWorkspaceCommandVersions,
 } from "@ryuujs/generators";
 import { Effect, Layer } from "effect";
 import type { PartialConfig } from "./types";
@@ -37,9 +38,18 @@ const generateStep = defineStep({
 		try {
 			const loadedRegistry = await loadDefinitionRegistry();
 			const plan = await Effect.runPromise(
-				Effect.flatMap(Planner, (planner) =>
-					planner.planCreate(projectRoot, forgeConfig, loadedRegistry.registry),
-				).pipe(Effect.provide(coreLayer)),
+				Effect.gen(function* () {
+					const commandVersions =
+						yield* probeWorkspaceCommandVersions(forgeConfig);
+
+					const planner = yield* Planner;
+					return yield* planner.planCreate(
+						projectRoot,
+						forgeConfig,
+						loadedRegistry.registry,
+						commandVersions,
+					);
+				}).pipe(Effect.provide(coreLayer)),
 			);
 
 			await Effect.runPromise(

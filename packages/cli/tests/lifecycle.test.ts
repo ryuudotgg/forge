@@ -24,6 +24,8 @@ const tailwindInstall: InstallRecord = {
 	targets: [{ kind: "project" }],
 };
 
+const commandVersions = { node: "22.11.0", pnpm: "10.12.1" };
+
 async function readJson(path: string): Promise<unknown> {
 	return JSON.parse(await readFile(path, "utf-8"));
 }
@@ -33,7 +35,7 @@ function scaffoldWebModule(directory: string) {
 		framework: "nextjs",
 		id: "abcde",
 		slots: { api: "app/api", layout: "app/layout.tsx", page: "app/page.tsx" },
-		template: { id: "base", version: 1 },
+		template: { id: "nextjs/base", version: 1 },
 		type: "app",
 	});
 }
@@ -47,9 +49,12 @@ describe("lifecycle", () => {
 		await withTempDir("lifecycle-apply", async (directory) => {
 			await scaffoldWebModule(directory);
 
-			await applyInstalledPlan(directory, { slug: "acme", web: "nextjs" }, [
-				tailwindInstall,
-			]);
+			await applyInstalledPlan(
+				directory,
+				{ slug: "acme", web: "nextjs" },
+				[tailwindInstall],
+				commandVersions,
+			);
 
 			const manifest = decodeManifest(
 				await readJson(join(directory, ".forge/manifest.json")),
@@ -89,9 +94,12 @@ describe("lifecycle", () => {
 	it("round-trips the manifest config instead of inferring it", async () => {
 		await withTempDir("lifecycle-roundtrip", async (directory) => {
 			await scaffoldWebModule(directory);
-			await applyInstalledPlan(directory, { slug: "acme", web: "nextjs" }, [
-				tailwindInstall,
-			]);
+			await applyInstalledPlan(
+				directory,
+				{ slug: "acme", web: "nextjs" },
+				[tailwindInstall],
+				commandVersions,
+			);
 
 			const project = await loadManagedProject(directory, "add");
 
@@ -174,9 +182,17 @@ describe("lifecycle", () => {
 		try {
 			await withTempDir("lifecycle-failure", async (directory) => {
 				await expect(
-					applyInstalledPlan(directory, { slug: "acme" }, [
-						{ definitionId: "missing", targets: [{ kind: "project" }] },
-					]),
+					applyInstalledPlan(
+						directory,
+						{ slug: "acme" },
+						[
+							{
+								definitionId: "missing",
+								targets: [{ kind: "project" }],
+							},
+						],
+						commandVersions,
+					),
 				).rejects.toThrow("exit:1");
 			});
 

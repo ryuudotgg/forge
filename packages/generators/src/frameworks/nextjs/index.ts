@@ -184,7 +184,7 @@ function buildContributions(config: ForgeConfig) {
 	return [
 		ensureAppModule("web", "apps/web", {
 			framework: "nextjs",
-			template: { id: "base", version: 1 },
+			template: { id: "nextjs/base", version: 1 },
 			slots: {
 				layout: "app/layout.tsx",
 				page: "app/page.tsx",

@@ -151,24 +151,30 @@ describe("removal blockers", () => {
 
 	it("blocks removing addons the active template depends on", () => {
 		for (const addonId of ["ui", "typescript", "root"]) {
-			const blockers = findRemovalBlockers(
+			const nextjsBlockers = findRemovalBlockers(
 				addonId,
 				{ web: "nextjs" },
 				[],
-				[{ id: "base", version: 1 }],
+				[{ id: "nextjs/base", version: 1 }],
 			);
 
-			expect(blockers.frameworks, addonId).toEqual([
-				"Next.js",
-				"TanStack Start",
-			]);
+			expect(nextjsBlockers.frameworks, addonId).toEqual(["Next.js"]);
+
+			const tanstackBlockers = findRemovalBlockers(
+				addonId,
+				{ web: "tanstack-start" },
+				[],
+				[{ id: "tanstack-start/base", version: 1 }],
+			);
+
+			expect(tanstackBlockers.frameworks, addonId).toEqual(["TanStack Start"]);
 		}
 
 		const blockers = findRemovalBlockers(
 			"drizzle",
 			{ web: "nextjs" },
 			[],
-			[{ id: "base", version: 1 }],
+			[{ id: "nextjs/base", version: 1 }],
 		);
 
 		expect(blockers.frameworks).toEqual([]);

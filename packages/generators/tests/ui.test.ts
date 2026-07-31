@@ -18,7 +18,11 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const framework =
 		config.web === "tanstack-start" ? tanstackStartFramework : nextjsFramework;
 
-	const result = addon.contribute({ config, frameworks: [framework] });
+	const result = addon.contribute({
+		commandVersions: {},
+		config,
+		frameworks: [framework],
+	});
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: ui");
 
@@ -38,7 +42,7 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 			id: "abcde",
 			type: "app",
 			framework: framework.id,
-			template: { id: "base", version: 1 },
+			template: { id: `${framework.id}/base`, version: 1 },
 			slots,
 		},
 		id: "abcde",

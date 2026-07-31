@@ -108,8 +108,7 @@ export function findRemovalBlockers(
 					(template) =>
 						moduleTemplates.some(
 							(moduleTemplate) =>
-								(template.id === moduleTemplate.id ||
-									template.id.endsWith(`/${moduleTemplate.id}`)) &&
+								template.id === moduleTemplate.id &&
 								template.version === moduleTemplate.version,
 						) && blocksRemoval(template),
 				)

@@ -72,11 +72,13 @@ function withModuleId(
 
 interface PlanIntentCreate<ConfigValue> {
 	readonly _tag: "Create";
+	readonly commandVersions: Readonly<Record<string, string>>;
 	readonly config: ConfigValue;
 }
 
 interface PlanIntentInstalled<ConfigValue> {
 	readonly _tag: "Installed";
+	readonly commandVersions: Readonly<Record<string, string>>;
 	readonly config: ConfigValue;
 	readonly installs: ReadonlyArray<InstallRecord>;
 }
@@ -107,10 +109,7 @@ function definitionKey<ConfigValue>(definition: Definition<ConfigValue>) {
 }
 
 function templateMatchesId(templateId: string, moduleTemplateId: string) {
-	return (
-		templateId === moduleTemplateId ||
-		templateId.endsWith(`/${moduleTemplateId}`)
-	);
+	return templateId === moduleTemplateId;
 }
 
 function sameModuleIdentity(
@@ -294,22 +293,33 @@ function mergeEnsuredModule(
 
 function normalizeContributionResult(
 	generatorId: string,
-	result:
+	contribute: () =>
 		| ReadonlyArray<Contribution>
 		| Promise<ReadonlyArray<Contribution>>
 		| Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, CommandProbe>,
 ): Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, CommandProbe> {
-	if (Effect.isEffect(result)) return result;
-	if (result instanceof Promise)
-		return Effect.tryPromise({
-			try: () => result,
-			catch: (error) =>
-				new GeneratorError({
-					generatorId,
-					message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
-				}),
-		});
-	return Effect.succeed(result);
+	return Effect.try({
+		try: contribute,
+		catch: (error) =>
+			new GeneratorError({
+				generatorId,
+				message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
+			}),
+	}).pipe(
+		Effect.flatMap((result) => {
+			if (Effect.isEffect(result)) return result;
+			if (!(result instanceof Promise)) return Effect.succeed(result);
+
+			return Effect.tryPromise({
+				try: () => result,
+				catch: (error) =>
+					new GeneratorError({
+						generatorId,
+						message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
+					}),
+			});
+		}),
+	);
 }
 
 function isSlotPath(path: string | SlotPath): path is SlotPath {
@@ -534,6 +544,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 		const evaluateDefinitions = Effect.fn("Planner.evaluateDefinitions")(
 			function* <ConfigValue extends Record<string, unknown>>(
+				commandVersions: Readonly<Record<string, string>>,
 				config: ConfigValue,
 				definitions: ReadonlyArray<Definition<ConfigValue>>,
 				frameworks: DefinitionRegistry<ConfigValue>["frameworks"],
@@ -541,9 +552,12 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				const ordered = yield* orderDefinitions(definitions);
 
 				return yield* Effect.forEach(ordered, (definition, order) =>
-					normalizeContributionResult(
-						definition.id,
-						definition.contribute({ config, frameworks }),
+					normalizeContributionResult(definition.id, () =>
+						definition.contribute({
+							commandVersions,
+							config,
+							frameworks,
+						}),
 					).pipe(
 						Effect.provideService(CommandProbe, commandProbe),
 						Effect.map(
@@ -636,12 +650,13 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 					const contributions = yield* normalizeContributionResult(
 						addon.id,
-						adapter.contribute({
-							config,
-							framework,
-							module: adapterModule,
-							slots: adapterModule.config.slots,
-						}),
+						() =>
+							adapter.contribute({
+								config,
+								framework,
+								module: adapterModule,
+								slots: adapterModule.config.slots,
+							}),
 					).pipe(Effect.provideService(CommandProbe, commandProbe));
 
 					adapterEvaluations.push({
@@ -1317,6 +1332,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			);
 
 			const evaluated = yield* evaluateDefinitions(
+				intent.commandVersions,
 				intent.config,
 				definitions,
 				registry.frameworks,
@@ -1483,8 +1499,13 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			projectRoot: string,
 			config: ConfigValue,
 			registry: DefinitionRegistry<ConfigValue>,
+			commandVersions: Readonly<Record<string, string>>,
 		) {
-			return yield* plan(projectRoot, registry, { _tag: "Create", config });
+			return yield* plan(projectRoot, registry, {
+				_tag: "Create",
+				commandVersions,
+				config,
+			});
 		});
 
 		const planInstalled = Effect.fn("Planner.planInstalled")(function* <
@@ -1494,9 +1515,11 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			config: ConfigValue,
 			installs: ReadonlyArray<InstallRecord>,
 			registry: DefinitionRegistry<ConfigValue>,
+			commandVersions: Readonly<Record<string, string>>,
 		) {
 			return yield* plan(projectRoot, registry, {
 				_tag: "Installed",
+				commandVersions,
 				config,
 				installs,
 			});

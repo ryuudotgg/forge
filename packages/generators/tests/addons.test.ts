@@ -44,7 +44,7 @@ function contributionsOf(
 	config: ForgeConfig,
 	frameworks: ReadonlyArray<FrameworkDefinition> = [nextjsFramework],
 ): ReadonlyArray<Contribution> {
-	const result = addon.contribute({ config, frameworks });
+	const result = addon.contribute({ commandVersions: {}, config, frameworks });
 	if (Effect.isEffect(result) || result instanceof Promise)
 		throw new Error(`Unexpected Contribution Shape: ${addon.id}`);
 
@@ -68,7 +68,7 @@ function adapterContributionsOf(
 			id: "abcde",
 			type: "app",
 			framework: framework.id,
-			template: { id: "base", version: 1 },
+			template: { id: `${framework.id}/base`, version: 1 },
 			slots,
 		},
 		id: "abcde",
@@ -434,7 +434,7 @@ describe("trpc addon", () => {
 				id: "abcde",
 				type: "app",
 				framework: "nextjs",
-				template: { id: "base", version: 1 },
+				template: { id: "nextjs/base", version: 1 },
 				slots: { trpc: "app/api/trpc/[trpc]/route.ts" },
 			},
 			id: "abcde",

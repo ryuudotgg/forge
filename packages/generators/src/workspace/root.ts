@@ -1,5 +1,4 @@
 import {
-	CommandProbe,
 	defineAddon,
 	type FrameworkDefinition,
 	GeneratorError,
@@ -7,7 +6,6 @@ import {
 	packageManagerCommand,
 	projectTarget,
 	runtimeCommand,
-	runtimes,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceScripts,
@@ -26,7 +24,7 @@ const root = defineAddon<ForgeConfig, "root">({
 	exclusive: true,
 	targetMode: "single",
 	when: () => true,
-	contribute: ({ config, frameworks }) =>
+	contribute: ({ commandVersions, config, frameworks }) =>
 		Effect.gen(function* () {
 			const runtime = config.runtime ?? "Node.js";
 			const runtimeCommandName = runtimeCommand(runtime);
@@ -34,38 +32,26 @@ const root = defineAddon<ForgeConfig, "root">({
 			const packageManager = config.packageManager ?? "pnpm";
 			const packageManagerCommandName = packageManagerCommand(packageManager);
 
-			const runtimeVersion = yield* CommandProbe.readVersion(
-				runtimeCommandName,
-			).pipe(
-				Effect.mapError(
-					(error) =>
-						new GeneratorError({
-							generatorId: "root",
-							message: `Command Version Probe Failed: ${runtimeCommandName} ${error.detail}`,
-						}),
-				),
-			);
+			const runtimeVersion = commandVersions[runtimeCommandName];
+			if (runtimeVersion === undefined)
+				return yield* new GeneratorError({
+					generatorId: "root",
+					message: `Command Version Missing: ${runtimeCommandName}`,
+				});
 
-			const nodeVersion =
-				runtime === "Node.js"
-					? runtimeVersion
-					: yield* CommandProbe.readVersion("node").pipe(
-							Effect.catchTag("CommandProbeError", () =>
-								Effect.succeed(`${runtimes.node.minimumMajor}`),
-							),
-						);
+			const nodeVersion = commandVersions.node;
+			if (nodeVersion === undefined)
+				return yield* new GeneratorError({
+					generatorId: "root",
+					message: "Command Version Missing: node",
+				});
 
-			const packageManagerVersion = yield* CommandProbe.readVersion(
-				packageManagerCommandName,
-			).pipe(
-				Effect.mapError(
-					(error) =>
-						new GeneratorError({
-							generatorId: "root",
-							message: `Command Version Probe Failed: ${packageManagerCommandName} ${error.detail}`,
-						}),
-				),
-			);
+			const packageManagerVersion = commandVersions[packageManagerCommandName];
+			if (packageManagerVersion === undefined)
+				return yield* new GeneratorError({
+					generatorId: "root",
+					message: `Command Version Missing: ${packageManagerCommandName}`,
+				});
 
 			return buildContributions(
 				config,

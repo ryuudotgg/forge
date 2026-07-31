@@ -13,7 +13,11 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const framework =
 		config.web === "tanstack-start" ? tanstackStartFramework : nextjsFramework;
 
-	const core = trpc.contribute({ config, frameworks: [framework] });
+	const core = trpc.contribute({
+		commandVersions: {},
+		config,
+		frameworks: [framework],
+	});
 	if (core instanceof Promise || Effect.isEffect(core))
 		throw new Error("Synchronous Contributions Expected: trpc");
 
@@ -27,7 +31,7 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 			id: "abcde",
 			type: "app",
 			framework: framework.id,
-			template: { id: "base", version: 1 },
+			template: { id: `${framework.id}/base`, version: 1 },
 			slots,
 		},
 		id: "abcde",
