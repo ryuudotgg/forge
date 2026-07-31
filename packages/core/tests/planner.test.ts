@@ -6,8 +6,12 @@ import { describe, expect, it } from "vitest";
 import {
 	type AddonDefinition,
 	Apply,
+	CommandProbe,
+	ConfigStore,
 	CoreLive,
 	type DefinitionRegistry,
+	type DiscoveredModule,
+	defineAdapter,
 	defineAddon,
 	defineFramework,
 	defineRegistry,
@@ -21,13 +25,17 @@ import {
 	leafTextFile,
 	type ModuleRecord,
 	moduleCapabilities,
+	moduleTarget,
 	PackageConfigSchema,
 	Planner,
 	PlannerError,
 	type ProjectPlan,
 	projectTarget,
 	type RenderBucket,
+	Renderer,
+	State,
 	selectedModuleTarget,
+	slotPath,
 	surfaceDependencies,
 	surfaceText,
 	templateModuleTarget,
@@ -47,7 +55,7 @@ interface TestConfig extends Record<string, unknown> {
 	readonly rpc?: "trpc";
 	readonly theme?: boolean;
 	readonly ui?: boolean;
-	readonly web?: "nextjs";
+	readonly web?: "nextjs" | "tanstack-start";
 }
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
@@ -83,6 +91,37 @@ function planInstalledEffect(
 	return Effect.flatMap(Planner, (planner) =>
 		planner.planInstalled(directory, config, installs, registry),
 	).pipe(Effect.provide(coreLayer));
+}
+
+function planInstalledWithDiscoveryEffect(
+	directory: string,
+	config: TestConfig,
+	installs: ReadonlyArray<InstallRecord>,
+	registry: DefinitionRegistry<TestConfig>,
+	discovered: ReadonlyArray<DiscoveredModule>,
+) {
+	const syntheticConfigStore = Layer.effect(
+		ConfigStore,
+		Effect.map(ConfigStore, (configStore) => ({
+			...configStore,
+			discover: () => Effect.succeed([...discovered]),
+		})),
+	).pipe(Layer.provide(ConfigStore.Default));
+	const plannerLayer = Planner.Default.pipe(
+		Layer.provide(
+			Layer.mergeAll(
+				CommandProbe.Default,
+				syntheticConfigStore,
+				Renderer.Default,
+				State.Default,
+			),
+		),
+		Layer.provide(NodeContext.layer),
+	);
+
+	return Effect.flatMap(Planner, (planner) =>
+		planner.planInstalled(directory, config, installs, registry),
+	).pipe(Effect.provide(plannerLayer));
 }
 
 function applyPlanEffect(directory: string, plan: ProjectPlan) {
@@ -471,6 +510,58 @@ function ensureConflictRegistry(
 		addons: [ensureAddon("first", first), ensureAddon("second", second)],
 	});
 }
+
+const adapterGuardNextjs = defineFramework({
+	id: "nextjs",
+	configFile: "next.config.ts",
+	buildOutputs: [],
+	ignoreDirs: [],
+	name: "Next.js",
+	slots: ["integration"],
+	tsconfigPreset: { content: {}, name: "nextjs" },
+});
+
+const adapterGuardAstro = defineFramework({
+	id: "astro",
+	configFile: "astro.config.ts",
+	buildOutputs: [],
+	ignoreDirs: [],
+	name: "Astro",
+	slots: ["integration"],
+	tsconfigPreset: { content: {}, name: "astro" },
+});
+
+const adapterGuardAddon = defineAddon<TestConfig>({
+	id: "integration",
+	name: "Integration",
+	version: "0.1.0",
+	category: "addon",
+	exclusive: false,
+	targetMode: "multiple",
+	when: () => false,
+	contribute: () => [],
+});
+
+const adapterGuardNextjsAdapter = defineAdapter<TestConfig>({
+	addon: "integration",
+	framework: "nextjs",
+	requiredSlots: ["integration"],
+	contribute: () => [],
+});
+
+const adapterGuardRegistry = defineRegistry({
+	adapters: [adapterGuardNextjsAdapter],
+	frameworks: [adapterGuardNextjs],
+	templates: [],
+	addons: [adapterGuardAddon],
+});
+
+const adapterGuardUnsupportedRegistry = defineRegistry({
+	adapters: [adapterGuardNextjsAdapter],
+	frameworks: [adapterGuardNextjs, adapterGuardAstro],
+	templates: [],
+	addons: [adapterGuardAddon],
+});
 
 describe("planner", () => {
 	it("reconstructs legacy empty installs and retracts inactive ensured modules", async () => {
@@ -1441,6 +1532,863 @@ describe("planner", () => {
 				kind: "file",
 				path: "theme.config.ts",
 			});
+		});
+	});
+
+	it("executes an adapter once per selected target module", async () => {
+		await withTempDir("planner-adapter-targets", async (directory) => {
+			const framework = defineFramework({
+				id: "nextjs",
+				configFile: "next.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Next.js",
+				slots: ["integration"],
+				tsconfigPreset: { content: {}, name: "nextjs" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "nextjs",
+				contribute: () => [
+					ensureAppModule("first", "apps/first", {
+						framework: "nextjs",
+						template: { id: "base", version: 1 },
+						slots: { integration: "src/integration.ts" },
+					}),
+					ensureAppModule("second", "apps/second", {
+						framework: "nextjs",
+						template: { id: "base", version: 1 },
+						slots: { integration: "src/integration.ts" },
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "integration",
+				name: "Integration",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "multiple",
+				when: () => true,
+				contribute: () => [],
+			});
+			const adapter = defineAdapter<TestConfig>({
+				addon: "integration",
+				framework: "nextjs",
+				requiredSlots: ["integration"],
+				contribute: (context) => [
+					leafTextFile(
+						moduleTarget(context.module),
+						"adapter.txt",
+						`${context.framework.id}:${context.module.root}:${context.slots.integration}\n`,
+					),
+				],
+			});
+			const registry = defineRegistry({
+				adapters: [adapter],
+				frameworks: [framework],
+				templates: [template],
+				addons: [addon],
+			});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+			const adapterWrites = plan.writes.filter((write) =>
+				write.path.endsWith("/adapter.txt"),
+			);
+			const install = plan.manifest.installs.find(
+				(entry) => entry.definitionId === "integration",
+			);
+
+			expect(adapterWrites.map((write) => write.path).sort()).toEqual([
+				"apps/first/adapter.txt",
+				"apps/second/adapter.txt",
+			]);
+			expect(adapterWrites.map((write) => write.content).sort()).toEqual([
+				"nextjs:apps/first:src/integration.ts\n",
+				"nextjs:apps/second:src/integration.ts\n",
+			]);
+			expect(install?.targets).toHaveLength(2);
+			expect(install?.targets.every((target) => target.kind === "module")).toBe(
+				true,
+			);
+		});
+	});
+
+	it("applies adapter ensures to an adopted module root", async () => {
+		await withTempDir("planner-adapter-adopted-module", async (directory) => {
+			const framework = defineFramework({
+				id: "nextjs",
+				configFile: "next.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Next.js",
+				slots: ["layout"],
+				tsconfigPreset: { content: {}, name: "nextjs" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "nextjs",
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "nextjs",
+						template: { id: "base", version: 1 },
+						slots: { layout: "app/layout.tsx" },
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "ui",
+				name: "UI",
+				version: "0.1.0",
+				category: "ui",
+				exclusive: true,
+				targetMode: "single",
+				when: (config) => config.ui === true,
+				contribute: () => [],
+			});
+			const adapter = defineAdapter<TestConfig>({
+				addon: "ui",
+				framework: "nextjs",
+				contribute: () => [
+					ensurePackageModule("ui", "packages/ui", {
+						packageType: "library",
+						template: { id: "ui", version: 1 },
+						capabilities: ["ui"],
+						slots: {
+							postcssConfig: "postcss.config.mjs",
+							styles: "src/styles.css",
+						},
+					}),
+					leafTextFile(
+						ensuredModuleTarget("ui"),
+						"postcss.config.mjs",
+						"export default {};\n",
+					),
+				],
+			});
+			const registry = defineRegistry({
+				adapters: [adapter],
+				frameworks: [framework],
+				templates: [template],
+				addons: [addon],
+			});
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { ui: true, web: "nextjs" }, registry),
+			);
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+			await rename(
+				join(directory, "packages/ui"),
+				join(directory, "packages/design-system"),
+			);
+
+			const updatePlan = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					{ ui: true, web: "nextjs" },
+					createPlan.manifest.installs,
+					registry,
+				),
+			);
+			const roots = Object.values(updatePlan.manifest.modules).map(
+				(record) => record.root,
+			);
+
+			expect(roots).toContain("packages/design-system");
+			expect(roots).not.toContain("packages/ui");
+			expect(
+				updatePlan.writes.some(
+					(write) => write.path === "packages/design-system/postcss.config.mjs",
+				),
+			).toBe(true);
+		});
+	});
+
+	it("fails when an adapter module key is claimed by another root", async () => {
+		await withTempDir(
+			"planner-adapter-module-key-conflict",
+			async (directory) => {
+				const framework = defineFramework({
+					id: "nextjs",
+					configFile: "next.config.ts",
+					buildOutputs: [],
+					ignoreDirs: [],
+					name: "Next.js",
+					slots: ["layout"],
+					tsconfigPreset: { content: {}, name: "nextjs" },
+				});
+				const template = defineTemplate<TestConfig>({
+					id: "nextjs/base",
+					framework: "nextjs",
+					name: "Base",
+					version: 1,
+					category: "web",
+					exclusive: true,
+					when: (config) => config.web === "nextjs",
+					contribute: () => [
+						ensureAppModule("web", "apps/web", {
+							framework: "nextjs",
+							template: { id: "base", version: 1 },
+							slots: { layout: "app/layout.tsx" },
+						}),
+					],
+				});
+				const addon = defineAddon<TestConfig>({
+					id: "ui",
+					name: "UI",
+					version: "0.1.0",
+					category: "ui",
+					exclusive: true,
+					targetMode: "single",
+					when: (config) => config.ui === true,
+					contribute: () => [
+						ensurePackageModule("ui", "packages/ui-base", {
+							packageType: "library",
+							template: { id: "ui", version: 1 },
+							capabilities: ["ui"],
+							slots: {},
+						}),
+					],
+				});
+				const adapter = defineAdapter<TestConfig>({
+					addon: "ui",
+					framework: "nextjs",
+					contribute: () => [
+						ensurePackageModule("ui", "packages/ui", {
+							packageType: "library",
+							template: { id: "ui", version: 1 },
+							capabilities: ["ui"],
+							slots: {},
+						}),
+					],
+				});
+				const registry = defineRegistry({
+					adapters: [adapter],
+					frameworks: [framework],
+					templates: [template],
+					addons: [addon],
+				});
+
+				const createPlan = await Effect.runPromise(
+					planCreateEffect(directory, { ui: true, web: "nextjs" }, registry),
+				);
+				const uiId = moduleIdByRoot(
+					createPlan.manifest.modules,
+					"packages/ui-base",
+				);
+
+				expect(uiId).toBeDefined();
+				if (!uiId) throw new Error("Missing UI Module");
+
+				await Effect.runPromise(applyPlanEffect(directory, createPlan));
+				await rename(
+					join(directory, "packages/ui-base"),
+					join(directory, "packages/design-system"),
+				);
+				const renamedPlan = await Effect.runPromise(
+					planInstalledEffect(
+						directory,
+						{ ui: true, web: "nextjs" },
+						createPlan.manifest.installs,
+						registry,
+					),
+				);
+
+				expect(renamedPlan.manifest.modules[uiId]?.root).toBe(
+					"packages/design-system",
+				);
+
+				await Effect.runPromise(applyPlanEffect(directory, renamedPlan));
+				const occupantId = uiId === "zzzzz" ? "yyyyy" : "zzzzz";
+				await writeJson(join(directory, "packages/ui/forge.json"), {
+					id: occupantId,
+					type: "package",
+					packageType: "library",
+					template: { id: "ui", version: 1 },
+					capabilities: ["ui"],
+					slots: {},
+				});
+
+				const exit = await Effect.runPromiseExit(
+					planInstalledEffect(
+						directory,
+						{ ui: true, web: "nextjs" },
+						createPlan.manifest.installs,
+						registry,
+					),
+				);
+				const error = plannerFailure(exit);
+
+				expect(error?.message).toBe(
+					"Module Key Conflict: ui is claimed by packages/ui and packages/design-system",
+				);
+				expect(error?.path).toBe("packages/ui");
+			},
+		);
+	});
+
+	it("validates an installed addon against each target module framework", async () => {
+		await withTempDir(
+			"planner-installed-target-framework",
+			async (directory) => {
+				const firstFramework = defineFramework({
+					id: "first",
+					configFile: "first.config.ts",
+					buildOutputs: [],
+					ignoreDirs: [],
+					name: "First",
+					slots: ["integration"],
+					tsconfigPreset: { content: {}, name: "first" },
+				});
+				const secondFramework = defineFramework({
+					id: "second",
+					configFile: "second.config.ts",
+					buildOutputs: [],
+					ignoreDirs: [],
+					name: "Second",
+					slots: ["integration"],
+					tsconfigPreset: { content: {}, name: "second" },
+				});
+				const firstTemplate = defineTemplate<TestConfig>({
+					id: "first/base",
+					framework: "first",
+					name: "First Base",
+					version: 1,
+					category: "web",
+					exclusive: true,
+					when: () => false,
+					contribute: () => [],
+				});
+				const secondTemplate = defineTemplate<TestConfig>({
+					id: "second/base",
+					framework: "second",
+					name: "Second Base",
+					version: 1,
+					category: "web",
+					exclusive: true,
+					when: () => false,
+					contribute: () => [],
+				});
+				const addon = defineAddon<TestConfig>({
+					id: "integration",
+					name: "Integration",
+					version: "0.1.0",
+					category: "addon",
+					exclusive: false,
+					targetMode: "single",
+					when: () => false,
+					contribute: () => [],
+				});
+				const adapter = defineAdapter<TestConfig>({
+					addon: "integration",
+					framework: "second",
+					requiredSlots: ["integration"],
+					contribute: (context) => [
+						leafTextFile(
+							moduleTarget(context.module),
+							"adapter.txt",
+							`${context.framework.name}\n`,
+						),
+					],
+				});
+				const registry = defineRegistry({
+					adapters: [adapter],
+					frameworks: [firstFramework, secondFramework],
+					templates: [firstTemplate, secondTemplate],
+					addons: [addon],
+				});
+
+				await writeJson(join(directory, "apps/first/forge.json"), {
+					id: "aaaaa",
+					type: "app",
+					framework: "first",
+					template: { id: "base", version: 1 },
+					slots: { integration: "src/integration.ts" },
+				});
+				await writeJson(join(directory, "apps/second/forge.json"), {
+					id: "bbbbb",
+					type: "app",
+					framework: "second",
+					template: { id: "base", version: 1 },
+					slots: { integration: "src/integration.ts" },
+				});
+
+				const plan = await Effect.runPromise(
+					planInstalledEffect(
+						directory,
+						{},
+						[
+							{
+								definitionId: "integration",
+								targets: [{ kind: "module", moduleId: "bbbbb" }],
+							},
+						],
+						registry,
+					),
+				);
+
+				expect(
+					plan.writes.find((write) => write.path === "apps/second/adapter.txt")
+						?.content,
+				).toBe("Second\n");
+			},
+		);
+	});
+
+	it("stabilizes dependency adapter targets and output across shuffled discovery", async () => {
+		const framework = defineFramework({
+			id: "nextjs",
+			configFile: "next.config.ts",
+			buildOutputs: [],
+			ignoreDirs: [],
+			name: "Next.js",
+			slots: ["integration"],
+			tsconfigPreset: { content: {}, name: "nextjs" },
+		});
+		const template = defineTemplate<TestConfig>({
+			id: "nextjs/base",
+			framework: "nextjs",
+			name: "Base",
+			version: 1,
+			category: "web",
+			exclusive: true,
+			when: () => false,
+			contribute: () => [],
+		});
+		const integration = defineAddon<TestConfig>({
+			id: "integration",
+			name: "Integration",
+			version: "0.1.0",
+			category: "addon",
+			exclusive: false,
+			targetMode: "multiple",
+			when: () => true,
+			contribute: () => [],
+		});
+		const parent = defineAddon<TestConfig>({
+			id: "parent",
+			name: "Parent",
+			version: "0.1.0",
+			category: "addon",
+			exclusive: false,
+			dependencies: [{ id: "integration", type: "addon" }],
+			targetMode: "single",
+			when: () => false,
+			contribute: () => [],
+		});
+		const adapter = defineAdapter<TestConfig>({
+			addon: "integration",
+			framework: "nextjs",
+			requiredSlots: ["integration"],
+			contribute: (context) => [
+				leafTextFile(
+					moduleTarget(context.module),
+					"adapter.txt",
+					`${context.module.root}\n`,
+				),
+			],
+		});
+		const registry = defineRegistry({
+			adapters: [adapter],
+			frameworks: [framework],
+			templates: [template],
+			addons: [integration, parent],
+		});
+		const moduleFixtures = [
+			{
+				id: "aaaaa",
+				root: "apps/alpha",
+			},
+			{
+				id: "zzzzz",
+				root: "apps/zeta",
+			},
+		] as const;
+		const run = (
+			name: string,
+			fixtures: ReadonlyArray<(typeof moduleFixtures)[number]>,
+		) =>
+			withTempDir(name, async (directory) => {
+				for (const fixture of fixtures)
+					await writeJson(join(directory, fixture.root, "forge.json"), {
+						id: fixture.id,
+						type: "app",
+						framework: "nextjs",
+						template: { id: "base", version: 1 },
+						slots: { integration: "src/integration.ts" },
+					});
+
+				const plan = await Effect.runPromise(
+					planInstalledEffect(
+						directory,
+						{},
+						[
+							{
+								definitionId: "parent",
+								targets: [{ kind: "project" }],
+							},
+						],
+						registry,
+					),
+				);
+				const integrationInstall = plan.manifest.installs.find(
+					(install) => install.definitionId === "integration",
+				);
+				const targetRoots =
+					integrationInstall?.targets.flatMap((target) =>
+						target.kind === "module"
+							? [plan.manifest.modules[target.moduleId]?.root ?? ""]
+							: [],
+					) ?? [];
+				const adapterWrites = plan.writes
+					.filter((write) => write.path.endsWith("/adapter.txt"))
+					.map((write) => ({ content: write.content, path: write.path }));
+
+				return { adapterWrites, targetRoots };
+			});
+
+		const ordered = await run("planner-adapter-order", moduleFixtures);
+		const shuffled = await run("planner-adapter-order-shuffled", [
+			moduleFixtures[1],
+			moduleFixtures[0],
+		]);
+
+		expect(ordered).toEqual(shuffled);
+		expect(ordered.targetRoots).toEqual(["apps/alpha", "apps/zeta"]);
+		expect(ordered.adapterWrites).toEqual([
+			{ content: "apps/alpha\n", path: "apps/alpha/adapter.txt" },
+			{ content: "apps/zeta\n", path: "apps/zeta/adapter.txt" },
+		]);
+	});
+
+	it("reports a missing adapter with a natural sentence", async () => {
+		await withTempDir("planner-adapter-missing", async (directory) => {
+			const nextjs = defineFramework({
+				id: "nextjs",
+				configFile: "next.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Next.js",
+				slots: ["trpc"],
+				tsconfigPreset: { content: {}, name: "nextjs" },
+			});
+			const tanstack = defineFramework({
+				id: "tanstack-start",
+				configFile: "vite.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "TanStack Start",
+				slots: ["trpc"],
+				tsconfigPreset: { content: {}, name: "tanstack-start" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "tanstack-start/base",
+				framework: "tanstack-start",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "tanstack-start",
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "tanstack-start",
+						template: { id: "base", version: 1 },
+						slots: { trpc: "src/routes/api/trpc/$.ts" },
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "trpc",
+				name: "tRPC",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "single",
+				when: () => true,
+				contribute: () => [],
+			});
+			const nextjsAdapter = defineAdapter<TestConfig>({
+				addon: "trpc",
+				framework: "nextjs",
+				requiredSlots: ["trpc"],
+				contribute: () => [],
+			});
+			const registry = defineRegistry({
+				adapters: [nextjsAdapter],
+				frameworks: [nextjs, tanstack],
+				templates: [template],
+				addons: [addon],
+			});
+
+			const exit = await Effect.runPromiseExit(
+				planCreateEffect(
+					directory,
+					{ rpc: "trpc", web: "tanstack-start" },
+					registry,
+				),
+			);
+
+			expect(generatorFailure(exit)?.message).toBe(
+				"tRPC does not support TanStack Start yet.",
+			);
+		});
+	});
+
+	it("rejects a project install target for an adapter addon", async () => {
+		await withTempDir("planner-adapter-project-target", async (directory) => {
+			const exit = await Effect.runPromiseExit(
+				planInstalledEffect(
+					directory,
+					{},
+					[
+						{
+							definitionId: "integration",
+							targets: [{ kind: "project" }],
+						},
+					],
+					adapterGuardRegistry,
+				),
+			);
+			const error = plannerFailure(exit);
+
+			expect(error?.message).toBe("Adapter Target Must Be Module");
+			expect(error?.path).toBe("integration");
+		});
+	});
+
+	it("rejects a missing app install target for an adapter addon", async () => {
+		await withTempDir("planner-adapter-app-missing", async (directory) => {
+			const exit = await Effect.runPromiseExit(
+				planInstalledEffect(
+					directory,
+					{},
+					[
+						{
+							definitionId: "integration",
+							targets: [{ kind: "module", moduleId: "abcde" }],
+						},
+					],
+					adapterGuardRegistry,
+				),
+			);
+			const error = plannerFailure(exit);
+
+			expect(error?.message).toBe("Adapter Target App Missing");
+			expect(error?.path).toBe("integration");
+		});
+	});
+
+	it("rejects an installed adapter target with an unregistered framework", async () => {
+		await withTempDir(
+			"planner-adapter-framework-missing",
+			async (directory) => {
+				const exit = await Effect.runPromiseExit(
+					planInstalledWithDiscoveryEffect(
+						directory,
+						{},
+						[
+							{
+								definitionId: "integration",
+								targets: [{ kind: "module", moduleId: "abcde" }],
+							},
+						],
+						adapterGuardRegistry,
+						[
+							{
+								id: "abcde",
+								type: "app",
+								framework: "nextjs",
+								root: "apps/nextjs",
+								template: { id: "base", version: 1 },
+								slots: { integration: "src/integration.ts" },
+							},
+							{
+								id: "abcde",
+								type: "app",
+								framework: "missing",
+								root: "apps/missing",
+								template: { id: "base", version: 1 },
+								slots: { integration: "src/integration.ts" },
+							},
+						],
+					),
+				);
+				const error = plannerFailure(exit);
+
+				expect(error?.message).toBe("Adapter Framework Missing");
+				expect(error?.path).toBe("integration");
+			},
+		);
+	});
+
+	it("reports an unsupported installed adapter framework naturally", async () => {
+		await withTempDir(
+			"planner-installed-adapter-missing",
+			async (directory) => {
+				const exit = await Effect.runPromiseExit(
+					planInstalledWithDiscoveryEffect(
+						directory,
+						{},
+						[
+							{
+								definitionId: "integration",
+								targets: [{ kind: "module", moduleId: "abcde" }],
+							},
+						],
+						adapterGuardUnsupportedRegistry,
+						[
+							{
+								id: "abcde",
+								type: "app",
+								framework: "nextjs",
+								root: "apps/nextjs",
+								template: { id: "base", version: 1 },
+								slots: { integration: "src/integration.ts" },
+							},
+							{
+								id: "abcde",
+								type: "app",
+								framework: "astro",
+								root: "apps/astro",
+								template: { id: "base", version: 1 },
+								slots: { integration: "src/integration.ts" },
+							},
+						],
+					),
+				);
+
+				expect(generatorFailure(exit)?.message).toBe(
+					"Integration does not support Astro yet.",
+				);
+			},
+		);
+	});
+
+	it("collects an adapter leaf file from a resolved module slot path", async () => {
+		await withTempDir(
+			"planner-adapter-resolved-slot-path",
+			async (directory) => {
+				await writeJson(join(directory, "apps/web/forge.json"), {
+					id: "abcde",
+					type: "app",
+					framework: "nextjs",
+					template: { id: "base", version: 1 },
+					slots: { integration: "src/integration.ts" },
+				});
+				const adapter = defineAdapter<TestConfig>({
+					addon: "integration",
+					framework: "nextjs",
+					requiredSlots: ["integration"],
+					contribute: (context) => {
+						const target = moduleTarget(context.module);
+						return [
+							leafTextFile(
+								target,
+								slotPath(target, "integration"),
+								"integrated\n",
+							),
+						];
+					},
+				});
+				const registry = defineRegistry({
+					adapters: [adapter],
+					frameworks: [adapterGuardNextjs],
+					templates: [],
+					addons: [adapterGuardAddon],
+				});
+
+				const plan = await Effect.runPromise(
+					planInstalledEffect(
+						directory,
+						{},
+						[
+							{
+								definitionId: "integration",
+								targets: [{ kind: "module", moduleId: "abcde" }],
+							},
+						],
+						registry,
+					),
+				);
+
+				expect(
+					plan.writes.find(
+						(write) => write.path === "apps/web/src/integration.ts",
+					)?.content,
+				).toBe("integrated\n");
+			},
+		);
+	});
+
+	it("validates adapter slots against the filled module map", async () => {
+		await withTempDir("planner-adapter-slots", async (directory) => {
+			const framework = defineFramework({
+				id: "nextjs",
+				configFile: "next.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Next.js",
+				slots: ["trpc"],
+				tsconfigPreset: { content: {}, name: "nextjs" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "nextjs",
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "nextjs",
+						template: { id: "base", version: 1 },
+						slots: {},
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "trpc",
+				name: "tRPC",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "single",
+				when: () => true,
+				contribute: () => [],
+			});
+			const adapter = defineAdapter<TestConfig>({
+				addon: "trpc",
+				framework: "nextjs",
+				requiredSlots: ["trpc"],
+				contribute: () => [],
+			});
+			const registry = defineRegistry({
+				adapters: [adapter],
+				frameworks: [framework],
+				templates: [template],
+				addons: [addon],
+			});
+
+			const exit = await Effect.runPromiseExit(
+				planCreateEffect(directory, { rpc: "trpc", web: "nextjs" }, registry),
+			);
+
+			expect(generatorFailure(exit)?.message).toBe(
+				"tRPC requires the trpc slot, but Next.js does not provide it.",
+			);
 		});
 	});
 

@@ -5,6 +5,11 @@ export class GeneratorError extends Schema.TaggedError<GeneratorError>()(
 	{ generatorId: Schema.String, message: Schema.String },
 ) {}
 
+export class RegistryError extends Schema.TaggedError<RegistryError>()(
+	"RegistryError",
+	{ message: Schema.String, registryId: Schema.String },
+) {}
+
 export class CommandProbeError extends Schema.TaggedError<CommandProbeError>()(
 	"CommandProbeError",
 	{

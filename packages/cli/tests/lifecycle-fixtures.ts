@@ -59,7 +59,11 @@ export const appModule: DiscoveredModule = {
 	id: "abcde",
 	packageName: "@acme/web",
 	root: "apps/web",
-	slots: { layout: "app/layout.tsx" },
+	slots: {
+		auth: "app/api/auth/[...all]/route.ts",
+		layout: "app/layout.tsx",
+		trpc: "app/api/trpc/[trpc]/route.ts",
+	},
 	template: { id: "base", version: 1 },
 	type: "app",
 };
@@ -79,6 +83,17 @@ export const reactRouterModule: DiscoveredModule = {
 	slots: { layout: "app/layout.tsx" },
 	template: { id: "base", version: 1 },
 	type: "app",
+};
+
+export const packageModule: DiscoveredModule = {
+	capabilities: ["react"],
+	id: "pqrst",
+	packageName: "@acme/ui",
+	packageType: "library",
+	root: "packages/ui",
+	slots: { utils: "src/lib/utils.ts" },
+	template: { id: "ui", version: 1 },
+	type: "package",
 };
 
 export function managedProject(options?: {

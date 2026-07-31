@@ -84,6 +84,22 @@ describe("catalog", () => {
 		});
 	});
 
+	it("derives adapter addon frameworks and slots from the registry", async () => {
+		const expectedFrameworks = ["nextjs", "tanstack-start"];
+
+		expect(await getCatalogEntry("trpc")).toMatchObject({
+			frameworks: expectedFrameworks,
+			requiredSlots: ["trpc"],
+		});
+		expect(await getCatalogEntry("better-auth")).toMatchObject({
+			frameworks: expectedFrameworks,
+			requiredSlots: ["auth"],
+		});
+		expect(await getCatalogEntry("ui")).toMatchObject({
+			frameworks: expectedFrameworks,
+		});
+	});
+
 	it("keeps catalog ids unique across kinds", async () => {
 		const ids = (await listCatalogEntries()).map((entry) => entry.id);
 

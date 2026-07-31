@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 import type {
+	AdapterDefinition,
+	AdapterModule,
 	AddonDefinition,
 	Contribution,
 	DefinitionRegistry,
@@ -11,6 +13,7 @@ import type {
 import {
 	isAddonCompatibleWithModule,
 	resolveSlotPath,
+	validateAdapterAgainstModule,
 	validateAddonAgainstSelection,
 } from "./authoring";
 import { CommandProbe } from "./command";
@@ -46,9 +49,9 @@ type Definition<ConfigValue> =
 	| TemplateDefinition<ConfigValue>
 	| AddonDefinition<ConfigValue>;
 
-interface EvaluatedDefinition<ConfigValue> {
-	readonly definition: Definition<ConfigValue>;
+interface EvaluatedDefinition {
 	readonly contributions: ReadonlyArray<Contribution>;
+	readonly definitionId: string;
 	readonly order: number;
 }
 
@@ -289,8 +292,8 @@ function mergeEnsuredModule(
 	);
 }
 
-function normalizeContributionResult<ConfigValue>(
-	definition: Definition<ConfigValue>,
+function normalizeContributionResult(
+	generatorId: string,
 	result:
 		| ReadonlyArray<Contribution>
 		| Promise<ReadonlyArray<Contribution>>
@@ -302,7 +305,7 @@ function normalizeContributionResult<ConfigValue>(
 			try: () => result,
 			catch: (error) =>
 				new GeneratorError({
-					generatorId: definition.id,
+					generatorId,
 					message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
 				}),
 		});
@@ -321,22 +324,41 @@ function installTargetKey(target: InstallTarget) {
 	return isProjectTarget(target) ? "project" : `module:${target.moduleId}`;
 }
 
-function buildTargetCandidates(
-	addon: AddonDefinition<Record<string, unknown>>,
+function buildTargetCandidates<ConfigValue>(
+	addon: AddonDefinition<ConfigValue>,
 	modules: ReadonlyArray<ManagedModuleRecord>,
-	frameworks: DefinitionRegistry<Record<string, unknown>>["frameworks"],
+	frameworks: DefinitionRegistry<ConfigValue>["frameworks"],
+	adapters: ReadonlyArray<AdapterDefinition<ConfigValue>>,
 ): ReadonlyArray<InstallTarget> {
-	if (!addon.compatibility) return [{ kind: "project" }];
+	const hasAdapters = adapters.some((adapter) => adapter.addon === addon.id);
+	if (!addon.compatibility && !hasAdapters) return [{ kind: "project" }];
 
 	const compatibleModules = modules
-		.filter((module) =>
-			isAddonCompatibleWithModule(
-				addon as AddonDefinition<Record<string, unknown>>,
+		.filter((module) => {
+			if (hasAdapters) {
+				const config = module.config;
+				if (config.type !== "app") return false;
+
+				return adapters.some(
+					(adapter) =>
+						adapter.addon === addon.id &&
+						adapter.framework === config.framework,
+				);
+			}
+
+			return isAddonCompatibleWithModule(
+				addon,
 				module.config,
 				frameworks,
-			),
-		)
-		.map((module) => ({ kind: "module", moduleId: module.id }) as const);
+				adapters,
+			);
+		})
+		.map(
+			(module): InstallTarget => ({
+				kind: "module",
+				moduleId: module.id,
+			}),
+		);
 
 	if (addon.targetMode === "single")
 		return compatibleModules[0] ? [compatibleModules[0]] : [];
@@ -520,7 +542,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 				return yield* Effect.forEach(ordered, (definition, order) =>
 					normalizeContributionResult(
-						definition,
+						definition.id,
 						definition.contribute({ config, frameworks }),
 					).pipe(
 						Effect.provideService(CommandProbe, commandProbe),
@@ -528,44 +550,127 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							(contributions) =>
 								({
 									contributions,
-									definition,
+									definitionId: definition.id,
 									order,
-								}) satisfies EvaluatedDefinition<ConfigValue>,
+								}) satisfies EvaluatedDefinition,
 						),
 					),
 				);
 			},
 		);
 
-		const collectModules = Effect.fn("Planner.collectModules")(function* (
-			discovered: ReadonlyArray<DiscoveredModule>,
-			existingModules: Manifest["modules"],
-			evaluated: ReadonlyArray<EvaluatedDefinition<Record<string, unknown>>>,
+		const evaluateAdapters = Effect.fn("Planner.evaluateAdapters")(function* <
+			ConfigValue extends Record<string, unknown>,
+		>(
+			config: ConfigValue,
+			evaluated: ReadonlyArray<EvaluatedDefinition>,
+			registry: DefinitionRegistry<ConfigValue>,
+			modules: ReadonlyArray<ManagedModuleRecord>,
+			selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
 		) {
-			const activeDefinitionIds = new Set(
-				evaluated.map((entry) => entry.definition.id),
+			const modulesById = new Map(modules.map((module) => [module.id, module]));
+			const frameworksById = new Map(
+				registry.frameworks.map((framework) => [framework.id, framework]),
 			);
-			const byRoot = new Map(
-				discovered.flatMap((module) => {
-					const existing = existingModules[module.id];
-					const definitionIds = existing?.definitionIds ?? [];
-					const keepDiscovered =
-						definitionIds.length === 0 ||
-						definitionIds.some((definitionId) =>
-							activeDefinitionIds.has(definitionId),
-						);
 
-					return keepDiscovered
-						? [[module.root, cloneModule(module, existing)]]
-						: [];
-				}),
+			const orderByDefinitionId = new Map(
+				evaluated.map((entry) => [entry.definitionId, entry.order]),
 			);
-			const byKey = new Map<string, ModuleId>();
-			const usedIds = new Set(discovered.map((module) => module.id));
-			const ensuredIds = new Set<ModuleId>();
-			const onDiskSlots = new Map<ModuleId, Slots>(
-				discovered.map((module) => [module.id, module.slots]),
+
+			const adapterEvaluations: EvaluatedDefinition[] = [];
+
+			for (const addon of registry.addons) {
+				const addonAdapters = registry.adapters.filter(
+					(adapter) => adapter.addon === addon.id,
+				);
+
+				if (addonAdapters.length === 0) continue;
+
+				const order = orderByDefinitionId.get(addon.id);
+				if (order === undefined) continue;
+
+				const targets = selectedTargets.get(addon.id) ?? [];
+				for (const target of targets) {
+					if (target.kind !== "module")
+						return yield* new PlannerError({
+							path: addon.id,
+							message: "Adapter Target Must Be Module",
+						});
+
+					const module = modulesById.get(target.moduleId);
+					if (module?.config.type !== "app")
+						return yield* new PlannerError({
+							path: addon.id,
+							message: "Adapter Target App Missing",
+						});
+
+					const framework = frameworksById.get(module.config.framework);
+					if (!framework)
+						return yield* new PlannerError({
+							path: addon.id,
+							message: "Adapter Framework Missing",
+						});
+
+					const adapter = addonAdapters.find(
+						(entry) => entry.framework === framework.id,
+					);
+
+					if (!adapter)
+						return yield* new GeneratorError({
+							generatorId: addon.id,
+							message: `${addon.name} does not support ${framework.name} yet.`,
+						});
+
+					const adapterModule: AdapterModule = {
+						config: module.config,
+						id: module.id,
+						root: module.root,
+					};
+
+					yield* validateAdapterAgainstModule(
+						addon,
+						adapter,
+						adapterModule,
+						framework,
+					);
+
+					const contributions = yield* normalizeContributionResult(
+						addon.id,
+						adapter.contribute({
+							config,
+							framework,
+							module: adapterModule,
+							slots: adapterModule.config.slots,
+						}),
+					).pipe(Effect.provideService(CommandProbe, commandProbe));
+
+					adapterEvaluations.push({
+						contributions,
+						definitionId: addon.id,
+						order,
+					});
+				}
+			}
+
+			return adapterEvaluations;
+		});
+
+		const mergeEnsures = Effect.fn("Planner.mergeEnsures")(function* (
+			initialModules: ReadonlyArray<ManagedModuleRecord>,
+			evaluated: ReadonlyArray<EvaluatedDefinition>,
+			initialModuleIdsByKey: ReadonlyMap<string, ModuleId>,
+			initialEnsuredIds: ReadonlySet<ModuleId>,
+			onDiskSlots: ReadonlyMap<ModuleId, Slots>,
+		) {
+			const byRoot = new Map(
+				initialModules.map((module) => [module.root, module]),
 			);
+
+			const byId = new Map(initialModules.map((module) => [module.id, module]));
+			const byKey = new Map(initialModuleIdsByKey);
+
+			const usedIds = new Set(initialModules.map((module) => module.id));
+			const ensuredIds = new Set(initialEnsuredIds);
 
 			const staticRoots = new Set(
 				evaluated.flatMap((entry) =>
@@ -581,16 +686,25 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				for (const contribution of entry.contributions)
 					if (contribution._tag === "EnsureModuleContribution") {
 						const direct = byRoot.get(contribution.root);
+						const keyedId = byKey.get(contribution.moduleKey);
+						const keyed = keyedId ? byId.get(keyedId) : undefined;
+
+						if (direct && keyed && direct.id !== keyed.id)
+							return yield* new PlannerError({
+								path: contribution.root,
+								message: `Module Key Conflict: ${contribution.moduleKey} is claimed by ${direct.root} and ${keyed.root}`,
+							});
+
 						const existing =
 							direct ??
+							keyed ??
 							findAdoptableModule(
 								byRoot.values(),
 								ensuredIds,
 								staticRoots,
 								contribution,
-								entry.definition.id,
+								entry.definitionId,
 							);
-
 						const moduleId = existing
 							? existing.id
 							: yield* configStore.generateId(usedIds);
@@ -600,7 +714,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							existing,
 							contribution,
 							moduleId,
-							entry.definition.id,
+							entry.definitionId,
 							ensuredIds.has(moduleId),
 							onDiskSlots.get(moduleId) ?? {},
 						);
@@ -608,8 +722,8 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						if (existing && !direct) byRoot.delete(existing.root);
 
 						byRoot.set(contribution.root, merged);
+						byId.set(merged.id, merged);
 						byKey.set(contribution.moduleKey, merged.id);
-
 						ensuredIds.add(merged.id);
 					}
 
@@ -625,10 +739,64 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			}
 
 			return {
-				modules: [...byRoot.values()],
+				ensuredIds,
 				moduleIdsByKey: byKey,
+				modules: [...byRoot.values()],
+				onDiskSlots,
 			};
 		});
+
+		const collectModules = Effect.fn("Planner.collectModules")(function* (
+			discovered: ReadonlyArray<DiscoveredModule>,
+			existingModules: Manifest["modules"],
+			evaluated: ReadonlyArray<EvaluatedDefinition>,
+		) {
+			const activeDefinitionIds = new Set(
+				evaluated.map((entry) => entry.definitionId),
+			);
+
+			const initialModules = discovered.flatMap((module) => {
+				const existing = existingModules[module.id];
+				const definitionIds = existing?.definitionIds ?? [];
+				const keepDiscovered =
+					definitionIds.length === 0 ||
+					definitionIds.some((definitionId) =>
+						activeDefinitionIds.has(definitionId),
+					);
+
+				return keepDiscovered ? [cloneModule(module, existing)] : [];
+			});
+
+			const onDiskSlots = new Map<ModuleId, Slots>(
+				discovered.map((module) => [module.id, module.slots]),
+			);
+
+			return yield* mergeEnsures(
+				initialModules,
+				evaluated,
+				new Map(),
+				new Set(),
+				onDiskSlots,
+			);
+		});
+
+		const applyAdapterEnsures = Effect.fn("Planner.applyAdapterEnsures")(
+			function* (
+				evaluated: ReadonlyArray<EvaluatedDefinition>,
+				modules: ReadonlyArray<ManagedModuleRecord>,
+				moduleIdsByKey: ReadonlyMap<string, ModuleId>,
+				ensuredIds: ReadonlySet<ModuleId>,
+				onDiskSlots: ReadonlyMap<ModuleId, Slots>,
+			) {
+				return yield* mergeEnsures(
+					modules,
+					evaluated,
+					moduleIdsByKey,
+					ensuredIds,
+					onDiskSlots,
+				);
+			},
+		);
 
 		const resolveModuleTargets = (
 			target: TargetRef,
@@ -677,6 +845,11 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					return Effect.succeed([{ kind: "module", moduleId }]);
 				}
 
+				case "ResolvedModuleTarget":
+					return Effect.succeed([
+						{ kind: "module", moduleId: target.moduleId },
+					]);
+
 				case "TemplateModuleTarget": {
 					const matches = modules
 						.filter(
@@ -706,7 +879,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 		const applyModuleCapabilities = Effect.fn(
 			"Planner.applyModuleCapabilities",
 		)(function* (
-			evaluated: ReadonlyArray<EvaluatedDefinition<Record<string, unknown>>>,
+			evaluated: ReadonlyArray<EvaluatedDefinition>,
 			modules: ReadonlyArray<ManagedModuleRecord>,
 			moduleIdsByKey: ReadonlyMap<string, ModuleId>,
 			selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
@@ -718,7 +891,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (contribution._tag === "ModuleCapabilitiesContribution") {
 						const targets = yield* resolveModuleTargets(
 							contribution.target,
-							entry.definition.id,
+							entry.definitionId,
 							moduleIdsByKey,
 							modules,
 							selectedTargets,
@@ -748,7 +921,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 		const collectManagedSurfaceInputs = Effect.fn(
 			"Planner.collectManagedSurfaceInputs",
 		)(function* (
-			evaluated: ReadonlyArray<EvaluatedDefinition<Record<string, unknown>>>,
+			evaluated: ReadonlyArray<EvaluatedDefinition>,
 			modules: ReadonlyArray<ManagedModuleRecord>,
 			moduleIdsByKey: ReadonlyMap<string, ModuleId>,
 			selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
@@ -768,7 +941,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 					const targets = yield* resolveModuleTargets(
 						contribution.target,
-						entry.definition.id,
+						entry.definitionId,
 						moduleIdsByKey,
 						modules,
 						selectedTargets,
@@ -778,7 +951,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						collected.push({
 							bucket,
 							contribution,
-							definitionId: entry.definition.id,
+							definitionId: entry.definitionId,
 							order: entry.order,
 						});
 				}
@@ -787,7 +960,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 		});
 
 		const collectLeafFiles = Effect.fn("Planner.collectLeafFiles")(function* (
-			evaluated: ReadonlyArray<EvaluatedDefinition<Record<string, unknown>>>,
+			evaluated: ReadonlyArray<EvaluatedDefinition>,
 			modules: ReadonlyArray<ManagedModuleRecord>,
 			moduleIdsByKey: ReadonlyMap<string, ModuleId>,
 			selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
@@ -808,7 +981,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 					const targets = yield* resolveModuleTargets(
 						contribution.target,
-						entry.definition.id,
+						entry.definitionId,
 						moduleIdsByKey,
 						modules,
 						selectedTargets,
@@ -820,24 +993,25 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							? yield* Effect.gen(function* () {
 									if (target.kind !== "module")
 										return yield* new PlannerError({
-											path: entry.definition.id,
+											path: entry.definitionId,
 											message: "Slot Path Requires Module Target",
 										});
 
 									const module = byId.get(target.moduleId);
 									if (!module)
 										return yield* new PlannerError({
-											path: entry.definition.id,
+											path: entry.definitionId,
 											message: "Slot Path Module Missing",
 										});
 
-									const expectedModuleId = moduleIdsByKey.get(
-										leafPath.moduleKey,
-									);
+									const expectedModuleId =
+										leafPath.target._tag === "EnsuredModuleTarget"
+											? moduleIdsByKey.get(leafPath.target.moduleKey)
+											: leafPath.target.moduleId;
 
 									if (expectedModuleId !== target.moduleId)
 										return yield* new PlannerError({
-											path: entry.definition.id,
+											path: entry.definitionId,
 											message: "Slot Path Target Mismatch",
 										});
 
@@ -845,7 +1019,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 										Effect.mapError(
 											(error) =>
 												new PlannerError({
-													path: entry.definition.id,
+													path: entry.definitionId,
 													message: error.message,
 												}),
 										),
@@ -867,7 +1041,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						leafFiles.set(relativePath, {
 							bucket: target,
 							content: contribution.content,
-							definitionIds: [entry.definition.id],
+							definitionIds: [entry.definitionId],
 						});
 					}
 				}
@@ -1079,25 +1253,61 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							),
 						};
 
-			const selectedTemplate = selection.templates[0];
-			const selectedFramework = selectedTemplate
-				? registry.frameworks.find(
-						(framework) => framework.id === selectedTemplate.framework,
-					)
-				: undefined;
+			if (intent._tag === "Create") {
+				const selectedTemplate = selection.templates[0];
+				const selectedFramework = selectedTemplate
+					? registry.frameworks.find(
+							(framework) => framework.id === selectedTemplate.framework,
+						)
+					: undefined;
 
-			const hasUnmatchedInstalledAppTemplate =
-				intent._tag === "Installed" &&
-				selection.templates.length === 0 &&
-				discovered.some((module) => module.type === "app");
-
-			if (!hasUnmatchedInstalledAppTemplate)
 				for (const addon of selection.directAddons)
 					yield* validateAddonAgainstSelection(
 						addon,
 						selectedFramework,
 						selectedTemplate,
+						registry.adapters,
 					);
+			} else
+				for (const addon of selection.directAddons) {
+					const targets = intent.installs
+						.filter((install) => install.definitionId === addon.id)
+						.flatMap((install) => install.targets);
+
+					for (const target of targets) {
+						if (target.kind !== "module") continue;
+
+						const module = discovered.find(
+							(entry) => entry.id === target.moduleId,
+						);
+
+						if (module?.type !== "app") continue;
+
+						const framework = registry.frameworks.find(
+							(entry) => entry.id === module.framework,
+						);
+
+						const template = registry.templates.find(
+							(entry) =>
+								entry.framework === module.framework &&
+								templateMatchesId(entry.id, module.template.id) &&
+								entry.version === module.template.version,
+						);
+
+						const hasAdapters = registry.adapters.some(
+							(adapter) => adapter.addon === addon.id,
+						);
+
+						if (!template && !hasAdapters) continue;
+
+						yield* validateAddonAgainstSelection(
+							addon,
+							framework,
+							template,
+							registry.adapters,
+						);
+					}
+				}
 
 			const definitions = yield* resolveDependencies(
 				intent.config,
@@ -1107,28 +1317,59 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			);
 
 			const evaluated = yield* evaluateDefinitions(
-				intent.config as Record<string, unknown>,
-				definitions as ReadonlyArray<Definition<Record<string, unknown>>>,
+				intent.config,
+				definitions,
 				registry.frameworks,
 			);
 
-			const { moduleIdsByKey, modules: mergedModules } = yield* collectModules(
+			const {
+				ensuredIds,
+				moduleIdsByKey,
+				modules: mergedModules,
+				onDiskSlots,
+			} = yield* collectModules(
 				discovered,
 				existingManifest.modules,
 				evaluated,
 			);
 
-			const defaultCreateInstalls =
+			const baseInstalls =
 				intent._tag === "Create"
 					? selection.directAddons.map((addon) => ({
 							definitionId: addon.id,
 							targets: buildTargetCandidates(
-								addon as AddonDefinition<Record<string, unknown>>,
+								addon,
 								mergedModules,
 								registry.frameworks,
+								registry.adapters,
 							),
 						}))
 					: intent.installs;
+
+			const evaluatedDefinitionIds = new Set(
+				evaluated.map((entry) => entry.definitionId),
+			);
+
+			const dependencyAdapterInstalls = registry.addons
+				.filter(
+					(addon) =>
+						evaluatedDefinitionIds.has(addon.id) &&
+						registry.adapters.some((adapter) => adapter.addon === addon.id) &&
+						!baseInstalls.some((install) => install.definitionId === addon.id),
+				)
+				.map((addon) => ({
+					definitionId: addon.id,
+					targets: buildTargetCandidates(
+						addon,
+						mergedModules,
+						registry.frameworks,
+						registry.adapters,
+					),
+				}));
+			const defaultCreateInstalls = [
+				...baseInstalls,
+				...dependencyAdapterInstalls,
+			];
 
 			for (const install of defaultCreateInstalls) {
 				const addon = registry.addons.find(
@@ -1155,17 +1396,37 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				]),
 			);
 
-			const modules = yield* applyModuleCapabilities(
+			const adapterEvaluations = yield* evaluateAdapters(
+				intent.config,
 				evaluated,
+				registry,
+				mergedModules,
+				selectedTargets,
+			);
+
+			const allEvaluated = [...evaluated, ...adapterEvaluations];
+			const {
+				moduleIdsByKey: allModuleIdsByKey,
+				modules: adapterMergedModules,
+			} = yield* applyAdapterEnsures(
+				adapterEvaluations,
 				mergedModules,
 				moduleIdsByKey,
+				ensuredIds,
+				onDiskSlots,
+			);
+
+			const modules = yield* applyModuleCapabilities(
+				allEvaluated,
+				adapterMergedModules,
+				allModuleIdsByKey,
 				selectedTargets,
 			);
 
 			const managedInputs = yield* collectManagedSurfaceInputs(
-				evaluated,
+				allEvaluated,
 				modules,
-				moduleIdsByKey,
+				allModuleIdsByKey,
 				selectedTargets,
 			);
 
@@ -1177,15 +1438,15 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			);
 
 			const leafFiles = yield* collectLeafFiles(
-				evaluated,
+				allEvaluated,
 				modules,
-				moduleIdsByKey,
+				allModuleIdsByKey,
 				selectedTargets,
 			);
 
 			const writes = yield* buildWrites(modules, renderedSurfaces, leafFiles);
 			const manifest = yield* buildManifest(
-				intent.config as Record<string, unknown>,
+				intent.config,
 				defaultCreateInstalls.filter((install) => install.targets.length > 0),
 				modules,
 			);

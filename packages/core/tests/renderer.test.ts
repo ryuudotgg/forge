@@ -154,6 +154,59 @@ describe("renderer", () => {
 		);
 	});
 
+	it("interleaves json fragments by priority before definition order", async () => {
+		const inputs = [
+			{
+				bucket: { kind: "project" },
+				contribution: surfaceJson(
+					projectTarget(),
+					"rootPackageJson",
+					{ exports: { "./last": "./last.ts" } },
+					{ priority: 2 },
+				),
+				definitionId: "core",
+				order: 0,
+			},
+			{
+				bucket: { kind: "project" },
+				contribution: surfaceJson(
+					projectTarget(),
+					"rootPackageJson",
+					{ exports: { "./middle": "./middle.ts" } },
+					{ priority: 1 },
+				),
+				definitionId: "adapter",
+				order: 1,
+			},
+			{
+				bucket: { kind: "project" },
+				contribution: surfaceJson(projectTarget(), "rootPackageJson", {
+					exports: { "./first": "./first.ts" },
+				}),
+				definitionId: "core",
+				order: 0,
+			},
+		] satisfies ReadonlyArray<SurfaceRenderContribution>;
+
+		const rendered = await render(inputs, []);
+		const packageJson: unknown = JSON.parse(rendered[0]?.content ?? "");
+
+		if (
+			typeof packageJson !== "object" ||
+			packageJson === null ||
+			!("exports" in packageJson) ||
+			typeof packageJson.exports !== "object" ||
+			packageJson.exports === null
+		)
+			throw new Error("Rendered Exports Missing");
+
+		expect(Object.keys(packageJson.exports)).toEqual([
+			"./first",
+			"./middle",
+			"./last",
+		]);
+	});
+
 	it("renders explicit versions when the dependency format disables the catalog", async () => {
 		const inputs = [
 			{

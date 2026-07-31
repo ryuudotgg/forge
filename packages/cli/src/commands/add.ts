@@ -168,16 +168,55 @@ export async function runAdd(
 	}
 
 	let record: InstallRecord;
+	const registry = loadDefinitionRegistry().registry;
+	const hasAdapters = registry.adapters.some(
+		(adapter) => adapter.addon === addon.id,
+	);
 
-	if (addon.compatibility === undefined) {
+	if (addon.compatibility === undefined && !hasAdapters)
 		record = buildProjectInstallRecord(addon);
-	} else {
-		const frameworks = loadDefinitionRegistry().registry.frameworks;
+	else {
 		const targets = project.modules.filter((module) =>
-			isAddonCompatibleWithModule(addon, module, frameworks),
+			isAddonCompatibleWithModule(
+				addon,
+				module,
+				registry.frameworks,
+				registry.adapters,
+			),
 		);
 
 		if (targets.length === 0) {
+			const unsupportedApp = hasAdapters
+				? project.modules.find(
+						(module) =>
+							module.type === "app" &&
+							!registry.adapters.some(
+								(adapter) =>
+									adapter.addon === addon.id &&
+									adapter.framework === module.framework,
+							),
+					)
+				: undefined;
+
+			const unsupportedFramework =
+				unsupportedApp?.type === "app"
+					? registry.frameworks.find(
+							(framework) => framework.id === unsupportedApp.framework,
+						)
+					: undefined;
+
+			if (unsupportedApp?.type === "app") {
+				const frameworkName =
+					unsupportedFramework?.name ??
+					unsupportedApp.framework
+						.split("-")
+						.map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+						.join(" ");
+
+				log.error(`${addon.name} does not support ${frameworkName} yet.`);
+				process.exit(1);
+			}
+
 			log.error(`We couldn't find a compatible target for "${addon.name}".`);
 			process.exit(1);
 		}
@@ -193,7 +232,7 @@ export async function runAdd(
 				definitionId: addon.id,
 				targets: [{ kind: "module", moduleId: target.id }],
 			};
-		} else {
+		} else
 			record = {
 				definitionId: addon.id,
 				targets: targets.map((target) => ({
@@ -201,7 +240,6 @@ export async function runAdd(
 					moduleId: target.id,
 				})),
 			};
-		}
 	}
 
 	await applyInstalledPlan(

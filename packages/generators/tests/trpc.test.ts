@@ -1,19 +1,55 @@
-import type { Contribution, SlotPath } from "@ryuujs/core";
+import type { AdapterModule, Contribution, SlotPath } from "@ryuujs/core";
 import { slotPath } from "@ryuujs/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
 import { trpc } from "../src";
+import { trpcNextjsAdapter } from "../src/api/trpc/adapters/nextjs";
+import { trpcTanstackStartAdapter } from "../src/api/trpc/adapters/tanstack-start";
 import { nextjsFramework } from "../src/frameworks/nextjs";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const framework =
 		config.web === "tanstack-start" ? tanstackStartFramework : nextjsFramework;
-	const result = trpc.contribute({ config, frameworks: [framework] });
-	if (result instanceof Promise || Effect.isEffect(result))
+
+	const core = trpc.contribute({ config, frameworks: [framework] });
+	if (core instanceof Promise || Effect.isEffect(core))
 		throw new Error("Synchronous Contributions Expected: trpc");
-	return result;
+
+	const slots =
+		config.web === "tanstack-start"
+			? { trpc: "src/routes/api/trpc/$.ts" }
+			: { trpc: "app/api/trpc/[trpc]/route.ts" };
+
+	const module: AdapterModule = {
+		config: {
+			id: "abcde",
+			type: "app",
+			framework: framework.id,
+			template: { id: "base", version: 1 },
+			slots,
+		},
+		id: "abcde",
+		root: "apps/web",
+	};
+
+	const adapter =
+		config.web === "tanstack-start"
+			? trpcTanstackStartAdapter
+			: trpcNextjsAdapter;
+
+	const adapted = adapter.contribute({
+		config,
+		framework,
+		module,
+		slots,
+	});
+
+	if (adapted instanceof Promise || Effect.isEffect(adapted))
+		throw new Error("Synchronous Adapter Contributions Expected: trpc");
+
+	return [...core, ...adapted];
 }
 
 function leafFile(
@@ -29,14 +65,16 @@ function leafFile(
 			{ _tag: "LeafTextFileContribution" }
 		> =>
 			contribution._tag === "LeafTextFileContribution" &&
-			contribution.target._tag === "EnsuredModuleTarget" &&
-			contribution.target.moduleKey === moduleKey &&
+			((contribution.target._tag === "EnsuredModuleTarget" &&
+				contribution.target.moduleKey === moduleKey) ||
+				(contribution.target._tag === "ResolvedModuleTarget" &&
+					moduleKey === "web")) &&
 			(typeof path === "string"
 				? contribution.path === path
 				: typeof contribution.path !== "string" &&
-					contribution.path.moduleKey === path.moduleKey &&
 					contribution.path.slot === path.slot),
 	);
+
 	if (found === undefined)
 		throw new Error(
 			`Missing Leaf File: ${moduleKey}/${typeof path === "string" ? path : path.slot}`,
@@ -58,6 +96,7 @@ function trpcDependencyNames(contributions: ReadonlyArray<Contribution>) {
 			contribution.target.moduleKey === "trpc" &&
 			contribution.surface === "packageJson",
 	);
+
 	if (found === undefined) throw new Error("Missing Dependencies: trpc");
 
 	return found.dependencies.map((dependency) => dependency.name);

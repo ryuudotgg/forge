@@ -132,6 +132,28 @@ describe("module config store", () => {
 		});
 	});
 
+	it("returns discovered modules in root-path order", async () => {
+		await withTempDir("config-order", async (directory) => {
+			await writeJson(
+				join(directory, "packages/zeta/forge.json"),
+				appConfig("zzzzz"),
+			);
+			await writeJson(
+				join(directory, "apps/alpha/forge.json"),
+				appConfig("aaaaa"),
+			);
+
+			const modules = await Effect.runPromise(
+				ConfigStore.discover(directory).pipe(Effect.provide(projectLayer)),
+			);
+
+			expect(modules.map((module) => module.root)).toEqual([
+				"apps/alpha",
+				"packages/zeta",
+			]);
+		});
+	});
+
 	it("writes a module config that reads back identically", async () => {
 		await withTempDir("config-write", async (directory) => {
 			const moduleRoot = join(directory, "packages/utils");

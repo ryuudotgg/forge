@@ -10,9 +10,9 @@ import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 import { pmDlx, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
-import { interpolate, readTemplate } from "../template";
+import { renderUiTemplate } from "./shared";
 
-const ui = defineAddon<ForgeConfig, "ui", "nextjs" | "tanstack-start">({
+const ui = defineAddon<ForgeConfig, "ui">({
 	id: "ui",
 	name: "UI Package",
 	version: "0.1.0",
@@ -20,55 +20,14 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs" | "tanstack-start">({
 	exclusive: true,
 	dependencies: [{ id: "typescript", type: "addon" }],
 	targetMode: "single",
-	compatibility: {
-		app: {
-			frameworks: ["nextjs", "tanstack-start"],
-		},
-	},
 	when: (config) => !!config.web,
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
-		if (config.web !== "nextjs" && config.web !== "tanstack-start")
-			throw new Error("The UI package requires a supported web framework.");
-
-		const framework = config.web;
-
 		const pm = resolvePackageManager(config);
 		const useTailwind = config.style === "tailwind";
 
 		const uiLibrary = config.uiLibrary ?? "base-ui";
 		const useBaseUi = uiLibrary === "base-ui";
-
-		const shadcnStyle = useBaseUi ? "base-vega" : "radix-vega";
-
-		const vars = { SHADCN_STYLE: shadcnStyle, SLUG: slug };
-
-		const render = (path: string) =>
-			interpolate(readTemplate(`ui/${path}`), vars);
-
-		const renderWeb = (path: string) =>
-			interpolate(readTemplate(`ui/${framework}/${path}`), vars);
-
-		const uiComponentsJson = {
-			$schema: "https://ui.shadcn.com/schema.json",
-			style: shadcnStyle,
-			rsc: framework === "nextjs",
-			tsx: true,
-			tailwind: {
-				config: "",
-				css: "src/styles/globals.css",
-				baseColor: "neutral",
-				cssVariables: true,
-			},
-			iconLibrary: "lucide",
-			aliases: {
-				components: `@${slug}/ui/components`,
-				utils: `@${slug}/ui/lib/utils`,
-				hooks: `@${slug}/ui/hooks`,
-				lib: `@${slug}/ui/lib`,
-				ui: `@${slug}/ui/components`,
-			},
-		};
 
 		const uiPackageJson = {
 			name: `@${slug}/ui`,
@@ -76,16 +35,18 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs" | "tanstack-start">({
 			type: "module",
 			exports: {
 				"./globals.css": "./src/styles/globals.css",
-				...(framework === "nextjs"
-					? { "./postcss.config": "./postcss.config.mjs" }
-					: {}),
-				"./hooks/*": "./src/hooks/*.ts",
-				"./lib/*": "./src/lib/*.ts",
-				"./*": "./src/components/*.tsx",
 			},
 			scripts: {
 				typecheck: "tsc --noEmit",
 				"ui-add": pmDlx(pm, "shadcn@latest add"),
+			},
+		};
+
+		const uiPackageExports = {
+			exports: {
+				"./hooks/*": "./src/hooks/*.ts",
+				"./lib/*": "./src/lib/*.ts",
+				"./*": "./src/components/*.tsx",
 			},
 		};
 
@@ -122,35 +83,14 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs" | "tanstack-start">({
 			{ ...deps.typescript, type: "devDependencies" },
 		];
 
-		const webTailwindDeps: Array<{
-			name: string;
-			version: string;
-			catalog?: string;
-			type: "devDependencies";
-		}> = [];
-
 		if (useBaseUi) {
 			uiDeps.push({ ...deps.baseUiReact, type: "dependencies" });
 		}
 
 		if (useTailwind) {
 			uiDeps.push({ ...deps.tailwindcss, type: "devDependencies" });
-
-			if (framework === "nextjs")
-				uiDeps.push({ ...deps.tailwindPostcss, type: "devDependencies" });
-
 			uiDeps.push({ ...deps.twAnimateCss, type: "dependencies" });
 			uiDeps.push({ ...deps.shadcn, type: "devDependencies" });
-
-			webTailwindDeps.push({
-				...deps.tailwindcss,
-				type: "devDependencies",
-			});
-
-			webTailwindDeps.push({
-				...(framework === "nextjs" ? deps.tailwindPostcss : deps.tailwindVite),
-				type: "devDependencies",
-			});
 		}
 
 		return [
@@ -161,68 +101,30 @@ const ui = defineAddon<ForgeConfig, "ui", "nextjs" | "tanstack-start">({
 				slots: {
 					globalsCss: "src/styles/globals.css",
 					utils: "src/lib/utils.ts",
-					...(framework === "nextjs"
-						? { postcssConfig: "postcss.config.mjs" }
-						: {}),
 				},
 			}),
 			surfaceJson(ensuredModuleTarget("ui"), "packageJson", uiPackageJson),
+			surfaceJson(ensuredModuleTarget("ui"), "packageJson", uiPackageExports, {
+				priority: 2,
+			}),
 			surfaceJson(ensuredModuleTarget("ui"), "tsconfig", uiTsconfig),
 			surfaceDependencies(ensuredModuleTarget("ui"), "packageJson", uiDeps),
-			...(useTailwind
-				? [
-						surfaceDependencies(
-							ensuredModuleTarget("web"),
-							"packageJson",
-							webTailwindDeps,
-						),
-					]
-				: []),
 
 			leafTextFile(
 				ensuredModuleTarget("ui"),
 				"src/lib/utils.ts",
-				render("packages/ui/src/lib/utils.ts"),
+				renderUiTemplate(config, "packages/ui/src/lib/utils.ts"),
 			),
 			leafTextFile(
 				ensuredModuleTarget("ui"),
 				"src/styles/globals.css",
-				render("packages/ui/src/styles/globals.css"),
+				renderUiTemplate(config, "packages/ui/src/styles/globals.css"),
 			),
-			...(framework === "nextjs"
-				? [
-						leafTextFile(
-							ensuredModuleTarget("ui"),
-							"postcss.config.mjs",
-							render("packages/ui/postcss.config.mjs"),
-						),
-					]
-				: []),
 			leafTextFile(
 				ensuredModuleTarget("ui"),
 				"src/components/button.tsx",
-				render("packages/ui/src/components/button.tsx"),
+				renderUiTemplate(config, "packages/ui/src/components/button.tsx"),
 			),
-			leafTextFile(
-				ensuredModuleTarget("ui"),
-				"components.json",
-				`${JSON.stringify(uiComponentsJson, null, 2)}\n`,
-			),
-
-			leafTextFile(
-				ensuredModuleTarget("web"),
-				"components.json",
-				renderWeb("apps/web/components.json"),
-			),
-			...(framework === "nextjs"
-				? [
-						leafTextFile(
-							ensuredModuleTarget("web"),
-							"postcss.config.mjs",
-							`export { default } from "@${slug}/ui/postcss.config";\n`,
-						),
-					]
-				: []),
 		];
 	},
 });

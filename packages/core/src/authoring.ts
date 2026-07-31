@@ -1,20 +1,8 @@
 import { Effect, Schema } from "effect";
 import type { CommandProbe } from "./command";
-import type { AppConfig, PackageConfig } from "./config";
-import { GeneratorError } from "./errors";
+import type { AppConfig, ModuleId, PackageConfig, Slots } from "./config";
+import { GeneratorError, RegistryError } from "./errors";
 import type { Dependency } from "./operations";
-
-export const appSlotNames = {
-	layout: "layout",
-	page: "page",
-	api: "api",
-	trpc: "trpc",
-	db: "db",
-	auth: "auth",
-	authClient: "authClient",
-} as const;
-
-export type AppSlotName = (typeof appSlotNames)[keyof typeof appSlotNames];
 
 export const packageSlotNames = {
 	globalsCss: "globalsCss",
@@ -62,19 +50,6 @@ export const projectSurfaceNames = {
 export type ProjectSurfaceName =
 	(typeof projectSurfaceNames)[keyof typeof projectSurfaceNames];
 
-export const appManagedSurfaceNames = {
-	packageJson: "packageJson",
-	tsconfig: "tsconfig",
-	env: "env",
-	envExample: "envExample",
-	frameworkConfig: "frameworkConfig",
-} as const;
-
-export type AppManagedSurfaceName =
-	(typeof appManagedSurfaceNames)[keyof typeof appManagedSurfaceNames];
-
-export type AppSurfaceName = AppSlotName | AppManagedSurfaceName;
-
 export const packageManagedSurfaceNames = {
 	packageJson: "packageJson",
 	tsconfig: "tsconfig",
@@ -85,10 +60,7 @@ export type PackageManagedSurfaceName =
 
 export type PackageSurfaceName = PackageSlotName | PackageManagedSurfaceName;
 
-export type ManagedSurfaceName =
-	| AppSurfaceName
-	| PackageSurfaceName
-	| ProjectSurfaceName;
+export type ManagedSurfaceName = string;
 
 export interface TemplateRef<Id extends TemplateId = TemplateId> {
 	readonly id: Id;
@@ -108,17 +80,24 @@ export interface EnsuredModuleTarget {
 	readonly moduleKey: string;
 }
 
+export interface ResolvedModuleTarget {
+	readonly _tag: "ResolvedModuleTarget";
+	readonly moduleId: ModuleId;
+	readonly moduleRoot: string;
+}
+
 export interface SlotPath {
 	readonly _tag: "SlotPath";
-	readonly moduleKey: string;
-	readonly slot: AppSlotName;
+	readonly module: string;
+	readonly target: EnsuredModuleTarget | ResolvedModuleTarget;
+	readonly slot: string;
 }
 
 export class SlotPathError extends Schema.TaggedError<SlotPathError>()(
 	"SlotPathError",
 	{
 		message: Schema.String,
-		moduleKey: Schema.String,
+		module: Schema.String,
 		slot: Schema.String,
 	},
 ) {}
@@ -131,6 +110,7 @@ export interface TemplateModuleTarget<Id extends TemplateId = TemplateId> {
 export type ModuleTarget =
 	| SelectedModuleTarget
 	| EnsuredModuleTarget
+	| ResolvedModuleTarget
 	| TemplateModuleTarget;
 
 export type TargetRef = ProjectTarget | ModuleTarget;
@@ -147,11 +127,27 @@ export function ensuredModuleTarget(moduleKey: string): EnsuredModuleTarget {
 	return { _tag: "EnsuredModuleTarget", moduleKey };
 }
 
+export function moduleTarget(module: AdapterModule): ResolvedModuleTarget {
+	return {
+		_tag: "ResolvedModuleTarget",
+		moduleId: module.id,
+		moduleRoot: module.root,
+	};
+}
+
 export function slotPath(
-	module: EnsuredModuleTarget,
-	slot: AppSlotName,
+	target: EnsuredModuleTarget | ResolvedModuleTarget,
+	slot: string,
 ): SlotPath {
-	return { _tag: "SlotPath", moduleKey: module.moduleKey, slot };
+	return {
+		_tag: "SlotPath",
+		module:
+			target._tag === "EnsuredModuleTarget"
+				? target.moduleKey
+				: target.moduleRoot,
+		target,
+		slot,
+	};
 }
 
 export function templateModuleTarget<Id extends TemplateId>(
@@ -164,7 +160,7 @@ export function templateModuleTarget<Id extends TemplateId>(
 export interface AppCompatibility<Framework extends FrameworkId = FrameworkId> {
 	readonly frameworks?: ReadonlyArray<Framework>;
 	readonly templates?: ReadonlyArray<TemplateRef>;
-	readonly requiredSlots?: ReadonlyArray<AppSlotName>;
+	readonly requiredSlots?: ReadonlyArray<string>;
 }
 
 export interface PackageCompatibility<
@@ -204,6 +200,7 @@ export interface ManagedJsonSurfaceContribution {
 	readonly target: TargetRef;
 	readonly surface: ManagedSurfaceName;
 	readonly value: Record<string, unknown>;
+	readonly priority?: number;
 	readonly strategy?: "deep" | "replace";
 }
 
@@ -221,7 +218,7 @@ export interface ManagedDependenciesSurfaceContribution {
 	readonly target: TargetRef;
 	readonly surface:
 		| typeof projectSurfaceNames.rootPackageJson
-		| typeof appManagedSurfaceNames.packageJson
+		| "packageJson"
 		| typeof packageManagedSurfaceNames.packageJson;
 	readonly dependencies: ReadonlyArray<Dependency>;
 }
@@ -231,7 +228,7 @@ export interface ManagedScriptsSurfaceContribution {
 	readonly target: TargetRef;
 	readonly surface:
 		| typeof projectSurfaceNames.rootPackageJson
-		| typeof appManagedSurfaceNames.packageJson
+		| "packageJson"
 		| typeof packageManagedSurfaceNames.packageJson;
 	readonly scripts: Record<string, string>;
 }
@@ -306,14 +303,18 @@ export function surfaceJson(
 	target: TargetRef,
 	surface: ManagedSurfaceName,
 	value: Record<string, unknown>,
-	strategy: "deep" | "replace" = "deep",
+	options?: {
+		readonly priority?: number;
+		readonly strategy?: "deep" | "replace";
+	},
 ): ManagedJsonSurfaceContribution {
 	return {
 		_tag: "ManagedJsonSurfaceContribution",
 		target,
 		surface,
 		value,
-		strategy,
+		priority: options?.priority,
+		strategy: options?.strategy,
 	};
 }
 
@@ -340,7 +341,7 @@ export function surfaceDependencies(
 	target: TargetRef,
 	surface:
 		| typeof projectSurfaceNames.rootPackageJson
-		| typeof appManagedSurfaceNames.packageJson
+		| "packageJson"
 		| typeof packageManagedSurfaceNames.packageJson,
 	items: ReadonlyArray<Dependency>,
 ): ManagedDependenciesSurfaceContribution {
@@ -356,7 +357,7 @@ export function surfaceScripts(
 	target: TargetRef,
 	surface:
 		| typeof projectSurfaceNames.rootPackageJson
-		| typeof appManagedSurfaceNames.packageJson
+		| "packageJson"
 		| typeof packageManagedSurfaceNames.packageJson,
 	items: Record<string, string>,
 ): ManagedScriptsSurfaceContribution {
@@ -396,8 +397,8 @@ export function resolveSlotPath(
 
 	return Effect.fail(
 		new SlotPathError({
-			message: `Module Slot Missing: ${path.slot} in ${path.moduleKey}`,
-			moduleKey: path.moduleKey,
+			message: `Module Slot Missing: ${path.slot} in ${path.module}`,
+			module: path.module,
 			slot: path.slot,
 		}),
 	);
@@ -417,6 +418,19 @@ type ContributionResult<Capability extends CapabilityId = CapabilityId> =
 			CommandProbe
 	  >;
 
+export interface AdapterModule {
+	readonly config: AppConfig;
+	readonly id: ModuleId;
+	readonly root: string;
+}
+
+export interface AdapterContext<Config> {
+	readonly config: Config;
+	readonly framework: FrameworkDefinition;
+	readonly module: AdapterModule;
+	readonly slots: Slots;
+}
+
 export interface DependencyRef {
 	readonly id: AddonId | TemplateId;
 	readonly type: "addon" | "template";
@@ -424,7 +438,7 @@ export interface DependencyRef {
 
 export interface FrameworkDefinition<
 	Id extends FrameworkId = FrameworkId,
-	Slot extends AppSlotName = AppSlotName,
+	Slot extends string = string,
 > {
 	readonly _tag: "FrameworkDefinition";
 	readonly buildOutputs: ReadonlyArray<string>;
@@ -437,6 +451,18 @@ export interface FrameworkDefinition<
 		readonly content: Record<string, unknown>;
 		readonly name: string;
 	};
+}
+
+export interface AdapterDefinition<
+	Config,
+	Addon extends AddonId = AddonId,
+	Framework extends FrameworkId = FrameworkId,
+> {
+	readonly _tag: "AdapterDefinition";
+	readonly addon: Addon;
+	readonly framework: Framework;
+	readonly requiredSlots: ReadonlyArray<string>;
+	readonly contribute: (context: AdapterContext<Config>) => ContributionResult;
 }
 
 export interface TemplateDefinition<
@@ -480,6 +506,7 @@ export interface AddonDefinition<
 }
 
 export interface DefinitionRegistry<Config> {
+	readonly adapters: ReadonlyArray<AdapterDefinition<Config>>;
 	readonly frameworks: ReadonlyArray<FrameworkDefinition>;
 	readonly templates: ReadonlyArray<TemplateDefinition<Config>>;
 	readonly addons: ReadonlyArray<AddonDefinition<Config>>;
@@ -487,7 +514,7 @@ export interface DefinitionRegistry<Config> {
 
 export function defineFramework<
 	const Id extends FrameworkId,
-	const Slots extends ReadonlyArray<AppSlotName>,
+	const Slots extends ReadonlyArray<string>,
 >(framework: {
 	readonly buildOutputs: ReadonlyArray<string>;
 	readonly configFile: string;
@@ -501,6 +528,23 @@ export function defineFramework<
 	};
 }): FrameworkDefinition<Id, Slots[number]> {
 	return { _tag: "FrameworkDefinition", ...framework };
+}
+
+export function defineAdapter<
+	Config,
+	const Addon extends AddonId = AddonId,
+	const Framework extends FrameworkId = FrameworkId,
+>(adapter: {
+	readonly addon: Addon;
+	readonly framework: Framework;
+	readonly requiredSlots?: ReadonlyArray<string>;
+	readonly contribute: (context: AdapterContext<Config>) => ContributionResult;
+}): AdapterDefinition<Config, Addon, Framework> {
+	return {
+		_tag: "AdapterDefinition",
+		...adapter,
+		requiredSlots: adapter.requiredSlots ?? [],
+	};
 }
 
 export function defineTemplate<
@@ -553,10 +597,74 @@ export function defineAddon<
 	};
 }
 
-export function defineRegistry<Config>(
-	registry: DefinitionRegistry<Config>,
-): DefinitionRegistry<Config> {
-	return registry;
+export function defineRegistry<Config>(registry: {
+	readonly adapters?: ReadonlyArray<AdapterDefinition<Config>>;
+	readonly frameworks: ReadonlyArray<FrameworkDefinition>;
+	readonly templates: ReadonlyArray<TemplateDefinition<Config>>;
+	readonly addons: ReadonlyArray<AddonDefinition<Config>>;
+}): DefinitionRegistry<Config> {
+	const adapters = registry.adapters ?? [];
+
+	for (const framework of registry.frameworks) {
+		const uniqueSlots = new Set(framework.slots);
+		const hasEmptySlot = framework.slots.some((slot) => slot.length === 0);
+
+		if (
+			framework.slots.length === 0 ||
+			hasEmptySlot ||
+			uniqueSlots.size !== framework.slots.length
+		)
+			throw new RegistryError({
+				message: `Framework Slots Invalid: ${framework.id}`,
+				registryId: framework.id,
+			});
+	}
+
+	const addonIds = new Set(registry.addons.map((addon) => addon.id));
+	const frameworkIds = new Set(
+		registry.frameworks.map((framework) => framework.id),
+	);
+
+	const adapterKeys = new Set<string>();
+	for (const adapter of adapters) {
+		const key = `${adapter.addon}:${adapter.framework}`;
+
+		if (adapterKeys.has(key))
+			throw new RegistryError({
+				message: `Adapter Duplicate: ${key}`,
+				registryId: key,
+			});
+
+		if (!addonIds.has(adapter.addon))
+			throw new RegistryError({
+				message: `Adapter Addon Missing: ${adapter.addon}`,
+				registryId: key,
+			});
+
+		if (!frameworkIds.has(adapter.framework))
+			throw new RegistryError({
+				message: `Adapter Framework Missing: ${adapter.framework}`,
+				registryId: key,
+			});
+
+		const framework = registry.frameworks.find(
+			(entry) => entry.id === adapter.framework,
+		);
+
+		const invalidSlot = adapter.requiredSlots.find(
+			(slot) => !framework?.slots.includes(slot),
+		);
+
+		if (invalidSlot)
+			throw new RegistryError({
+				message: `Adapter Slot Missing: ${key}:${invalidSlot}`,
+				registryId: key,
+			});
+
+		adapterKeys.add(key);
+	}
+
+	return { ...registry, adapters };
 }
 
 function templateMatches<Config>(
@@ -564,13 +672,6 @@ function templateMatches<Config>(
 	template: TemplateDefinition<Config>,
 ): boolean {
 	return expected.id === template.id && expected.version === template.version;
-}
-
-function frameworkHasRequiredSlots(
-	framework: FrameworkDefinition,
-	requiredSlots: ReadonlyArray<AppSlotName>,
-): boolean {
-	return requiredSlots.every((slot) => framework.slots.includes(slot));
 }
 
 function packageHasRequiredSlots(
@@ -594,7 +695,22 @@ export function isAddonCompatibleWithModule<Config>(
 	addon: AddonDefinition<Config>,
 	module: AppConfig | PackageConfig,
 	frameworks: ReadonlyArray<FrameworkDefinition> = [],
+	adapters: ReadonlyArray<AdapterDefinition<Config>> = [],
 ): boolean {
+	const addonAdapters = adapters.filter(
+		(adapter) => adapter.addon === addon.id,
+	);
+
+	if (addonAdapters.length > 0) {
+		if (module.type !== "app") return false;
+
+		const adapter = addonAdapters.find(
+			(entry) => entry.framework === module.framework,
+		);
+
+		return adapter !== undefined;
+	}
+
 	const compatibility = addon.compatibility;
 	if (!compatibility) return true;
 
@@ -623,9 +739,10 @@ export function isAddonCompatibleWithModule<Config>(
 			const framework = frameworks.find(
 				(definition) => definition.id === module.framework,
 			);
-
 			const hasRequiredSlots = framework
-				? frameworkHasRequiredSlots(framework, appCompatibility.requiredSlots)
+				? appCompatibility.requiredSlots.every((slot) =>
+						framework.slots.includes(slot),
+					)
 				: appCompatibility.requiredSlots.every((slot) => slot in module.slots);
 
 			if (!hasRequiredSlots) return false;
@@ -656,7 +773,32 @@ export function validateAddonAgainstSelection<Config>(
 	addon: AddonDefinition<Config>,
 	framework: FrameworkDefinition | undefined,
 	template: TemplateDefinition<Config> | undefined,
+	adapters: ReadonlyArray<AdapterDefinition<Config>> = [],
 ): Effect.Effect<void, GeneratorError> {
+	const addonAdapters = adapters.filter(
+		(adapter) => adapter.addon === addon.id,
+	);
+
+	if (addonAdapters.length > 0) {
+		if (!framework)
+			return Effect.fail(
+				new GeneratorError({
+					generatorId: addon.id,
+					message: `${addon.name} requires a web framework template.`,
+				}),
+			);
+
+		if (!addonAdapters.some((adapter) => adapter.framework === framework.id))
+			return Effect.fail(
+				new GeneratorError({
+					generatorId: addon.id,
+					message: `${addon.name} does not support ${framework.name} yet.`,
+				}),
+			);
+
+		return Effect.void;
+	}
+
 	const compatibility = addon.compatibility;
 	if (!compatibility?.app) return Effect.void;
 
@@ -694,7 +836,9 @@ export function validateAddonAgainstSelection<Config>(
 
 	if (
 		compatibility.app.requiredSlots &&
-		!frameworkHasRequiredSlots(framework, compatibility.app.requiredSlots)
+		!compatibility.app.requiredSlots.every((slot) =>
+			framework.slots.includes(slot),
+		)
 	) {
 		const missingSlots = compatibility.app.requiredSlots.filter(
 			(slot) => !framework.slots.includes(slot),
@@ -714,4 +858,29 @@ export function validateAddonAgainstSelection<Config>(
 	}
 
 	return Effect.void;
+}
+
+export function validateAdapterAgainstModule<Config>(
+	addon: AddonDefinition<Config>,
+	adapter: AdapterDefinition<Config>,
+	module: AdapterModule,
+	framework: FrameworkDefinition,
+): Effect.Effect<void, GeneratorError> {
+	const missingSlots = adapter.requiredSlots.filter(
+		(slot) => !(slot in module.config.slots),
+	);
+
+	if (missingSlots.length === 0) return Effect.void;
+
+	const formattedSlots = new Intl.ListFormat("en", {
+		style: "long",
+		type: "conjunction",
+	}).format(missingSlots.map((slot) => `${slot} slot`));
+
+	return Effect.fail(
+		new GeneratorError({
+			generatorId: addon.id,
+			message: `${addon.name} requires the ${formattedSlots}, but ${framework.name} does not provide ${missingSlots.length === 1 ? "it" : "them"}.`,
+		}),
+	);
 }
