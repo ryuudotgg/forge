@@ -62,10 +62,10 @@ export const versions = {
 		group: "Tooling",
 	},
 
-	vite: { name: "vite", version: "8.1.5", group: "Tooling" },
+	vite: { name: "vite", version: "8.2.0", group: "Tooling" },
 	viteReact: {
 		name: "@vitejs/plugin-react",
-		version: "6.0.4",
+		version: "6.0.5",
 		group: "Tooling",
 	},
 
