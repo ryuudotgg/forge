@@ -53,7 +53,7 @@ export const versions = {
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.32",
+		version: "1.168.33",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
