@@ -1,4 +1,5 @@
 import type {
+	AdapterModule,
 	AddonDefinition,
 	Contribution,
 	FrameworkDefinition,
@@ -6,6 +7,7 @@ import type {
 import {
 	defineFramework,
 	moduleCapabilities,
+	moduleTarget,
 	slotPath,
 	templateModuleTarget,
 } from "@ryuujs/core";
@@ -49,6 +51,43 @@ function contributionsOf(
 	return result;
 }
 
+function adapterContributionsOf(
+	addonId: string,
+	config: ForgeConfig,
+	framework: FrameworkDefinition,
+	slots: Readonly<Record<string, string>>,
+): ReadonlyArray<Contribution> {
+	const adapter = builtins.adapters.find(
+		(entry) => entry.addon === addonId && entry.framework === framework.id,
+	);
+
+	if (!adapter) throw new Error(`Missing Adapter: ${addonId}:${framework.id}`);
+
+	const module: AdapterModule = {
+		config: {
+			id: "abcde",
+			type: "app",
+			framework: framework.id,
+			template: { id: "base", version: 1 },
+			slots,
+		},
+		id: "abcde",
+		root: "apps/web",
+	};
+
+	const result = adapter.contribute({
+		config,
+		framework,
+		module,
+		slots,
+	});
+
+	if (Effect.isEffect(result) || result instanceof Promise)
+		throw new Error(`Unexpected Adapter Contribution Shape: ${addonId}`);
+
+	return result;
+}
+
 function ofTag<Tag extends Contribution["_tag"]>(
 	contributions: ReadonlyArray<Contribution>,
 	tag: Tag,
@@ -63,6 +102,7 @@ function leafFile(contributions: ReadonlyArray<Contribution>, path: string) {
 	const found = ofTag(contributions, "LeafTextFileContribution").find(
 		(contribution) => contribution.path === path,
 	);
+
 	if (!found) throw new Error(`Missing Leaf File: ${path}`);
 
 	return found;
@@ -75,6 +115,7 @@ function jsonSurface(
 	const found = ofTag(contributions, "ManagedJsonSurfaceContribution").find(
 		(contribution) => contribution.surface === surface,
 	);
+
 	if (!found) throw new Error(`Missing Json Surface: ${surface}`);
 
 	return found;
@@ -100,9 +141,12 @@ function moduleDependencySurface(
 		"ManagedDependenciesSurfaceContribution",
 	).find(
 		(contribution) =>
-			contribution.target._tag === "EnsuredModuleTarget" &&
-			contribution.target.moduleKey === moduleKey,
+			(contribution.target._tag === "EnsuredModuleTarget" &&
+				contribution.target.moduleKey === moduleKey) ||
+			(contribution.target._tag === "ResolvedModuleTarget" &&
+				moduleKey === "web"),
 	);
+
 	if (!found) throw new Error(`Missing Dependency Surface: ${moduleKey}`);
 
 	return found;
@@ -122,6 +166,21 @@ function parseJson(content: string): unknown {
 	return JSON.parse(content);
 }
 
+function betterAuthContributions(
+	config: ForgeConfig,
+	framework: FrameworkDefinition = nextjsFramework,
+) {
+	return [
+		...contributionsOf(betterAuth, config, [framework]),
+		...adapterContributionsOf("better-auth", config, framework, {
+			auth:
+				framework.id === "tanstack-start"
+					? "src/routes/api/auth/$.ts"
+					: "app/api/auth/[...all]/route.ts",
+		}),
+	];
+}
+
 describe("better-auth addon", () => {
 	it("refuses to contribute without an orm", () => {
 		expect(() =>
@@ -134,7 +193,7 @@ describe("better-auth addon", () => {
 	});
 
 	it("renders the prisma index with the resolved datasource provider", () => {
-		const contributions = contributionsOf(betterAuth, {
+		const contributions = betterAuthContributions({
 			authentication: "better-auth",
 			orm: "prisma",
 			slug: "acme",
@@ -154,7 +213,7 @@ describe("better-auth addon", () => {
 	});
 
 	it("renders the drizzle index with the dialect's adapter provider", () => {
-		const contributions = contributionsOf(betterAuth, {
+		const contributions = betterAuthContributions({
 			authentication: "better-auth",
 			database: "mysql",
 			databaseProvider: "planetscale",
@@ -173,7 +232,7 @@ describe("better-auth addon", () => {
 	});
 
 	it("writes env surfaces with a per-pm secret hint", () => {
-		const contributions = contributionsOf(betterAuth, {
+		const contributions = betterAuthContributions({
 			authentication: "better-auth",
 			orm: "prisma",
 			slug: "acme",
@@ -219,7 +278,7 @@ describe("better-auth addon", () => {
 	});
 
 	it("contributes the web route and auth dependencies", () => {
-		const contributions = contributionsOf(betterAuth, {
+		const contributions = betterAuthContributions({
 			authentication: "better-auth",
 			orm: "prisma",
 			slug: "acme",
@@ -233,11 +292,19 @@ describe("better-auth addon", () => {
 		);
 		if (!route) throw new Error("Missing Leaf File: auth slot");
 		expect(route.target).toEqual({
-			_tag: "EnsuredModuleTarget",
-			moduleKey: "web",
+			_tag: "ResolvedModuleTarget",
+			moduleId: "abcde",
+			moduleRoot: "apps/web",
 		});
 		expect(route.path).toEqual(
-			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "auth"),
+			slotPath(
+				{
+					_tag: "ResolvedModuleTarget",
+					moduleId: "abcde",
+					moduleRoot: "apps/web",
+				},
+				"auth",
+			),
 		);
 		expect(route.content).toContain('import { auth } from "@acme/auth";');
 
@@ -258,8 +325,7 @@ describe("better-auth addon", () => {
 		const authOrms: ReadonlyArray<"drizzle" | "prisma"> = ["drizzle", "prisma"];
 
 		for (const orm of authOrms) {
-			const contributions = contributionsOf(
-				betterAuth,
+			const contributions = betterAuthContributions(
 				{
 					authentication: "better-auth",
 					database: "postgresql",
@@ -267,7 +333,7 @@ describe("better-auth addon", () => {
 					slug: "acme",
 					web: "tanstack-start",
 				},
-				[tanstackStartFramework],
+				tanstackStartFramework,
 			);
 			const index = leafFile(contributions, "src/index.ts");
 
@@ -351,21 +417,35 @@ describe("trpc addon", () => {
 	});
 
 	it("emits interpolated web-side files", () => {
-		const contributions = contributionsOf(trpc, {
+		const config: ForgeConfig = {
 			orm: "drizzle",
 			rpc: "trpc",
 			slug: "acme",
 			web: "nextjs",
+		};
+		const contributions = adapterContributionsOf(
+			"trpc",
+			config,
+			nextjsFramework,
+			{ trpc: "app/api/trpc/[trpc]/route.ts" },
+		);
+		const target = moduleTarget({
+			config: {
+				id: "abcde",
+				type: "app",
+				framework: "nextjs",
+				template: { id: "base", version: 1 },
+				slots: { trpc: "app/api/trpc/[trpc]/route.ts" },
+			},
+			id: "abcde",
+			root: "apps/web",
 		});
 
 		const paths = ["trpc/query-client.ts", "trpc/server.ts", "trpc/react.tsx"];
 
 		for (const path of paths) {
 			const file = leafFile(contributions, path);
-			expect(file.target, path).toEqual({
-				_tag: "EnsuredModuleTarget",
-				moduleKey: "web",
-			});
+			expect(file.target, path).toEqual(target);
 			expect(file.content, path).not.toMatch(placeholderPattern);
 		}
 
@@ -378,9 +458,7 @@ describe("trpc addon", () => {
 				typeof contribution.path !== "string" &&
 				contribution.path.slot === "trpc",
 		);
-		expect(route?.path).toEqual(
-			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
-		);
+		expect(route?.path).toEqual(slotPath(target, "trpc"));
 	});
 });
 
@@ -620,7 +698,6 @@ describe("vitest addon", () => {
 	it("emits per-package test wiring and a starter test when selected", () => {
 		const contributions = contributionsOf(vitest, {
 			addons: ["vitest"],
-			platforms: ["web"],
 			web: "nextjs",
 		});
 

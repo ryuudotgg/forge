@@ -248,6 +248,8 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 				),
 			);
 
+			roots.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+
 			const discovered = yield* Effect.forEach(roots, (moduleRoot) =>
 				Effect.gen(function* () {
 					const config = yield* read(moduleRoot);

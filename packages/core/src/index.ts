@@ -1,11 +1,11 @@
 export { Apply } from "./apply";
 export type {
+	AdapterContext,
+	AdapterDefinition,
+	AdapterModule,
 	AddonDefinition,
 	AddonId,
 	AppCompatibility,
-	AppManagedSurfaceName,
-	AppSlotName,
-	AppSurfaceName,
 	CapabilityId,
 	Compatibility,
 	Contribution,
@@ -31,6 +31,7 @@ export type {
 	PackageSurfaceName,
 	ProjectSurfaceName,
 	ProjectTarget,
+	ResolvedModuleTarget,
 	SlotPath,
 	TargetMode,
 	TemplateDefinition,
@@ -38,8 +39,7 @@ export type {
 	TemplateRef,
 } from "./authoring";
 export {
-	appManagedSurfaceNames,
-	appSlotNames,
+	defineAdapter,
 	defineAddon,
 	defineFramework,
 	defineRegistry,
@@ -50,6 +50,7 @@ export {
 	isAddonCompatibleWithModule,
 	leafTextFile,
 	moduleCapabilities,
+	moduleTarget,
 	packageManagedSurfaceNames,
 	packageSlotNames,
 	projectSurfaceNames,
@@ -64,6 +65,7 @@ export {
 	surfaceScripts,
 	surfaceText,
 	templateModuleTarget,
+	validateAdapterAgainstModule,
 	validateAddonAgainstSelection,
 } from "./authoring";
 export { CommandProbe } from "./command";
@@ -111,6 +113,7 @@ export {
 	ModuleConfigError,
 	ModuleIdGenerationError,
 	PlannerError,
+	RegistryError,
 	RendererError,
 	StateError,
 } from "./errors";

@@ -1,6 +1,10 @@
 import { defineRegistry } from "@ryuujs/core";
 import trpc, { trpcMetadata } from "../api/trpc";
+import { trpcNextjsAdapter } from "../api/trpc/adapters/nextjs";
+import { trpcTanstackStartAdapter } from "../api/trpc/adapters/tanstack-start";
 import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
+import { betterAuthNextjsAdapter } from "../auth/better-auth/adapters/nextjs";
+import { betterAuthTanstackStartAdapter } from "../auth/better-auth/adapters/tanstack-start";
 import type { ForgeConfig } from "../config";
 import nextjsBaseTemplate, {
 	nextjsBaseTemplateMetadata,
@@ -25,6 +29,8 @@ import typescript, { typescriptMetadata } from "../tooling/typescript";
 import vitest, { vitestMetadata } from "../tooling/vitest";
 import vscode, { vscodeMetadata } from "../tooling/vscode";
 import ui, { uiMetadata } from "../ui";
+import { uiNextjsAdapter } from "../ui/adapters/nextjs";
+import { uiTanstackStartAdapter } from "../ui/adapters/tanstack-start";
 import bun, { bunMetadata } from "../workspace/bun";
 import pnpm, { pnpmMetadata } from "../workspace/pnpm";
 import root, { rootMetadata } from "../workspace/root";
@@ -37,6 +43,14 @@ import {
 } from "./types";
 
 export const firstPartyRegistry = defineRegistry<ForgeConfig>({
+	adapters: [
+		trpcNextjsAdapter,
+		trpcTanstackStartAdapter,
+		betterAuthNextjsAdapter,
+		betterAuthTanstackStartAdapter,
+		uiNextjsAdapter,
+		uiTanstackStartAdapter,
+	],
 	frameworks: [nextjsFramework, tanstackStartFramework],
 	templates: [nextjsBaseTemplate, tanstackStartBaseTemplate],
 	addons: [
@@ -70,23 +84,35 @@ export const firstPartyCatalog = [
 		tanstackStartBaseTemplate,
 		tanstackStartBaseTemplateMetadata,
 	),
-	addonCatalogEntry(root, rootMetadata),
-	addonCatalogEntry(pnpm, pnpmMetadata),
-	addonCatalogEntry(yarn, yarnMetadata),
-	addonCatalogEntry(bun, bunMetadata),
-	addonCatalogEntry(typescript, typescriptMetadata),
-	addonCatalogEntry(biome, biomeMetadata),
-	addonCatalogEntry(gitignore, gitignoreMetadata),
-	addonCatalogEntry(commitlint, commitlintMetadata),
-	addonCatalogEntry(lefthook, lefthookMetadata),
-	addonCatalogEntry(vitest, vitestMetadata),
-	addonCatalogEntry(vscode, vscodeMetadata),
-	addonCatalogEntry(githubCi, githubCiMetadata),
-	addonCatalogEntry(shared, sharedMetadata),
-	addonCatalogEntry(ui, uiMetadata),
-	addonCatalogEntry(tailwind, tailwindMetadata),
-	addonCatalogEntry(trpc, trpcMetadata),
-	addonCatalogEntry(drizzle, drizzleMetadata),
-	addonCatalogEntry(prisma, prismaMetadata),
-	addonCatalogEntry(betterAuth, betterAuthMetadata),
+	addonCatalogEntry(root, rootMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(pnpm, pnpmMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(yarn, yarnMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(bun, bunMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(
+		typescript,
+		typescriptMetadata,
+		firstPartyRegistry.adapters,
+	),
+	addonCatalogEntry(biome, biomeMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(gitignore, gitignoreMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(
+		commitlint,
+		commitlintMetadata,
+		firstPartyRegistry.adapters,
+	),
+	addonCatalogEntry(lefthook, lefthookMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(vitest, vitestMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(vscode, vscodeMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(githubCi, githubCiMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(shared, sharedMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(ui, uiMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(tailwind, tailwindMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(trpc, trpcMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(drizzle, drizzleMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(prisma, prismaMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(
+		betterAuth,
+		betterAuthMetadata,
+		firstPartyRegistry.adapters,
+	),
 ] as const satisfies ReadonlyArray<CatalogEntry>;

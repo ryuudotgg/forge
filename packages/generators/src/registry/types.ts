@@ -1,4 +1,5 @@
 import type {
+	AdapterDefinition,
 	AddonDefinition,
 	CapabilityId,
 	DefinitionRegistry,
@@ -115,11 +116,20 @@ export function templateCatalogEntry(
 export function addonCatalogEntry(
 	addon: AddonDefinition<ForgeConfig>,
 	metadata: FirstPartyAddonMetadata,
+	adapters: ReadonlyArray<AdapterDefinition<ForgeConfig>>,
 ): AddonCatalogEntry {
-	const frameworks = addon.compatibility?.app?.frameworks;
+	const addonAdapters = adapters.filter(
+		(adapter) => adapter.addon === addon.id,
+	);
+	const adapterFrameworks = addonAdapters.map((adapter) => adapter.framework);
+	const frameworks =
+		adapterFrameworks.length > 0
+			? [...new Set(adapterFrameworks)]
+			: addon.compatibility?.app?.frameworks;
 	const capabilities = addon.compatibility?.package?.capabilities;
 	const requiredSlots = [
 		...new Set([
+			...addonAdapters.flatMap((adapter) => adapter.requiredSlots),
 			...(addon.compatibility?.app?.requiredSlots ?? []),
 			...(addon.compatibility?.package?.requiredSlots ?? []),
 		]),

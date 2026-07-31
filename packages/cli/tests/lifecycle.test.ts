@@ -55,7 +55,13 @@ describe("lifecycle", () => {
 				await readJson(join(directory, ".forge/manifest.json")),
 			);
 			expect(manifest.config).toEqual({ slug: "acme", web: "nextjs" });
-			expect(manifest.installs).toEqual([tailwindInstall]);
+			expect(manifest.installs).toEqual([
+				tailwindInstall,
+				{
+					definitionId: "ui",
+					targets: [{ kind: "module", moduleId: "abcde" }],
+				},
+			]);
 
 			expect(
 				await readJson(join(directory, "packages/ui/forge.json")),
@@ -91,7 +97,13 @@ describe("lifecycle", () => {
 
 			expect(project.projectRoot).toBe(directory);
 			expect(project.config).toStrictEqual({ slug: "acme", web: "nextjs" });
-			expect(project.manifest.installs).toEqual([tailwindInstall]);
+			expect(project.manifest.installs).toEqual([
+				tailwindInstall,
+				{
+					definitionId: "ui",
+					targets: [{ kind: "module", moduleId: "abcde" }],
+				},
+			]);
 			expect(project.modules.map((module) => module.root)).toEqual(
 				expect.arrayContaining(["apps/web", "packages/ui"]),
 			);

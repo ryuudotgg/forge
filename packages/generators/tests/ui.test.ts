@@ -1,21 +1,61 @@
-import { type Contribution, ensuredModuleTarget } from "@ryuujs/core";
+import {
+	type AdapterModule,
+	type Contribution,
+	ensuredModuleTarget,
+	mergeJson,
+} from "@ryuujs/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
-import { loadAddonDefinition } from "../src";
+import { loadAddonDefinition, loadDefinitionRegistry } from "../src";
 import { nextjsFramework } from "../src/frameworks/nextjs";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
+import { plannedProject } from "./planner-harness";
 
 const { addon } = loadAddonDefinition("ui");
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const framework =
 		config.web === "tanstack-start" ? tanstackStartFramework : nextjsFramework;
+
 	const result = addon.contribute({ config, frameworks: [framework] });
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: ui");
 
-	return result;
+	const adapter = loadDefinitionRegistry().registry.adapters.find(
+		(entry) => entry.addon === "ui" && entry.framework === framework.id,
+	);
+
+	if (!adapter) throw new Error(`Missing Adapter: ui:${framework.id}`);
+
+	const slots =
+		framework.id === "tanstack-start"
+			? { layout: "src/routes/__root.tsx" }
+			: { layout: "app/layout.tsx" };
+
+	const module: AdapterModule = {
+		config: {
+			id: "abcde",
+			type: "app",
+			framework: framework.id,
+			template: { id: "base", version: 1 },
+			slots,
+		},
+		id: "abcde",
+		root: "apps/web",
+	};
+
+	const adapted = adapter.contribute({
+		config,
+		framework,
+		module,
+		slots,
+	});
+
+	if (adapted instanceof Promise || Effect.isEffect(adapted))
+		throw new Error("Synchronous Adapter Contributions Expected: ui");
+
+	return [...result, ...adapted];
 }
 
 function byTag<Tag extends Contribution["_tag"]>(tag: Tag) {
@@ -40,8 +80,10 @@ function leafFile(
 			.filter(byTag("LeafTextFileContribution"))
 			.find(
 				(entry) =>
-					entry.target._tag === "EnsuredModuleTarget" &&
-					entry.target.moduleKey === moduleKey &&
+					((entry.target._tag === "EnsuredModuleTarget" &&
+						entry.target.moduleKey === moduleKey) ||
+						(entry.target._tag === "ResolvedModuleTarget" &&
+							moduleKey === "web")) &&
 					entry.path === path,
 			),
 		`${moduleKey}/${path}`,
@@ -52,31 +94,47 @@ function packageJsonSurface(
 	contributions: ReadonlyArray<Contribution>,
 	moduleKey = "ui",
 ) {
-	return must(
-		contributions
-			.filter(byTag("ManagedJsonSurfaceContribution"))
-			.find(
-				(entry) =>
-					entry.surface === "packageJson" &&
-					entry.target._tag === "EnsuredModuleTarget" &&
-					entry.target.moduleKey === moduleKey,
-			),
-		`${moduleKey} packageJson`,
+	const matches = contributions
+		.filter(byTag("ManagedJsonSurfaceContribution"))
+		.filter(
+			(entry) =>
+				entry.surface === "packageJson" &&
+				entry.target._tag === "EnsuredModuleTarget" &&
+				entry.target.moduleKey === moduleKey,
+		)
+		.sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0));
+
+	const first = must(matches[0], `${moduleKey} packageJson`);
+	const value = matches.reduce<Record<string, unknown>>(
+		(merged, entry) => mergeJson(merged, entry.value, entry.strategy ?? "deep"),
+		{},
 	);
+
+	return { ...first, value };
 }
 
 function dependencySurface(
 	contributions: ReadonlyArray<Contribution>,
 	moduleKey = "ui",
 ) {
-	return contributions
+	const matches = contributions
 		.filter(byTag("ManagedDependenciesSurfaceContribution"))
-		.find(
+		.filter(
 			(entry) =>
 				entry.surface === "packageJson" &&
-				entry.target._tag === "EnsuredModuleTarget" &&
-				entry.target.moduleKey === moduleKey,
+				((entry.target._tag === "EnsuredModuleTarget" &&
+					entry.target.moduleKey === moduleKey) ||
+					(entry.target._tag === "ResolvedModuleTarget" &&
+						moduleKey === "web")),
 		);
+
+	const first = matches[0];
+	if (!first) return undefined;
+
+	return {
+		...first,
+		dependencies: matches.flatMap((entry) => entry.dependencies),
+	};
 }
 
 function dependencyEntries(
@@ -244,7 +302,10 @@ describe("ui addon", () => {
 			capabilities: ["react", "ui", "tailwind"],
 		});
 
-		const withoutStyle = contributionsFor({ slug: "acme", web: "nextjs" });
+		const withoutStyle = contributionsFor({
+			slug: "acme",
+			web: "nextjs",
+		});
 		const names = dependencyEntries(withoutStyle, "ui").map(({ name }) => name);
 		for (const name of [
 			"tailwindcss",
@@ -276,7 +337,11 @@ describe("ui addon", () => {
 			"postcss.config.mjs",
 		);
 
-		expect(postcss.target).toEqual(ensuredModuleTarget("web"));
+		expect(postcss.target).toEqual({
+			_tag: "ResolvedModuleTarget",
+			moduleId: "abcde",
+			moduleRoot: "apps/web",
+		});
 		expect(postcss.content).toBe(
 			'export { default } from "@acme/ui/postcss.config";\n',
 		);
@@ -326,6 +391,38 @@ describe("ui addon", () => {
 		});
 	});
 
+	it("generates ui package exports in exact resolver order", async () => {
+		const exportsOrder = async (config: ForgeConfig) => {
+			const plan = await plannedProject(config);
+			const packageJson = must(
+				plan.writes.find((write) => write.path === "packages/ui/package.json"),
+				"generated packages/ui/package.json",
+			);
+			const parsed: unknown = JSON.parse(packageJson.content);
+			if (
+				typeof parsed !== "object" ||
+				parsed === null ||
+				!("exports" in parsed) ||
+				typeof parsed.exports !== "object" ||
+				parsed.exports === null
+			)
+				throw new Error("Generated UI Exports Missing");
+
+			return Object.keys(parsed.exports);
+		};
+
+		expect(await exportsOrder(baseConfig)).toEqual([
+			"./globals.css",
+			"./postcss.config",
+			"./hooks/*",
+			"./lib/*",
+			"./*",
+		]);
+		expect(
+			await exportsOrder({ ...baseConfig, web: "tanstack-start" }),
+		).toEqual(["./globals.css", "./hooks/*", "./lib/*", "./*"]);
+	});
+
 	it("renders every leaf template with placeholders interpolated", () => {
 		const contributions = contributionsFor(baseConfig);
 		const leaves = contributions.filter(byTag("LeafTextFileContribution"));
@@ -343,7 +440,7 @@ describe("ui addon", () => {
 			const path =
 				typeof leaf.path === "string"
 					? leaf.path
-					: `${leaf.path.moduleKey}:${leaf.path.slot}`;
+					: `${leaf.path.module}:${leaf.path.slot}`;
 			expect(leaf.content, path).not.toMatch(/__[A-Z_]+__/);
 		}
 

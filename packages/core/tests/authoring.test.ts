@@ -4,13 +4,17 @@ import {
 	type AddonDefinition,
 	type AppConfig,
 	type Compatibility,
+	defineAdapter,
 	defineAddon,
 	defineFramework,
+	defineRegistry,
 	defineTemplate,
 	ensuredModuleTarget,
 	GeneratorError,
 	isAddonCompatibleWithModule,
+	moduleTarget,
 	type PackageConfig,
+	RegistryError,
 	resolveSlotPath,
 	SlotPathError,
 	slotPath,
@@ -133,9 +137,23 @@ describe("authoring", () => {
 		);
 
 		expect(error).toBeInstanceOf(SlotPathError);
-		expect(error.moduleKey).toBe("web");
+		expect(error.module).toBe("web");
 		expect(error.slot).toBe("trpc");
 		expect(error.message).toBe("Module Slot Missing: trpc in web");
+	});
+
+	it("reports a resolved module root when its slot is unfilled", async () => {
+		const target = moduleTarget({
+			config: appModule,
+			id: appModule.id,
+			root: "apps/web",
+		});
+		const error = await Effect.runPromise(
+			Effect.flip(resolveSlotPath(appModule, slotPath(target, "trpc"))),
+		);
+
+		expect(error.module).toBe("apps/web");
+		expect(error.message).toBe("Module Slot Missing: trpc in apps/web");
 	});
 
 	it("fails when no template is selected for an app addon", async () => {
@@ -263,5 +281,156 @@ describe("authoring", () => {
 				capabilities: ["react"],
 			}),
 		).toBe(false);
+	});
+
+	it("derives adapter target candidates from app framework registrations", () => {
+		const addon = defineAddon<TestConfig>({
+			id: "adapter-addon",
+			name: "Adapter Addon",
+			version: "0.1.0",
+			category: "addon",
+			exclusive: false,
+			targetMode: "multiple",
+			when: () => true,
+			contribute: () => [],
+		});
+		const adapter = defineAdapter<TestConfig>({
+			addon: "adapter-addon",
+			framework: "nextjs",
+			requiredSlots: ["layout"],
+			contribute: () => [],
+		});
+
+		expect(
+			isAddonCompatibleWithModule(addon, appModule, [framework], [adapter]),
+		).toBe(true);
+		expect(
+			isAddonCompatibleWithModule(
+				addon,
+				{ ...appModule, slots: {} },
+				[framework],
+				[adapter],
+			),
+		).toBe(true);
+		expect(
+			isAddonCompatibleWithModule(
+				addon,
+				{ ...appModule, framework: "tanstack-start" },
+				[framework],
+				[adapter],
+			),
+		).toBe(false);
+		expect(
+			isAddonCompatibleWithModule(addon, packageModule, [framework], [adapter]),
+		).toBe(false);
+	});
+
+	it("uses the adapter registry for the missing-framework sentence", async () => {
+		const addon = defineAddon<TestConfig>({
+			id: "trpc",
+			name: "tRPC",
+			version: "0.1.0",
+			category: "addon",
+			exclusive: false,
+			targetMode: "single",
+			when: () => true,
+			contribute: () => [],
+		});
+		const adapter = defineAdapter<TestConfig>({
+			addon: "trpc",
+			framework: "astro",
+			contribute: () => [],
+		});
+
+		const error = await Effect.runPromise(
+			Effect.flip(
+				validateAddonAgainstSelection(addon, framework, template, [adapter]),
+			),
+		);
+
+		expect(error.message).toBe("tRPC does not support Next.js yet.");
+	});
+
+	it("defaults an explicitly undefined adapter slot list", () => {
+		const adapter = defineAdapter<TestConfig>({
+			addon: "tailwind",
+			framework: "nextjs",
+			requiredSlots: undefined,
+			contribute: () => [],
+		});
+
+		expect(adapter.requiredSlots).toEqual([]);
+	});
+
+	it("validates framework slot declarations at registration", () => {
+		const invalidFramework = defineFramework({
+			id: "invalid",
+			configFile: "invalid.config.ts",
+			buildOutputs: [],
+			ignoreDirs: [],
+			name: "Invalid",
+			slots: ["layout", "layout"],
+			tsconfigPreset: { content: {}, name: "invalid" },
+		});
+
+		expect(() =>
+			defineRegistry({
+				frameworks: [invalidFramework],
+				templates: [],
+				addons: [],
+			}),
+		).toThrow(RegistryError);
+	});
+
+	it("rejects an adapter slot absent from its framework", () => {
+		const adapter = defineAdapter<TestConfig>({
+			addon: "tailwind",
+			framework: "nextjs",
+			requiredSlots: ["layuot"],
+			contribute: () => [],
+		});
+
+		expect(() =>
+			defineRegistry({
+				adapters: [adapter],
+				frameworks: [framework],
+				templates: [],
+				addons: [appAddon],
+			}),
+		).toThrow("Adapter Slot Missing: tailwind:nextjs:layuot");
+	});
+
+	it("rejects duplicate addon-framework adapters", () => {
+		const adapter = defineAdapter<TestConfig>({
+			addon: "tailwind",
+			framework: "nextjs",
+			contribute: () => [],
+		});
+
+		expect(() =>
+			defineRegistry({
+				adapters: [adapter, adapter],
+				frameworks: [framework],
+				templates: [],
+				addons: [appAddon],
+			}),
+		).toThrow("Adapter Duplicate: tailwind:nextjs");
+	});
+
+	it("rejects an adapter for a missing framework", () => {
+		const adapter = defineAdapter<TestConfig>({
+			addon: "tailwind",
+			framework: "astro",
+			contribute: () => [],
+		});
+
+		expect(() =>
+			defineRegistry({
+				adapters: [adapter],
+				frameworks: [framework],
+				templates: [],
+				addons: [appAddon],
+			}),
+		).toThrow("Adapter Framework Missing: astro");
 	});
 });

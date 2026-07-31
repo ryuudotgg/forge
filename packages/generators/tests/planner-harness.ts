@@ -30,23 +30,27 @@ const plannerLayer = Planner.Default.pipe(
 );
 
 export async function plannedDefinitionIds(config: ForgeConfig) {
+	const plan = await plannedProject(config);
+
+	return [
+		...new Set([
+			...plan.manifest.installs.map((install) => install.definitionId),
+			...Object.values(plan.manifest.modules).flatMap(
+				(module) => module.definitionIds,
+			),
+		]),
+	];
+}
+
+export async function plannedProject(config: ForgeConfig) {
 	const directory = await mkdtemp(join(tmpdir(), "forge-generators-"));
 
 	try {
-		const plan = await Effect.runPromise(
+		return await Effect.runPromise(
 			Effect.flatMap(Planner, (planner) =>
 				planner.planCreate(directory, config, builtins),
 			).pipe(Effect.provide(plannerLayer)),
 		);
-
-		return [
-			...new Set([
-				...plan.manifest.installs.map((install) => install.definitionId),
-				...Object.values(plan.manifest.modules).flatMap(
-					(module) => module.definitionIds,
-				),
-			]),
-		];
 	} finally {
 		await rm(directory, { force: true, recursive: true });
 	}

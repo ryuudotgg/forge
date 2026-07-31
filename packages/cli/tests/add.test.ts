@@ -5,6 +5,7 @@ import {
 	adminModule,
 	appModule,
 	managedProject,
+	packageModule,
 	reactRouterModule,
 } from "./lifecycle-fixtures";
 
@@ -340,6 +341,25 @@ describe("add command", () => {
 		);
 	});
 
+	it("skips package modules when adding an adapter addon", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ modules: [packageModule, appModule] }),
+		);
+
+		await runAdd("trpc", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ rpc: "trpc", slug: "acme", web: "nextjs" },
+			[
+				{
+					definitionId: "trpc",
+					targets: [{ kind: "module", moduleId: appModule.id }],
+				},
+			],
+		);
+	});
+
 	it("replaces the install record with the first compatible module", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
@@ -462,6 +482,29 @@ describe("add command", () => {
 
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We couldn\'t find a compatible target for "Mock Single".',
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("reports adapter support when the project framework is unsupported", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({ modules: [packageModule, reactRouterModule] }),
+			);
+
+			await expect(runAdd("trpc", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"tRPC does not support React Router yet.",
 			);
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {

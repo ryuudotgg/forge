@@ -115,7 +115,6 @@ describe("create command", () => {
 				configPath,
 				JSON.stringify({
 					name: "Acme",
-					platforms: ["web"],
 					web: "tanstack-start",
 				}),
 				"utf-8",
@@ -126,7 +125,6 @@ describe("create command", () => {
 			expect(orchestratorMocks.orchestrate).toHaveBeenCalledWith(steps, {
 				initialConfig: {
 					name: "Acme",
-					platforms: ["web"],
 					web: "tanstack-start",
 				},
 				interactive: false,

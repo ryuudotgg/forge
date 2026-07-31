@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import type {
-	AppSurfaceName,
 	FrameworkDefinition,
 	ManagedDependenciesSurfaceContribution,
 	ManagedJsonSurfaceContribution,
@@ -8,9 +7,9 @@ import type {
 	ManagedScriptsSurfaceContribution,
 	ManagedSurfaceName,
 	ManagedTextSurfaceContribution,
-	PackageSurfaceName,
 	ProjectSurfaceName,
 } from "./authoring";
+import { projectSurfaceNames } from "./authoring";
 import type {
 	AppConfig,
 	DiscoveredModule,
@@ -65,47 +64,8 @@ export interface RenderedArtifact {
 function isProjectSurface(
 	surface: ManagedSurfaceName,
 ): surface is ProjectSurfaceName {
-	return [
-		"rootPackageJson",
-		"rootTsconfig",
-		"workspaceConfig",
-		"biomeConfig",
-		"gitignore",
-		"rootEnv",
-		"rootEnvExample",
-	].includes(surface);
-}
-
-function isAppSurface(surface: ManagedSurfaceName): surface is AppSurfaceName {
-	return [
-		"layout",
-		"page",
-		"api",
-		"trpc",
-		"db",
-		"auth",
-		"authClient",
-		"packageJson",
-		"tsconfig",
-		"env",
-		"envExample",
-		"frameworkConfig",
-	].includes(surface);
-}
-
-function isPackageSurface(
-	surface: ManagedSurfaceName,
-): surface is PackageSurfaceName {
-	return [
-		"globalsCss",
-		"themeCss",
-		"utils",
-		"postcssConfig",
-		"client",
-		"provider",
-		"packageJson",
-		"tsconfig",
-	].includes(surface);
+	const names: ReadonlyArray<string> = Object.values(projectSurfaceNames);
+	return names.includes(surface);
 }
 
 function applyDependencies(
@@ -170,7 +130,7 @@ function resolveProjectSurfacePath(surface: ProjectSurfaceName) {
 
 function resolveAppSurfacePath(
 	module: DiscoveredModule & AppConfig,
-	surface: AppSurfaceName,
+	surface: ManagedSurfaceName,
 	frameworksById: ReadonlyMap<string, FrameworkDefinition>,
 ) {
 	switch (surface) {
@@ -204,7 +164,7 @@ function resolveAppSurfacePath(
 
 function resolvePackageSurfacePath(
 	module: DiscoveredModule & PackageConfig,
-	surface: PackageSurfaceName,
+	surface: ManagedSurfaceName,
 ) {
 	switch (surface) {
 		case "packageJson":
@@ -236,17 +196,30 @@ function resolveManagedPath(
 	const module = modulesById.get(bucket.moduleId);
 	if (!module) throw new Error("Target Module Missing");
 
-	if (module.type === "app") {
-		if (!isAppSurface(surface)) throw new Error("App Surface Mismatch");
+	if (module.type === "app")
 		return resolveAppSurfacePath(module, surface, frameworksById);
-	}
 
-	if (!isPackageSurface(surface)) throw new Error("Package Surface Mismatch");
 	return resolvePackageSurfacePath(module, surface);
 }
 
 function sortInputs(inputs: ReadonlyArray<SurfaceRenderContribution>) {
 	return [...inputs].sort((left, right) => left.order - right.order);
+}
+
+function sortJsonInputs(inputs: ReadonlyArray<SurfaceRenderContribution>) {
+	return [...inputs].sort((left, right) => {
+		const leftPriority =
+			left.contribution._tag === "ManagedJsonSurfaceContribution"
+				? (left.contribution.priority ?? 0)
+				: 0;
+
+		const rightPriority =
+			right.contribution._tag === "ManagedJsonSurfaceContribution"
+				? (right.contribution.priority ?? 0)
+				: 0;
+
+		return leftPriority - rightPriority || left.order - right.order;
+	});
 }
 
 function renderTextSurface(inputs: ReadonlyArray<SurfaceRenderContribution>) {
@@ -298,7 +271,7 @@ function renderJsonSurface(
 ) {
 	let json: Record<string, unknown> = {};
 
-	for (const input of sortInputs(inputs)) {
+	for (const input of sortJsonInputs(inputs)) {
 		switch (input.contribution._tag) {
 			case "ManagedJsonSurfaceContribution": {
 				json = mergeJson(

@@ -4,20 +4,15 @@ import {
 	ensurePackageModule,
 	leafTextFile,
 	projectTarget,
-	slotPath,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
-import {
-	drizzleAdapterProvider,
-	resolveDatabaseProvider,
-} from "../../data/providers";
 import { deps } from "../../deps";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
-import { interpolate, readTemplate } from "../../template";
+import { renderBetterAuthTemplate } from "./shared";
 
 function generateAuthSecret() {
 	const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -26,11 +21,7 @@ function generateAuthSecret() {
 	);
 }
 
-const betterAuthAddon = defineAddon<
-	ForgeConfig,
-	"better-auth",
-	"nextjs" | "tanstack-start"
->({
+const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 	id: "better-auth",
 	name: "Better Auth",
 	version: "0.1.0",
@@ -43,12 +34,6 @@ const betterAuthAddon = defineAddon<
 		{ id: "prisma", type: "addon" },
 	],
 	targetMode: "single",
-	compatibility: {
-		app: {
-			frameworks: ["nextjs", "tanstack-start"],
-			requiredSlots: ["auth"],
-		},
-	},
 	when: (config) => config.authentication === "better-auth",
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
@@ -56,32 +41,8 @@ const betterAuthAddon = defineAddon<
 		if (config.orm === undefined)
 			throw new Error("You need to add an ORM before you can use Better Auth.");
 
-		if (config.web !== "nextjs" && config.web !== "tanstack-start")
-			throw new Error("Better Auth requires a supported web framework.");
-
-		const framework = config.web;
-
 		const pm = resolvePackageManager(config);
 		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
-
-		const provider = resolveDatabaseProvider(config);
-		const vars = {
-			SLUG: slug,
-			DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
-			DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
-		};
-
-		const renderPackage = (path: string) =>
-			interpolate(readTemplate(`auth/better-auth/${path}`), vars);
-
-		const renderWeb = (path: string) =>
-			interpolate(readTemplate(`auth/better-auth/${framework}/${path}`), vars);
-
-		const web = ensuredModuleTarget("web");
-		const routeTemplate =
-			framework === "tanstack-start"
-				? "apps/web/src/routes/api/auth/$.ts"
-				: "apps/web/app/api/auth/[...all]/route.ts";
 
 		return [
 			ensurePackageModule("auth", "packages/auth", {
@@ -131,27 +92,13 @@ const betterAuthAddon = defineAddon<
 			leafTextFile(
 				ensuredModuleTarget("auth"),
 				"env.ts",
-				renderPackage("packages/auth/env.ts"),
-			),
-			leafTextFile(
-				ensuredModuleTarget("auth"),
-				"src/index.ts",
-				renderWeb(`packages/auth/src/index.${config.orm}.ts`),
+				renderBetterAuthTemplate(config, "packages/auth/env.ts"),
 			),
 			leafTextFile(
 				ensuredModuleTarget("auth"),
 				"src/client.ts",
-				renderPackage("packages/auth/src/client.ts"),
+				renderBetterAuthTemplate(config, "packages/auth/src/client.ts"),
 			),
-			leafTextFile(web, slotPath(web, "auth"), renderWeb(routeTemplate)),
-			surfaceDependencies(web, "packageJson", [
-				{
-					name: `@${slug}/auth`,
-					version: "workspace:*",
-					type: "dependencies",
-				},
-				{ ...deps.betterAuth, type: "dependencies" },
-			]),
 
 			surfaceLines(
 				projectTarget(),
