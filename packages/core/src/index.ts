@@ -1,4 +1,5 @@
-export { Apply } from "./apply";
+export type { ApplyPlan, PlannedWrite } from "./apply";
+export { Apply, formatApplyError } from "./apply";
 export type {
 	AdapterContext,
 	AdapterDefinition,
@@ -121,13 +122,22 @@ export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
 export { decodeJsonString, formatSchemaIssues } from "./json";
 export { CoreLive } from "./layer";
+export { envResidue, threeWayMergeEnv } from "./merge/env";
+export type { JsonMergeResult } from "./merge/json";
 export {
 	deepMerge,
+	jsonResidue,
 	mergeJson,
 	threeWayMergeJson,
 } from "./merge/json";
-export type { LineMergeResult } from "./merge/lines";
-export { appendLines, threeWayMergeLines } from "./merge/lines";
+export type { LineMergeConflict, LineMergeResult } from "./merge/lines";
+export {
+	appendLines,
+	parseSections,
+	sectionResidue,
+	threeWayMergeLines,
+	threeWayMergeSections,
+} from "./merge/lines";
 export type {
 	Dependency,
 	DependencyFormat,
@@ -149,6 +159,7 @@ export type {
 } from "./renderer";
 export { Renderer } from "./renderer";
 export type {
+	ArtifactBase,
 	ArtifactIndex,
 	InstallRecord,
 	InstallTarget,
@@ -157,6 +168,8 @@ export type {
 	LockfileArtifactKind,
 	Manifest,
 	ModuleRecord,
+	StateBundle,
+	SurfaceMergeKind,
 } from "./state";
 export {
 	buildArtifactIndex,

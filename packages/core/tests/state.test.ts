@@ -1,4 +1,4 @@
-import { rename } from "node:fs/promises";
+import { readdir, readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
@@ -11,7 +11,13 @@ import {
 	type Manifest,
 	State,
 } from "../src/index";
-import { readJson, withTempDir, writeJson, writeText } from "./harness";
+import {
+	hashContent,
+	readJson,
+	withTempDir,
+	writeJson,
+	writeText,
+} from "./harness";
 
 const projectLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
@@ -146,10 +152,15 @@ describe("project state", () => {
 			const lockfile: Lockfile = {
 				schemaVersion: 1,
 				artifacts: {
-					"project:file:package.json": {
+					"project:surface:rootPackageJson": {
+						base: {
+							hash: "abc",
+							mergeKind: "json",
+							semanticsVersion: 1,
+						},
 						definitionIds: ["root"],
 						hash: "abc",
-						kind: "file",
+						kind: "surface",
 						path: "package.json",
 					},
 				},
@@ -185,6 +196,75 @@ describe("project state", () => {
 			expect(await readJson(join(directory, ".forge/lock.json"))).toEqual(
 				lockfile,
 			);
+		});
+	});
+
+	it("round-trips content-addressed bases and garbage collects unreferenced blobs", async () => {
+		await withTempDir("state-bases", async (directory) => {
+			const keptHash = await hashContent("pure render\n");
+			const removedHash = await hashContent("obsolete\n");
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					yield* State.writeBase(directory, keptHash, "pure render\n");
+					yield* State.writeBase(directory, keptHash, "pure render\n");
+					yield* State.writeBase(directory, removedHash, "obsolete\n");
+				}).pipe(Effect.provide(projectLayer)),
+			);
+
+			expect(
+				await Effect.runPromise(
+					State.readBase(directory, keptHash).pipe(
+						Effect.provide(projectLayer),
+					),
+				),
+			).toBe("pure render\n");
+
+			const lockfile: Lockfile = {
+				schemaVersion: 1,
+				artifacts: {
+					"project:surface:rootPackageJson": {
+						base: {
+							hash: keptHash,
+							mergeKind: "json",
+							semanticsVersion: 1,
+						},
+						definitionIds: ["root"],
+						hash: keptHash,
+						kind: "surface",
+						path: "package.json",
+					},
+				},
+			};
+			await Effect.runPromise(
+				State.garbageCollectBases(directory, lockfile).pipe(
+					Effect.provide(projectLayer),
+				),
+			);
+
+			expect(await readdir(join(directory, ".forge/bases"))).toEqual([
+				keptHash,
+			]);
+			expect(
+				await readFile(join(directory, ".forge/bases", keptHash), "utf-8"),
+			).toBe("pure render\n");
+		});
+	});
+
+	it("rejects base blobs whose content does not match their address", async () => {
+		await withTempDir("state-base-integrity", async (directory) => {
+			const hash = await hashContent("pure render\n");
+			await Effect.runPromise(
+				State.writeBase(directory, hash, "pure render\n").pipe(
+					Effect.provide(projectLayer),
+				),
+			);
+			await writeText(join(directory, ".forge/bases", hash), "corrupt\n");
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.readBase(directory, hash).pipe(Effect.provide(projectLayer)),
+				),
+			);
+			expect(error).toMatchObject({ message: "Base Hash Mismatch" });
 		});
 	});
 

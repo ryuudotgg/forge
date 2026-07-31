@@ -2,6 +2,161 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function jsonEqual(left: unknown, right: unknown): boolean {
+	if (left === right) return true;
+	if (Array.isArray(left) && Array.isArray(right)) {
+		if (left.length !== right.length) return false;
+		return left.every((value, index) => jsonEqual(value, right[index]));
+	}
+
+	if (!isPlainObject(left) || !isPlainObject(right)) return false;
+
+	const leftKeys = Object.keys(left);
+	const rightKeys = Object.keys(right);
+	if (leftKeys.length !== rightKeys.length) return false;
+
+	return leftKeys.every(
+		(key) => Object.hasOwn(right, key) && jsonEqual(left[key], right[key]),
+	);
+}
+
+function canonicalJson(value: unknown): string {
+	if (Array.isArray(value))
+		return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
+
+	if (isPlainObject(value))
+		return `{${Object.keys(value)
+			.sort()
+			.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+			.join(",")}}`;
+
+	return JSON.stringify(value) ?? "undefined";
+}
+
+function arrayKey(value: unknown): string {
+	return canonicalJson(value);
+}
+
+function threeWayMergeArrays(
+	base: ReadonlyArray<unknown>,
+	current: ReadonlyArray<unknown>,
+	incoming: ReadonlyArray<unknown>,
+): { readonly conflicts: boolean; readonly merged: unknown[] } {
+	if (base.length === current.length && base.length === incoming.length) {
+		const indexed: unknown[] = [];
+
+		let conflicts = false;
+		for (let index = 0; index < base.length; index++) {
+			const baseValue = base[index];
+			const currentValue = current[index];
+			const incomingValue = incoming[index];
+
+			if (jsonEqual(currentValue, incomingValue)) indexed.push(currentValue);
+			else if (jsonEqual(baseValue, currentValue)) indexed.push(incomingValue);
+			else if (jsonEqual(baseValue, incomingValue)) indexed.push(currentValue);
+			else {
+				conflicts = true;
+				indexed.push(incomingValue);
+			}
+		}
+
+		return { conflicts, merged: indexed };
+	}
+
+	const baseKeys = new Set(base.map(arrayKey));
+	const currentKeys = new Set(current.map(arrayKey));
+	const incomingKeys = new Set(incoming.map(arrayKey));
+
+	const merged: unknown[] = [];
+	const mergedKeys = new Set<string>();
+
+	const append = (value: unknown) => {
+		const key = arrayKey(value);
+
+		if (mergedKeys.has(key)) return;
+		mergedKeys.add(key);
+
+		merged.push(value);
+	};
+
+	for (const value of base) {
+		const key = arrayKey(value);
+		if (currentKeys.has(key) && incomingKeys.has(key)) append(value);
+	}
+
+	for (const value of current)
+		if (!baseKeys.has(arrayKey(value))) append(value);
+
+	for (const value of incoming)
+		if (!baseKeys.has(arrayKey(value))) append(value);
+
+	const currentAdds = current.filter((value) => !baseKeys.has(arrayKey(value)));
+	const incomingAdds = incoming.filter(
+		(value) => !baseKeys.has(arrayKey(value)),
+	);
+
+	const currentRemovals = base.filter(
+		(value) => !currentKeys.has(arrayKey(value)),
+	);
+
+	const incomingRemovals = base.filter(
+		(value) => !incomingKeys.has(arrayKey(value)),
+	);
+
+	if (currentRemovals.length === 0 && incomingRemovals.length === 0)
+		return { conflicts: false, merged };
+
+	if (currentAdds.length === 0 && incomingRemovals.length === 0)
+		return {
+			conflicts: false,
+			merged: incoming.filter(
+				(value) => !currentRemovals.some((entry) => jsonEqual(entry, value)),
+			),
+		};
+
+	if (incomingAdds.length === 0 && currentRemovals.length === 0)
+		return {
+			conflicts: false,
+			merged: current.filter(
+				(value) => !incomingRemovals.some((entry) => jsonEqual(entry, value)),
+			),
+		};
+
+	if (currentAdds.length === 0 && incomingAdds.length === 0)
+		return { conflicts: false, merged };
+
+	return { conflicts: true, merged: [...incoming] };
+}
+
+function isDependencyPath(path: ReadonlyArray<string>): boolean {
+	return (
+		path.length === 2 &&
+		[
+			"dependencies",
+			"devDependencies",
+			"peerDependencies",
+			"optionalDependencies",
+		].includes(path[0] ?? "")
+	);
+}
+
+function isDependencyMapPath(path: ReadonlyArray<string>): boolean {
+	return path.length === 1 && isDependencyPath([...path, "package"]);
+}
+
+function isScriptMapPath(path: ReadonlyArray<string>): boolean {
+	return path.length === 1 && path[0] === "scripts";
+}
+
+export interface MergeJsonOptions {
+	readonly preserveDependencyRemovals?: boolean;
+}
+
+export interface JsonMergeResult {
+	readonly merged: Record<string, unknown>;
+	readonly conflicts: ReadonlyArray<ReadonlyArray<string>>;
+}
+
 export function deepMerge(
 	target: Record<string, unknown>,
 	source: Record<string, unknown>,
@@ -60,9 +215,58 @@ export function threeWayMergeJson(
 	base: Record<string, unknown>,
 	current: Record<string, unknown>,
 	incoming: Record<string, unknown>,
-): { merged: Record<string, unknown>; conflicts: ReadonlyArray<string> } {
-	const merged: Record<string, unknown> = { ...current };
-	const conflicts: string[] = [];
+	options: MergeJsonOptions = {},
+): JsonMergeResult {
+	return mergeJsonObjects(base, current, incoming, options, []);
+}
+
+export function jsonResidue(
+	base: Record<string, unknown>,
+	current: Record<string, unknown>,
+): Record<string, unknown> {
+	const residue: Record<string, unknown> = {};
+
+	for (const [key, currentValue] of Object.entries(current)) {
+		if (!Object.hasOwn(base, key)) {
+			residue[key] = currentValue;
+			continue;
+		}
+
+		const baseValue = base[key];
+
+		if (jsonEqual(baseValue, currentValue)) continue;
+		if (isPlainObject(baseValue) && isPlainObject(currentValue)) {
+			const nested = jsonResidue(baseValue, currentValue);
+			if (Object.keys(nested).length > 0) residue[key] = nested;
+			continue;
+		}
+
+		if (Array.isArray(baseValue) && Array.isArray(currentValue)) {
+			const baseKeys = new Set(baseValue.map(arrayKey));
+			const additions = currentValue.filter(
+				(value) => !baseKeys.has(arrayKey(value)),
+			);
+
+			if (additions.length > 0) residue[key] = additions;
+
+			continue;
+		}
+
+		residue[key] = currentValue;
+	}
+
+	return residue;
+}
+
+function mergeJsonObjects(
+	base: Record<string, unknown>,
+	current: Record<string, unknown>,
+	incoming: Record<string, unknown>,
+	options: MergeJsonOptions,
+	path: ReadonlyArray<string>,
+): JsonMergeResult {
+	const merged: Record<string, unknown> = {};
+	const conflicts: Array<ReadonlyArray<string>> = [];
 
 	const allKeys = new Set([
 		...Object.keys(base),
@@ -71,26 +275,65 @@ export function threeWayMergeJson(
 	]);
 
 	for (const key of allKeys) {
+		const keyPath = [...path, key];
+
+		const basePresent = Object.hasOwn(base, key);
+		const currentPresent = Object.hasOwn(current, key);
+		const incomingPresent = Object.hasOwn(incoming, key);
+
 		const baseValue = base[key];
 		const currentValue = current[key];
 		const incomingValue = incoming[key];
 
-		const baseJson = JSON.stringify(baseValue);
-		const currentJson = JSON.stringify(currentValue);
-		const incomingJson = JSON.stringify(incomingValue);
-
-		if (baseJson === incomingJson) {
-			merged[key] = currentValue;
+		if (
+			basePresent === incomingPresent &&
+			jsonEqual(baseValue, incomingValue)
+		) {
+			if (currentPresent) merged[key] = currentValue;
 			continue;
 		}
 
-		if (baseJson === currentJson) {
-			merged[key] = incomingValue;
+		if (basePresent === currentPresent && jsonEqual(baseValue, currentValue)) {
+			if (incomingPresent) merged[key] = incomingValue;
 			continue;
 		}
 
-		if (currentJson === incomingJson) {
-			merged[key] = currentValue;
+		if (
+			currentPresent === incomingPresent &&
+			jsonEqual(currentValue, incomingValue)
+		) {
+			if (currentPresent) merged[key] = currentValue;
+			continue;
+		}
+
+		if (
+			options.preserveDependencyRemovals === true &&
+			basePresent &&
+			!currentPresent &&
+			isDependencyPath(keyPath)
+		)
+			continue;
+
+		if (
+			(isScriptMapPath(keyPath) ||
+				(options.preserveDependencyRemovals === true &&
+					isDependencyMapPath(keyPath))) &&
+			(baseValue === undefined || isPlainObject(baseValue)) &&
+			(currentValue === undefined || isPlainObject(currentValue)) &&
+			(incomingValue === undefined || isPlainObject(incomingValue))
+		) {
+			const nested = mergeJsonObjects(
+				baseValue ?? {},
+				currentValue ?? {},
+				incomingValue ?? {},
+				options,
+				keyPath,
+			);
+
+			if (Object.keys(nested.merged).length > 0 || currentPresent)
+				merged[key] = nested.merged;
+
+			conflicts.push(...nested.conflicts);
 			continue;
 		}
 
@@ -99,11 +342,16 @@ export function threeWayMergeJson(
 			isPlainObject(currentValue) &&
 			isPlainObject(incomingValue)
 		) {
-			const nested = threeWayMergeJson(baseValue, currentValue, incomingValue);
+			const nested = mergeJsonObjects(
+				baseValue,
+				currentValue,
+				incomingValue,
+				options,
+				keyPath,
+			);
 
 			merged[key] = nested.merged;
-			for (const nestedKey of nested.conflicts)
-				conflicts.push(`${key}.${nestedKey}`);
+			conflicts.push(...nested.conflicts);
 
 			continue;
 		}
@@ -113,31 +361,21 @@ export function threeWayMergeJson(
 			Array.isArray(incomingValue) &&
 			Array.isArray(baseValue)
 		) {
-			const baseSet = new Set(baseValue.map((v) => JSON.stringify(v)));
-
-			const currentAdded = currentValue.filter(
-				(v) => !baseSet.has(JSON.stringify(v)),
+			const arrayResult = threeWayMergeArrays(
+				baseValue,
+				currentValue,
+				incomingValue,
 			);
 
-			const incomingAdded = incomingValue.filter(
-				(v) => !baseSet.has(JSON.stringify(v)),
-			);
+			merged[key] = arrayResult.merged;
 
-			const kept = incomingValue.filter((v) => baseSet.has(JSON.stringify(v)));
-
-			merged[key] = [
-				...new Set([
-					...kept.map((v) => JSON.stringify(v)),
-					...currentAdded.map((v) => JSON.stringify(v)),
-					...incomingAdded.map((v) => JSON.stringify(v)),
-				]),
-			].map((v) => JSON.parse(v));
+			if (arrayResult.conflicts) conflicts.push(keyPath);
 
 			continue;
 		}
 
-		conflicts.push(key);
-		merged[key] = incomingValue;
+		conflicts.push(keyPath);
+		if (incomingPresent) merged[key] = incomingValue;
 	}
 
 	return { merged, conflicts };

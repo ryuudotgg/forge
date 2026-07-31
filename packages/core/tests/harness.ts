@@ -20,6 +20,17 @@ export async function writeText(path: string, content: string) {
 	await writeFile(path, content, "utf-8");
 }
 
+export async function hashContent(content: string) {
+	const buffer = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(content),
+	);
+
+	return Array.from(new Uint8Array(buffer))
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join("");
+}
+
 export async function writeJson(path: string, value: unknown) {
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, `${JSON.stringify(value, null, "\t")}\n`, "utf-8");

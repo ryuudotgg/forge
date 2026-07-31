@@ -1,6 +1,12 @@
 import { log } from "@clack/prompts";
 import { NodeContext } from "@effect/platform-node";
-import { Apply, CoreLive, Planner } from "@ryuujs/core";
+import {
+	Apply,
+	ApplyError,
+	CoreLive,
+	formatApplyError,
+	Planner,
+} from "@ryuujs/core";
 import {
 	authenticationProviders,
 	type ForgeConfig,
@@ -65,7 +71,12 @@ const generateStep = defineStep({
 				}).pipe(Effect.provide(coreLayer)),
 			);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message =
+				error instanceof ApplyError
+					? formatApplyError(error)
+					: error instanceof Error
+						? error.message
+						: String(error);
 			throw new Error(`Generation Failed: ${message}`);
 		}
 

@@ -28,6 +28,7 @@ import {
 	filePath,
 } from "./operations";
 import { sortPackageJson } from "./sort/package-json";
+import type { SurfaceMergeKind } from "./state";
 
 export interface ProjectBucketTarget {
 	readonly kind: "project";
@@ -58,7 +59,30 @@ export interface RenderedArtifact {
 	readonly definitionIds: ReadonlyArray<string>;
 	readonly key: string;
 	readonly kind: "surface";
+	readonly mergeKind?: SurfaceMergeKind;
 	readonly path: ReturnType<typeof filePath>;
+}
+
+function resolveSurfaceMergeKind(
+	path: ReturnType<typeof filePath>,
+	tags: ReadonlySet<SurfaceRenderContribution["contribution"]["_tag"]>,
+): SurfaceMergeKind | undefined {
+	const value = String(path);
+	if (value.endsWith("/.env") || value === ".env") return undefined;
+
+	if (tags.has("ManagedTextSurfaceContribution")) return undefined;
+	if (tags.has("ManagedLinesSurfaceContribution")) {
+		if (value.endsWith("/.gitignore") || value === ".gitignore") return "lines";
+		if (value.endsWith("/.env.example") || value === ".env.example")
+			return "env";
+
+		return undefined;
+	}
+
+	if (value.endsWith("/tsconfig.json") || value === "tsconfig.json")
+		return undefined;
+
+	return "json";
 }
 
 function isProjectSurface(
@@ -375,6 +399,7 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 								? renderLinesSurface(entries)
 								: renderJsonSurface(path, entries, format);
 
+						const mergeKind = resolveSurfaceMergeKind(path, tags);
 						rendered.push({
 							bucket: first.bucket,
 							content,
@@ -384,6 +409,7 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 									? first.contribution.surface
 									: `${first.contribution.surface}`,
 							kind: "surface",
+							...(mergeKind === undefined ? {} : { mergeKind }),
 							path,
 						});
 					}

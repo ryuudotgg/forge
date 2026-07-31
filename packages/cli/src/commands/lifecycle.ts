@@ -2,9 +2,11 @@ import { log } from "@clack/prompts";
 import { NodeContext, NodeFileSystem } from "@effect/platform-node";
 import {
 	Apply,
+	ApplyError,
 	ConfigStore,
 	CoreLive,
 	type DiscoveredModule,
+	formatApplyError,
 	type InstallRecord,
 	type Manifest,
 	Planner,
@@ -55,7 +57,10 @@ async function runLifecycleEffect<A, E extends { readonly message: string }>(
 
 	const failure = Cause.failureOption(exit.cause);
 	if (Option.isSome(failure)) {
-		const detail = failure.value.message;
+		const detail =
+			failure.value instanceof ApplyError
+				? formatApplyError(failure.value)
+				: failure.value.message;
 		log.error(
 			`${failureMessage} ${detail.endsWith(".") ? detail.slice(0, -1) : detail}.`,
 		);

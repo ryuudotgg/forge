@@ -4,11 +4,17 @@ import { Effect, Schema } from "effect";
 import { ModuleIdSchema } from "./config";
 import { StateError } from "./errors";
 import { formatJson } from "./format/json";
+import { hashContentHex } from "./hash";
 import { decodeJsonString } from "./json";
 
+const BASES_DIR = "bases";
 const PROJECT_STATE_DIR = ".forge";
+
 const MANIFEST_FILE = "manifest.json";
 const LOCKFILE_FILE = "lock.json";
+const STATE_BUNDLE_FILE = "state.json";
+
+export const SURFACE_MERGE_SEMANTICS_VERSION = 1;
 
 const StateSchemaVersion = Schema.Literal(1).annotations({
 	message: () =>
@@ -49,7 +55,19 @@ export type InstallRecord = typeof InstallRecordSchema.Type;
 const LockfileArtifactKindSchema = Schema.Literal("file", "surface");
 export type LockfileArtifactKind = typeof LockfileArtifactKindSchema.Type;
 
+const SurfaceMergeKindSchema = Schema.Literal("json", "lines", "env");
+export type SurfaceMergeKind = typeof SurfaceMergeKindSchema.Type;
+
+const ArtifactBaseSchema = Schema.Struct({
+	hash: Schema.String,
+	mergeKind: SurfaceMergeKindSchema,
+	semanticsVersion: Schema.Number,
+});
+
+export type ArtifactBase = typeof ArtifactBaseSchema.Type;
+
 const LockfileArtifactSchema = Schema.Struct({
+	base: Schema.optional(ArtifactBaseSchema),
 	kind: LockfileArtifactKindSchema,
 	definitionIds: Schema.Array(Schema.String),
 	hash: Schema.String,
@@ -96,6 +114,13 @@ export type LockfileInput = Omit<Lockfile, "schemaVersion"> & {
 	readonly schemaVersion?: number;
 };
 
+export const StateBundleSchema = Schema.Struct({
+	lockfile: LockfileSchema,
+	manifest: ManifestSchema,
+});
+
+export type StateBundle = typeof StateBundleSchema.Type;
+
 export function defaultManifest(): Manifest {
 	return {
 		schemaVersion: 1,
@@ -115,6 +140,22 @@ function manifestPath(projectRoot: string) {
 
 function lockfilePath(projectRoot: string) {
 	return join(projectRoot, PROJECT_STATE_DIR, LOCKFILE_FILE);
+}
+
+function stateBundlePath(projectRoot: string) {
+	return join(projectRoot, PROJECT_STATE_DIR, STATE_BUNDLE_FILE);
+}
+
+function basesPath(projectRoot: string) {
+	return join(projectRoot, PROJECT_STATE_DIR, BASES_DIR);
+}
+
+function basePath(projectRoot: string, hash: string) {
+	return join(basesPath(projectRoot), hash);
+}
+
+function validBaseHash(hash: string): boolean {
+	return /^[a-f0-9]{64}$/.test(hash);
 }
 
 export interface ArtifactIndex {
@@ -168,14 +209,64 @@ function decodeLockfile(raw: string, path: string) {
 	});
 }
 
+function decodeStateBundle(raw: string, path: string) {
+	return decodeJsonString(raw, StateBundleSchema, {
+		onParseError: (message) =>
+			new StateError({
+				filePath: path,
+				message: `State Bundle Parse Failed: ${message}`,
+			}),
+		onValidationError: (issues) =>
+			new StateError({
+				filePath: path,
+				message: `Invalid State Bundle\n${issues
+					.map((issue) => `  ${issue}`)
+					.join("\n")}`,
+			}),
+	});
+}
+
 export class State extends Effect.Service<State>()("State", {
 	accessors: true,
 	effect: Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 
+		const hashBaseContent = Effect.fn("State.hashBaseContent")(function* (
+			content: string,
+			path: string,
+		) {
+			return yield* hashContentHex(
+				content,
+				() => new StateError({ filePath: path, message: "Base Hash Failed" }),
+			);
+		});
+
+		const readStateBundle = Effect.fn("State.readStateBundle")(function* (
+			projectRoot: string,
+		) {
+			const path = stateBundlePath(projectRoot);
+			if (!(yield* fs.exists(path))) return undefined;
+
+			const raw = yield* fs.readFileString(path).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
+						new StateError({
+							filePath: path,
+							message: "State Bundle Read Failed",
+						}),
+				),
+			);
+
+			return yield* decodeStateBundle(raw, path);
+		});
+
 		const readManifest = Effect.fn("State.readManifest")(function* (
 			projectRoot: string,
 		) {
+			const bundle = yield* readStateBundle(projectRoot);
+			if (bundle !== undefined) return bundle.manifest;
+
 			const path = manifestPath(projectRoot);
 			const exists = yield* fs.exists(path);
 
@@ -202,6 +293,10 @@ export class State extends Effect.Service<State>()("State", {
 		const readManifestOrDefault = Effect.fn("State.readManifestOrDefault")(
 			function* (projectRoot: string) {
 				const path = manifestPath(projectRoot);
+
+				const bundle = yield* readStateBundle(projectRoot);
+				if (bundle !== undefined) return bundle.manifest;
+
 				const exists = yield* fs.exists(path);
 				if (!exists) return defaultManifest();
 
@@ -251,6 +346,9 @@ export class State extends Effect.Service<State>()("State", {
 		const readLockfile = Effect.fn("State.readLockfile")(function* (
 			projectRoot: string,
 		) {
+			const bundle = yield* readStateBundle(projectRoot);
+			if (bundle !== undefined) return bundle.lockfile;
+
 			const path = lockfilePath(projectRoot);
 			const exists = yield* fs.exists(path);
 
@@ -309,9 +407,129 @@ export class State extends Effect.Service<State>()("State", {
 				);
 		});
 
+		const readBase = Effect.fn("State.readBase")(function* (
+			projectRoot: string,
+			hash: string,
+		) {
+			const path = basePath(projectRoot, hash);
+			if (!validBaseHash(hash))
+				return yield* new StateError({
+					filePath: path,
+					message: "Invalid Base Hash",
+				});
+
+			const content = yield* fs.readFileString(path).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
+						new StateError({
+							filePath: path,
+							message: "Base Read Failed",
+						}),
+				),
+			);
+
+			if ((yield* hashBaseContent(content, path)) !== hash)
+				return yield* new StateError({
+					filePath: path,
+					message: "Base Hash Mismatch",
+				});
+
+			return content;
+		});
+
+		const writeBase = Effect.fn("State.writeBase")(function* (
+			projectRoot: string,
+			hash: string,
+			content: string,
+		) {
+			const path = basePath(projectRoot, hash);
+			if (!validBaseHash(hash))
+				return yield* new StateError({
+					filePath: path,
+					message: "Invalid Base Hash",
+				});
+
+			if ((yield* hashBaseContent(content, path)) !== hash)
+				return yield* new StateError({
+					filePath: path,
+					message: "Base Hash Mismatch",
+				});
+
+			yield* fs.makeDirectory(basesPath(projectRoot), { recursive: true }).pipe(
+				Effect.catchTag(
+					"SystemError",
+					() =>
+						new StateError({
+							filePath: path,
+							message: "Base Directory Failed",
+						}),
+				),
+			);
+
+			const exists = yield* fs.exists(path);
+			if (exists) {
+				yield* readBase(projectRoot, hash);
+				return;
+			}
+
+			yield* fs
+				.writeFileString(path, content)
+				.pipe(
+					Effect.catchTag(
+						"SystemError",
+						() =>
+							new StateError({ filePath: path, message: "Base Write Failed" }),
+					),
+				);
+		});
+
+		const garbageCollectBases = Effect.fn("State.garbageCollectBases")(
+			function* (projectRoot: string, lockfile: LockfileInput) {
+				const directory = basesPath(projectRoot);
+				if (!(yield* fs.exists(directory))) return;
+
+				const referenced = new Set(
+					Object.values(lockfile.artifacts).flatMap((artifact) =>
+						artifact.base === undefined ? [] : [artifact.base.hash],
+					),
+				);
+
+				const entries = yield* fs.readDirectory(directory).pipe(
+					Effect.catchTag(
+						"SystemError",
+						() =>
+							new StateError({
+								filePath: directory,
+								message: "Base Directory Read Failed",
+							}),
+					),
+				);
+
+				for (const entry of entries) {
+					if (referenced.has(entry)) continue;
+
+					const path = basePath(projectRoot, entry);
+					yield* fs.remove(path).pipe(
+						Effect.catchTag(
+							"SystemError",
+							() =>
+								new StateError({
+									filePath: path,
+									message: "Base Remove Failed",
+								}),
+						),
+					);
+				}
+			},
+		);
+
 		const isManagedProject = Effect.fn("State.isManagedProject")(function* (
 			projectRoot: string,
 		) {
+			const stateBundleExists = yield* fs.exists(stateBundlePath(projectRoot));
+			if (stateBundleExists) return true;
+
 			const lockfileExists = yield* fs.exists(lockfilePath(projectRoot));
 			if (lockfileExists) return true;
 
@@ -319,12 +537,15 @@ export class State extends Effect.Service<State>()("State", {
 		});
 
 		return {
+			garbageCollectBases,
 			isManagedProject,
+			readBase,
 			readLockfile,
 			readManifest,
 			readManifestOrDefault,
 			writeLockfile,
 			writeManifest,
+			writeBase,
 		};
 	}),
 }) {}
