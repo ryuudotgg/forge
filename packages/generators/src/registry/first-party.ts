@@ -5,7 +5,13 @@ import { trpcTanstackStartAdapter } from "../api/trpc/adapters/tanstack-start";
 import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
 import { betterAuthNextjsAdapter } from "../auth/better-auth/adapters/nextjs";
 import { betterAuthTanstackStartAdapter } from "../auth/better-auth/adapters/tanstack-start";
-import type { ForgeConfig } from "../config";
+import {
+	authenticationProviders,
+	type ForgeConfig,
+	linters,
+	styleFrameworks,
+	webFrameworks,
+} from "../config";
 import nextjsBaseTemplate, {
 	nextjsBaseTemplateMetadata,
 	nextjsFramework,
@@ -37,6 +43,7 @@ import root, { rootMetadata } from "../workspace/root";
 import yarn, { yarnMetadata } from "../workspace/yarn";
 import {
 	addonCatalogEntry,
+	announcedCatalogEntry,
 	type CatalogEntry,
 	frameworkCatalogEntry,
 	templateCatalogEntry,
@@ -115,4 +122,29 @@ export const firstPartyCatalog = [
 		betterAuthMetadata,
 		firstPartyRegistry.adapters,
 	),
+	...webFrameworks.ids
+		.filter((id) => !webFrameworks.available(id))
+		.map((id) =>
+			announcedCatalogEntry("framework", id, webFrameworks.label(id)),
+		),
+	...authenticationProviders.ids
+		.filter((id) => !authenticationProviders.available(id))
+		.map((id) =>
+			announcedCatalogEntry(
+				"addon",
+				id,
+				authenticationProviders.label(id),
+				"auth",
+			),
+		),
+	...styleFrameworks.ids
+		.filter((id) => !styleFrameworks.available(id))
+		.map((id) =>
+			announcedCatalogEntry("addon", id, styleFrameworks.label(id), "style"),
+		),
+	...linters.ids
+		.filter((id) => !linters.available(id))
+		.map((id) =>
+			announcedCatalogEntry("addon", id, linters.label(id), "linter"),
+		),
 ] as const satisfies ReadonlyArray<CatalogEntry>;

@@ -135,6 +135,27 @@ describe("add command", () => {
 		}
 	});
 
+	it("keeps announced addons out of the search results", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+			promptMocks.text.mockResolvedValue("authjs");
+
+			await expect(runAdd(undefined, {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We couldn't find an addon matching that search.",
+			);
+			expect(promptMocks.select).not.toHaveBeenCalled();
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
 	it("cancels the run when the addon search is dismissed", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(((
 			code?: string | number | null,
@@ -526,6 +547,25 @@ describe("add command", () => {
 
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We couldn\'t find the "missing" addon.',
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("shows the unavailable message for an announced addon id", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+			await expect(runAdd("authjs", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'"Auth.js" isn\'t available yet.',
 			);
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {

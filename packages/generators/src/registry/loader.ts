@@ -30,7 +30,7 @@ export function getCatalogEntry(id: string) {
 export function listVisibleAddons() {
 	return firstPartyCatalog.filter(
 		(entry): entry is AddonCatalogEntry =>
-			entry.kind === "addon" && entry.hidden === false,
+			entry.kind === "addon" && entry.available && entry.hidden === false,
 	);
 }
 

@@ -38,6 +38,7 @@ export interface FirstPartyAddonMetadata extends CatalogMetadataBase {
 }
 
 interface CatalogEntryBase extends CatalogMetadataBase {
+	readonly available: boolean;
 	readonly category: string;
 }
 
@@ -79,6 +80,7 @@ export function frameworkCatalogEntry(
 	metadata: FirstPartyFrameworkMetadata,
 ): FrameworkCatalogEntry {
 	return {
+		available: true,
 		category: "web",
 		description: metadata.description,
 		docsUrl: metadata.docsUrl,
@@ -98,6 +100,7 @@ export function templateCatalogEntry(
 	metadata: FirstPartyTemplateMetadata,
 ): TemplateCatalogEntry {
 	return {
+		available: true,
 		category: template.category,
 		description: metadata.description,
 		docsUrl: metadata.docsUrl,
@@ -136,6 +139,7 @@ export function addonCatalogEntry(
 	] as ReadonlyArray<ManagedSurfaceName>;
 
 	return {
+		available: true,
 		capabilities,
 		category: addon.category,
 		description: metadata.description,
@@ -150,5 +154,50 @@ export function addonCatalogEntry(
 		requiredSlots: requiredSlots.length > 0 ? requiredSlots : undefined,
 		summary: metadata.summary,
 		targetMode: addon.targetMode,
+	};
+}
+
+export function announcedCatalogEntry(
+	kind: "framework",
+	id: string,
+	name: string,
+): FrameworkCatalogEntry;
+export function announcedCatalogEntry(
+	kind: "addon",
+	id: string,
+	name: string,
+	category: string,
+): AddonCatalogEntry;
+export function announcedCatalogEntry(
+	kind: "addon" | "framework",
+	id: string,
+	name: string,
+	category = "web",
+): AddonCatalogEntry | FrameworkCatalogEntry {
+	const summary = `${name} support is coming soon.`;
+	const metadata = {
+		available: false,
+		category,
+		description: summary,
+		experimental: false,
+		hidden: false,
+		id,
+		keywords: [],
+		name,
+		summary,
+	};
+
+	if (kind === "framework")
+		return {
+			...metadata,
+			kind,
+			slots: [],
+		};
+
+	return {
+		...metadata,
+		frameworks: [],
+		kind,
+		targetMode: "multiple",
 	};
 }
