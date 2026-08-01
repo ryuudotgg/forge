@@ -21,6 +21,7 @@ import type {
 	CatalogEntry,
 	LoadedAddonDefinition,
 	LoadedDefinitionRegistry,
+	RegistryCatalogEntry,
 	RegistryDescriptor,
 	RegistryUnit,
 } from "./types";
@@ -407,9 +408,28 @@ function registryUnits(
 	];
 }
 
+function adapterKey(addon: string, framework: string) {
+	return `${addon}\u0000${framework}`;
+}
+
+function sourcedCatalogEntry(
+	entry: RegistryCatalogEntry,
+	source: string,
+): CatalogEntry {
+	if (entry.kind === "addon")
+		return {
+			...entry,
+			frameworkSources: {},
+			source,
+		};
+
+	return { ...entry, source };
+}
+
 function refreshCatalog(
 	catalogEntries: ReadonlyArray<CatalogEntry>,
 	registry: LoadedDefinitionRegistry["registry"],
+	adapterSources: ReadonlyMap<string, string>,
 ): ReadonlyArray<CatalogEntry> {
 	return catalogEntries.map((entry) => {
 		if (entry.kind !== "addon") return entry;
@@ -419,7 +439,13 @@ function refreshCatalog(
 
 		return addon === undefined
 			? entry
-			: addonCatalogEntry(addon, entry, registry.adapters);
+			: addonCatalogEntry(
+					addon,
+					entry,
+					registry.adapters,
+					entry.source,
+					adapterSources,
+				);
 	});
 }
 
@@ -432,8 +458,16 @@ function loadThirdPartyRegistries(
 		const frameworks = [...firstPartyRegistry.frameworks];
 		const templates = [...firstPartyRegistry.templates];
 
-		const catalogEntries: CatalogEntry[] = [...firstPartyCatalog];
 		const descriptors: RegistryDescriptor[] = [];
+		const catalogEntries: CatalogEntry[] = [...firstPartyCatalog];
+		const seenCatalogIds = new Set(firstPartyCatalog.map((entry) => entry.id));
+
+		const adapterSources = new Map<string, string>();
+		for (const adapter of firstPartyRegistry.adapters)
+			adapterSources.set(
+				adapterKey(adapter.addon, adapter.framework),
+				"first-party",
+			);
 
 		const importer = options.importRegistry ?? importRegistryPackage;
 
@@ -506,6 +540,12 @@ function loadThirdPartyRegistries(
 				isAdapterDefinition,
 			);
 
+			for (const adapter of loadedAdapters)
+				adapterSources.set(
+					adapterKey(adapter.addon, adapter.framework),
+					registryId,
+				);
+
 			const loadedFrameworks = yield* validateUnits(
 				registryId,
 				decoded.frameworks,
@@ -525,12 +565,26 @@ function loadThirdPartyRegistries(
 				...decoded.catalog.map((entry) => entry.id),
 			]);
 
+			for (const entry of decoded.catalog) {
+				if (seenCatalogIds.has(entry.id))
+					return yield* registryError(
+						registryId,
+						`Registry Catalog Duplicate: ${entry.id}`,
+					);
+
+				seenCatalogIds.add(entry.id);
+			}
+
 			addons.push(...loadedAddons);
 			adapters.push(...loadedAdapters);
 			frameworks.push(...loadedFrameworks);
 			templates.push(...loadedTemplates);
 
-			catalogEntries.push(...decoded.catalog);
+			catalogEntries.push(
+				...decoded.catalog.map((entry) =>
+					sourcedCatalogEntry(entry, registryId),
+				),
+			);
 
 			registry = yield* validateRegistry(registryId, {
 				addons,
@@ -563,7 +617,7 @@ function loadThirdPartyRegistries(
 		}
 
 		return {
-			catalog: refreshCatalog(catalogEntries, registry),
+			catalog: refreshCatalog(catalogEntries, registry, adapterSources),
 			descriptors,
 			registry,
 		};

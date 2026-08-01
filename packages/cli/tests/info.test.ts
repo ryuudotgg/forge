@@ -7,6 +7,7 @@ import {
 	buildInfoOutput,
 	runInfo,
 } from "../src/commands/info";
+import { loadDiscoveryFixture } from "./discovery-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
@@ -33,9 +34,9 @@ beforeEach(() => {
 
 describe("forge info builders", () => {
 	it("renders addon, framework, and template rows", () => {
-		const addon = buildInfoOutput(requireEntry("trpc"));
-		const framework = buildInfoOutput(requireEntry("nextjs"));
-		const template = buildInfoOutput(requireEntry("nextjs/base"));
+		const addon = buildInfoOutput(requireEntry("trpc"), []);
+		const framework = buildInfoOutput(requireEntry("nextjs"), []);
+		const template = buildInfoOutput(requireEntry("nextjs/base"), []);
 
 		expect(addon).toContain("Category:        addon");
 		expect(addon).toContain("Targets:         Single target");
@@ -47,12 +48,13 @@ describe("forge info builders", () => {
 	});
 
 	it("renders the exact addon card", () => {
-		expect(buildInfoOutput(requireEntry("trpc"))).toBe(
+		expect(buildInfoOutput(requireEntry("trpc"), [])).toBe(
 			[
 				"tRPC trpc",
 				"Add tRPC to an app target.",
 				"Adds tRPC server and client surfaces to compatible Forge application targets.",
 				[
+					"Publisher:       Ryuu (first party)",
 					"Category:        addon",
 					"Targets:         Single target",
 					"Frameworks:      nextjs and tanstack-start",
@@ -71,20 +73,23 @@ describe("forge info builders", () => {
 			category: "tooling",
 			description: "One summary.",
 			experimental: false,
+			frameworkSources: {},
 			hidden: false,
 			id: "custom",
 			keywords: [],
 			kind: "addon",
 			name: "Custom Addon",
+			source: "first-party",
 			summary: "One summary.",
 			targetMode: "multiple",
 		};
 
-		expect(buildInfoOutput(entry)).toBe(
+		expect(buildInfoOutput(entry, [])).toBe(
 			[
 				"Custom Addon custom",
 				"One summary.",
 				[
+					"Publisher:     Ryuu (first party)",
 					"Category:      tooling",
 					"Targets:       Multiple targets",
 					"Capabilities:  alpha and beta",
@@ -95,10 +100,14 @@ describe("forge info builders", () => {
 	});
 
 	it("renders the exact announced-entry card", () => {
-		expect(buildInfoOutput(requireEntry("authjs"))).toBe(
-			`${["Auth.js authjs", "Availability:  Auth.js isn't available yet."].join(
-				"\n\n",
-			)}\n`,
+		expect(buildInfoOutput(requireEntry("authjs"), [])).toBe(
+			`${[
+				"Auth.js authjs",
+				[
+					"Publisher:     Ryuu (first party)",
+					"Availability:  Auth.js isn't available yet.",
+				].join("\n"),
+			].join("\n\n")}\n`,
 		);
 	});
 
@@ -115,7 +124,9 @@ describe("forge info builders", () => {
 	});
 
 	it("builds the stable info JSON envelope", () => {
-		expect(buildInfoEnvelope(requireEntry("drizzle"))).toMatchInlineSnapshot(`
+		expect(
+			buildInfoEnvelope(requireEntry("drizzle"), []),
+		).toMatchInlineSnapshot(`
 			{
 			  "entry": {
 			    "available": true,
@@ -134,12 +145,95 @@ describe("forge info builders", () => {
 			    "kind": "addon",
 			    "name": "Drizzle",
 			    "requiredSlots": [],
+			    "source": "first-party",
 			    "summary": "Add Drizzle ORM support.",
 			    "targetMode": "single",
 			  },
 			  "forgeListVersion": 1,
 			}
 		`);
+	});
+
+	it("renders publisher provenance through an injected registry", async () => {
+		const loaded = await loadDiscoveryFixture();
+
+		await runInfo("@acme/sentry", {}, () => Promise.resolve(loaded));
+		expect(promptMocks.logMessage).toHaveBeenLastCalledWith(
+			[
+				"Sentry @acme/sentry",
+				"Add Sentry observability.",
+				"Adds Sentry observability to compatible Forge application targets.",
+				[
+					"Publisher:   @acme/forge-sentry 1.4.2",
+					"Category:    tooling",
+					"Targets:     Multiple targets",
+					"Frameworks:  nextjs",
+					"Keywords:    errors, monitoring, and sentry",
+					"",
+				].join("\n"),
+			].join("\n\n"),
+		);
+
+		await runInfo("vitest", {}, () => Promise.resolve(loaded));
+		expect(promptMocks.logMessage).toHaveBeenLastCalledWith(
+			[
+				"Vitest vitest",
+				"Test the generated web app with Vitest.",
+				"Vitest setup for fast, framework-agnostic tests in the generated web app.",
+				[
+					"Publisher:   Ryuu (first party)",
+					"Category:    tooling",
+					"Targets:     Single target",
+					"Frameworks:  tanstack-start (via @acme/forge-sentry)",
+					"Keywords:    test, testing, tooling, and vitest",
+					"",
+				].join("\n"),
+			].join("\n\n"),
+		);
+	});
+
+	it("adds publisherVersion only to third-party info JSON", async () => {
+		const loaded = await loadDiscoveryFixture();
+		const sentry = loaded.catalog.find((entry) => entry.id === "@acme/sentry");
+		const vitest = loaded.catalog.find((entry) => entry.id === "vitest");
+		if (sentry === undefined || vitest === undefined)
+			throw new Error("Missing discovery fixture entries");
+
+		const thirdParty = buildInfoEnvelope(sentry, loaded.descriptors);
+		const firstParty = buildInfoEnvelope(vitest, loaded.descriptors);
+		expect(thirdParty.entry).toMatchObject({
+			capabilities: [],
+			frameworks: ["nextjs"],
+			publisherVersion: "1.4.2",
+			requiredSlots: [],
+			source: "@acme/forge-sentry",
+		});
+		expect(firstParty.entry).not.toHaveProperty("publisherVersion");
+		expect(firstParty.entry.source).toBe("first-party");
+		expect(JSON.parse(JSON.stringify(thirdParty))).toEqual(thirdParty);
+
+		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			await runInfo("@acme/sentry", { json: true }, () =>
+				Promise.resolve(loaded),
+			);
+			expect(consoleLog).toHaveBeenCalledWith(
+				JSON.stringify(thirdParty, null, "\t"),
+			);
+		} finally {
+			consoleLog.mockRestore();
+		}
+	});
+
+	it("rejects a third-party entry without its publisher descriptor", async () => {
+		const loaded = await loadDiscoveryFixture();
+		const sentry = loaded.catalog.find((entry) => entry.id === "@acme/sentry");
+		if (sentry === undefined)
+			throw new Error("Missing discovery fixture entry");
+
+		expect(() => buildInfoEnvelope(sentry, [])).toThrow(
+			"Catalog Publisher Missing: @acme/forge-sentry",
+		);
 	});
 
 	it("writes exact human and JSON command output", async () => {
@@ -151,6 +245,7 @@ describe("forge info builders", () => {
 				"Base Next.js template.",
 				"A production-ready Next.js base template that composes cleanly with Forge addons.",
 				[
+					"Publisher:  Ryuu (first party)",
 					"Framework:  nextjs",
 					"Version:    1",
 					"Keywords:   base, next, starter, template, and web",
@@ -164,7 +259,11 @@ describe("forge info builders", () => {
 			await runInfo("drizzle", { json: true });
 
 			expect(consoleLog).toHaveBeenCalledWith(
-				JSON.stringify(buildInfoEnvelope(requireEntry("drizzle")), null, "\t"),
+				JSON.stringify(
+					buildInfoEnvelope(requireEntry("drizzle"), []),
+					null,
+					"\t",
+				),
 			);
 			expect(promptMocks.logMessage).toHaveBeenCalledTimes(1);
 		} finally {

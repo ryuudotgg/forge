@@ -2,10 +2,11 @@ import { log } from "@clack/prompts";
 import {
 	type CatalogEntry,
 	type CatalogKind,
-	listCatalogEntries,
+	type LoadedDefinitionRegistry,
 	matchQuery,
 } from "@ryuujs/generators";
 import color from "picocolors";
+import { loadDiscoveryRegistry } from "./lifecycle";
 
 const groupOrder: ReadonlyArray<readonly [CatalogKind, string]> = [
 	["framework", "Frameworks"],
@@ -47,6 +48,7 @@ export function buildJsonEntry(entry: CatalogEntry) {
 		id: entry.id,
 		kind: entry.kind,
 		name: entry.name,
+		source: entry.source,
 		summary: entry.summary,
 		description: entry.description,
 		keywords: entry.keywords,
@@ -103,7 +105,10 @@ function formatRow(entry: CatalogEntry, widths: ColumnWidths, summary: string) {
 	const namePadding = " ".repeat(widths.name - name.length + 2);
 	const idPadding = " ".repeat(widths.id - entry.id.length + 2);
 
-	return `  ${color.bold(name)}${namePadding}${color.dim(entry.id)}${idPadding}${summary}`;
+	const provenance =
+		entry.source === "first-party" ? "" : ` ${color.dim(`[${entry.source}]`)}`;
+
+	return `  ${color.bold(name)}${namePadding}${color.dim(entry.id)}${idPadding}${summary}${provenance}`;
 }
 
 export function buildListOutput(
@@ -154,7 +159,10 @@ export function buildListOutput(
 export async function runList(
 	query: string | undefined,
 	values: Record<string, string | boolean | undefined>,
+	loadRegistry: () => Promise<LoadedDefinitionRegistry> = () =>
+		loadDiscoveryRegistry("."),
 ) {
+	const loadedRegistry = await loadRegistry();
 	const options = {
 		kind: parseCatalogKind(values.kind),
 		query: query ?? "",
@@ -163,7 +171,7 @@ export async function runList(
 	if (values.json === true) {
 		console.log(
 			JSON.stringify(
-				buildListEnvelope(listCatalogEntries(), options),
+				buildListEnvelope(loadedRegistry.catalog, options),
 				null,
 				"\t",
 			),
@@ -172,5 +180,5 @@ export async function runList(
 		return;
 	}
 
-	log.message(buildListOutput(listCatalogEntries(), options));
+	log.message(buildListOutput(loadedRegistry.catalog, options));
 }
