@@ -1,14 +1,16 @@
 import { readdir, readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	buildArtifactIndex,
 	ConfigStore,
 	CoreLive,
 	type Lockfile,
+	LockfileSchema,
 	type Manifest,
+	ManifestSchema,
 	State,
 } from "../src/index";
 import {
@@ -300,6 +302,82 @@ describe("project state", () => {
 		});
 	});
 
+	it("round-trips registry opt-in and descriptors", async () => {
+		await withTempDir("state-registries", async (directory) => {
+			const manifest: Manifest = {
+				config: {},
+				installs: [],
+				modules: {},
+				registries: ["@acme/forge-sentry"],
+				registryDescriptors: [
+					{
+						apiVersion: 1,
+						id: "@acme/forge-sentry",
+						integrity: "sha512-fixture",
+						source: "npm",
+						units: [{ id: "@acme/sentry", kind: "addon" }],
+						version: "2.3.4",
+					},
+				],
+				schemaVersion: 1,
+			};
+
+			await Effect.runPromise(
+				State.writeManifest(directory, manifest).pipe(
+					Effect.provide(projectLayer),
+				),
+			);
+
+			expect(
+				await Effect.runPromise(
+					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
+				),
+			).toEqual(manifest);
+		});
+	});
+
+	it("encodes current manifest and lockfile schemas", () => {
+		const manifest = Schema.encodeSync(ManifestSchema)({
+			config: {},
+			installs: [],
+			modules: { abcde: { definitionIds: [] } },
+			registries: ["@acme/forge-sentry"],
+			registryDescriptors: [],
+			schemaVersion: 1,
+		});
+		const lockfile = Schema.encodeSync(LockfileSchema)({
+			artifacts: {},
+			schemaVersion: 1,
+		});
+
+		expect(manifest).toEqual({
+			config: {},
+			installs: [],
+			modules: { abcde: { definitionIds: [] } },
+			registries: ["@acme/forge-sentry"],
+			registryDescriptors: [],
+			schemaVersion: 1,
+		});
+		expect(lockfile).toEqual({ artifacts: {}, schemaVersion: 1 });
+	});
+
+	it("rejects invalid registry package names", async () => {
+		await withTempDir("state-invalid-registry", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				modules: {},
+				registries: ["unscoped"],
+				schemaVersion: 1,
+			});
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
+				),
+			);
+			expect(error.message).toMatch(/^Invalid Manifest\n/);
+		});
+	});
+
 	it("rejects a manifest with invalid field values", async () => {
 		await withTempDir("manifest-invalid", async (directory) => {
 			await writeJson(join(directory, ".forge/manifest.json"), {
@@ -335,53 +413,32 @@ describe("project state", () => {
 
 	it("rejects missing and unsupported state schema versions", async () => {
 		await withTempDir("state-schema-version", async (directory) => {
-			await writeJson(join(directory, ".forge/manifest.json"), {
-				modules: {},
-			});
-			const missingManifest = await Effect.runPromise(
-				Effect.flip(
-					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
-				),
-			);
-			expect(missingManifest.message).toContain(
-				"We can't read this project's metadata because it was saved by a different version of Forge.",
-			);
+			const versionMessage =
+				"We can't read this project's metadata because it was saved by a different version of Forge.";
 
-			await writeJson(join(directory, ".forge/manifest.json"), {
-				modules: {},
-				schemaVersion: 2,
-			});
-			const unsupportedManifest = await Effect.runPromise(
-				Effect.flip(
-					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
-				),
-			);
-			expect(unsupportedManifest.message).toContain(
-				"We can't read this project's metadata because it was saved by a different version of Forge.",
-			);
+			for (const schemaVersion of [undefined, "garbage", 2]) {
+				await writeJson(join(directory, ".forge/manifest.json"), {
+					modules: {},
+					schemaVersion,
+				});
+				const manifestError = await Effect.runPromise(
+					Effect.flip(
+						State.readManifest(directory).pipe(Effect.provide(projectLayer)),
+					),
+				);
+				expect(manifestError.message).toContain(versionMessage);
 
-			await writeJson(join(directory, ".forge/lock.json"), { artifacts: {} });
-			const missingLockfile = await Effect.runPromise(
-				Effect.flip(
-					State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
-				),
-			);
-			expect(missingLockfile.message).toContain(
-				"We can't read this project's metadata because it was saved by a different version of Forge.",
-			);
-
-			await writeJson(join(directory, ".forge/lock.json"), {
-				artifacts: {},
-				schemaVersion: 2,
-			});
-			const unsupportedLockfile = await Effect.runPromise(
-				Effect.flip(
-					State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
-				),
-			);
-			expect(unsupportedLockfile.message).toContain(
-				"We can't read this project's metadata because it was saved by a different version of Forge.",
-			);
+				await writeJson(join(directory, ".forge/lock.json"), {
+					artifacts: {},
+					schemaVersion,
+				});
+				const lockfileError = await Effect.runPromise(
+					Effect.flip(
+						State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
+					),
+				);
+				expect(lockfileError.message).toContain(versionMessage);
+			}
 		});
 	});
 

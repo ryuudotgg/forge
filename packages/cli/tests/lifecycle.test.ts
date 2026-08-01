@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type InstallRecord, ManifestSchema } from "@ryuujs/core";
+import * as generators from "@ryuujs/generators";
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -119,11 +120,11 @@ describe("lifecycle", () => {
 	});
 
 	it("exits when the manifest config is empty", async () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation(((
-			code?: string | number | null,
-		) => {
-			throw new Error(`exit:${code ?? 0}`);
-		}) as never);
+		const exit = vi
+			.spyOn(process, "exit")
+			.mockImplementation((code?: string | number | null): never => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
 
 		try {
 			await withTempDir("lifecycle-legacy", async (directory) => {
@@ -202,5 +203,51 @@ describe("lifecycle", () => {
 		} finally {
 			exit.mockRestore();
 		}
+	});
+
+	it("formats registry loading failures without a stack trace", async () => {
+		const exit = vi
+			.spyOn(process, "exit")
+			.mockImplementation((code?: string | number | null): never => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+		try {
+			await withTempDir("lifecycle-registry-failure", async (directory) => {
+				await expect(
+					applyInstalledPlan(directory, { slug: "acme" }, [], commandVersions, [
+						"@fixture/missing-registry",
+					]),
+				).rejects.toThrow("exit:1");
+			});
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"Registry Not Installed: @fixture/missing-registry",
+			);
+			expect(promptMocks.logError.mock.calls.flat().join("\n")).not.toContain(
+				"RegistryLoadError",
+			);
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("rethrows non-registry loading failures", async () => {
+		const defect = new Error("unexpected loader defect");
+		vi.spyOn(generators, "loadDefinitionRegistry").mockImplementationOnce(
+			(): never => {
+				throw defect;
+			},
+		);
+
+		await expect(
+			applyInstalledPlan(
+				"/fixture-project",
+				{ slug: "acme" },
+				[],
+				commandVersions,
+			),
+		).rejects.toBe(defect);
+		expect(promptMocks.logError).not.toHaveBeenCalled();
 	});
 });

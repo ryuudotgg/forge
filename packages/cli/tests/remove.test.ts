@@ -75,6 +75,29 @@ describe("remove command", () => {
 			".",
 			{ slug: "acme", web: "nextjs" },
 			[],
+			undefined,
+			undefined,
+		);
+	});
+
+	it("forwards opted-in registries when removing an addon", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				installs: [
+					{ definitionId: "tailwind", targets: [{ kind: "project" }] },
+				],
+				registries: ["@acme/forge-sentry"],
+			}),
+		);
+
+		await runRemove("tailwind", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[],
+			undefined,
+			["@acme/forge-sentry"],
 		);
 	});
 
@@ -96,6 +119,8 @@ describe("remove command", () => {
 			".",
 			{ addons: ["lefthook"], slug: "acme" },
 			[{ definitionId: "lefthook", targets: [{ kind: "project" }] }],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -137,6 +162,8 @@ describe("remove command", () => {
 					targets: [{ kind: "module", moduleId: "fghij" }],
 				},
 			],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -154,6 +181,8 @@ describe("remove command", () => {
 			".",
 			{ slug: "acme", web: "nextjs" },
 			[],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -263,6 +292,8 @@ describe("remove command", () => {
 			".",
 			{ orm: "prisma", slug: "acme", web: "nextjs" },
 			[{ definitionId: "prisma", targets: [{ kind: "project" }] }],
+			undefined,
+			undefined,
 		);
 	});
 

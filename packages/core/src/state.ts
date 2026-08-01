@@ -76,6 +76,34 @@ const LockfileArtifactSchema = Schema.Struct({
 
 export type LockfileArtifact = typeof LockfileArtifactSchema.Type;
 
+const RegistryPackageIdSchema = Schema.String.pipe(
+	Schema.pattern(/^@[^/\s]+\/[^/\s]+$/),
+);
+
+const RegistryUnitSchema = Schema.Union(
+	Schema.Struct({ id: Schema.String, kind: Schema.Literal("addon") }),
+	Schema.Struct({
+		addon: Schema.String,
+		framework: Schema.String,
+		kind: Schema.Literal("adapter"),
+	}),
+	Schema.Struct({ id: Schema.String, kind: Schema.Literal("framework") }),
+	Schema.Struct({ id: Schema.String, kind: Schema.Literal("template") }),
+);
+
+export type RegistryUnit = typeof RegistryUnitSchema.Type;
+
+export const RegistryDescriptorSchema = Schema.Struct({
+	apiVersion: Schema.Int,
+	id: RegistryPackageIdSchema,
+	integrity: Schema.optional(Schema.String),
+	source: Schema.Literal("npm"),
+	units: Schema.Array(RegistryUnitSchema),
+	version: Schema.String,
+});
+
+export type RegistryDescriptor = typeof RegistryDescriptorSchema.Type;
+
 export const ManifestSchema = Schema.Struct({
 	schemaVersion: Schema.propertySignature(StateSchemaVersion).annotations({
 		missingMessage: () =>
@@ -91,6 +119,8 @@ export const ManifestSchema = Schema.Struct({
 	installs: Schema.optionalWith(Schema.Array(InstallRecordSchema), {
 		default: () => [],
 	}),
+	registries: Schema.optional(Schema.Array(RegistryPackageIdSchema)),
+	registryDescriptors: Schema.optional(Schema.Array(RegistryDescriptorSchema)),
 });
 
 export type Manifest = typeof ManifestSchema.Type;

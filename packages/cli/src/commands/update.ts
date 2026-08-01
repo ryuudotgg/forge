@@ -11,5 +11,7 @@ export async function runUpdate(
 		project.projectRoot,
 		project.config,
 		project.manifest.installs,
+		undefined,
+		project.manifest.registries,
 	);
 }

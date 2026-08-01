@@ -6,6 +6,7 @@ import {
 	Apply,
 	CommandProbe,
 	ConfigStore,
+	type DefinitionRegistry,
 	Planner,
 	packageManagerCommand,
 	Renderer,
@@ -78,6 +79,7 @@ export async function plannedDefinitionIds(config: ForgeConfig) {
 export async function plannedProject(
 	config: ForgeConfig,
 	versions: Readonly<Record<string, string>> = {},
+	registry: DefinitionRegistry<ForgeConfig> = builtins,
 ) {
 	const directory = await mkdtemp(join(tmpdir(), "forge-generators-"));
 	const plannerLayer = makePlannerLayer(versions);
@@ -91,7 +93,7 @@ export async function plannedProject(
 				return yield* planner.planCreate(
 					directory,
 					config,
-					builtins,
+					registry,
 					commandVersions,
 				);
 			}).pipe(Effect.provide(plannerLayer)),

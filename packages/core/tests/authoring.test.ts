@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type AddonDefinition,
 	type AppConfig,
+	authoringApiVersion,
 	type Compatibility,
 	defineAdapter,
 	defineAddon,
@@ -121,6 +122,10 @@ const packageModule: PackageConfig = {
 };
 
 describe("authoring", () => {
+	it("derives the authoring API version from the core package major", () => {
+		expect(authoringApiVersion).toBe(1);
+	});
+
 	it("resolves a filled app slot path", async () => {
 		const web = ensuredModuleTarget("web");
 		const resolved = await Effect.runPromise(
@@ -449,6 +454,27 @@ describe("authoring", () => {
 				addons: [appAddon],
 			}),
 		).toThrow("Adapter Duplicate: tailwind:nextjs");
+	});
+
+	it.each([
+		[
+			"Addon Duplicate: tailwind",
+			{ addons: [appAddon, appAddon], frameworks: [framework], templates: [] },
+		],
+		[
+			"Framework Duplicate: nextjs",
+			{ addons: [appAddon], frameworks: [framework, framework], templates: [] },
+		],
+		[
+			"Template Duplicate: nextjs/base",
+			{
+				addons: [appAddon],
+				frameworks: [framework],
+				templates: [template, template],
+			},
+		],
+	])("rejects duplicate registry units with %s", (message, registry) => {
+		expect(() => defineRegistry(registry)).toThrow(message);
 	});
 
 	it("rejects an adapter for a missing addon", () => {

@@ -1,8 +1,18 @@
 import { Effect, Schema } from "effect";
+import packageJson from "../package.json" with { type: "json" };
 import type { CommandProbe } from "./command";
 import type { AppConfig, ModuleId, PackageConfig, Slots } from "./config";
 import { GeneratorError, RegistryError } from "./errors";
 import type { Dependency } from "./operations";
+
+const coreMajorVersion = Number.parseInt(
+	packageJson.version.split(".")[0] ?? "",
+	10,
+);
+
+export const authoringApiVersion = Number.isFinite(coreMajorVersion)
+	? Math.max(1, coreMajorVersion)
+	: 1;
 
 export const packageSlotNames = {
 	globalsCss: "globalsCss",
@@ -605,6 +615,25 @@ export function defineRegistry<Config>(registry: {
 	readonly addons: ReadonlyArray<AddonDefinition<Config>>;
 }): DefinitionRegistry<Config> {
 	const adapters = registry.adapters ?? [];
+	const validateUniqueIds = (
+		kind: "Addon" | "Framework" | "Template",
+		entries: ReadonlyArray<{ readonly id: string }>,
+	) => {
+		const ids = new Set<string>();
+		for (const entry of entries) {
+			if (ids.has(entry.id))
+				throw new RegistryError({
+					message: `${kind} Duplicate: ${entry.id}`,
+					registryId: entry.id,
+				});
+
+			ids.add(entry.id);
+		}
+	};
+
+	validateUniqueIds("Addon", registry.addons);
+	validateUniqueIds("Framework", registry.frameworks);
+	validateUniqueIds("Template", registry.templates);
 
 	for (const framework of registry.frameworks) {
 		const uniqueSlots = new Set(framework.slots);

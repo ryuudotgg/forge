@@ -233,9 +233,18 @@ export async function runAdd(
 			};
 	}
 
+	const nextConfig = configWithInstall(project.config, addon.id);
+	const nextInstalls = mergeInstallRecord(
+		project.manifest.installs,
+		record,
+		addon.targetMode,
+	);
+
 	await applyInstalledPlan(
 		project.projectRoot,
-		configWithInstall(project.config, addon.id),
-		mergeInstallRecord(project.manifest.installs, record, addon.targetMode),
+		nextConfig,
+		nextInstalls,
+		undefined,
+		project.manifest.registries,
 	);
 }

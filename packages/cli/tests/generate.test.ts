@@ -242,6 +242,8 @@ describe("generate step", () => {
 		const loadRegistry = vi
 			.spyOn(generators, "loadDefinitionRegistry")
 			.mockReturnValue({
+				catalog: [],
+				descriptors: [],
 				registry: defineRegistry({
 					frameworks: [fakeFramework],
 					templates: [fakeTemplate],
