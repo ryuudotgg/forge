@@ -1,12 +1,16 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { type InstallRecord, ManifestSchema } from "@ryuujs/core";
 import * as generators from "@ryuujs/generators";
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyInstalledPlan,
+	configuredPackageManager,
+	hasProjectDevDependency,
 	loadManagedProject,
+	loadProjectRegistry,
+	runPackageManagerOperation,
 } from "../src/commands/lifecycle";
 import { withTempDir, writeJson } from "./lifecycle-fixtures";
 
@@ -92,6 +96,62 @@ describe("lifecycle", () => {
 		});
 	});
 
+	it("detects project devDependencies without treating dependencies as devDependencies", async () => {
+		await withTempDir("lifecycle-dev-dependency", async (directory) => {
+			await writeJson(join(directory, "package.json"), {
+				dependencies: { "@acme/runtime": "1.0.0" },
+				devDependencies: { "@acme/forge-sentry": "1.2.3" },
+			});
+
+			await expect(
+				hasProjectDevDependency(directory, "@acme/forge-sentry"),
+			).resolves.toBe(true);
+			await expect(
+				hasProjectDevDependency(directory, "@acme/runtime"),
+			).resolves.toBe(false);
+		});
+	});
+
+	it("falls back to pnpm for legacy package-manager metadata", () => {
+		expect(configuredPackageManager({ packageManager: "volt" })).toBe("pnpm");
+	});
+
+	it("runs package-manager operations in the project root", async () => {
+		await withTempDir("lifecycle-pm-operation", async (directory) => {
+			await expect(
+				runPackageManagerOperation(directory, {
+					args: [],
+					command: "/usr/bin/true",
+				}),
+			).resolves.toBe(true);
+			await expect(
+				runPackageManagerOperation(directory, {
+					args: [],
+					command: "/usr/bin/false",
+				}),
+			).resolves.toBe(false);
+		});
+	});
+
+	it("soft-fails when the package-manager command cannot be spawned", async () => {
+		await withTempDir("lifecycle-pm-missing", async (directory) => {
+			await expect(
+				runPackageManagerOperation(directory, {
+					args: [],
+					command: "forge-test-nonexistent-package-manager-xyz",
+				}),
+			).resolves.toBe(false);
+		});
+	});
+
+	it("loads a project's merged registry through the shared lifecycle path", async () => {
+		const loaded = await loadProjectRegistry("/fixture-project", []);
+		expect(loaded.descriptors).toEqual([]);
+		expect(loaded.registry.addons.map((entry) => entry.id)).toContain(
+			"tailwind",
+		);
+	});
+
 	it("round-trips the manifest config instead of inferring it", async () => {
 		await withTempDir("lifecycle-roundtrip", async (directory) => {
 			await scaffoldWebModule(directory);
@@ -116,6 +176,29 @@ describe("lifecycle", () => {
 			expect(project.modules.map((module) => module.root)).toEqual(
 				expect.arrayContaining(["apps/web", "packages/ui"]),
 			);
+		});
+	});
+
+	it("normalizes a relative project root before loading the project", async () => {
+		await withTempDir("lifecycle-relative-root", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				config: { slug: "acme" },
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			});
+
+			const previousCwd = process.cwd();
+			process.chdir(directory);
+
+			try {
+				const project = await loadManagedProject(".", "add");
+
+				expect(project.projectRoot).toBe(resolve("."));
+				expect(isAbsolute(project.projectRoot)).toBe(true);
+			} finally {
+				process.chdir(previousCwd);
+			}
 		});
 	});
 

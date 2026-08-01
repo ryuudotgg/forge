@@ -89,6 +89,7 @@ function planInstalledEffect(
 	installs: ReadonlyArray<InstallRecord>,
 	registry: DefinitionRegistry<TestConfig>,
 	registryDescriptors?: ReadonlyArray<RegistryDescriptor>,
+	registries?: ReadonlyArray<string>,
 ) {
 	return Effect.flatMap(Planner, (planner) =>
 		planner.planInstalled(
@@ -98,6 +99,7 @@ function planInstalledEffect(
 			registry,
 			{},
 			registryDescriptors,
+			registries,
 		),
 	).pipe(Effect.provide(coreLayer));
 }
@@ -622,6 +624,32 @@ describe("planner", () => {
 
 			expect(plan.manifest.registries).toEqual(["@acme/forge-sentry"]);
 			expect(plan.manifest.registryDescriptors).toEqual(descriptors);
+		});
+	});
+
+	it("persists an explicit registry selection on installed plans", async () => {
+		await withTempDir("planner-registry-selection", async (directory) => {
+			await Effect.runPromise(
+				State.writeManifest(directory, {
+					config: {},
+					installs: [],
+					modules: {},
+					registries: ["@acme/old-registry"],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const plan = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					{},
+					[],
+					testRegistry(),
+					[],
+					["@acme/new-registry"],
+				),
+			);
+
+			expect(plan.manifest.registries).toEqual(["@acme/new-registry"]);
 		});
 	});
 

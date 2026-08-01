@@ -41,6 +41,42 @@ export function packageManagerCommand(pm: PackageManager): PackageManagerId {
 	return pmCommandMap[pm];
 }
 
+const packageManagerAddDevArgs = {
+	pnpm: ["add", "-D", "-w"],
+	npm: ["install", "-D"],
+	yarn: ["add", "-D"],
+	bun: ["add", "-d"],
+} satisfies Record<PackageManagerId, ReadonlyArray<string>>;
+
+const packageManagerRemoveArgs = {
+	pnpm: ["remove"],
+	npm: ["uninstall"],
+	yarn: ["remove"],
+	bun: ["remove"],
+} satisfies Record<PackageManagerId, ReadonlyArray<string>>;
+
+export function packageManagerAddDevCommand(
+	pm: PackageManager,
+	packageId: string,
+) {
+	const command = packageManagerCommand(pm);
+	return {
+		args: [...packageManagerAddDevArgs[command], packageId],
+		command,
+	};
+}
+
+export function packageManagerRemoveCommand(
+	pm: PackageManager,
+	packageId: string,
+) {
+	const command = packageManagerCommand(pm);
+	return {
+		args: [...packageManagerRemoveArgs[command], packageId],
+		command,
+	};
+}
+
 export function isPackageManager(value: unknown): value is PackageManager {
 	return Object.values(packageManagers).some((pm) => pm.displayName === value);
 }
