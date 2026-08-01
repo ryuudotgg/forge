@@ -187,6 +187,59 @@ describe("registry loader", () => {
 		).toEqual(loaded.descriptors);
 	});
 
+	it("accepts self-contained structural registry definitions", async () => {
+		const loaded = await loadDefinitionRegistry({
+			importRegistry: async () => ({
+				module: {
+					default: {
+						apiVersion: 1,
+						addons: [
+							{
+								_tag: "AddonDefinition",
+								category: "tooling",
+								contribute: () => [],
+								dependencies: [],
+								exclusive: false,
+								id: "@fixture/structural",
+								name: "Structural Fixture",
+								targetMode: "multiple",
+								version: "1.0.0",
+								when: () => false,
+							},
+						],
+						catalog: [
+							{
+								available: true,
+								category: "tooling",
+								description: "A structural fixture.",
+								experimental: false,
+								hidden: false,
+								id: "@fixture/structural",
+								keywords: ["fixture"],
+								kind: "addon",
+								name: "Structural Fixture",
+								summary: "Exercise structural loading.",
+								targetMode: "multiple",
+							},
+						],
+					},
+				},
+				version: "1.0.0",
+			}),
+			projectRoot: "/fixture-project",
+			registries: ["@fixture/structural-registry"],
+		});
+
+		expect(
+			loaded.registry.addons.find(
+				(entry) => entry.id === "@fixture/structural",
+			),
+		).toMatchObject({ _tag: "AddonDefinition" });
+		expect(loaded.descriptors[0]?.units).toEqual([
+			{ id: "@fixture/structural", kind: "addon" },
+		]);
+	});
+
 	it("resolves packages from the project's node_modules", async () => {
 		const projectRoot = await mkdtemp(
 			join(tmpdir(), "forge-registry-resolve-"),
@@ -248,6 +301,13 @@ describe("registry loader", () => {
 			await expect(
 				importRegistryPackage("@fixture/versionless-registry", projectRoot),
 			).rejects.toThrow(
+				"Registry Package Version Missing: @fixture/versionless-registry",
+			);
+			const versionlessError = await loadFailure({
+				projectRoot,
+				registries: ["@fixture/versionless-registry"],
+			});
+			expect(versionlessError.message).toBe(
 				"Registry Package Version Missing: @fixture/versionless-registry",
 			);
 		} finally {

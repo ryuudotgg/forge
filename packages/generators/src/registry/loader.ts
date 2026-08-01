@@ -46,7 +46,11 @@ class RegistryPackageResolutionError extends Schema.TaggedError<RegistryPackageR
 
 class RegistryPackageExecutionError extends Schema.TaggedError<RegistryPackageExecutionError>()(
 	"RegistryPackageExecutionError",
-	{ detail: Schema.String, message: Schema.String },
+	{
+		detail: Schema.String,
+		message: Schema.String,
+		versionMissing: Schema.Boolean,
+	},
 ) {}
 
 export interface RegistryPackageImport {
@@ -259,20 +263,24 @@ export async function importRegistryPackage(
 		});
 	}
 
-	let version: string;
 	let packageMetadata: unknown;
 	try {
 		packageMetadata = projectRequire(packagePath);
-
-		const packageMetadataVersion = packageVersion(packageMetadata);
-		if (packageMetadataVersion === undefined)
-			throw new Error(`Registry Package Version Missing: ${id}`);
-
-		version = packageMetadataVersion;
 	} catch (error) {
 		throw new RegistryPackageExecutionError({
 			detail: errorMessage(error),
 			message: errorMessage(error),
+			versionMissing: false,
+		});
+	}
+
+	const version = packageVersion(packageMetadata);
+	if (version === undefined) {
+		const message = `Registry Package Version Missing: ${id}`;
+		throw new RegistryPackageExecutionError({
+			detail: message,
+			message,
+			versionMissing: true,
 		});
 	}
 
@@ -300,6 +308,7 @@ export async function importRegistryPackage(
 		throw new RegistryPackageExecutionError({
 			detail: errorMessage(error),
 			message: errorMessage(error),
+			versionMissing: false,
 		});
 	}
 
@@ -449,20 +458,26 @@ function loadThirdPartyRegistries(
 		for (const registryId of options.registries) {
 			const imported = yield* Effect.tryPromise({
 				try: () => importer(registryId, options.projectRoot),
-				catch: (error) =>
-					error instanceof RegistryPackageExecutionError
-						? registryError(
-								registryId,
-								`Registry Import Failed: ${registryId}: ${error.detail}`,
-								error.detail,
-							)
-						: registryError(
-								registryId,
-								`Registry Not Installed: ${registryId}`,
-								error instanceof RegistryPackageResolutionError
-									? error.detail
-									: errorMessage(error),
-							),
+				catch: (error) => {
+					if (error instanceof RegistryPackageExecutionError) {
+						if (error.versionMissing)
+							return registryError(registryId, error.detail);
+
+						return registryError(
+							registryId,
+							`Registry Import Failed: ${registryId}: ${error.detail}`,
+							error.detail,
+						);
+					}
+
+					return registryError(
+						registryId,
+						`Registry Not Installed: ${registryId}`,
+						error instanceof RegistryPackageResolutionError
+							? error.detail
+							: errorMessage(error),
+					);
+				},
 			});
 
 			const decoded = yield* decodeRegistryPackageManifest(
@@ -624,16 +639,12 @@ export function findRemovalBlockers(
 	config: ForgeConfig,
 	installedIds: ReadonlyArray<string>,
 	moduleTemplates: ReadonlyArray<TemplateRef>,
+	registry: LoadedDefinitionRegistry["registry"] = firstPartyRegistry,
 ): RemovalBlockers {
-	const removed = firstPartyRegistry.addons.find(
-		(entry) => entry.id === addonId,
-	);
-
+	const removed = registry.addons.find((entry) => entry.id === addonId);
 	if (!removed) return { dependents: [], frameworks: [] };
 
-	const byId = new Map(
-		firstPartyRegistry.addons.map((entry) => [entry.id, entry]),
-	);
+	const byId = new Map(registry.addons.map((entry) => [entry.id, entry]));
 
 	const blocksRemoval = (dependent: {
 		readonly dependencies: ReadonlyArray<DependencyRef>;
@@ -666,7 +677,7 @@ export function findRemovalBlockers(
 
 	const frameworks = [
 		...new Set(
-			firstPartyRegistry.templates
+			registry.templates
 				.filter(
 					(template) =>
 						moduleTemplates.some(
@@ -677,7 +688,7 @@ export function findRemovalBlockers(
 				)
 				.map(
 					(template) =>
-						firstPartyRegistry.frameworks.find(
+						registry.frameworks.find(
 							(framework) => framework.id === template.framework,
 						)?.name ?? template.framework,
 				),

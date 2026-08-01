@@ -5,6 +5,7 @@ import {
 	type DiscoveredModule,
 	defineAddon,
 	type InstallRecord,
+	type Manifest,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "@ryuujs/generators";
 
@@ -101,6 +102,7 @@ export function managedProject(options?: {
 	readonly installs?: ReadonlyArray<InstallRecord>;
 	readonly modules?: ReadonlyArray<DiscoveredModule>;
 	readonly registries?: ReadonlyArray<string>;
+	readonly registryDescriptors?: Manifest["registryDescriptors"];
 }) {
 	return {
 		config: options?.config ?? { slug: "acme", web: "nextjs" },
@@ -111,6 +113,9 @@ export function managedProject(options?: {
 			...(options?.registries === undefined
 				? {}
 				: { registries: options.registries }),
+			...(options?.registryDescriptors === undefined
+				? {}
+				: { registryDescriptors: options.registryDescriptors }),
 		},
 		modules: options?.modules ?? [appModule],
 		projectRoot: ".",

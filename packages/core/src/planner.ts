@@ -84,6 +84,7 @@ interface PlanIntentInstalled<ConfigValue> {
 	readonly config: ConfigValue;
 	readonly installs: ReadonlyArray<InstallRecord>;
 	readonly registryDescriptors?: ReadonlyArray<RegistryDescriptor>;
+	readonly registries?: ReadonlyArray<string>;
 }
 
 type PlanIntent<ConfigValue> =
@@ -1487,7 +1488,9 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				intent.config,
 				defaultCreateInstalls.filter((install) => install.targets.length > 0),
 				modules,
-				existingManifest.registries,
+				intent._tag === "Installed"
+					? (intent.registries ?? existingManifest.registries)
+					: existingManifest.registries,
 				intent._tag === "Installed"
 					? (intent.registryDescriptors ?? existingManifest.registryDescriptors)
 					: existingManifest.registryDescriptors,
@@ -1543,6 +1546,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			registry: DefinitionRegistry<ConfigValue>,
 			commandVersions: Readonly<Record<string, string>>,
 			registryDescriptors?: ReadonlyArray<RegistryDescriptor>,
+			registries?: ReadonlyArray<string>,
 		) {
 			return yield* plan(projectRoot, registry, {
 				_tag: "Installed",
@@ -1550,6 +1554,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				config,
 				installs,
 				registryDescriptors,
+				registries,
 			});
 		});
 

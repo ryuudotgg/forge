@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import { log } from "@clack/prompts";
+import { Command, FileSystem } from "@effect/platform";
 import { NodeContext, NodeFileSystem } from "@effect/platform-node";
 import {
 	Apply,
@@ -8,7 +10,9 @@ import {
 	type DiscoveredModule,
 	formatApplyError,
 	type InstallRecord,
+	isPackageManager,
 	type Manifest,
+	type PackageManager,
 	Planner,
 	packageManagerCommand,
 	readPersistedCommandVersions,
@@ -22,9 +26,17 @@ import {
 	probeWorkspaceCommandVersions,
 	RegistryLoadError,
 } from "@ryuujs/generators";
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+
+const ProjectPackageJsonSchema = Schema.parseJson(
+	Schema.Struct({
+		devDependencies: Schema.optional(
+			Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+		),
+	}),
+);
 
 function readWorkspaceCommandVersions(
 	projectRoot: string,
@@ -80,12 +92,21 @@ export interface ManagedProject {
 	readonly projectRoot: string;
 }
 
+export function configuredPackageManager(
+	config: Manifest["config"],
+): PackageManager {
+	return isPackageManager(config.packageManager)
+		? config.packageManager
+		: "pnpm";
+}
+
 export async function loadManagedProject(
 	projectRoot: string,
 	_command: string,
 ): Promise<ManagedProject> {
+	const absoluteProjectRoot = resolve(projectRoot);
 	const manifest = await runLifecycleEffect(
-		State.readManifest(projectRoot).pipe(
+		State.readManifest(absoluteProjectRoot).pipe(
 			Effect.catchTag("StateError", (error) =>
 				error.message === "Manifest Not Found"
 					? Effect.succeed(undefined)
@@ -102,7 +123,7 @@ export async function loadManagedProject(
 	}
 
 	const modules = await runLifecycleEffect(
-		ConfigStore.discover(projectRoot).pipe(Effect.provide(coreLayer)),
+		ConfigStore.discover(absoluteProjectRoot).pipe(Effect.provide(coreLayer)),
 		"We couldn't read this project's modules.",
 	);
 
@@ -115,27 +136,63 @@ export async function loadManagedProject(
 		config: manifest.config,
 		manifest,
 		modules,
-		projectRoot,
+		projectRoot: absoluteProjectRoot,
 	};
 }
 
-export async function applyInstalledPlan(
+export async function hasProjectDevDependency(
 	projectRoot: string,
-	config: Manifest["config"],
-	installs: ReadonlyArray<InstallRecord>,
-	providedCommandVersions?: Readonly<Record<string, string>>,
-	registryIds: ReadonlyArray<string> = [],
+	packageId: string,
 ) {
-	let loadedRegistry: ReturnType<typeof loadDefinitionRegistry>;
+	return runLifecycleEffect(
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const raw = yield* fs.readFileString(`${projectRoot}/package.json`);
+			const packageJson = yield* Schema.decodeUnknown(ProjectPackageJsonSchema)(
+				raw,
+			);
+
+			return (
+				packageJson.devDependencies !== undefined &&
+				Object.hasOwn(packageJson.devDependencies, packageId)
+			);
+		}).pipe(Effect.provide(NodeContext.layer)),
+		"We couldn't read this project's package.json.",
+	);
+}
+
+export async function runPackageManagerOperation(
+	projectRoot: string,
+	operation: {
+		readonly args: ReadonlyArray<string>;
+		readonly command: string;
+	},
+) {
+	const exit = await Effect.runPromiseExit(
+		Command.exitCode(
+			Command.make(operation.command, ...operation.args).pipe(
+				Command.workingDirectory(projectRoot),
+				Command.stdout("pipe"),
+				Command.stderr("pipe"),
+			),
+		).pipe(Effect.provide(NodeContext.layer)),
+	);
+
+	return Exit.isSuccess(exit) && exit.value === 0;
+}
+
+export async function loadProjectRegistry(
+	projectRoot: string,
+	registryIds: ReadonlyArray<string>,
+) {
 	try {
-		loadedRegistry =
-			registryIds.length === 0
-				? loadDefinitionRegistry()
-				: await loadDefinitionRegistry({
-						importRegistry: importRegistryPackage,
-						projectRoot,
-						registries: registryIds,
-					});
+		return registryIds.length === 0
+			? loadDefinitionRegistry()
+			: await loadDefinitionRegistry({
+					importRegistry: importRegistryPackage,
+					projectRoot,
+					registries: registryIds,
+				});
 	} catch (error) {
 		if (error instanceof RegistryLoadError) {
 			log.error(error.message);
@@ -143,6 +200,19 @@ export async function applyInstalledPlan(
 		}
 		throw error;
 	}
+}
+
+export async function applyInstalledPlan(
+	projectRoot: string,
+	config: Manifest["config"],
+	installs: ReadonlyArray<InstallRecord>,
+	providedCommandVersions?: Readonly<Record<string, string>>,
+	registryIds?: ReadonlyArray<string>,
+) {
+	const loadedRegistry = await loadProjectRegistry(
+		projectRoot,
+		registryIds ?? [],
+	);
 
 	const plan = await runLifecycleEffect(
 		Effect.gen(function* () {
@@ -161,6 +231,7 @@ export async function applyInstalledPlan(
 				loadedRegistry.registry,
 				commandVersions,
 				loadedRegistry.descriptors,
+				registryIds,
 			);
 		}).pipe(Effect.provide(Layer.mergeAll(coreLayer, NodeFileSystem.layer))),
 		"We couldn't plan this change.",

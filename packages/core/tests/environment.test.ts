@@ -8,6 +8,9 @@ import {
 	defaultDependencyFormat,
 	dependencyFormatFor,
 	Environment,
+	packageManagerAddDevCommand,
+	packageManagerRemoveCommand,
+	packageManagers,
 	runtimeCommand,
 } from "../src/index";
 
@@ -196,6 +199,43 @@ describe("environment", () => {
 		expect(runtimeCommand("Node.js")).toBe("node");
 		expect(runtimeCommand("Bun")).toBe("bun");
 		expect(runtimeCommand("Deno")).toBe("deno");
+	});
+
+	it("maps every package manager to its dev-dependency add command", () => {
+		expect(
+			Object.values(packageManagers).map(({ displayName }) => [
+				displayName,
+				packageManagerAddDevCommand(displayName, "@acme/forge-sentry"),
+			]),
+		).toEqual([
+			[
+				"pnpm",
+				{
+					command: "pnpm",
+					args: ["add", "-D", "-w", "@acme/forge-sentry"],
+				},
+			],
+			[
+				"npm",
+				{ command: "npm", args: ["install", "-D", "@acme/forge-sentry"] },
+			],
+			["Yarn", { command: "yarn", args: ["add", "-D", "@acme/forge-sentry"] }],
+			["Bun", { command: "bun", args: ["add", "-d", "@acme/forge-sentry"] }],
+		]);
+	});
+
+	it("maps every package manager to its dependency remove command", () => {
+		expect(
+			Object.values(packageManagers).map(({ displayName }) => [
+				displayName,
+				packageManagerRemoveCommand(displayName, "@acme/forge-sentry"),
+			]),
+		).toEqual([
+			["pnpm", { command: "pnpm", args: ["remove", "@acme/forge-sentry"] }],
+			["npm", { command: "npm", args: ["uninstall", "@acme/forge-sentry"] }],
+			["Yarn", { command: "yarn", args: ["remove", "@acme/forge-sentry"] }],
+			["Bun", { command: "bun", args: ["remove", "@acme/forge-sentry"] }],
+		]);
 	});
 
 	it("derives the dependency format from the package manager", () => {

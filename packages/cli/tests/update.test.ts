@@ -4,27 +4,38 @@ import { managedProject } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	intro: vi.fn(),
+	logInfo: vi.fn(),
 }));
 
 const lifecycleMocks = vi.hoisted(() => ({
 	applyInstalledPlan: vi.fn(),
 	loadManagedProject: vi.fn(),
+	loadProjectRegistry: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
 	intro: promptMocks.intro,
+	log: { info: promptMocks.logInfo },
 }));
 
 vi.mock("../src/commands/lifecycle", () => ({
 	applyInstalledPlan: lifecycleMocks.applyInstalledPlan,
 	loadManagedProject: lifecycleMocks.loadManagedProject,
+	loadProjectRegistry: lifecycleMocks.loadProjectRegistry,
 }));
 
 describe("update command", () => {
 	beforeEach(() => {
 		lifecycleMocks.applyInstalledPlan.mockReset();
 		lifecycleMocks.loadManagedProject.mockReset();
+		lifecycleMocks.loadProjectRegistry.mockReset();
 		promptMocks.intro.mockReset();
+		promptMocks.logInfo.mockReset();
+		lifecycleMocks.loadProjectRegistry.mockResolvedValue({
+			catalog: [],
+			descriptors: [],
+			registry: { adapters: [], addons: [], frameworks: [], templates: [] },
+		});
 	});
 
 	it("re-applies the plan with the manifest installs", async () => {
@@ -88,6 +99,45 @@ describe("update command", () => {
 			[],
 			undefined,
 			["@acme/forge-sentry"],
+		);
+	});
+
+	it("reports registry package version changes", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				registries: ["@acme/forge-sentry"],
+				registryDescriptors: [
+					{
+						apiVersion: 1,
+						id: "@acme/forge-sentry",
+						source: "npm",
+						units: [{ id: "@acme/sentry", kind: "addon" }],
+						version: "1.4.2",
+					},
+				],
+			}),
+		);
+		lifecycleMocks.loadProjectRegistry.mockResolvedValue({
+			catalog: [],
+			descriptors: [
+				{
+					apiVersion: 1,
+					id: "@acme/forge-sentry",
+					source: "npm",
+					units: [{ id: "@acme/sentry", kind: "addon" }],
+					version: "1.5.0",
+				},
+			],
+			registry: { adapters: [], addons: [], frameworks: [], templates: [] },
+		});
+
+		await runUpdate({});
+
+		expect(lifecycleMocks.loadProjectRegistry).toHaveBeenCalledWith(".", [
+			"@acme/forge-sentry",
+		]);
+		expect(promptMocks.logInfo).toHaveBeenCalledWith(
+			"@acme/forge-sentry 1.4.2 -> 1.5.0.",
 		);
 	});
 });
