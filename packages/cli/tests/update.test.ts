@@ -48,6 +48,8 @@ describe("update command", () => {
 					targets: [{ kind: "project" }],
 				},
 			],
+			undefined,
+			undefined,
 		);
 
 		const [, config, installs] =
@@ -71,5 +73,21 @@ describe("update command", () => {
 		const applyOrder =
 			lifecycleMocks.applyInstalledPlan.mock.invocationCallOrder[0] ?? 0;
 		expect(introOrder).toBeLessThan(applyOrder);
+	});
+
+	it("forwards opted-in registries", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ registries: ["@acme/forge-sentry"] }),
+		);
+
+		await runUpdate({});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[],
+			undefined,
+			["@acme/forge-sentry"],
+		);
 	});
 });

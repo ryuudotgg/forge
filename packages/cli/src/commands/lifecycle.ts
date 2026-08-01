@@ -17,8 +17,10 @@ import {
 } from "@ryuujs/core";
 import {
 	type ForgeConfig,
+	importRegistryPackage,
 	loadDefinitionRegistry,
 	probeWorkspaceCommandVersions,
+	RegistryLoadError,
 } from "@ryuujs/generators";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
@@ -122,8 +124,26 @@ export async function applyInstalledPlan(
 	config: Manifest["config"],
 	installs: ReadonlyArray<InstallRecord>,
 	providedCommandVersions?: Readonly<Record<string, string>>,
+	registryIds: ReadonlyArray<string> = [],
 ) {
-	const loadedRegistry = await loadDefinitionRegistry();
+	let loadedRegistry: ReturnType<typeof loadDefinitionRegistry>;
+	try {
+		loadedRegistry =
+			registryIds.length === 0
+				? loadDefinitionRegistry()
+				: await loadDefinitionRegistry({
+						importRegistry: importRegistryPackage,
+						projectRoot,
+						registries: registryIds,
+					});
+	} catch (error) {
+		if (error instanceof RegistryLoadError) {
+			log.error(error.message);
+			process.exit(1);
+		}
+		throw error;
+	}
+
 	const plan = await runLifecycleEffect(
 		Effect.gen(function* () {
 			const commandVersions =
@@ -140,6 +160,7 @@ export async function applyInstalledPlan(
 				installs,
 				loadedRegistry.registry,
 				commandVersions,
+				loadedRegistry.descriptors,
 			);
 		}).pipe(Effect.provide(Layer.mergeAll(coreLayer, NodeFileSystem.layer))),
 		"We couldn't plan this change.",

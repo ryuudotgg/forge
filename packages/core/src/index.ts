@@ -40,6 +40,7 @@ export type {
 	TemplateRef,
 } from "./authoring";
 export {
+	authoringApiVersion,
 	defineAdapter,
 	defineAddon,
 	defineFramework,
@@ -168,6 +169,8 @@ export type {
 	LockfileArtifactKind,
 	Manifest,
 	ModuleRecord,
+	RegistryDescriptor,
+	RegistryUnit,
 	StateBundle,
 	SurfaceMergeKind,
 } from "./state";
@@ -177,5 +180,6 @@ export {
 	defaultManifest,
 	LockfileSchema,
 	ManifestSchema,
+	RegistryDescriptorSchema,
 	State,
 } from "./state";

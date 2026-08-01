@@ -42,6 +42,7 @@ import {
 	type LockfileArtifact,
 	type Manifest,
 	type ModuleRecord,
+	type RegistryDescriptor,
 	State,
 	SURFACE_MERGE_SEMANTICS_VERSION,
 } from "./state";
@@ -82,6 +83,7 @@ interface PlanIntentInstalled<ConfigValue> {
 	readonly commandVersions: Readonly<Record<string, string>>;
 	readonly config: ConfigValue;
 	readonly installs: ReadonlyArray<InstallRecord>;
+	readonly registryDescriptors?: ReadonlyArray<RegistryDescriptor>;
 }
 
 type PlanIntent<ConfigValue> =
@@ -1074,6 +1076,8 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			config: Record<string, unknown>,
 			installs: ReadonlyArray<InstallRecord>,
 			modules: ReadonlyArray<ManagedModuleRecord>,
+			registries: ReadonlyArray<string> | undefined,
+			registryDescriptors: ReadonlyArray<RegistryDescriptor> | undefined,
 		) {
 			return {
 				schemaVersion: 1,
@@ -1088,6 +1092,13 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						},
 					]),
 				),
+				...(registries === undefined || registries.length === 0
+					? {}
+					: { registries }),
+				...(registryDescriptors === undefined ||
+				registryDescriptors.length === 0
+					? {}
+					: { registryDescriptors }),
 			} satisfies Manifest;
 		});
 
@@ -1476,6 +1487,10 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				intent.config,
 				defaultCreateInstalls.filter((install) => install.targets.length > 0),
 				modules,
+				existingManifest.registries,
+				intent._tag === "Installed"
+					? (intent.registryDescriptors ?? existingManifest.registryDescriptors)
+					: existingManifest.registryDescriptors,
 			);
 
 			const lockfile = yield* buildLockfile(
@@ -1527,12 +1542,14 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			installs: ReadonlyArray<InstallRecord>,
 			registry: DefinitionRegistry<ConfigValue>,
 			commandVersions: Readonly<Record<string, string>>,
+			registryDescriptors?: ReadonlyArray<RegistryDescriptor>,
 		) {
 			return yield* plan(projectRoot, registry, {
 				_tag: "Installed",
 				commandVersions,
 				config,
 				installs,
+				registryDescriptors,
 			});
 		});
 

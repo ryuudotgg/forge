@@ -100,6 +100,7 @@ export function managedProject(options?: {
 	readonly config?: ForgeConfig;
 	readonly installs?: ReadonlyArray<InstallRecord>;
 	readonly modules?: ReadonlyArray<DiscoveredModule>;
+	readonly registries?: ReadonlyArray<string>;
 }) {
 	return {
 		config: options?.config ?? { slug: "acme", web: "nextjs" },
@@ -107,6 +108,9 @@ export function managedProject(options?: {
 			config: {},
 			installs: [...(options?.installs ?? [])],
 			modules: {},
+			...(options?.registries === undefined
+				? {}
+				: { registries: options.registries }),
 		},
 		modules: options?.modules ?? [appModule],
 		projectRoot: ".",

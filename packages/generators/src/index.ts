@@ -83,16 +83,27 @@ export { default as drizzle } from "./orm/drizzle";
 export { default as prisma } from "./orm/prisma";
 export {
 	builtins,
+	decodeRegistryPackageManifest,
 	findRemovalBlockers,
+	importRegistryPackage,
 	loadAddonDefinition,
 	loadDefinitionRegistry,
 	RegistryLoadError,
+	RegistryPackageManifestSchema,
 } from "./registry";
-export type { RemovalBlockers } from "./registry/loader";
+export type {
+	LoadDefinitionRegistryOptions,
+	RegistryPackageImport,
+	RegistryPackageImporter,
+	RemovalBlockers,
+} from "./registry/loader";
 export { matchQuery } from "./registry/search";
 export type {
 	LoadedAddonDefinition,
 	LoadedDefinitionRegistry,
+	RegistryDescriptor,
+	RegistryPackageManifest,
+	RegistryUnit,
 } from "./registry/types";
 export { default as shared } from "./shared";
 export { default as tailwind } from "./style/tailwind";

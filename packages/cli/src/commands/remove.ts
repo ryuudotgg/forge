@@ -178,5 +178,11 @@ export async function runRemove(
 		}
 	}
 
-	await applyInstalledPlan(project.projectRoot, nextConfig, nextInstalls);
+	await applyInstalledPlan(
+		project.projectRoot,
+		nextConfig,
+		nextInstalls,
+		undefined,
+		project.manifest.registries,
+	);
 }

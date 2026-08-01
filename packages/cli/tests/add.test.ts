@@ -88,6 +88,24 @@ describe("add command", () => {
 			".",
 			{ slug: "acme", style: "tailwind", web: "nextjs" },
 			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
+			undefined,
+			undefined,
+		);
+	});
+
+	it("forwards opted-in registries when applying an addon", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ registries: ["@acme/forge-sentry"] }),
+		);
+
+		await runAdd("tailwind", {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", style: "tailwind", web: "nextjs" },
+			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
+			undefined,
+			["@acme/forge-sentry"],
 		);
 	});
 
@@ -110,6 +128,8 @@ describe("add command", () => {
 			".",
 			{ slug: "acme", style: "tailwind", web: "nextjs" },
 			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -195,6 +215,8 @@ describe("add command", () => {
 			".",
 			{ slug: "acme", style: "tailwind", web: "nextjs" },
 			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -207,6 +229,8 @@ describe("add command", () => {
 			".",
 			{ orm: "prisma", slug: "acme", web: "nextjs" },
 			[{ definitionId: "prisma", targets: [{ kind: "project" }] }],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -305,6 +329,8 @@ describe("add command", () => {
 					targets: [{ kind: "module", moduleId: appModule.id }],
 				},
 			],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -319,6 +345,8 @@ describe("add command", () => {
 			".",
 			{ addons: ["lefthook", "commitlint"], slug: "acme" },
 			[{ definitionId: "commitlint", targets: [{ kind: "project" }] }],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -338,6 +366,8 @@ describe("add command", () => {
 					targets: [{ kind: "module", moduleId: appModule.id }],
 				},
 			],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -359,6 +389,8 @@ describe("add command", () => {
 					targets: [{ kind: "module", moduleId: appModule.id }],
 				},
 			],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -378,6 +410,8 @@ describe("add command", () => {
 					targets: [{ kind: "module", moduleId: appModule.id }],
 				},
 			],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -407,6 +441,8 @@ describe("add command", () => {
 					targets: [{ kind: "module", moduleId: adminModule.id }],
 				},
 			],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -431,6 +467,8 @@ describe("add command", () => {
 					],
 				},
 			],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -465,6 +503,8 @@ describe("add command", () => {
 					],
 				},
 			],
+			undefined,
+			undefined,
 		);
 	});
 
@@ -484,6 +524,8 @@ describe("add command", () => {
 			".",
 			{ slug: "acme", style: "tailwind", web: "nextjs" },
 			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
+			undefined,
+			undefined,
 		);
 	});
 

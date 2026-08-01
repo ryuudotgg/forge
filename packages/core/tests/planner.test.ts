@@ -31,6 +31,7 @@ import {
 	PlannerError,
 	type ProjectPlan,
 	projectTarget,
+	type RegistryDescriptor,
 	type RenderBucket,
 	Renderer,
 	State,
@@ -87,9 +88,17 @@ function planInstalledEffect(
 	config: TestConfig,
 	installs: ReadonlyArray<InstallRecord>,
 	registry: DefinitionRegistry<TestConfig>,
+	registryDescriptors?: ReadonlyArray<RegistryDescriptor>,
 ) {
 	return Effect.flatMap(Planner, (planner) =>
-		planner.planInstalled(directory, config, installs, registry, {}),
+		planner.planInstalled(
+			directory,
+			config,
+			installs,
+			registry,
+			{},
+			registryDescriptors,
+		),
 	).pipe(Effect.provide(coreLayer));
 }
 
@@ -564,6 +573,58 @@ const adapterGuardUnsupportedRegistry = defineRegistry({
 });
 
 describe("planner", () => {
+	it("omits empty registry metadata from an installed replan", async () => {
+		await withTempDir("planner-registryless-replan", async (directory) => {
+			await Effect.runPromise(
+				State.writeManifest(directory, {
+					config: {},
+					installs: [],
+					modules: {},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const plan = await Effect.runPromise(
+				planInstalledEffect(directory, {}, [], testRegistry(), []),
+			);
+
+			expect(plan.manifest).toEqual({
+				config: {},
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			});
+		});
+	});
+
+	it("persists refreshed registry descriptors on installed plans", async () => {
+		await withTempDir("planner-registry-descriptors", async (directory) => {
+			const descriptors: ReadonlyArray<RegistryDescriptor> = [
+				{
+					apiVersion: 1,
+					id: "@acme/forge-sentry",
+					source: "npm",
+					units: [{ id: "@acme/sentry", kind: "addon" }],
+					version: "2.0.0",
+				},
+			];
+			await Effect.runPromise(
+				State.writeManifest(directory, {
+					config: {},
+					installs: [],
+					modules: {},
+					registries: ["@acme/forge-sentry"],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const plan = await Effect.runPromise(
+				planInstalledEffect(directory, {}, [], testRegistry(), descriptors),
+			);
+
+			expect(plan.manifest.registries).toEqual(["@acme/forge-sentry"]);
+			expect(plan.manifest.registryDescriptors).toEqual(descriptors);
+		});
+	});
+
 	it("maps synchronous definition throws to typed generator failures", async () => {
 		await withTempDir("planner-definition-throw", async (directory) => {
 			const addon = defineAddon<TestConfig>({

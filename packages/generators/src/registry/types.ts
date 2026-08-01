@@ -6,9 +6,12 @@ import type {
 	FrameworkDefinition,
 	FrameworkId,
 	ManagedSurfaceName,
+	RegistryDescriptor,
+	RegistryUnit,
 	TargetMode,
 	TemplateDefinition,
 } from "@ryuujs/core";
+import { Schema } from "effect";
 import type { ForgeConfig } from "../config";
 
 export type CatalogKind = "addon" | "framework" | "template";
@@ -66,7 +69,68 @@ export type CatalogEntry =
 	| FrameworkCatalogEntry
 	| TemplateCatalogEntry;
 
+const CatalogMetadataSchema = {
+	available: Schema.Boolean,
+	category: Schema.String,
+	description: Schema.String,
+	docsUrl: Schema.optional(Schema.String),
+	experimental: Schema.Boolean,
+	hidden: Schema.Boolean,
+	id: Schema.String,
+	keywords: Schema.Array(Schema.String),
+	name: Schema.String,
+	summary: Schema.String,
+};
+
+export const CatalogEntrySchema = Schema.Union(
+	Schema.Struct({
+		...CatalogMetadataSchema,
+		kind: Schema.Literal("framework"),
+		slots: Schema.Array(Schema.String),
+	}),
+	Schema.Struct({
+		...CatalogMetadataSchema,
+		framework: Schema.String,
+		kind: Schema.Literal("template"),
+		version: Schema.Number,
+	}),
+	Schema.Struct({
+		...CatalogMetadataSchema,
+		capabilities: Schema.optional(Schema.Array(Schema.String)),
+		frameworks: Schema.optional(Schema.Array(Schema.String)),
+		kind: Schema.Literal("addon"),
+		requiredSlots: Schema.optional(Schema.Array(Schema.String)),
+		targetMode: Schema.Literal("single", "multiple"),
+	}),
+);
+
+export interface RegistryPackageManifest<Config> {
+	readonly apiVersion: number;
+	readonly adapters?: ReadonlyArray<AdapterDefinition<Config>>;
+	readonly addons?: ReadonlyArray<AddonDefinition<Config>>;
+	readonly frameworks?: ReadonlyArray<FrameworkDefinition>;
+	readonly templates?: ReadonlyArray<TemplateDefinition<Config>>;
+	readonly catalog: ReadonlyArray<CatalogEntry>;
+}
+
+export const RegistryPackageManifestSchema = Schema.Struct({
+	apiVersion: Schema.Int,
+	adapters: Schema.optional(Schema.Array(Schema.Unknown)),
+	addons: Schema.optional(Schema.Array(Schema.Unknown)),
+	frameworks: Schema.optional(Schema.Array(Schema.Unknown)),
+	templates: Schema.optional(Schema.Array(Schema.Unknown)),
+	catalog: Schema.Array(CatalogEntrySchema),
+});
+
+export const decodeRegistryPackageManifest = Schema.decodeUnknown(
+	RegistryPackageManifestSchema,
+);
+
+export type { RegistryDescriptor, RegistryUnit };
+
 export interface LoadedDefinitionRegistry {
+	readonly catalog: ReadonlyArray<CatalogEntry>;
+	readonly descriptors: ReadonlyArray<RegistryDescriptor>;
 	readonly registry: DefinitionRegistry<ForgeConfig>;
 }
 
