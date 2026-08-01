@@ -98,10 +98,12 @@ export async function runCli(
 			return;
 		}
 
-		cli.log();
-
 		const command = cmd ?? cli.defaultCommand[1];
 		const commandArgs = cmd ? positionals.slice(1) : positionals;
+
+		const machineOutput = command.machineOutput && values.json === true;
+		if (!machineOutput) cli.log();
+
 		if (command.arg && command.argRequired && commandArgs.length === 0) {
 			cli.error(`Usage: forge ${subcommand} ${command.arg}`);
 			cli.exit(1);
@@ -109,7 +111,7 @@ export async function runCli(
 		}
 
 		await command.run(commandArgs, values);
-		cli.log();
+		if (!machineOutput) cli.log();
 	} catch (error) {
 		cli.error(error);
 		cli.setExitCode(1);

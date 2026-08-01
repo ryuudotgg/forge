@@ -5,7 +5,6 @@ import {
 	isAddonCompatibleWithModule,
 } from "@ryuujs/core";
 import {
-	type AddonCatalogEntry,
 	configWithInstall,
 	type ForgeConfig,
 	getCatalogEntry,
@@ -13,6 +12,7 @@ import {
 	listVisibleAddons,
 	loadAddonDefinition,
 	loadDefinitionRegistry,
+	matchQuery,
 	orms,
 	RegistryLoadError,
 } from "@ryuujs/generators";
@@ -59,22 +59,6 @@ function mergeInstallRecord(
 		definitionId,
 		targets,
 	}));
-}
-
-function matchQuery(entry: AddonCatalogEntry, query: string) {
-	if (query.length === 0) return true;
-
-	const haystack = [
-		entry.id,
-		entry.name,
-		entry.summary,
-		entry.description,
-		...entry.keywords,
-	]
-		.join(" ")
-		.toLowerCase();
-
-	return haystack.includes(query.toLowerCase());
 }
 
 async function promptForAddonId() {

@@ -134,6 +134,7 @@ function conflictMessage(conflicts: ReadonlyArray<MergeConflict>): string {
 		(conflict) =>
 			`${conflict.label}: base was ${describeConflictValue(conflict.base)}, user has ${describeConflictValue(conflict.user)}, and forge wants ${describeConflictValue(conflict.forge)}.`,
 	);
+
 	return `Semantic merge conflicts were found:\n${lines.join("\n")}\nResolve each conflict, then run Forge again.`;
 }
 
@@ -154,7 +155,9 @@ function preflightMessage(
 				.map(refusalSentence)
 				.join("\n")}`,
 		);
+
 	if (conflicts.length > 0) sections.push(conflictMessage(conflicts));
+
 	return sections.join("\n");
 }
 
@@ -164,6 +167,7 @@ export function formatApplyError(error: ApplyError): string {
 		error.message === "Unmanaged File Exists"
 	)
 		return preflightMessage([{ message: error.message, path: error.path }], []);
+
 	return error.message;
 }
 
@@ -186,6 +190,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 		) {
 			const rootPath = resolve(projectRoot);
 			const fullPath = resolve(rootPath, relativePath);
+
 			if (
 				isAbsolute(relativePath) ||
 				(fullPath !== rootPath && !fullPath.startsWith(`${rootPath}${sep}`))
@@ -198,6 +203,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const realRoot = yield* fs
 				.realPath(rootPath)
 				.pipe(Effect.orElseSucceed(() => null));
+
 			if (realRoot === null) return fullPath;
 
 			let ancestor = fullPath;
@@ -205,17 +211,20 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				const realAncestor = yield* fs
 					.realPath(ancestor)
 					.pipe(Effect.orElseSucceed(() => null));
+
 				if (realAncestor !== null) {
 					if (
 						realAncestor === realRoot ||
 						realAncestor.startsWith(`${realRoot}${sep}`)
 					)
 						return fullPath;
+
 					return yield* new ApplyError({
 						path: relativePath,
 						message: "Path Escapes Project Root",
 					});
 				}
+
 				ancestor = dirname(ancestor);
 			}
 
@@ -272,6 +281,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					path: artifact.path,
 					message: "Managed File Modified",
 				});
+
 			return yield* State.readBase(projectRoot, artifact.base.hash).pipe(
 				Effect.mapError(
 					() =>
@@ -300,10 +310,13 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				path,
 				"Managed File Modified",
 			);
+
 			const incomingJson = yield* parseJsonObject(incoming, path);
+
 			const result = threeWayMergeJson(baseJson, currentJson, incomingJson, {
 				preserveDependencyRemovals: path.endsWith("package.json"),
 			});
+
 			return {
 				merged: formatMergedJson(path, result.merged),
 				conflicts: result.conflicts,
@@ -319,12 +332,14 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 		) {
 			if (kind === "env") return envResidue(base, current);
 			if (kind === "lines") return sectionResidue(base, current);
+
 			const baseJson = yield* parseJsonObject(base, path);
 			const currentJson = yield* parseJsonObject(
 				current,
 				path,
 				"Managed File Modified",
 			);
+
 			const residue = jsonResidue(baseJson, currentJson);
 			return Object.keys(residue).length === 0
 				? ""
@@ -337,9 +352,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 		) {
 			const previousLockfile = yield* State.readLockfile(projectRoot);
 			const previousManifest = yield* State.readManifestOrDefault(projectRoot);
+
 			const previousArtifactIndex = buildArtifactIndex(previousLockfile);
+
 			const previousArtifacts = previousArtifactIndex.byPath;
 			const previousArtifactsById = previousArtifactIndex.byId;
+
 			const committedArtifacts: Record<string, LockfileArtifact> =
 				Object.fromEntries(
 					Object.entries(plan.lockfile.artifacts).map(([id, artifact]) => [
@@ -347,8 +365,10 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						{ ...artifact },
 					]),
 				);
+
 			const writesToApply: PlannedWrite[] = [];
 			const removalsToApply: string[] = [];
+
 			const conflicts: MergeConflict[] = [];
 			const refusals: PolicyRefusal[] = [];
 
@@ -363,6 +383,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: relativePath,
 						message: "Unmanaged File Exists",
 					});
+
 					continue;
 				}
 
@@ -386,6 +407,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: relativePath,
 						message: "Managed File Modified",
 					});
+
 					continue;
 				}
 
@@ -398,15 +420,19 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						currentContent,
 					),
 				);
+
 				if (residueResult._tag === "Left") {
 					if (residueResult.left.message !== "Managed File Modified")
 						return yield* residueResult.left;
+
 					refusals.push({
 						path: relativePath,
 						message: "Managed File Modified",
 					});
+
 					continue;
 				}
+
 				const residue = residueResult.right;
 				if (residue === "") removalsToApply.push(relativePath);
 				else
@@ -422,11 +448,14 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					writesToApply.push(file);
 					continue;
 				}
+
 				if (isUserOwnedEnv(file.path)) continue;
 
 				const currentContent = yield* readFile(fullPath, file.path);
+
 				const currentHash = yield* hashContent(currentContent);
 				const nextHash = yield* hashContent(file.content);
+
 				if (/^module:[^:]+:file:forge\.json$/.test(file.artifactId ?? "")) {
 					writesToApply.push(file);
 					continue;
@@ -438,6 +467,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					plan.manifest,
 					previousManifest,
 				);
+
 				const movedArtifact =
 					(file.artifactId === undefined
 						? undefined
@@ -449,9 +479,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					file.artifactId === undefined
 						? undefined
 						: committedArtifacts[file.artifactId];
+
 				const managedArtifact = previousArtifact ?? movedArtifact;
+
 				const previousBase = managedArtifact?.base;
 				const nextBase = nextArtifact?.base;
+
 				const descriptorsCompatible =
 					previousBase === undefined
 						? nextBase === undefined ||
@@ -460,15 +493,14 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							previousBase.mergeKind === nextBase.mergeKind &&
 							previousBase.semanticsVersion === nextBase.semanticsVersion &&
 							nextBase.semanticsVersion === SURFACE_MERGE_SEMANTICS_VERSION;
-				// Exact equality proves that disk already contains the next pure render;
-				// adoption cannot discard user content. A stored descriptor must still
-				// describe the same merge semantics before this shortcut is sanctioned.
+
 				if (currentHash === nextHash && descriptorsCompatible) continue;
 				if (previousArtifact === undefined && movedArtifact === undefined) {
 					refusals.push({
 						path: file.path,
 						message: "Unmanaged File Exists",
 					});
+
 					continue;
 				}
 
@@ -477,11 +509,14 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: file.path,
 						message: "Managed File Modified",
 					});
+
 					continue;
 				}
+
 				const currentIsPureRender =
 					managedArtifact.base === undefined ||
 					managedArtifact.base.hash === currentHash;
+
 				if (currentHash === managedArtifact.hash && currentIsPureRender) {
 					writesToApply.push(file);
 					continue;
@@ -498,6 +533,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: file.path,
 						message: "Managed File Modified",
 					});
+
 					continue;
 				}
 
@@ -511,17 +547,21 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						file.content,
 					),
 				);
+
 				if (mergedResult._tag === "Left") {
 					if (mergedResult.left.message !== "Managed File Modified")
 						return yield* mergedResult.left;
+
 					refusals.push({
 						path: file.path,
 						message: "Managed File Modified",
 					});
+
 					continue;
 				}
+
 				const merged = mergedResult.right;
-				if ("json" in merged) {
+				if ("json" in merged)
 					for (const conflict of merged.conflicts)
 						conflicts.push({
 							base: valueAtPath(merged.json.base, conflict),
@@ -529,7 +569,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							label: `${file.path} -> ${formatJsonPath(conflict)}`,
 							user: valueAtPath(merged.json.current, conflict),
 						});
-				} else {
+				else
 					for (const [index, conflict] of merged.conflicts.entries()) {
 						const values = merged.conflictValues?.[index];
 						conflicts.push({
@@ -539,11 +579,11 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							user: values?.user,
 						});
 					}
-				}
 
 				if (merged.conflicts.length === 0) {
 					const mergedWrite = { ...file, content: merged.merged };
 					writesToApply.push(mergedWrite);
+
 					if (file.artifactId !== undefined && nextArtifact !== undefined)
 						committedArtifacts[file.artifactId] = {
 							...nextArtifact,
@@ -558,6 +598,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					path: refusal.path,
 					message: refusal.message,
 				});
+
 			if (refusals.length > 0 || conflicts.length > 0)
 				return yield* new ApplyError({
 					path: refusals.length === 0 ? "managed surfaces" : "managed files",
@@ -568,15 +609,18 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				...plan.manifest,
 				schemaVersion: 1,
 			} satisfies Manifest;
+
 			const committedLockfile = {
 				...plan.lockfile,
 				artifacts: committedArtifacts,
 				schemaVersion: 1,
 			} satisfies Lockfile;
+
 			const previousStateBundle = {
 				lockfile: previousLockfile,
 				manifest: previousManifest,
 			} satisfies StateBundle;
+
 			const pureWritesById = new Map(
 				plan.writes.flatMap((write) =>
 					write.artifactId === undefined
@@ -584,6 +628,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						: [[write.artifactId, write.content]],
 				),
 			);
+
 			const bases = new Map<string, string>();
 			for (const [artifactId, artifact] of Object.entries(
 				committedLockfile.artifacts,
@@ -594,17 +639,20 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: artifact.path,
 						message: "Managed Base Forbidden",
 					});
+
 				const content = pureWritesById.get(artifactId);
 				if (content === undefined)
 					return yield* new ApplyError({
 						path: artifact.path,
 						message: "Managed Base Content Missing",
 					});
+
 				if ((yield* hashContent(content)) !== artifact.base.hash)
 					return yield* new ApplyError({
 						path: artifact.path,
 						message: "Managed Base Hash Mismatch",
 					});
+
 				bases.set(artifact.base.hash, content);
 			}
 
@@ -616,7 +664,9 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							projectRoot,
 							baseRelative,
 						);
+
 						if (!(yield* fs.exists(destination))) continue;
+
 						const existing = yield* readFile(destination, baseRelative);
 						if ((yield* hashContent(existing)) !== hash)
 							return yield* new ApplyError({
@@ -626,6 +676,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					}
 				},
 			);
+
 			yield* validateExistingBases();
 
 			const stagingRootRelative = ".forge";
@@ -633,6 +684,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				projectRoot,
 				stagingRootRelative,
 			);
+
 			yield* fs.makeDirectory(stagingRoot, { recursive: true }).pipe(
 				Effect.catchTag(
 					"SystemError",
@@ -643,6 +695,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						}),
 				),
 			);
+
 			const stagingDirectory = yield* fs
 				.makeTempDirectory({ directory: stagingRoot, prefix: ".staging-" })
 				.pipe(
@@ -655,6 +708,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+
 			const stagingRelative = relative(resolve(projectRoot), stagingDirectory);
 			yield* ensureContained(projectRoot, stagingRelative);
 
@@ -664,6 +718,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			) {
 				const stagedRelative = `${stagingRelative}/${relativePath}`;
 				const stagedPath = yield* ensureContained(projectRoot, stagedRelative);
+
 				yield* fs.makeDirectory(dirname(stagedPath), { recursive: true }).pipe(
 					Effect.catchTag(
 						"SystemError",
@@ -674,6 +729,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+
 				yield* fs.writeFileString(stagedPath, content).pipe(
 					Effect.catchTag(
 						"SystemError",
@@ -684,6 +740,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+
 				return stagedPath;
 			});
 
@@ -692,6 +749,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					readonly path: string;
 					readonly stagedPath: string;
 				}> = [];
+
 				for (const write of writesToApply)
 					stagedWrites.push({
 						path: write.path,
@@ -702,6 +760,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					readonly hash: string;
 					readonly stagedPath: string;
 				}> = [];
+
 				for (const [hash, content] of bases)
 					stagedBases.push({
 						hash,
@@ -712,19 +771,23 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					"state/manifest.json",
 					formatJson(committedManifest, { compact: false }),
 				);
+
 				const stagedLockfile = yield* stageWrite(
 					"state/lock.json",
 					formatJson(committedLockfile, { compact: false }),
 				);
+
 				const stagedPreviousStateBundle = yield* stageWrite(
 					"state/previous-state.json",
 					formatJson(previousStateBundle, { compact: false }),
 				);
+
 				yield* validateExistingBases();
 				const stateBundlePath = yield* ensureContained(
 					projectRoot,
 					".forge/state.json",
 				);
+
 				if (!(yield* fs.exists(stateBundlePath)))
 					yield* fs.rename(stagedPreviousStateBundle, stateBundlePath).pipe(
 						Effect.catchTag(
@@ -740,6 +803,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				for (const relativePath of removalsToApply) {
 					const fullPath = yield* ensureContained(projectRoot, relativePath);
 					if (!(yield* fs.exists(fullPath))) continue;
+
 					yield* fs.remove(fullPath).pipe(
 						Effect.catchTag(
 							"SystemError",
@@ -764,6 +828,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 								}),
 						),
 					);
+
 					yield* fs.rename(staged.stagedPath, fullPath).pipe(
 						Effect.catchTag(
 							"SystemError",
@@ -780,6 +845,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					projectRoot,
 					".forge/bases",
 				);
+
 				yield* fs.makeDirectory(basesDirectory, { recursive: true }).pipe(
 					Effect.catchTag(
 						"SystemError",
@@ -790,10 +856,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+
 				for (const staged of stagedBases) {
 					const baseRelative = `.forge/bases/${staged.hash}`;
 					const destination = yield* ensureContained(projectRoot, baseRelative);
 					if (yield* fs.exists(destination)) continue;
+
 					yield* fs.rename(staged.stagedPath, destination).pipe(
 						Effect.catchTag(
 							"SystemError",
@@ -810,10 +878,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					projectRoot,
 					".forge/manifest.json",
 				);
+
 				const lockfilePath = yield* ensureContained(
 					projectRoot,
 					".forge/lock.json",
 				);
+
 				yield* fs.rename(stagedManifest, manifestPath).pipe(
 					Effect.mapError(
 						() =>
@@ -823,6 +893,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+
 				yield* fs.rename(stagedLockfile, lockfilePath).pipe(
 					Effect.mapError(
 						() =>
@@ -832,6 +903,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
+
 				yield* fs.remove(stateBundlePath).pipe(
 					Effect.catchTag(
 						"SystemError",
@@ -842,8 +914,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							}),
 					),
 				);
-				// State is already published. GC is best-effort because any orphaned
-				// blobs left by a failure will be collected by the next apply.
+
 				yield* State.garbageCollectBases(projectRoot, committedLockfile).pipe(
 					Effect.catchTag("StateError", () => Effect.void),
 				);
@@ -854,12 +925,14 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						.pipe(Effect.orElseSucceed(() => undefined)),
 				),
 			);
+
 			yield* commit;
 
 			const rootPath = resolve(projectRoot);
 			const realRoot = yield* fs
 				.realPath(rootPath)
 				.pipe(Effect.orElseSucceed(() => null));
+
 			for (const relativePath of realRoot === null ? [] : removalsToApply) {
 				let directory = dirname(resolve(projectRoot, relativePath));
 				while (
@@ -869,15 +942,18 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					const realDirectory = yield* fs
 						.realPath(directory)
 						.pipe(Effect.orElseSucceed(() => null));
+
 					if (
 						realDirectory === null ||
 						!realDirectory.startsWith(`${realRoot}${sep}`)
 					)
 						break;
+
 					const removed = yield* Effect.tryPromise(() => rmdir(directory)).pipe(
 						Effect.as(true),
 						Effect.orElseSucceed(() => false),
 					);
+
 					if (!removed) break;
 					directory = dirname(directory);
 				}

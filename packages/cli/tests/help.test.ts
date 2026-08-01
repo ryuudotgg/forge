@@ -9,36 +9,78 @@ function stripAnsi(text: string): string {
 }
 
 function captureHelp(): string[] {
-	const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+	let output = "";
+	const writeSpy = vi
+		.spyOn(process.stdout, "write")
+		.mockImplementation((chunk) => {
+			output += String(chunk);
+			return true;
+		});
 
 	try {
 		printHelp();
 
-		return logSpy.mock.calls.map((call) =>
-			stripAnsi(call.map(String).join(" ")),
-		);
+		return stripAnsi(output).split("\n").slice(0, -1);
 	} finally {
-		logSpy.mockRestore();
+		writeSpy.mockRestore();
 	}
 }
 
 describe("printHelp", () => {
-	it("documents the usage line and every subcommand", () => {
-		const output = captureHelp().join("\n");
-
-		expect(output).toContain("forge [command] [options]");
-		expect(output).toContain("forge update");
-		expect(output).toContain("forge add [addon-id]");
-		expect(output).toContain("forge remove [addon-id]");
-
-		const createLine = captureHelp().find((line) =>
-			line.includes(
-				"Forge a new project from a framework, template, and addons.",
-			),
+	it("renders the exact non-TTY help layout", () => {
+		expect(captureHelp().join("\n")).toBe(
+			[
+				"",
+				"  Usage: forge [command] [options]",
+				"",
+				"  Commands",
+				"    forge [create]                       Forge a new project from a framework, template, and addons.",
+				"    forge update                         Reconcile your installed addons and templates.",
+				"    forge list [query]                   Browse the Forge catalog.",
+				"    forge info <id>                      Show details for a catalog entry.",
+				"    forge add [addon-id]                 Add an addon to your project.",
+				"    forge remove [addon-id]              Remove an addon from your project.",
+				"",
+				"  Global options",
+				"    -h, --help                           You're looking at it!",
+				"    -v, --version                        Returns the current version of Forge.",
+				"",
+				"  forge [create] options",
+				"    -c, --config <value>                 Use a JSON Config File.",
+				"    -p, --preset <value>                 Start from a named preset configuration.",
+				"        --no-install                     Do not install dependencies.",
+				"        --no-git                         Do not initialize a Git repository.",
+				"        --name <value>                   A name for the project.",
+				"        --path <value>                   Where you want the project to be created.",
+				"        --runtime <value>                Node.js · Bun · Deno",
+				"        --package-manager <value>        pnpm · npm · Yarn · Bun",
+				"        --catalogs <value>               Flat · Scoped",
+				"        --linter <value>                 Biome · Oxc (soon) · ESLint + Prettier (soon)",
+				"        --web <value>                    Next.js · React Router (soon) · TanStack Router (soon) · TanStack Start",
+				"        --desktop <value> (soon)         Electron · Tauri",
+				"        --mobile <value> (soon)          Expo · React Native",
+				"        --backend <value>                Next.js · Convex (soon) · Hono (soon) · Elysia (soon) · µWebSockets (soon) · Fastify (soon) · Express (soon)",
+				"        --rpc <value>                    tRPC",
+				"        --database <value>               MySQL · PostgreSQL · SQLite",
+				"        --orm <value>                    Drizzle ORM · Prisma",
+				"        --auth <value>                   Better Auth · Auth.js (soon) · WorkOS (soon) · Clerk (soon)",
+				"        --database-provider <value>      PlanetScale · Neon · Nile · Supabase · Prisma Postgres · Turso",
+				"        --style <value>                  Tailwind CSS · UnoCSS (soon)",
+				"        --native-style <value> (soon)    NativeWind · Tamagui · Unistyles",
+				"",
+				"  forge list/info options",
+				"        --kind <value>                   Filter the catalog by addon, framework, or template.",
+				"        --json                           Print stable version 1 JSON; fields are added only.",
+				"",
+				"  Examples",
+				"    forge list auth",
+				"    forge info drizzle",
+				"    forge add trpc",
+				"",
+			]
+				.map((line) => (line.length === 0 ? "│" : `│  ${line}`))
+				.join("\n"),
 		);
-
-		expect(createLine).toBeDefined();
-		expect(createLine).toMatch(/^ {4}forge {2,}Forge a new project/);
 	});
 
 	it("documents every option as a long flag", () => {
@@ -56,6 +98,9 @@ describe("printHelp", () => {
 			"Reconcile your installed addons and templates.",
 			"Use a JSON Config File.",
 			"Do not initialize a Git repository.",
+			"pnpm · npm · Yarn · Bun",
+			"PlanetScale · Neon · Nile · Supabase · Prisma Postgres · Turso",
+			"NativeWind · Tamagui · Unistyles",
 		];
 
 		const columns = descriptions.map((description) => {
@@ -68,16 +113,11 @@ describe("printHelp", () => {
 		expect(new Set(columns).size).toBe(1);
 	});
 
-	it("colorizes value lists with middle dot separators", () => {
+	it("derives choice hints with availability markers", () => {
 		const output = captureHelp().join("\n");
 
 		expect(output).toContain("Node.js · Bun · Deno");
-		expect(output).toContain("Next.js · Convex · Hono · Elysia · etc.");
-	});
-
-	it("keeps parenthetical hints attached to their value", () => {
-		const output = captureHelp().join("\n");
-
-		expect(output).toContain("Flat · Scoped (pnpm only)");
+		expect(output).toContain("Next.js · Convex (soon) · Hono (soon)");
+		expect(output).toContain("PlanetScale · Neon · Nile · Supabase");
 	});
 });

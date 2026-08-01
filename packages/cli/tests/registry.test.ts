@@ -8,6 +8,8 @@ import {
 const commandMocks = vi.hoisted(() => ({
 	runAdd: vi.fn(),
 	runCreate: vi.fn(),
+	runInfo: vi.fn(),
+	runList: vi.fn(),
 	runRemove: vi.fn(),
 	runUpdate: vi.fn(),
 }));
@@ -16,6 +18,8 @@ vi.mock("../src/commands/add", () => ({ runAdd: commandMocks.runAdd }));
 vi.mock("../src/commands/create", () => ({
 	runCreate: commandMocks.runCreate,
 }));
+vi.mock("../src/commands/info", () => ({ runInfo: commandMocks.runInfo }));
+vi.mock("../src/commands/list", () => ({ runList: commandMocks.runList }));
 vi.mock("../src/commands/remove", () => ({
 	runRemove: commandMocks.runRemove,
 }));
@@ -26,6 +30,8 @@ vi.mock("../src/commands/update", () => ({
 beforeEach(() => {
 	commandMocks.runAdd.mockReset();
 	commandMocks.runCreate.mockReset();
+	commandMocks.runInfo.mockReset();
+	commandMocks.runList.mockReset();
 	commandMocks.runRemove.mockReset();
 	commandMocks.runUpdate.mockReset();
 });
@@ -36,6 +42,8 @@ describe("command registry", () => {
 		expect(getSubcommand("update")).toBe(subcommands.update);
 		expect(getSubcommand("add")).toBe(subcommands.add);
 		expect(getSubcommand("remove")).toBe(subcommands.remove);
+		expect(getSubcommand("list")).toBe(subcommands.list);
+		expect(getSubcommand("info")).toBe(subcommands.info);
 	});
 
 	it("ignores inherited object members and unknown names", () => {
@@ -82,5 +90,17 @@ describe("command registry", () => {
 		await subcommands.remove.run(["tailwind"], {});
 
 		expect(commandMocks.runRemove).toHaveBeenCalledWith("tailwind", {});
+	});
+
+	it("forwards discovery arguments and values", async () => {
+		await subcommands.list.run(["auth"], { kind: "addon" });
+		await subcommands.info.run(["drizzle"], { json: true });
+
+		expect(commandMocks.runList).toHaveBeenCalledWith("auth", {
+			kind: "addon",
+		});
+		expect(commandMocks.runInfo).toHaveBeenCalledWith("drizzle", {
+			json: true,
+		});
 	});
 });
