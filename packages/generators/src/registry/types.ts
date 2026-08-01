@@ -43,6 +43,7 @@ export interface FirstPartyAddonMetadata extends CatalogMetadataBase {
 interface CatalogEntryBase extends CatalogMetadataBase {
 	readonly available: boolean;
 	readonly category: string;
+	readonly source: string;
 }
 
 export interface FrameworkCatalogEntry extends CatalogEntryBase {
@@ -59,6 +60,7 @@ export interface TemplateCatalogEntry extends CatalogEntryBase {
 export interface AddonCatalogEntry extends CatalogEntryBase {
 	readonly capabilities?: ReadonlyArray<CapabilityId>;
 	readonly frameworks?: ReadonlyArray<FrameworkId>;
+	readonly frameworkSources: Readonly<Record<string, string>>;
 	readonly kind: "addon";
 	readonly requiredSlots?: ReadonlyArray<ManagedSurfaceName>;
 	readonly targetMode: TargetMode;
@@ -68,6 +70,19 @@ export type CatalogEntry =
 	| AddonCatalogEntry
 	| FrameworkCatalogEntry
 	| TemplateCatalogEntry;
+
+type RegistryAddonCatalogEntry = Omit<
+	AddonCatalogEntry,
+	"frameworkSources" | "source"
+>;
+
+type RegistryFrameworkCatalogEntry = Omit<FrameworkCatalogEntry, "source">;
+type RegistryTemplateCatalogEntry = Omit<TemplateCatalogEntry, "source">;
+
+export type RegistryCatalogEntry =
+	| RegistryAddonCatalogEntry
+	| RegistryFrameworkCatalogEntry
+	| RegistryTemplateCatalogEntry;
 
 const CatalogMetadataSchema = {
 	available: Schema.Boolean,
@@ -82,7 +97,7 @@ const CatalogMetadataSchema = {
 	summary: Schema.String,
 };
 
-export const CatalogEntrySchema = Schema.Union(
+export const RegistryCatalogEntrySchema = Schema.Union(
 	Schema.Struct({
 		...CatalogMetadataSchema,
 		kind: Schema.Literal("framework"),
@@ -110,7 +125,7 @@ export interface RegistryPackageManifest<Config> {
 	readonly addons?: ReadonlyArray<AddonDefinition<Config>>;
 	readonly frameworks?: ReadonlyArray<FrameworkDefinition>;
 	readonly templates?: ReadonlyArray<TemplateDefinition<Config>>;
-	readonly catalog: ReadonlyArray<CatalogEntry>;
+	readonly catalog: ReadonlyArray<RegistryCatalogEntry>;
 }
 
 export const RegistryPackageManifestSchema = Schema.Struct({
@@ -119,7 +134,7 @@ export const RegistryPackageManifestSchema = Schema.Struct({
 	addons: Schema.optional(Schema.Array(Schema.Unknown)),
 	frameworks: Schema.optional(Schema.Array(Schema.Unknown)),
 	templates: Schema.optional(Schema.Array(Schema.Unknown)),
-	catalog: Schema.Array(CatalogEntrySchema),
+	catalog: Schema.Array(RegistryCatalogEntrySchema),
 });
 
 export const decodeRegistryPackageManifest = Schema.decodeUnknown(
@@ -155,6 +170,7 @@ export function frameworkCatalogEntry(
 		kind: "framework",
 		name: metadata.name,
 		slots: framework.slots,
+		source: "first-party",
 		summary: metadata.summary,
 	};
 }
@@ -175,6 +191,7 @@ export function templateCatalogEntry(
 		keywords: metadata.keywords,
 		kind: "template",
 		name: metadata.name,
+		source: "first-party",
 		summary: metadata.summary,
 		version: template.version,
 	};
@@ -184,6 +201,8 @@ export function addonCatalogEntry(
 	addon: AddonDefinition<ForgeConfig>,
 	metadata: FirstPartyAddonMetadata,
 	adapters: ReadonlyArray<AdapterDefinition<ForgeConfig>>,
+	source = "first-party",
+	adapterSources: ReadonlyMap<string, string> = new Map(),
 ): AddonCatalogEntry {
 	const addonAdapters = adapters.filter(
 		(adapter) => adapter.addon === addon.id,
@@ -193,6 +212,10 @@ export function addonCatalogEntry(
 		adapterFrameworks.length > 0
 			? [...new Set(adapterFrameworks)]
 			: addon.compatibility?.app?.frameworks;
+	const frameworkSources: Record<string, string> = {};
+	for (const framework of frameworks ?? [])
+		frameworkSources[framework] =
+			adapterSources.get(`${addon.id}\u0000${framework}`) ?? source;
 	const capabilities = addon.compatibility?.package?.capabilities;
 	const requiredSlots = [
 		...new Set([
@@ -210,12 +233,14 @@ export function addonCatalogEntry(
 		docsUrl: metadata.docsUrl,
 		experimental: metadata.experimental,
 		frameworks,
+		frameworkSources,
 		hidden: metadata.hidden,
 		id: metadata.id,
 		keywords: metadata.keywords,
 		kind: "addon",
 		name: metadata.name,
 		requiredSlots: requiredSlots.length > 0 ? requiredSlots : undefined,
+		source,
 		summary: metadata.summary,
 		targetMode: addon.targetMode,
 	};
@@ -248,6 +273,7 @@ export function announcedCatalogEntry(
 		id,
 		keywords: [],
 		name,
+		source: "first-party",
 		summary,
 	};
 
@@ -260,6 +286,7 @@ export function announcedCatalogEntry(
 
 	return {
 		...metadata,
+		frameworkSources: {},
 		frameworks: [],
 		kind,
 		targetMode: "multiple",

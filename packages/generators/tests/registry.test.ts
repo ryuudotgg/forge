@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
 	addonConfigBindings,
 	builtins,
+	type ForgeConfig,
 	findRemovalBlockers,
 	importRegistryPackage,
 	type LoadDefinitionRegistryOptions,
@@ -15,10 +16,25 @@ import {
 	loadDefinitionRegistry,
 	optionalAddons,
 	RegistryLoadError,
+	type RegistryPackageManifest,
 } from "../src";
 import { plannedDefinitionIds, plannedProject } from "./planner-harness";
 
 const fixtureRegistryId = "@fixture/forge-registry";
+
+const duplicateCatalogEntry = {
+	available: true,
+	category: "tooling",
+	description: "A duplicate catalog fixture.",
+	experimental: false,
+	hidden: false,
+	id: "@acme/sentry",
+	keywords: ["fixture"],
+	kind: "addon",
+	name: "Duplicate Sentry",
+	summary: "Exercise duplicate catalog validation.",
+	targetMode: "multiple",
+} satisfies RegistryPackageManifest<ForgeConfig>["catalog"][number];
 
 async function importFixtureRegistry() {
 	const registryModule = await import("./fixtures/registry-package/index");
@@ -57,6 +73,9 @@ describe("registry loader", () => {
 		expect(loaded.registry.addons.map((entry) => entry.id)).toEqual(
 			expect.arrayContaining(["root", "pnpm", "tailwind", "trpc"]),
 		);
+		expect(
+			loaded.catalog.every((entry) => entry.source === "first-party"),
+		).toBe(true);
 	});
 
 	it("loads a first-party addon by id", () => {
@@ -147,7 +166,20 @@ describe("registry loader", () => {
 			loaded.catalog.find(
 				(entry) => entry.kind === "addon" && entry.id === "vitest",
 			),
-		).toMatchObject({ frameworks: ["nextjs"] });
+		).toMatchObject({
+			frameworks: ["nextjs"],
+			frameworkSources: { nextjs: fixtureRegistryId },
+			source: "first-party",
+		});
+		expect(
+			loaded.catalog.find((entry) => entry.id === "@fixture/neutral"),
+		).toMatchObject({ source: fixtureRegistryId });
+		expect(
+			loaded.catalog.find((entry) => entry.id === "@fixture/web"),
+		).toMatchObject({ source: fixtureRegistryId });
+		expect(
+			loaded.catalog.find((entry) => entry.id === "@fixture/base"),
+		).toMatchObject({ source: fixtureRegistryId });
 
 		const plan = await plannedProject(
 			{
@@ -683,6 +715,44 @@ describe("registry loader", () => {
 
 		expect(error.message).toBe("Registry Duplicate: @acme/forge-sentry");
 		expect(importCount).toBe(0);
+	});
+
+	it("rejects catalog ids duplicated across registries", async () => {
+		const error = await loadFailure({
+			importRegistry: async () => ({
+				module: {
+					default: {
+						apiVersion: 1,
+						catalog: [duplicateCatalogEntry],
+					},
+				},
+				version: "1.0.0",
+			}),
+			projectRoot: "/fixture-project",
+			registries: ["@acme/registry-a", "@other/registry-b"],
+		});
+
+		expect(error.message).toBe("Registry Catalog Duplicate: @acme/sentry");
+		expect(error.registryId).toBe("@other/registry-b");
+	});
+
+	it("rejects catalog ids duplicated within one registry", async () => {
+		const error = await loadFailure({
+			importRegistry: async () => ({
+				module: {
+					default: {
+						apiVersion: 1,
+						catalog: [duplicateCatalogEntry, duplicateCatalogEntry],
+					},
+				},
+				version: "1.0.0",
+			}),
+			projectRoot: "/fixture-project",
+			registries: ["@acme/registry-a"],
+		});
+
+		expect(error.message).toBe("Registry Catalog Duplicate: @acme/sentry");
+		expect(error.registryId).toBe("@acme/registry-a");
 	});
 
 	it("rejects a descriptor that cannot round-trip", async () => {

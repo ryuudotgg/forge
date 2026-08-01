@@ -2,16 +2,37 @@ import { log } from "@clack/prompts";
 import {
 	type AddonCatalogEntry,
 	type CatalogEntry,
-	getCatalogEntry,
-	listCatalogEntries,
+	type LoadedDefinitionRegistry,
 	matchQuery,
 } from "@ryuujs/generators";
 import color from "picocolors";
 import { listAnd, listOr } from "../utils/list";
+import { loadDiscoveryRegistry } from "./lifecycle";
 import { buildJsonEntry } from "./list";
 
 function formatValues(values: ReadonlyArray<string>) {
 	return listAnd.format(values);
+}
+
+function publisherVersion(
+	entry: CatalogEntry,
+	descriptors: LoadedDefinitionRegistry["descriptors"],
+) {
+	if (entry.source === "first-party") return undefined;
+
+	const descriptor = descriptors.find(({ id }) => id === entry.source);
+	if (descriptor === undefined)
+		throw new Error(`Catalog Publisher Missing: ${entry.source}`);
+
+	return descriptor.version;
+}
+
+function publisherValue(
+	entry: CatalogEntry,
+	descriptors: LoadedDefinitionRegistry["descriptors"],
+) {
+	if (entry.source === "first-party") return "Ryuu (first party)";
+	return `${entry.source} ${publisherVersion(entry, descriptors)}`;
 }
 
 interface InfoRow {
@@ -38,7 +59,14 @@ function addonRows(entry: AddonCatalogEntry) {
 	if ((entry.frameworks?.length ?? 0) > 0)
 		rows.push({
 			label: "Frameworks:",
-			value: formatValues(entry.frameworks ?? []),
+			value: formatValues(
+				(entry.frameworks ?? []).map((framework) => {
+					const source = entry.frameworkSources[framework] ?? entry.source;
+					return source === entry.source
+						? framework
+						: `${framework} ${color.dim(`(via ${source})`)}`;
+				}),
+			),
 		});
 
 	if ((entry.requiredSlots?.length ?? 0) > 0)
@@ -60,13 +88,21 @@ function formatRows(rows: ReadonlyArray<InfoRow>) {
 		.join("\n");
 }
 
-export function buildInfoOutput(entry: CatalogEntry) {
+export function buildInfoOutput(
+	entry: CatalogEntry,
+	descriptors: LoadedDefinitionRegistry["descriptors"],
+) {
 	const header = `${color.bold(entry.name)} ${color.dim(entry.id)}`;
+	const publisher = {
+		label: "Publisher:",
+		value: publisherValue(entry, descriptors),
+	};
 
 	if (!entry.available)
 		return `${[
 			header,
 			formatRows([
+				publisher,
 				{
 					label: "Availability:",
 					value: `${entry.name} isn't available yet.`,
@@ -89,6 +125,8 @@ export function buildInfoOutput(entry: CatalogEntry) {
 
 	if (entry.keywords.length > 0)
 		rows.push({ label: "Keywords:", value: formatValues(entry.keywords) });
+
+	rows.unshift(publisher);
 
 	return `${[...sections, formatRows(rows)].join("\n\n")}\n`;
 }
@@ -126,26 +164,45 @@ export function buildInfoNotFoundMessage(
 	return `We couldn't find "${id}" in the catalog.${suffix}`;
 }
 
-export function buildInfoEnvelope(entry: CatalogEntry) {
+export function buildInfoEnvelope(
+	entry: CatalogEntry,
+	descriptors: LoadedDefinitionRegistry["descriptors"],
+) {
+	const version = publisherVersion(entry, descriptors);
 	return {
 		forgeListVersion: 1,
-		entry: buildJsonEntry(entry),
+		entry: {
+			...buildJsonEntry(entry),
+			...(version === undefined ? {} : { publisherVersion: version }),
+		},
 	};
 }
 
 export async function runInfo(
 	id: string,
 	values: Record<string, string | boolean | undefined>,
+	loadRegistry: () => Promise<LoadedDefinitionRegistry> = () =>
+		loadDiscoveryRegistry("."),
 ) {
-	const entry = getCatalogEntry(id);
+	const loadedRegistry = await loadRegistry();
+
+	const entry = loadedRegistry.catalog.find((candidate) => candidate.id === id);
 	if (!entry || entry.hidden) {
-		log.error(buildInfoNotFoundMessage(id, listCatalogEntries()));
+		log.error(buildInfoNotFoundMessage(id, loadedRegistry.catalog));
 		process.exit(1);
 	}
+
 	if (values.json === true) {
-		console.log(JSON.stringify(buildInfoEnvelope(entry), null, "\t"));
+		console.log(
+			JSON.stringify(
+				buildInfoEnvelope(entry, loadedRegistry.descriptors),
+				null,
+				"\t",
+			),
+		);
+
 		return;
 	}
 
-	log.message(buildInfoOutput(entry));
+	log.message(buildInfoOutput(entry, loadedRegistry.descriptors));
 }

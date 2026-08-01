@@ -26,7 +26,7 @@ import {
 	probeWorkspaceCommandVersions,
 	RegistryLoadError,
 } from "@ryuujs/generators";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
+import { Cause, Effect, Either, Exit, Layer, Option, Schema } from "effect";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
@@ -109,7 +109,7 @@ export async function loadManagedProject(
 		State.readManifest(absoluteProjectRoot).pipe(
 			Effect.catchTag("StateError", (error) =>
 				error.message === "Manifest Not Found"
-					? Effect.succeed(undefined)
+					? Effect.void
 					: Effect.fail(error),
 			),
 			Effect.provide(coreLayer),
@@ -181,24 +181,76 @@ export async function runPackageManagerOperation(
 	return Exit.isSuccess(exit) && exit.value === 0;
 }
 
+async function loadProjectRegistryData(
+	projectRoot: string,
+	registryIds: ReadonlyArray<string>,
+) {
+	return registryIds.length === 0
+		? loadDefinitionRegistry()
+		: await loadDefinitionRegistry({
+				importRegistry: importRegistryPackage,
+				projectRoot,
+				registries: registryIds,
+			});
+}
+
 export async function loadProjectRegistry(
 	projectRoot: string,
 	registryIds: ReadonlyArray<string>,
 ) {
 	try {
-		return registryIds.length === 0
-			? loadDefinitionRegistry()
-			: await loadDefinitionRegistry({
-					importRegistry: importRegistryPackage,
-					projectRoot,
-					registries: registryIds,
-				});
+		return await loadProjectRegistryData(projectRoot, registryIds);
 	} catch (error) {
 		if (error instanceof RegistryLoadError) {
 			log.error(error.message);
 			process.exit(1);
 		}
 		throw error;
+	}
+}
+
+function discoveryWarning(action: string, error: unknown) {
+	const detail = error instanceof Error ? error.message : String(error);
+	return `We couldn't ${action} (${detail}), so we're showing the first-party catalog.`;
+}
+
+export async function loadDiscoveryRegistry(projectRoot: string) {
+	const absoluteProjectRoot = resolve(projectRoot);
+	const manifestResult = await Effect.runPromise(
+		State.readManifest(absoluteProjectRoot).pipe(
+			Effect.catchTag("StateError", (error) =>
+				error.message === "Manifest Not Found"
+					? Effect.void
+					: Effect.fail(error),
+			),
+			Effect.either,
+			Effect.provide(coreLayer),
+		),
+	);
+
+	if (Either.isLeft(manifestResult)) {
+		log.warn(
+			discoveryWarning(
+				"read this project's Forge metadata",
+				manifestResult.left,
+			),
+			{ output: process.stderr },
+		);
+
+		return loadDefinitionRegistry();
+	}
+
+	const registryIds = manifestResult.right?.registries ?? [];
+	if (registryIds.length === 0) return loadDefinitionRegistry();
+
+	try {
+		return await loadProjectRegistryData(absoluteProjectRoot, registryIds);
+	} catch (error) {
+		log.warn(discoveryWarning("load this project's registries", error), {
+			output: process.stderr,
+		});
+
+		return loadDefinitionRegistry();
 	}
 }
 

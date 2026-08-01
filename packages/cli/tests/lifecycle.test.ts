@@ -8,6 +8,7 @@ import {
 	applyInstalledPlan,
 	configuredPackageManager,
 	hasProjectDevDependency,
+	loadDiscoveryRegistry,
 	loadManagedProject,
 	loadProjectRegistry,
 	runPackageManagerOperation,
@@ -16,10 +17,17 @@ import { withTempDir, writeJson } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
+	logWarn:
+		vi.fn<
+			(
+				message: string,
+				options: { readonly output: NodeJS.WriteStream },
+			) => void
+		>(),
 }));
 
 vi.mock("@clack/prompts", () => ({
-	log: { error: promptMocks.logError },
+	log: { error: promptMocks.logError, warn: promptMocks.logWarn },
 }));
 
 const decodeManifest = Schema.decodeUnknownSync(ManifestSchema);
@@ -48,6 +56,7 @@ function scaffoldWebModule(directory: string) {
 describe("lifecycle", () => {
 	beforeEach(() => {
 		promptMocks.logError.mockReset();
+		promptMocks.logWarn.mockReset();
 	});
 
 	it("applies an installed plan and records the install in the manifest", async () => {
@@ -150,6 +159,59 @@ describe("lifecycle", () => {
 		expect(loaded.registry.addons.map((entry) => entry.id)).toContain(
 			"tailwind",
 		);
+	});
+
+	it("uses first-party discovery silently outside a Forge project", async () => {
+		await withTempDir("discovery-outside-project", async (directory) => {
+			const loaded = await loadDiscoveryRegistry(directory);
+
+			expect(loaded.descriptors).toEqual([]);
+			expect(
+				loaded.catalog.every((entry) => entry.source === "first-party"),
+			).toBe(true);
+			expect(promptMocks.logWarn).not.toHaveBeenCalled();
+		});
+	});
+
+	it("degrades registry discovery to first-party data", async () => {
+		await withTempDir("discovery-registry-failure", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				config: {},
+				installs: [],
+				modules: {},
+				registries: ["@fixture/missing-registry"],
+				schemaVersion: 1,
+			});
+
+			const loaded = await loadDiscoveryRegistry(directory);
+
+			expect(loaded.descriptors).toEqual([]);
+			expect(
+				loaded.catalog.every((entry) => entry.source === "first-party"),
+			).toBe(true);
+			expect(promptMocks.logWarn).toHaveBeenCalledWith(
+				"We couldn't load this project's registries (Registry Not Installed: @fixture/missing-registry), so we're showing the first-party catalog.",
+				{ output: process.stderr },
+			);
+		});
+	});
+
+	it("degrades unreadable Forge metadata to first-party data", async () => {
+		await withTempDir("discovery-manifest-failure", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				schemaVersion: "invalid",
+			});
+
+			const loaded = await loadDiscoveryRegistry(directory);
+
+			expect(loaded.descriptors).toEqual([]);
+			expect(promptMocks.logWarn).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"We couldn't read this project's Forge metadata",
+				),
+				{ output: process.stderr },
+			);
+		});
 	});
 
 	it("round-trips the manifest config instead of inferring it", async () => {

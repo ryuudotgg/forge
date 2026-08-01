@@ -1,6 +1,8 @@
+import { join } from "node:path";
 import type { CatalogEntry } from "@ryuujs/generators";
 import { listCatalogEntries } from "@ryuujs/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { loadDiscoveryRegistry } from "../src/commands/lifecycle";
 import {
 	buildListEnvelope,
 	buildListOutput,
@@ -8,19 +10,29 @@ import {
 	runList,
 	selectListEntries,
 } from "../src/commands/list";
+import { loadDiscoveryFixture } from "./discovery-fixtures";
+import { withTempDir, writeJson } from "./lifecycle-fixtures";
 
 const catalog = listCatalogEntries();
 
 const promptMocks = vi.hoisted(() => ({
 	logMessage: vi.fn(),
+	logWarn:
+		vi.fn<
+			(
+				message: string,
+				options: { readonly output: NodeJS.WriteStream },
+			) => void
+		>(),
 }));
 
 vi.mock("@clack/prompts", () => ({
-	log: { message: promptMocks.logMessage },
+	log: { message: promptMocks.logMessage, warn: promptMocks.logWarn },
 }));
 
 beforeEach(() => {
 	promptMocks.logMessage.mockReset();
+	promptMocks.logWarn.mockReset();
 });
 
 describe("forge list builders", () => {
@@ -71,6 +83,7 @@ describe("forge list builders", () => {
 				kind: "framework",
 				name: "A",
 				slots: [],
+				source: "first-party",
 				summary: "First.",
 			},
 			{
@@ -83,6 +96,8 @@ describe("forge list builders", () => {
 				keywords: [],
 				kind: "addon",
 				name: "Longest",
+				frameworkSources: {},
+				source: "first-party",
 				targetMode: "multiple",
 				summary: "Second.",
 			},
@@ -115,6 +130,7 @@ describe("forge list builders", () => {
 				kind: "framework",
 				name: "Future",
 				slots: [],
+				source: "first-party",
 				summary: "Try the future.",
 			},
 		];
@@ -147,6 +163,10 @@ describe("forge list builders", () => {
 			envelope.entries.every((entry) => typeof entry.available === "boolean"),
 		).toBe(true);
 		expect(JSON.stringify(envelope)).not.toContain("docsUrl");
+		expect(JSON.parse(JSON.stringify(envelope))).toEqual(envelope);
+		expect(
+			envelope.entries.every((entry) => typeof entry.source === "string"),
+		).toBe(true);
 		expect(drizzle).toMatchInlineSnapshot(`
 			{
 			  "entries": [
@@ -167,6 +187,7 @@ describe("forge list builders", () => {
 			      "kind": "addon",
 			      "name": "Drizzle",
 			      "requiredSlots": [],
+			      "source": "first-party",
 			      "summary": "Add Drizzle ORM support.",
 			      "targetMode": "single",
 			    },
@@ -174,6 +195,85 @@ describe("forge list builders", () => {
 			  "forgeListVersion": 1,
 			}
 		`);
+	});
+
+	it("renders an exact third-party row through an injected registry", async () => {
+		const loaded = await loadDiscoveryFixture();
+
+		await runList("sentry", {}, () => Promise.resolve(loaded));
+
+		expect(promptMocks.logMessage).toHaveBeenCalledWith(
+			[
+				"Addons",
+				"  Sentry  @acme/sentry  Add Sentry observability. [@acme/forge-sentry]",
+				"",
+				"1 entry. Run forge info <id> for details.",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("writes pure registry JSON with source on every entry", async () => {
+		const loaded = await loadDiscoveryFixture();
+		const envelope = buildListEnvelope(loaded.catalog, { query: "" });
+		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		try {
+			await runList(undefined, { json: true }, () => Promise.resolve(loaded));
+
+			expect(consoleLog).toHaveBeenCalledWith(
+				JSON.stringify(envelope, null, "\t"),
+			);
+			expect(JSON.parse(JSON.stringify(envelope))).toEqual(envelope);
+			expect(envelope.entries.every((entry) => entry.source.length > 0)).toBe(
+				true,
+			);
+		} finally {
+			consoleLog.mockRestore();
+		}
+	});
+
+	it("keeps degraded discovery warnings out of JSON stdout", async () => {
+		await withTempDir("list-json-registry-failure", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				config: {},
+				installs: [],
+				modules: {},
+				registries: ["@fixture/missing-registry"],
+				schemaVersion: 1,
+			});
+
+			const stdout: string[] = [];
+			const stderr: string[] = [];
+			const consoleLog = vi
+				.spyOn(console, "log")
+				.mockImplementation((message: unknown) => {
+					if (typeof message !== "string")
+						throw new Error("Expected string JSON output");
+					stdout.push(message);
+				});
+			promptMocks.logWarn.mockImplementation((message, options) => {
+				expect(options.output).toBe(process.stderr);
+				stderr.push(message);
+			});
+
+			try {
+				await runList(undefined, { json: true }, () =>
+					loadDiscoveryRegistry(directory),
+				);
+			} finally {
+				consoleLog.mockRestore();
+			}
+
+			expect(stdout).toHaveLength(1);
+			expect(JSON.parse(stdout[0] ?? "")).toEqual(
+				buildListEnvelope(listCatalogEntries(), { query: "" }),
+			);
+			expect(stderr).toEqual([
+				"We couldn't load this project's registries (Registry Not Installed: @fixture/missing-registry), so we're showing the first-party catalog.",
+			]);
+			expect(promptMocks.logWarn).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	it("writes exact filtered JSON command output", async () => {
