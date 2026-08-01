@@ -1,14 +1,27 @@
 import type { CatalogEntry } from "@ryuujs/generators";
 import { listCatalogEntries } from "@ryuujs/generators";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildListEnvelope,
 	buildListOutput,
 	parseCatalogKind,
+	runList,
 	selectListEntries,
 } from "../src/commands/list";
 
 const catalog = listCatalogEntries();
+
+const promptMocks = vi.hoisted(() => ({
+	logMessage: vi.fn(),
+}));
+
+vi.mock("@clack/prompts", () => ({
+	log: { message: promptMocks.logMessage },
+}));
+
+beforeEach(() => {
+	promptMocks.logMessage.mockReset();
+});
 
 describe("forge list builders", () => {
 	it("groups available entries before one Coming Soon group", () => {
@@ -119,6 +132,8 @@ describe("forge list builders", () => {
 
 	it("validates kind values", () => {
 		expect(parseCatalogKind("addon")).toBe("addon");
+		expect(parseCatalogKind("framework")).toBe("framework");
+		expect(parseCatalogKind("template")).toBe("template");
 		expect(parseCatalogKind(undefined)).toBeUndefined();
 		expect(() => parseCatalogKind("plugin")).toThrow("Catalog Kind Invalid");
 	});
@@ -159,5 +174,46 @@ describe("forge list builders", () => {
 			  "forgeListVersion": 1,
 			}
 		`);
+	});
+
+	it("writes exact filtered JSON command output", async () => {
+		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			await runList("drizzle", { json: true, kind: "addon" });
+
+			expect(consoleLog).toHaveBeenCalledWith(
+				JSON.stringify(
+					buildListEnvelope(catalog, { kind: "addon", query: "drizzle" }),
+					null,
+					"\t",
+				),
+			);
+			expect(promptMocks.logMessage).not.toHaveBeenCalled();
+		} finally {
+			consoleLog.mockRestore();
+		}
+	});
+
+	it("defaults the query and writes exact empty human output", async () => {
+		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			await runList(undefined, { json: true, kind: "template" });
+
+			expect(consoleLog).toHaveBeenCalledWith(
+				JSON.stringify(
+					buildListEnvelope(catalog, { kind: "template", query: "" }),
+					null,
+					"\t",
+				),
+			);
+		} finally {
+			consoleLog.mockRestore();
+		}
+
+		await runList("does-not-exist", {});
+
+		expect(promptMocks.logMessage).toHaveBeenCalledWith(
+			"0 entries. Run forge info <id> for details.\n",
+		);
 	});
 });

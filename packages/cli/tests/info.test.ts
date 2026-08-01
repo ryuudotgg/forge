@@ -1,16 +1,35 @@
+import type { CatalogEntry } from "@ryuujs/generators";
 import { getCatalogEntry, listCatalogEntries } from "@ryuujs/generators";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildInfoEnvelope,
 	buildInfoNotFoundMessage,
 	buildInfoOutput,
+	runInfo,
 } from "../src/commands/info";
+
+const promptMocks = vi.hoisted(() => ({
+	logError: vi.fn(),
+	logMessage: vi.fn(),
+}));
+
+vi.mock("@clack/prompts", () => ({
+	log: {
+		error: promptMocks.logError,
+		message: promptMocks.logMessage,
+	},
+}));
 
 function requireEntry(id: string) {
 	const entry = getCatalogEntry(id);
 	if (entry === undefined) throw new Error(`Missing test catalog entry: ${id}`);
 	return entry;
 }
+
+beforeEach(() => {
+	promptMocks.logError.mockReset();
+	promptMocks.logMessage.mockReset();
+});
 
 describe("forge info builders", () => {
 	it("renders addon, framework, and template rows", () => {
@@ -39,6 +58,36 @@ describe("forge info builders", () => {
 					"Frameworks:      nextjs and tanstack-start",
 					"Required slots:  trpc",
 					"Keywords:        api, rpc, trpc, and typescript",
+					"",
+				].join("\n"),
+			].join("\n\n"),
+		);
+	});
+
+	it("renders capabilities and multiple targets", () => {
+		const entry: CatalogEntry = {
+			available: true,
+			capabilities: ["alpha", "beta"],
+			category: "tooling",
+			description: "One summary.",
+			experimental: false,
+			hidden: false,
+			id: "custom",
+			keywords: [],
+			kind: "addon",
+			name: "Custom Addon",
+			summary: "One summary.",
+			targetMode: "multiple",
+		};
+
+		expect(buildInfoOutput(entry)).toBe(
+			[
+				"Custom Addon custom",
+				"One summary.",
+				[
+					"Category:      tooling",
+					"Targets:       Multiple targets",
+					"Capabilities:  alpha and beta",
 					"",
 				].join("\n"),
 			].join("\n\n"),
@@ -91,5 +140,57 @@ describe("forge info builders", () => {
 			  "forgeListVersion": 1,
 			}
 		`);
+	});
+
+	it("writes exact human and JSON command output", async () => {
+		await runInfo("nextjs/base", {});
+
+		expect(promptMocks.logMessage).toHaveBeenCalledWith(
+			[
+				"Base nextjs/base",
+				"Base Next.js template.",
+				"A production-ready Next.js base template that composes cleanly with Forge addons.",
+				[
+					"Framework:  nextjs",
+					"Version:    1",
+					"Keywords:   base, next, starter, template, and web",
+					"",
+				].join("\n"),
+			].join("\n\n"),
+		);
+
+		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			await runInfo("drizzle", { json: true });
+
+			expect(consoleLog).toHaveBeenCalledWith(
+				JSON.stringify(buildInfoEnvelope(requireEntry("drizzle")), null, "\t"),
+			);
+			expect(promptMocks.logMessage).toHaveBeenCalledTimes(1);
+		} finally {
+			consoleLog.mockRestore();
+		}
+	});
+
+	it("reports missing and hidden ids as exact command errors", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		try {
+			await expect(runInfo("missing", {})).rejects.toThrow("exit:1");
+			await expect(runInfo("root", {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenNthCalledWith(
+				1,
+				'We couldn\'t find "missing" in the catalog.',
+			);
+			expect(promptMocks.logError).toHaveBeenNthCalledWith(
+				2,
+				'We couldn\'t find "root" in the catalog.',
+			);
+		} finally {
+			exit.mockRestore();
+		}
 	});
 });
