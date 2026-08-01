@@ -192,6 +192,21 @@ describe("CLI entry dispatch", () => {
 		expect(runCreate).not.toHaveBeenCalled();
 	});
 
+	it("does not add surrounding output to JSON commands", async () => {
+		const runCreate = vi.fn(async (): Promise<void> => {});
+		const runList = vi.fn(async (): Promise<void> => {});
+		const list = command(runList, { machineOutput: true });
+		const testCli = createTestCli({
+			defaultCommand: command(runCreate),
+			getSubcommand: (name) => (name === "list" ? list : undefined),
+		});
+
+		await runCli(["list", "--json"], testCli.cli);
+
+		expect(runList).toHaveBeenCalledWith([], { json: true });
+		expect(testCli.log).not.toHaveBeenCalled();
+	});
+
 	it("short-circuits help and version before dispatch", async () => {
 		const runCreate = vi.fn(
 			async (

@@ -1,3 +1,5 @@
+import { log } from "@clack/prompts";
+import { platforms } from "@ryuujs/generators";
 import color from "picocolors";
 import { type OptionKey, options, sections } from "../cli";
 import { type SubcommandDef, subcommands } from "../commands/registry";
@@ -8,21 +10,28 @@ interface HelpEntry {
 	description: string;
 }
 
+const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
+function visibleLength(value: string): number {
+	return value.replace(ansiPattern, "").length;
+}
+
 function buildCommandEntries(): HelpEntry[] {
 	const entries: HelpEntry[] = [];
 
 	for (const [name, cmd] of Object.entries<SubcommandDef>(subcommands)) {
-		const label = cmd.default ? "forge" : `forge ${name}`;
+		const label = cmd.default ? "forge [create]" : `forge ${name}`;
+		const command = color.bold(color.cyan(label));
 
 		if (cmd.arg)
 			entries.push({
-				label: `${color.cyan(label)} ${color.dim(cmd.arg)}`,
+				label: `${command} ${color.dim(cmd.arg)}`,
 				rawLen: label.length + 1 + cmd.arg.length,
 				description: cmd.description,
 			});
 		else
 			entries.push({
-				label: color.cyan(label),
+				label: command,
 				rawLen: label.length,
 				description: cmd.description,
 			});
@@ -31,47 +40,49 @@ function buildCommandEntries(): HelpEntry[] {
 	return entries;
 }
 
-function formatFlag(key: OptionKey): string {
+function isPlatformUnavailable(key: OptionKey) {
+	const opt = options[key];
+	return "platform" in opt && !platforms.available(opt.platform);
+}
+
+function formatFlag(key: OptionKey, unavailable: boolean): string {
 	const opt = options[key];
 
-	const short = "short" in opt ? color.dim(`-${opt.short}, `) : "    ";
+	const short =
+		"short" in opt
+			? unavailable
+				? `-${opt.short}, `
+				: `${color.bold(`-${opt.short}`)}, `
+			: "    ";
 	const long = `--${key}`;
-	const arg = opt.type === "string" ? color.dim(" <value>") : "";
+	const arg =
+		opt.type === "string"
+			? unavailable
+				? " <value>"
+				: color.dim(" <value>")
+			: "";
+	const soon = unavailable ? color.dim(" (soon)") : "";
 
-	return `${short}${color.white(long)}${arg}`;
+	return `${short}${unavailable ? long : color.bold(long)}${arg}${soon}`;
 }
 
 function flagLength(key: OptionKey): number {
+	return visibleLength(formatFlag(key, isPlatformUnavailable(key)));
+}
+
+function formatChoices(key: OptionKey, unavailable: boolean): string {
 	const opt = options[key];
+	const choices = "choices" in opt ? opt.choices : [];
 
-	const short = 4;
-	const long = `--${key}`.length;
-	const arg = opt.type === "string" ? 8 : 0;
-
-	return short + long + arg;
-}
-
-function line(width: number) {
-	console.log(`  ${color.gray("\u2500".repeat(width))}`);
-}
-
-function formatValues(description: string): string {
-	const parts = description.split(", ");
-
-	return parts
-		.map((part) => {
-			if (part === "etc.") return color.dim(part);
-
-			const parenIdx = part.indexOf(" (");
-			if (parenIdx !== -1)
-				return (
-					color.white(part.slice(0, parenIdx)) +
-					color.dim(` ${part.slice(parenIdx + 1)}`)
-				);
-
-			return color.white(part);
-		})
-		.join(color.dim(" \u00b7 "));
+	return choices
+		.map((choice) =>
+			unavailable
+				? choice.label
+				: choice.available
+					? color.white(choice.label)
+					: color.dim(`${choice.label} (soon)`),
+		)
+		.join(unavailable ? " \u00b7 " : color.dim(" \u00b7 "));
 }
 
 export function printHelp() {
@@ -83,48 +94,45 @@ export function printHelp() {
 		...commandEntries.map((c) => c.rawLen),
 	);
 
-	const allDescriptions = [
-		...commandEntries.map((c) => c.description),
-		...allKeys.map((k) => options[k].description),
+	const lines = [
+		`  ${color.bold(color.red("Usage:"))} ${color.bold("forge")} ${color.dim("[command] [options]")}`,
+		"",
+		`  ${color.bold(color.cyan("Commands"))}`,
 	];
-
-	const lineWidth = Math.max(
-		...allDescriptions.map((d) => maxLen + 4 + d.length + 2),
-	);
-
-	console.log();
-	console.log(
-		`  ${color.bold(color.red("forge"))} ${color.dim("[command] [options]")}`,
-	);
-
-	line(lineWidth);
-
-	console.log(`  ${color.bold("Commands")}`);
 
 	for (const entry of commandEntries) {
 		const padding = " ".repeat(maxLen - entry.rawLen + 4);
-		console.log(`    ${entry.label}${padding}${color.dim(entry.description)}`);
+		lines.push(`    ${entry.label}${padding}${color.dim(entry.description)}`);
 	}
 
 	for (const section of sections) {
-		line(lineWidth);
-		console.log(`  ${color.bold(section.title)}`);
+		lines.push("", `  ${color.bold(color.cyan(section.title))}`);
 
 		for (const key of section.keys) {
 			const opt = options[key];
+			const unavailable = isPlatformUnavailable(key);
 
-			const flag = formatFlag(key);
+			const flag = formatFlag(key, unavailable);
 			const len = flagLength(key);
 			const padding = " ".repeat(maxLen - len + 4);
 
 			const desc =
-				"configKey" in opt || "isValueList" in opt
-					? formatValues(opt.description)
+				"choices" in opt
+					? formatChoices(key, unavailable)
 					: color.dim(opt.description);
 
-			console.log(`    ${flag}${padding}${desc}`);
+			const row = `    ${flag}${padding}${desc}`;
+			lines.push(unavailable ? color.dim(row) : row);
 		}
 	}
 
-	console.log();
+	lines.push(
+		"",
+		`  ${color.bold(color.cyan("Examples"))}`,
+		`    ${color.bold("forge list")} ${color.dim("auth")}`,
+		`    ${color.bold("forge info")} ${color.dim("drizzle")}`,
+		`    ${color.bold("forge add")} ${color.dim("trpc")}`,
+	);
+
+	log.message(`${lines.join("\n")}\n`);
 }

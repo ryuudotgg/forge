@@ -1,14 +1,57 @@
 import { parseArgs } from "node:util";
+import { packageManagers, runtimes } from "@ryuujs/core";
+import type { Platform } from "@ryuujs/generators";
+import {
+	authenticationProviders,
+	backends,
+	catalogs,
+	databaseProviders,
+	databases,
+	desktopFrameworks,
+	linters,
+	mobileFrameworks,
+	nativeStyleFrameworks,
+	orms,
+	rpcProviders,
+	styleFrameworks,
+	webFrameworks,
+} from "@ryuujs/generators";
 import type { ParsedValues, SubcommandDef } from "./commands/registry";
 import type { PartialConfig } from "./steps/types";
 
 interface CLIOption {
 	type: "string" | "boolean";
-	description: string;
+	description?: string;
+	choices?: ReadonlyArray<CLIChoice>;
 
 	short?: string;
 	configKey?: string;
-	isValueList?: boolean;
+	platform?: Platform;
+}
+
+interface CLIChoice {
+	readonly available: boolean;
+	readonly label: string;
+}
+
+function choiceHint<Id extends string>(choices: {
+	readonly ids: ReadonlyArray<Id>;
+	available(id: Id): boolean;
+	label(id: Id): string;
+}): ReadonlyArray<CLIChoice> {
+	return choices.ids.map((id) => ({
+		available: choices.available(id),
+		label: choices.label(id),
+	}));
+}
+
+function environmentHint(
+	values: ReadonlyArray<{ readonly displayName: string }>,
+): ReadonlyArray<CLIChoice> {
+	return values.map(({ displayName }) => ({
+		available: true,
+		label: displayName,
+	}));
 }
 
 export type OptionKey = keyof typeof options;
@@ -26,6 +69,16 @@ export const options = {
 		description: "Returns the current version of Forge.",
 	},
 
+	kind: {
+		type: "string",
+		description: "Filter the catalog by addon, framework, or template.",
+	},
+
+	json: {
+		type: "boolean",
+		description: "Print stable version 1 JSON; fields are added only.",
+	},
+
 	config: {
 		type: "string",
 		short: "c",
@@ -35,8 +88,7 @@ export const options = {
 	preset: {
 		type: "string",
 		short: "p",
-		description: "default",
-		isValueList: true,
+		description: "Start from a named preset configuration.",
 	},
 
 	name: {
@@ -53,92 +105,95 @@ export const options = {
 
 	runtime: {
 		type: "string",
-		description: "Node.js, Bun, Deno",
+		choices: environmentHint(Object.values(runtimes)),
 		configKey: "runtime",
 	},
 
 	"package-manager": {
 		type: "string",
-		description: "pnpm, npm, Yarn, Bun",
+		choices: environmentHint(Object.values(packageManagers)),
 		configKey: "packageManager",
 	},
 
 	catalogs: {
 		type: "string",
-		description: "Flat, Scoped (pnpm only)",
+		choices: choiceHint(catalogs),
 		configKey: "catalogs",
 	},
 
 	linter: {
 		type: "string",
-		description: "Biome, Oxc, ESLint + Prettier",
+		choices: choiceHint(linters),
 		configKey: "linter",
 	},
 
 	web: {
 		type: "string",
-		description: "Next.js, React Router, TanStack Router, TanStack Start",
+		choices: choiceHint(webFrameworks),
 		configKey: "web",
 	},
 
 	desktop: {
 		type: "string",
-		description: "Electron, Tauri",
+		choices: choiceHint(desktopFrameworks),
 		configKey: "desktop",
+		platform: "desktop",
 	},
 
 	mobile: {
 		type: "string",
-		description: "Expo, React Native",
+		choices: choiceHint(mobileFrameworks),
 		configKey: "mobile",
+		platform: "mobile",
 	},
 
 	backend: {
 		type: "string",
-		description: "Next.js, Convex, Hono, Elysia, etc.",
+		choices: choiceHint(backends),
 		configKey: "backend",
 	},
 
 	rpc: {
 		type: "string",
-		description: "tRPC",
+		choices: choiceHint(rpcProviders),
 		configKey: "rpc",
 	},
 
 	database: {
 		type: "string",
-		description: "MySQL, PostgreSQL, SQLite",
+		choices: choiceHint(databases),
 		configKey: "database",
 	},
 
 	orm: {
 		type: "string",
-		description: "Drizzle ORM, Prisma",
+		choices: choiceHint(orms),
 		configKey: "orm",
 	},
 
 	auth: {
 		type: "string",
-		description: "Better Auth, Auth.js, WorkOS, Clerk",
+		choices: choiceHint(authenticationProviders),
 		configKey: "authentication",
 	},
 
 	"database-provider": {
 		type: "string",
-		description: "PlanetScale, Neon, Turso, etc.",
+		choices: choiceHint(databaseProviders),
 		configKey: "databaseProvider",
 	},
 
 	style: {
 		type: "string",
-		description: "Tailwind CSS, UnoCSS",
+		choices: choiceHint(styleFrameworks),
 		configKey: "style",
 	},
 
 	"native-style": {
 		type: "string",
-		description: "NativeWind, Tamagui, Unistyles",
+		choices: choiceHint(nativeStyleFrameworks),
 		configKey: "nativeStyleFramework",
+		platform: "mobile",
 	},
 
 	"no-install": {
@@ -154,12 +209,16 @@ export const options = {
 
 export const sections: CLISection[] = [
 	{
-		title: "Options",
-		keys: ["config", "preset", "no-install", "no-git", "help", "version"],
+		title: "Global options",
+		keys: ["help", "version"],
 	},
 	{
-		title: "Field Overrides",
+		title: "forge [create] options",
 		keys: [
+			"config",
+			"preset",
+			"no-install",
+			"no-git",
 			"name",
 			"path",
 			"runtime",
@@ -178,6 +237,10 @@ export const sections: CLISection[] = [
 			"style",
 			"native-style",
 		],
+	},
+	{
+		title: "forge list/info options",
+		keys: ["kind", "json"],
 	},
 ];
 

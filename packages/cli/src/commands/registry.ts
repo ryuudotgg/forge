@@ -5,6 +5,7 @@ export interface SubcommandDef {
 	readonly arg?: string;
 	readonly argRequired?: boolean;
 	readonly default?: boolean;
+	readonly machineOutput?: boolean;
 	readonly run: (positionals: string[], values: ParsedValues) => Promise<void>;
 }
 
@@ -23,6 +24,32 @@ export const subcommands = {
 		async run(_positionals, values) {
 			const { runUpdate } = await import("./update");
 			await runUpdate(values);
+		},
+	},
+
+	list: {
+		description: "Browse the Forge catalog.",
+		arg: "[query]",
+		machineOutput: true,
+		async run(positionals, values) {
+			const { runList } = await import("./list");
+			await runList(positionals[0], values);
+		},
+	},
+
+	info: {
+		description: "Show details for a catalog entry.",
+		arg: "<id>",
+		argRequired: true,
+		machineOutput: true,
+		async run(positionals, values) {
+			const { runInfo } = await import("./info");
+
+			const id = positionals[0];
+			if (id === undefined)
+				throw new Error("Catalog Entry Missing: an id is required.");
+
+			await runInfo(id, values);
 		},
 	},
 

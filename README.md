@@ -55,6 +55,8 @@ bunx @ryuujs/forge
 | `forge add [addon-id]` | Add an addon to your project. |
 | `forge remove [addon-id]` | Remove an addon from your project. |
 | `forge update` | Reconcile your installed addons and templates. |
+| `forge list [query]` | Browse the Forge catalog. |
+| `forge info <id>` | Show details for a catalog entry. |
 
 ### Non-interactive
 

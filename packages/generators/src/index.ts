@@ -89,6 +89,7 @@ export {
 	RegistryLoadError,
 } from "./registry";
 export type { RemovalBlockers } from "./registry/loader";
+export { matchQuery } from "./registry/search";
 export type {
 	LoadedAddonDefinition,
 	LoadedDefinitionRegistry,
