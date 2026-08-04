@@ -10,6 +10,7 @@ import {
 	defineFramework,
 	defineRegistry,
 	defineTemplate,
+	deriveAddonFrameworks,
 	ensuredModuleTarget,
 	GeneratorError,
 	isAddonCompatibleWithModule,
@@ -337,6 +338,46 @@ describe("authoring", () => {
 		).toBe(false);
 	});
 
+	it("unions declared and adapter-derived app framework support", () => {
+		const addon = compatibilityAddon({
+			app: { frameworks: ["nextjs"] },
+		});
+		const adapter = defineAdapter<TestConfig>({
+			addon: addon.id,
+			framework: "solid",
+			contribute: () => [],
+		});
+		const solidModule: AppConfig = {
+			...appModule,
+			framework: "solid",
+		};
+
+		expect(deriveAddonFrameworks(addon, [adapter])).toEqual([
+			"nextjs",
+			"solid",
+		]);
+		expect(
+			isAddonCompatibleWithModule(addon, appModule, [framework], [adapter]),
+		).toBe(true);
+		expect(
+			isAddonCompatibleWithModule(addon, solidModule, [framework], [adapter]),
+		).toBe(true);
+	});
+
+	it("treats unconstrained app compatibility as universal support", () => {
+		const addon = compatibilityAddon({ app: {} });
+		const adapter = defineAdapter<TestConfig>({
+			addon: addon.id,
+			framework: "solid",
+			contribute: () => [],
+		});
+
+		expect(deriveAddonFrameworks(addon, [adapter])).toBeUndefined();
+		expect(
+			isAddonCompatibleWithModule(addon, appModule, [framework], [adapter]),
+		).toBe(true);
+	});
+
 	it("uses the adapter registry for the missing-framework sentence", async () => {
 		const addon = defineAddon<TestConfig>({
 			id: "trpc",
@@ -388,6 +429,31 @@ describe("authoring", () => {
 
 		expect(error).toBeInstanceOf(GeneratorError);
 		expect(error.message).toBe("tRPC requires a web framework template.");
+	});
+
+	it("accepts package-only compatibility when an addon also has adapters", async () => {
+		const addon = defineAddon<TestConfig>({
+			id: "package-tools",
+			name: "Package Tools",
+			version: "0.1.0",
+			category: "addon",
+			exclusive: false,
+			targetMode: "multiple",
+			compatibility: { package: { capabilities: ["ui"] } },
+			when: () => true,
+			contribute: () => [],
+		});
+		const adapter = defineAdapter<TestConfig>({
+			addon: addon.id,
+			framework: "solid",
+			contribute: () => [],
+		});
+
+		await expect(
+			Effect.runPromise(
+				validateAddonAgainstSelection(addon, framework, template, [adapter]),
+			),
+		).resolves.toBeUndefined();
 	});
 
 	it("defaults an explicitly undefined adapter slot list", () => {

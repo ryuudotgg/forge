@@ -1,7 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RegistryDescriptorSchema } from "@ryuujs/core";
+import {
+	type AppConfig,
+	deriveAddonFrameworks,
+	isAddonCompatibleWithModule,
+	RegistryDescriptorSchema,
+} from "@ryuujs/core";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
@@ -172,6 +177,28 @@ describe("registry loader", () => {
 			source: "first-party",
 		});
 		expect(
+			loaded.catalog.find(
+				(entry) => entry.kind === "addon" && entry.id === "@fixture/mixed",
+			),
+		).toMatchObject({
+			frameworks: ["nextjs", "@fixture/web"],
+			frameworkSources: {
+				"@fixture/web": fixtureRegistryId,
+				nextjs: fixtureRegistryId,
+			},
+			source: fixtureRegistryId,
+		});
+		expect(
+			loaded.catalog.find(
+				(entry) =>
+					entry.kind === "addon" && entry.id === "@fixture/unconstrained",
+			),
+		).toMatchObject({
+			frameworks: undefined,
+			frameworkSources: {},
+			source: fixtureRegistryId,
+		});
+		expect(
 			loaded.catalog.find((entry) => entry.id === "@fixture/neutral"),
 		).toMatchObject({ source: fixtureRegistryId });
 		expect(
@@ -205,7 +232,19 @@ describe("registry loader", () => {
 				source: "npm",
 				units: [
 					{ id: "@fixture/neutral", kind: "addon" },
+					{ id: "@fixture/mixed", kind: "addon" },
+					{ id: "@fixture/unconstrained", kind: "addon" },
 					{ addon: "vitest", framework: "nextjs", kind: "adapter" },
+					{
+						addon: "@fixture/mixed",
+						framework: "@fixture/web",
+						kind: "adapter",
+					},
+					{
+						addon: "@fixture/unconstrained",
+						framework: "@fixture/web",
+						kind: "adapter",
+					},
 					{ id: "@fixture/web", kind: "framework" },
 					{ id: "@fixture/base", kind: "template" },
 				],
@@ -217,6 +256,47 @@ describe("registry loader", () => {
 				JSON.parse(JSON.stringify(loaded.descriptors)),
 			),
 		).toEqual(loaded.descriptors);
+	});
+
+	it("matches derived frameworks to real compatibility membership", async () => {
+		const loaded = await loadDefinitionRegistry({
+			importRegistry: importFixtureRegistry,
+			projectRoot: "/fixture-project",
+			registries: [fixtureRegistryId],
+		});
+		const addon = loaded.registry.addons.find(
+			(entry) => entry.id === "@fixture/unconstrained",
+		);
+		if (!addon) throw new Error("Missing Addon: @fixture/unconstrained");
+
+		const derivedFrameworks = deriveAddonFrameworks(
+			addon,
+			loaded.registry.adapters,
+		);
+		for (const framework of loaded.registry.frameworks) {
+			const module: AppConfig = {
+				id: "abcde",
+				type: "app",
+				framework: framework.id,
+				template: { id: `${framework.id}/fixture`, version: 1 },
+				slots: Object.fromEntries(
+					framework.slots.map((slot) => [slot, `src/${slot}.ts`]),
+				),
+			};
+			const expectedMembership =
+				derivedFrameworks === undefined ||
+				derivedFrameworks.includes(framework.id);
+
+			expect(
+				isAddonCompatibleWithModule(
+					addon,
+					module,
+					loaded.registry.frameworks,
+					loaded.registry.adapters,
+				),
+				framework.id,
+			).toBe(expectedMembership);
+		}
 	});
 
 	it("accepts self-contained structural registry definitions", async () => {

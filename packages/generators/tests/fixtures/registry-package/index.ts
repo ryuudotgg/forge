@@ -18,9 +18,45 @@ const addon = defineAddon<ForgeConfig>({
 	contribute: () => [],
 });
 
+const mixedAddon = defineAddon<ForgeConfig>({
+	id: "@fixture/mixed",
+	name: "Fixture Mixed Support",
+	version: "1.0.0",
+	category: "addon",
+	exclusive: false,
+	targetMode: "multiple",
+	compatibility: { app: { frameworks: ["nextjs"] } },
+	when: () => false,
+	contribute: () => [],
+});
+
+const unconstrainedAddon = defineAddon<ForgeConfig>({
+	id: "@fixture/unconstrained",
+	name: "Fixture Unconstrained Support",
+	version: "1.0.0",
+	category: "addon",
+	exclusive: false,
+	targetMode: "multiple",
+	compatibility: { app: {} },
+	when: () => false,
+	contribute: () => [],
+});
+
 const adapter = defineAdapter<ForgeConfig>({
 	addon: "vitest",
 	framework: "nextjs",
+	contribute: () => [],
+});
+
+const mixedAdapter = defineAdapter<ForgeConfig>({
+	addon: "@fixture/mixed",
+	framework: "@fixture/web",
+	contribute: () => [],
+});
+
+const unconstrainedAdapter = defineAdapter<ForgeConfig>({
+	addon: "@fixture/unconstrained",
+	framework: "@fixture/web",
 	contribute: () => [],
 });
 
@@ -47,8 +83,8 @@ const template = defineTemplate<ForgeConfig>({
 
 const registry = {
 	apiVersion: authoringApiVersion,
-	addons: [addon],
-	adapters: [adapter],
+	addons: [addon, mixedAddon, unconstrainedAddon],
+	adapters: [adapter, mixedAdapter, unconstrainedAdapter],
 	frameworks: [framework],
 	templates: [template],
 	catalog: [
@@ -63,6 +99,32 @@ const registry = {
 			kind: "addon",
 			name: "Fixture Neutral",
 			summary: "Exercise third-party addon loading.",
+			targetMode: "multiple",
+		},
+		{
+			available: true,
+			category: "addon",
+			description: "An addon with unconstrained declared app support.",
+			experimental: false,
+			hidden: false,
+			id: "@fixture/unconstrained",
+			keywords: ["fixture"],
+			kind: "addon",
+			name: "Fixture Unconstrained Support",
+			summary: "Exercise unconstrained app support derivation.",
+			targetMode: "multiple",
+		},
+		{
+			available: true,
+			category: "addon",
+			description: "An addon with declared and adapter-derived support.",
+			experimental: false,
+			hidden: false,
+			id: "@fixture/mixed",
+			keywords: ["fixture"],
+			kind: "addon",
+			name: "Fixture Mixed Support",
+			summary: "Exercise support union derivation.",
 			targetMode: "multiple",
 		},
 		{

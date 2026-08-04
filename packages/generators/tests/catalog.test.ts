@@ -1,6 +1,8 @@
+import { deriveAddonFrameworks } from "@ryuujs/core";
 import { describe, expect, it } from "vitest";
 import {
 	authenticationProviders,
+	builtins,
 	getCatalogEntry,
 	linters,
 	listCatalogEntries,
@@ -104,6 +106,22 @@ describe("catalog", () => {
 		expect(await getCatalogEntry("ui")).toMatchObject({
 			frameworks: expectedFrameworks,
 		});
+	});
+
+	it("preserves first-party support derivation under union semantics", () => {
+		for (const addon of builtins.addons) {
+			const adapterFrameworks = builtins.adapters
+				.filter((adapter) => adapter.addon === addon.id)
+				.map((adapter) => adapter.framework);
+			const previousFrameworks =
+				adapterFrameworks.length > 0
+					? [...new Set(adapterFrameworks)]
+					: addon.compatibility?.app?.frameworks;
+
+			expect(deriveAddonFrameworks(addon, builtins.adapters), addon.id).toEqual(
+				previousFrameworks,
+			);
+		}
 	});
 
 	it("derives announced entries from unavailable catalog-backed choices", async () => {

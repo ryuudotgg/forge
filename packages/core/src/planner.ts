@@ -11,6 +11,7 @@ import type {
 	TemplateDefinition,
 } from "./authoring";
 import {
+	addonDeclaresFramework,
 	isAddonCompatibleWithModule,
 	resolveSlotPath,
 	validateAdapterAgainstModule,
@@ -54,6 +55,7 @@ type Definition<ConfigValue> =
 interface EvaluatedDefinition {
 	readonly contributions: ReadonlyArray<Contribution>;
 	readonly definitionId: string;
+	readonly excludedModuleIds?: ReadonlySet<ModuleId>;
 	readonly order: number;
 }
 
@@ -348,25 +350,9 @@ function buildTargetCandidates<ConfigValue>(
 	if (!addon.compatibility && !hasAdapters) return [{ kind: "project" }];
 
 	const compatibleModules = modules
-		.filter((module) => {
-			if (hasAdapters) {
-				const config = module.config;
-				if (config.type !== "app") return false;
-
-				return adapters.some(
-					(adapter) =>
-						adapter.addon === addon.id &&
-						adapter.framework === config.framework,
-				);
-			}
-
-			return isAddonCompatibleWithModule(
-				addon,
-				module.config,
-				frameworks,
-				adapters,
-			);
-		})
+		.filter((module) =>
+			isAddonCompatibleWithModule(addon, module.config, frameworks, adapters),
+		)
 		.map(
 			(module): InstallTarget => ({
 				kind: "module",
@@ -616,11 +602,13 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						});
 
 					const module = modulesById.get(target.moduleId);
-					if (module?.config.type !== "app")
+					if (!module)
 						return yield* new PlannerError({
 							path: addon.id,
 							message: "Adapter Target App Missing",
 						});
+
+					if (module.config.type !== "app") continue;
 
 					const framework = frameworksById.get(module.config.framework);
 					if (!framework)
@@ -633,6 +621,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						(entry) => entry.framework === framework.id,
 					);
 
+					if (!adapter && addonDeclaresFramework(addon, framework.id)) continue;
 					if (!adapter)
 						return yield* new GeneratorError({
 							generatorId: addon.id,
@@ -819,7 +808,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 		const resolveModuleTargets = (
 			target: TargetRef,
-			definitionId: string,
+			evaluation: EvaluatedDefinition,
 			moduleIdsByKey: ReadonlyMap<string, ModuleId>,
 			modules: ReadonlyArray<ManagedModuleRecord>,
 			selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
@@ -829,24 +818,27 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					return Effect.succeed([{ kind: "project" }]);
 
 				case "SelectedModuleTarget": {
-					const installTargets = selectedTargets.get(definitionId) ?? [];
-					const moduleTargets = installTargets
-						.filter((entry) => entry.kind === "module")
-						.map(
-							(entry) =>
-								({
-									kind: "module",
-									moduleId: entry.moduleId,
-								}) as const,
-						);
+					const installTargets =
+						selectedTargets.get(evaluation.definitionId) ?? [];
 
-					if (moduleTargets.length === 0)
+					const selectedModuleTargets = installTargets.filter(
+						(entry) => entry.kind === "module",
+					);
+
+					if (selectedModuleTargets.length === 0)
 						return Effect.fail(
 							new PlannerError({
-								path: definitionId,
+								path: evaluation.definitionId,
 								message: "Selected Target Missing",
 							}),
 						);
+
+					const moduleTargets = selectedModuleTargets.flatMap(
+						(entry): ReadonlyArray<RenderBucket> =>
+							!evaluation.excludedModuleIds?.has(entry.moduleId)
+								? [{ kind: "module", moduleId: entry.moduleId }]
+								: [],
+					);
 
 					return Effect.succeed(moduleTargets);
 				}
@@ -856,7 +848,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (!moduleId)
 						return Effect.fail(
 							new PlannerError({
-								path: definitionId,
+								path: evaluation.definitionId,
 								message: "Ensured Module Missing",
 							}),
 						);
@@ -885,7 +877,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (matches.length === 0)
 						return Effect.fail(
 							new PlannerError({
-								path: definitionId,
+								path: evaluation.definitionId,
 								message: "Target Module Missing",
 							}),
 						);
@@ -910,7 +902,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (contribution._tag === "ModuleCapabilitiesContribution") {
 						const targets = yield* resolveModuleTargets(
 							contribution.target,
-							entry.definitionId,
+							entry,
 							moduleIdsByKey,
 							modules,
 							selectedTargets,
@@ -960,7 +952,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 					const targets = yield* resolveModuleTargets(
 						contribution.target,
-						entry.definitionId,
+						entry,
 						moduleIdsByKey,
 						modules,
 						selectedTargets,
@@ -1000,7 +992,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 					const targets = yield* resolveModuleTargets(
 						contribution.target,
-						entry.definitionId,
+						entry,
 						moduleIdsByKey,
 						modules,
 						selectedTargets,
@@ -1435,6 +1427,41 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				]),
 			);
 
+			const genericEvaluations = evaluated.flatMap((entry) => {
+				const addon = registry.addons.find(
+					(candidate) => candidate.id === entry.definitionId,
+				);
+
+				if (!addon) return [entry];
+
+				const moduleTargets = (selectedTargets.get(addon.id) ?? []).filter(
+					(target) => target.kind === "module",
+				);
+
+				const adapterModuleIds = new Set(
+					moduleTargets.flatMap((target) => {
+						const module = mergedModules.find(
+							(candidate) => candidate.id === target.moduleId,
+						);
+
+						if (module?.config.type !== "app") return [];
+
+						const moduleConfig = module.config;
+						return registry.adapters.some(
+							(adapter) =>
+								adapter.addon === addon.id &&
+								adapter.framework === moduleConfig.framework,
+						) && addonDeclaresFramework(addon, moduleConfig.framework)
+							? [target.moduleId]
+							: [];
+					}),
+				);
+
+				if (adapterModuleIds.size === 0) return [entry];
+
+				return [{ ...entry, excludedModuleIds: adapterModuleIds }];
+			});
+
 			const adapterEvaluations = yield* evaluateAdapters(
 				intent.config,
 				evaluated,
@@ -1443,7 +1470,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				selectedTargets,
 			);
 
-			const allEvaluated = [...evaluated, ...adapterEvaluations];
+			const allEvaluated = [...genericEvaluations, ...adapterEvaluations];
 			const {
 				moduleIdsByKey: allModuleIdsByKey,
 				modules: adapterMergedModules,

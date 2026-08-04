@@ -1810,6 +1810,440 @@ describe("planner", () => {
 		});
 	});
 
+	it("keeps unconstrained app compatibility when no adapter matches", async () => {
+		await withTempDir("planner-unconstrained-app", async (directory) => {
+			const solid = defineFramework({
+				id: "solid",
+				configFile: "vite.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Solid",
+				slots: ["integration"],
+				tsconfigPreset: { content: {}, name: "solid" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "nextjs",
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "nextjs",
+						template: { id: "nextjs/base", version: 1 },
+						slots: {},
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "integration",
+				name: "Integration",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "multiple",
+				compatibility: { app: {} },
+				when: () => true,
+				contribute: () => [
+					leafTextFile(selectedModuleTarget(), "integration.txt", "generic\n"),
+				],
+			});
+			const adapter = defineAdapter<TestConfig>({
+				addon: "integration",
+				framework: "solid",
+				contribute: () => [],
+			});
+			const registry = defineRegistry({
+				adapters: [adapter],
+				frameworks: [adapterGuardNextjs, solid],
+				templates: [template],
+				addons: [addon],
+			});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/web/integration.txt")
+					?.content,
+			).toBe("generic\n");
+		});
+	});
+
+	it("uses adapter wiring for unconstrained declared overlap", async () => {
+		await withTempDir("planner-unconstrained-overlap", async (directory) => {
+			const solid = defineFramework({
+				id: "solid",
+				configFile: "vite.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Solid",
+				slots: ["integration"],
+				tsconfigPreset: { content: {}, name: "solid" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "solid/base",
+				framework: "solid",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "nextjs",
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "solid",
+						template: { id: "solid/base", version: 1 },
+						slots: {},
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "integration",
+				name: "Integration",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "multiple",
+				compatibility: { app: {} },
+				when: () => true,
+				contribute: () => [
+					leafTextFile(selectedModuleTarget(), "integration.txt", "generic\n"),
+				],
+			});
+			const adapter = defineAdapter<TestConfig>({
+				addon: "integration",
+				framework: "solid",
+				contribute: (context) => [
+					leafTextFile(
+						moduleTarget(context.module),
+						"integration.txt",
+						"adapter\n",
+					),
+				],
+			});
+			const registry = defineRegistry({
+				adapters: [adapter],
+				frameworks: [solid],
+				templates: [template],
+				addons: [addon],
+			});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/web/integration.txt")
+					?.content,
+			).toBe("adapter\n");
+		});
+	});
+
+	it("keeps generic project contributions across full adapter overlap", async () => {
+		await withTempDir("planner-full-overlap", async (directory) => {
+			const nextjs = defineFramework({
+				id: "nextjs",
+				configFile: "next.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Next.js",
+				slots: ["integration"],
+				tsconfigPreset: { content: {}, name: "nextjs" },
+			});
+			const solid = defineFramework({
+				id: "solid",
+				configFile: "vite.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Solid",
+				slots: ["integration"],
+				tsconfigPreset: { content: {}, name: "solid" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "nextjs",
+				contribute: (context) => [
+					ensureAppModule("web", "apps/web", {
+						framework: "nextjs",
+						template: { id: "nextjs/base", version: 1 },
+						slots: {},
+					}),
+					...(context.config.dual
+						? [
+								ensureAppModule("solid", "apps/solid", {
+									framework: "solid",
+									template: { id: "solid/base", version: 1 },
+									slots: {},
+								}),
+							]
+						: []),
+					ensurePackageModule("ui", "packages/ui", {
+						packageType: "library",
+						template: { id: "ui", version: 1 },
+						capabilities: ["ui"],
+						slots: {},
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "integration",
+				name: "Integration",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "multiple",
+				compatibility: { app: { frameworks: ["nextjs", "solid"] } },
+				when: () => true,
+				contribute: () => [
+					leafTextFile(projectTarget(), "integration.config.ts", "generic\n"),
+					surfaceDependencies(projectTarget(), "rootPackageJson", [
+						{
+							name: "integration-runtime",
+							type: "dependencies",
+							version: "1.0.0",
+						},
+					]),
+					moduleCapabilities(templateModuleTarget("ui", 1), ["integration"]),
+					leafTextFile(selectedModuleTarget(), "generic.txt", "generic\n"),
+				],
+			});
+			const adapter = defineAdapter<TestConfig>({
+				addon: "integration",
+				framework: "nextjs",
+				contribute: (context) => [
+					leafTextFile(
+						moduleTarget(context.module),
+						"adapter.txt",
+						"adapter\n",
+					),
+				],
+			});
+			const registry = defineRegistry({
+				adapters: [adapter],
+				frameworks: [nextjs, solid],
+				templates: [template],
+				addons: [addon],
+			});
+			const summarize = async (dual: boolean) => {
+				const plan = await Effect.runPromise(
+					planCreateEffect(directory, { dual, web: "nextjs" }, registry),
+				);
+				const rootPackageJson = plan.writes.find(
+					(write) => write.path === "package.json",
+				);
+				const uiConfig = plan.writes.find(
+					(write) => write.path === "packages/ui/forge.json",
+				);
+
+				return {
+					capabilities: uiConfig
+						? decodePackageConfig(uiConfig.content).capabilities
+						: undefined,
+					dependency: rootPackageJson
+						? decodePackageJson(rootPackageJson.content).dependencies[
+								"integration-runtime"
+							]
+						: undefined,
+					genericPaths: plan.writes
+						.filter((write) => write.path.endsWith("/generic.txt"))
+						.map((write) => write.path),
+					hasProjectFile: plan.writes.some(
+						(write) => write.path === "integration.config.ts",
+					),
+				};
+			};
+
+			expect(await summarize(false)).toEqual({
+				capabilities: ["ui", "integration"],
+				dependency: "1.0.0",
+				genericPaths: [],
+				hasProjectFile: true,
+			});
+			expect(await summarize(true)).toEqual({
+				capabilities: ["ui", "integration"],
+				dependency: "1.0.0",
+				genericPaths: ["apps/solid/generic.txt"],
+				hasProjectFile: true,
+			});
+		});
+	});
+
+	it("routes package targets generically when an addon also has adapters", async () => {
+		await withTempDir(
+			"planner-package-target-with-adapter",
+			async (directory) => {
+				const solid = defineFramework({
+					id: "solid",
+					configFile: "vite.config.ts",
+					buildOutputs: [],
+					ignoreDirs: [],
+					name: "Solid",
+					slots: ["integration"],
+					tsconfigPreset: { content: {}, name: "solid" },
+				});
+				const template = defineTemplate<TestConfig>({
+					id: "nextjs/base",
+					framework: "nextjs",
+					name: "Base",
+					version: 1,
+					category: "web",
+					exclusive: true,
+					when: (config) => config.web === "nextjs",
+					contribute: () => [
+						ensureAppModule("web", "apps/web", {
+							framework: "nextjs",
+							template: { id: "nextjs/base", version: 1 },
+							slots: {},
+						}),
+						ensurePackageModule("ui", "packages/ui", {
+							packageType: "library",
+							template: { id: "ui", version: 1 },
+							capabilities: ["ui"],
+							slots: {},
+						}),
+					],
+				});
+				const addon = defineAddon<TestConfig>({
+					id: "integration",
+					name: "Integration",
+					version: "0.1.0",
+					category: "addon",
+					exclusive: false,
+					targetMode: "multiple",
+					compatibility: {
+						app: { frameworks: ["nextjs"] },
+						package: { capabilities: ["ui"] },
+					},
+					when: () => true,
+					contribute: () => [
+						leafTextFile(
+							selectedModuleTarget(),
+							"integration.txt",
+							"generic\n",
+						),
+					],
+				});
+				const adapter = defineAdapter<TestConfig>({
+					addon: "integration",
+					framework: "solid",
+					contribute: () => [],
+				});
+				const registry = defineRegistry({
+					adapters: [adapter],
+					frameworks: [adapterGuardNextjs, solid],
+					templates: [template],
+					addons: [addon],
+				});
+
+				const plan = await Effect.runPromise(
+					planCreateEffect(directory, { web: "nextjs" }, registry),
+				);
+
+				expect(
+					plan.writes
+						.filter((write) => write.path.endsWith("/integration.txt"))
+						.map((write) => write.path)
+						.sort(),
+				).toEqual(["apps/web/integration.txt", "packages/ui/integration.txt"]);
+			},
+		);
+	});
+
+	it("uses adapter wiring only for overlapping declared app cells", async () => {
+		await withTempDir("planner-adapter-precedence", async (directory) => {
+			const framework = defineFramework({
+				id: "nextjs",
+				configFile: "next.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Next.js",
+				slots: ["integration"],
+				tsconfigPreset: { content: {}, name: "nextjs" },
+			});
+			const solidFramework = defineFramework({
+				id: "solid",
+				configFile: "vite.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Solid",
+				slots: ["integration"],
+				tsconfigPreset: { content: {}, name: "solid" },
+			});
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				exclusive: true,
+				when: (config) => config.web === "nextjs",
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "nextjs",
+						template: { id: "nextjs/base", version: 1 },
+						slots: { integration: "src/integration.ts" },
+					}),
+					ensureAppModule("solid", "apps/solid", {
+						framework: "solid",
+						template: { id: "solid/base", version: 1 },
+						slots: { integration: "src/integration.ts" },
+					}),
+				],
+			});
+			const addon = defineAddon<TestConfig>({
+				id: "integration",
+				name: "Integration",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "multiple",
+				compatibility: { app: { frameworks: ["nextjs", "solid"] } },
+				when: () => true,
+				contribute: () => [
+					leafTextFile(selectedModuleTarget(), "integration.txt", "generic\n"),
+				],
+			});
+			const adapter = defineAdapter<TestConfig>({
+				addon: "integration",
+				framework: "nextjs",
+				contribute: (context) => [
+					leafTextFile(
+						moduleTarget(context.module),
+						"integration.txt",
+						"adapter\n",
+					),
+				],
+			});
+			const registry = defineRegistry({
+				adapters: [adapter],
+				frameworks: [framework, solidFramework],
+				templates: [template],
+				addons: [addon],
+			});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+			expect(
+				plan.writes
+					.filter((entry) => entry.path.endsWith("/integration.txt"))
+					.map((entry) => ({ content: entry.content, path: entry.path }))
+					.sort((left, right) => left.path.localeCompare(right.path)),
+			).toEqual([
+				{ content: "generic\n", path: "apps/solid/integration.txt" },
+				{ content: "adapter\n", path: "apps/web/integration.txt" },
+			]);
+		});
+	});
+
 	it("applies adapter ensures to an adopted module root", async () => {
 		await withTempDir("planner-adapter-adopted-module", async (directory) => {
 			const framework = defineFramework({

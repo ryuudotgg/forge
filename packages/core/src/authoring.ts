@@ -721,37 +721,63 @@ function packageHasCapabilities(
 	);
 }
 
+export function deriveAddonFrameworks<Config>(
+	addon: AddonDefinition<Config>,
+	adapters: ReadonlyArray<AdapterDefinition<Config>> = [],
+): ReadonlyArray<FrameworkId> | undefined {
+	const appCompatibility = addon.compatibility?.app;
+	if (appCompatibility && appCompatibility.frameworks === undefined)
+		return undefined;
+
+	const declaredFrameworks = appCompatibility?.frameworks;
+	const frameworks: FrameworkId[] = [];
+
+	for (const framework of declaredFrameworks ?? [])
+		if (!frameworks.includes(framework)) frameworks.push(framework);
+
+	for (const adapter of adapters)
+		if (adapter.addon === addon.id && !frameworks.includes(adapter.framework))
+			frameworks.push(adapter.framework);
+
+	return frameworks.length > 0 || declaredFrameworks !== undefined
+		? frameworks
+		: undefined;
+}
+
+export function addonDeclaresFramework<Config>(
+	addon: AddonDefinition<Config>,
+	frameworkId: FrameworkId,
+): boolean {
+	const appCompatibility = addon.compatibility?.app;
+	return (
+		appCompatibility !== undefined &&
+		(appCompatibility.frameworks === undefined ||
+			appCompatibility.frameworks.includes(frameworkId))
+	);
+}
+
 export function isAddonCompatibleWithModule<Config>(
 	addon: AddonDefinition<Config>,
 	module: AppConfig | PackageConfig,
 	frameworks: ReadonlyArray<FrameworkDefinition> = [],
 	adapters: ReadonlyArray<AdapterDefinition<Config>> = [],
 ): boolean {
-	const addonAdapters = adapters.filter(
-		(adapter) => adapter.addon === addon.id,
-	);
-
-	if (addonAdapters.length > 0) {
-		if (module.type !== "app") return false;
-
-		const adapter = addonAdapters.find(
-			(entry) => entry.framework === module.framework,
-		);
-
-		return adapter !== undefined;
-	}
+	if (
+		module.type === "app" &&
+		adapters.some(
+			(adapter) =>
+				adapter.addon === addon.id && adapter.framework === module.framework,
+		)
+	)
+		return true;
 
 	const compatibility = addon.compatibility;
-	if (!compatibility) return true;
+	if (!compatibility)
+		return deriveAddonFrameworks(addon, adapters) === undefined;
 
 	if (module.type === "app") {
 		const appCompatibility = compatibility.app;
-		if (!appCompatibility) return false;
-
-		if (
-			appCompatibility.frameworks &&
-			!appCompatibility.frameworks.includes(module.framework)
-		)
+		if (!appCompatibility || !addonDeclaresFramework(addon, module.framework))
 			return false;
 
 		if (
@@ -818,19 +844,22 @@ export function validateAddonAgainstSelection<Config>(
 				}),
 			);
 
-		if (!addonAdapters.some((adapter) => adapter.framework === framework.id))
-			return Effect.fail(
-				new GeneratorError({
-					generatorId: addon.id,
-					message: `${addon.name} does not support ${framework.name} yet.`,
-				}),
-			);
-
-		return Effect.void;
+		if (addonAdapters.some((adapter) => adapter.framework === framework.id))
+			return Effect.void;
 	}
 
 	const compatibility = addon.compatibility;
-	if (!compatibility?.app) return Effect.void;
+	if (!compatibility?.app)
+		return addonAdapters.length > 0 &&
+			compatibility?.package === undefined &&
+			framework
+			? Effect.fail(
+					new GeneratorError({
+						generatorId: addon.id,
+						message: `${addon.name} does not support ${framework.name} yet.`,
+					}),
+				)
+			: Effect.void;
 
 	if (!framework || !template)
 		return Effect.fail(
@@ -840,10 +869,7 @@ export function validateAddonAgainstSelection<Config>(
 			}),
 		);
 
-	if (
-		compatibility.app.frameworks &&
-		!compatibility.app.frameworks.includes(framework.id)
-	)
+	if (!addonDeclaresFramework(addon, framework.id))
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,

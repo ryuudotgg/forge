@@ -1,4 +1,4 @@
-import { defineAdapter, defineAddon } from "@ryuujs/core";
+import { defineAdapter, defineAddon, defineFramework } from "@ryuujs/core";
 import {
 	type ForgeConfig,
 	loadDefinitionRegistry,
@@ -6,6 +6,7 @@ import {
 } from "@ryuujs/generators";
 
 export const fixtureRegistryId = "@acme/forge-sentry";
+export const adapterFixtureRegistryId = "@solid/forge-sentry";
 
 const sentry = defineAddon<ForgeConfig>({
 	category: "tooling",
@@ -24,6 +25,28 @@ const vitestTanstackStartAdapter = defineAdapter<ForgeConfig>({
 	addon: "vitest",
 	contribute: () => [],
 	framework: "tanstack-start",
+});
+
+const solid = defineFramework({
+	buildOutputs: ["dist/**"],
+	configFile: "vite.config.ts",
+	id: "@solid/web",
+	ignoreDirs: ["dist/"],
+	name: "Solid",
+	slots: ["app"],
+	tsconfigPreset: { content: {}, name: "solid" },
+});
+
+const sentrySolidAdapter = defineAdapter<ForgeConfig>({
+	addon: "@acme/sentry",
+	contribute: () => [],
+	framework: "@solid/web",
+});
+
+const sentryNextjsAdapter = defineAdapter<ForgeConfig>({
+	addon: "@acme/sentry",
+	contribute: () => [],
+	framework: "nextjs",
 });
 
 const manifest = {
@@ -48,13 +71,40 @@ const manifest = {
 	],
 } satisfies RegistryPackageManifest<ForgeConfig>;
 
+const adapterManifest = {
+	adapters: [sentrySolidAdapter, sentryNextjsAdapter],
+	apiVersion: 1,
+	catalog: [
+		{
+			available: true,
+			category: "web",
+			description: "A Solid framework fixture.",
+			experimental: false,
+			hidden: false,
+			id: "@solid/web",
+			keywords: ["solid"],
+			kind: "framework",
+			name: "Solid",
+			slots: ["app"],
+			summary: "Exercise cross-publisher adapter support.",
+		},
+	],
+	frameworks: [solid],
+} satisfies RegistryPackageManifest<ForgeConfig>;
+
 export function loadDiscoveryFixture() {
 	return loadDefinitionRegistry({
-		importRegistry: async () => ({
-			module: { default: manifest },
-			version: "1.4.2",
-		}),
+		importRegistry: async (registryId) =>
+			registryId === adapterFixtureRegistryId
+				? {
+						module: { default: adapterManifest },
+						version: "2.1.0",
+					}
+				: {
+						module: { default: manifest },
+						version: "1.4.2",
+					},
 		projectRoot: "/fixture-project",
-		registries: [fixtureRegistryId],
+		registries: [fixtureRegistryId, adapterFixtureRegistryId],
 	});
 }
