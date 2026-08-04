@@ -26,6 +26,7 @@ import type {
 	RegistryUnit,
 } from "./types";
 import {
+	adapterKey,
 	addonCatalogEntry,
 	decodeRegistryPackageManifest,
 	RegistryPackageManifestSchema,
@@ -406,10 +407,6 @@ function registryUnits(
 			(entry): RegistryUnit => ({ id: entry.id, kind: "template" }),
 		),
 	];
-}
-
-function adapterKey(addon: string, framework: string) {
-	return `${addon}\u0000${framework}`;
 }
 
 function sourcedCatalogEntry(

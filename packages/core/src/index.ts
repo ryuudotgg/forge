@@ -40,12 +40,14 @@ export type {
 	TemplateRef,
 } from "./authoring";
 export {
+	addonDeclaresFramework,
 	authoringApiVersion,
 	defineAdapter,
 	defineAddon,
 	defineFramework,
 	defineRegistry,
 	defineTemplate,
+	deriveAddonFrameworks,
 	ensureAppModule,
 	ensuredModuleTarget,
 	ensurePackageModule,

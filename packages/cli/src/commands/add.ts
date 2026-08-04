@@ -1,6 +1,7 @@
 import { intro, isCancel, log, select, spinner, text } from "@clack/prompts";
 import {
 	type AddonDefinition,
+	addonDeclaresFramework,
 	type DiscoveredModule,
 	type InstallRecord,
 	isAddonCompatibleWithModule,
@@ -563,6 +564,7 @@ export async function runAdd(
 				? project.modules.find(
 						(module) =>
 							module.type === "app" &&
+							!addonDeclaresFramework(addon, module.framework) &&
 							!registry.adapters.some(
 								(adapter) =>
 									adapter.addon === addon.id &&

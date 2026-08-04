@@ -167,7 +167,7 @@ describe("forge info builders", () => {
 					"Publisher:   @acme/forge-sentry 1.4.2",
 					"Category:    tooling",
 					"Targets:     Multiple targets",
-					"Frameworks:  nextjs",
+					"Frameworks:  nextjs and @solid/web (via @solid/forge-sentry)",
 					"Keywords:    errors, monitoring, and sentry",
 					"",
 				].join("\n"),
@@ -203,7 +203,7 @@ describe("forge info builders", () => {
 		const firstParty = buildInfoEnvelope(vitest, loaded.descriptors);
 		expect(thirdParty.entry).toMatchObject({
 			capabilities: [],
-			frameworks: ["nextjs"],
+			frameworks: ["nextjs", "@solid/web"],
 			publisherVersion: "1.4.2",
 			requiredSlots: [],
 			source: "@acme/forge-sentry",

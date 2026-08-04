@@ -11,6 +11,7 @@ import type {
 	TargetMode,
 	TemplateDefinition,
 } from "@ryuujs/core";
+import { addonDeclaresFramework, deriveAddonFrameworks } from "@ryuujs/core";
 import { Schema } from "effect";
 import type { ForgeConfig } from "../config";
 
@@ -154,6 +155,10 @@ export interface LoadedAddonDefinition {
 	readonly catalogEntry?: AddonCatalogEntry;
 }
 
+export function adapterKey(addon: string, framework: string) {
+	return `${addon}\u0000${framework}`;
+}
+
 export function frameworkCatalogEntry(
 	framework: FrameworkDefinition,
 	metadata: FirstPartyFrameworkMetadata,
@@ -207,15 +212,14 @@ export function addonCatalogEntry(
 	const addonAdapters = adapters.filter(
 		(adapter) => adapter.addon === addon.id,
 	);
-	const adapterFrameworks = addonAdapters.map((adapter) => adapter.framework);
-	const frameworks =
-		adapterFrameworks.length > 0
-			? [...new Set(adapterFrameworks)]
-			: addon.compatibility?.app?.frameworks;
+
+	const frameworks = deriveAddonFrameworks(addon, adapters);
 	const frameworkSources: Record<string, string> = {};
 	for (const framework of frameworks ?? [])
-		frameworkSources[framework] =
-			adapterSources.get(`${addon.id}\u0000${framework}`) ?? source;
+		frameworkSources[framework] = addonDeclaresFramework(addon, framework)
+			? source
+			: (adapterSources.get(adapterKey(addon.id, framework)) ?? source);
+
 	const capabilities = addon.compatibility?.package?.capabilities;
 	const requiredSlots = [
 		...new Set([
