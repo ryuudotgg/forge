@@ -41,7 +41,7 @@ export const versions = {
 	typescript: { name: "typescript", version: "^7.0.2", group: "Tooling" },
 	vitest: { name: "vitest", version: "^4.1.10", group: "Tooling" },
 
-	next: { name: "next", version: "16.2.12", group: "Framework" },
+	next: { name: "next", version: "16.3.0", group: "Framework" },
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
@@ -53,7 +53,7 @@ export const versions = {
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.34",
+		version: "1.168.35",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
