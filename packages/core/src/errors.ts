@@ -62,4 +62,13 @@ export class RendererError extends Schema.TaggedError<RendererError>()(
 export class ApplyError extends Schema.TaggedError<ApplyError>()("ApplyError", {
 	path: Schema.String,
 	message: Schema.String,
+	preflight: Schema.optional(
+		Schema.Struct({
+			hasConflicts: Schema.Boolean,
+			hasManagedRemovals: Schema.Boolean,
+			hasManagedRefusals: Schema.Boolean,
+			hasUnmanagedRefusals: Schema.Boolean,
+			hasUnmanagedRemovals: Schema.Boolean,
+		}),
+	),
 }) {}

@@ -68,6 +68,13 @@ pnpm dlx @ryuujs/forge --config forge.json
 
 Pass `--no-install` to skip dependency installation and `--no-git` to skip Git initialization.
 
+Lifecycle commands support explicit conflict resolution:
+
+| Flag | What it does |
+| --- | --- |
+| `--keep-user` | Keep your value in each conflicted cell while applying Forge's non-conflicting changes. |
+| `--accept-forge` | Take Forge's value in each conflicted cell and overwrite conflicting files. |
+
 ## ✨ Key Features
 
 - 🧩 **Composable addons** - Mix and match frameworks, ORMs, auth, and tooling instead of settling for one fixed template.

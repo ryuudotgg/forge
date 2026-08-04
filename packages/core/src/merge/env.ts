@@ -1,4 +1,5 @@
 import type { LineMergeConflict } from "./lines";
+import type { MergeConflictResolution } from "./types";
 
 export interface EnvMergeResult {
 	readonly merged: string;
@@ -43,6 +44,42 @@ function duplicateVariableNames(lines: ReadonlyArray<EnvLine>): Set<string> {
 	return duplicates;
 }
 
+function serializeEnv(lines: ReadonlyArray<EnvLine>): string {
+	return lines.length === 0
+		? ""
+		: lines
+				.map((line) => line.raw)
+				.join("\n")
+				.concat("\n");
+}
+
+function collapseDuplicateVariables(
+	lines: ReadonlyArray<EnvLine>,
+	duplicateNames: ReadonlySet<string>,
+): EnvLine[] {
+	const effective = variables(lines);
+
+	const emitted = new Set<string>();
+	const collapsed: EnvLine[] = [];
+
+	for (const line of lines) {
+		if (line.name === undefined || !duplicateNames.has(line.name)) {
+			collapsed.push(line);
+			continue;
+		}
+
+		if (emitted.has(line.name)) continue;
+
+		emitted.add(line.name);
+		collapsed.push({
+			name: line.name,
+			raw: effective.get(line.name) ?? line.raw,
+		});
+	}
+
+	return collapsed;
+}
+
 function variableLines(
 	lines: ReadonlyArray<EnvLine>,
 	name: string,
@@ -57,6 +94,7 @@ export function threeWayMergeEnv(
 	base: string,
 	current: string,
 	incoming: string,
+	resolution?: MergeConflictResolution,
 ): EnvMergeResult {
 	const baseLines = parseEnv(base);
 	const currentLines = parseEnv(current);
@@ -72,8 +110,43 @@ export function threeWayMergeEnv(
 			(name) => `duplicate variable ${name}`,
 		);
 
+		const nonConflictingMerge =
+			resolution === undefined
+				? undefined
+				: threeWayMergeEnv(
+						serializeEnv(collapseDuplicateVariables(baseLines, duplicateNames)),
+						serializeEnv(
+							collapseDuplicateVariables(currentLines, duplicateNames),
+						),
+						serializeEnv(
+							collapseDuplicateVariables(incomingLines, duplicateNames),
+						),
+						resolution,
+					);
+
+		const selectedVariables = variables(
+			collapseDuplicateVariables(
+				resolution === "user" ? currentLines : incomingLines,
+				duplicateNames,
+			),
+		);
+
+		const resolvedLines =
+			nonConflictingMerge === undefined
+				? undefined
+				: parseEnv(nonConflictingMerge.merged).flatMap((line) => {
+						if (line.name === undefined || !duplicateNames.has(line.name))
+							return [line];
+
+						const selected = selectedVariables.get(line.name);
+						return selected === undefined ? [] : [{ ...line, raw: selected }];
+					});
+
 		return {
-			merged: incoming,
+			merged:
+				resolution === undefined || resolvedLines === undefined
+					? incoming
+					: serializeEnv(resolvedLines),
 			conflicts,
 			conflictValues: [...duplicateNames].map((name) => ({
 				...(variableLines(baseLines, name) === undefined

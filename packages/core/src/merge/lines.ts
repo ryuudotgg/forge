@@ -1,3 +1,5 @@
+import type { MergeConflictResolution } from "./types";
+
 export interface Section {
 	readonly header: string;
 	readonly lines: string[];
@@ -28,6 +30,7 @@ function mergeSectionLines(
 	base: ReadonlyArray<string>,
 	current: ReadonlyArray<string>,
 	incoming: ReadonlyArray<string>,
+	resolution?: MergeConflictResolution,
 ): LineMergeResult {
 	if (linesEqual(base, incoming))
 		return { merged: current.join("\n").concat("\n"), conflicts: [] };
@@ -120,6 +123,7 @@ function mergeSectionLines(
 		base.join("\n").concat("\n"),
 		current.join("\n").concat("\n"),
 		incoming.join("\n").concat("\n"),
+		resolution,
 	);
 }
 
@@ -138,6 +142,7 @@ export function threeWayMergeSections(
 	base: string,
 	current: string,
 	incoming: string,
+	resolution?: MergeConflictResolution,
 ): LineMergeResult {
 	const baseSections = parseSections(base);
 	const currentSections = parseSections(current);
@@ -152,6 +157,7 @@ export function threeWayMergeSections(
 			serializeSections(baseSections),
 			serializeSections(currentSections),
 			serializeSections(incomingSections),
+			resolution,
 		);
 
 	const byHeader = (sections: ReadonlyArray<Section>) =>
@@ -177,6 +183,7 @@ export function threeWayMergeSections(
 			baseByHeader.get(header)?.lines ?? [],
 			currentByHeader.get(header)?.lines ?? [],
 			incomingByHeader.get(header)?.lines ?? [],
+			resolution,
 		);
 
 		const lines = splitLines(result.merged);
@@ -313,6 +320,7 @@ export function threeWayMergeLines(
 	base: string,
 	current: string,
 	incoming: string,
+	resolution?: MergeConflictResolution,
 ): LineMergeResult {
 	const baseLines = splitLines(base);
 	const currentLines = splitLines(current);
@@ -368,7 +376,7 @@ export function threeWayMergeLines(
 		else if (linesEqual(baseSeg, currentSeg)) merged.push(...incomingSeg);
 		else if (linesEqual(baseSeg, incomingSeg)) merged.push(...currentSeg);
 		else {
-			merged.push(...incomingSeg);
+			merged.push(...(resolution === "user" ? currentSeg : incomingSeg));
 
 			const label =
 				baseSeg.length > 0 ? baseSeg.join(", ") : "concurrent insertion";

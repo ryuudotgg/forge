@@ -4,10 +4,12 @@ import {
 	loadManagedProject,
 	loadProjectRegistry,
 } from "./lifecycle";
+import { resolutionArguments } from "./resolution";
 
 export async function runUpdate(
-	_values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | undefined>,
 ) {
+	const resolution = resolutionArguments(values);
 	intro("We're reconciling your installed addons and templates...");
 
 	const project = await loadManagedProject(".", "update");
@@ -22,6 +24,7 @@ export async function runUpdate(
 		project.manifest.installs,
 		undefined,
 		project.manifest.registries,
+		...resolution,
 	);
 
 	for (const descriptor of loadedRegistry.descriptors) {

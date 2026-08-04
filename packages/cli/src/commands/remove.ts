@@ -30,6 +30,7 @@ import {
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "./lifecycle";
+import { type ResolutionArguments, resolutionArguments } from "./resolution";
 
 function moduleLabel(
 	moduleId: string,
@@ -210,6 +211,7 @@ async function deregisterPackage(
 	descriptor: LoadedDefinitionRegistry["descriptors"][number],
 	nextConfig: ForgeConfig,
 	nextInstalls: ReadonlyArray<InstallRecord>,
+	resolution: ResolutionArguments,
 ) {
 	const registryIds = (project.manifest.registries ?? []).filter(
 		(entry) => entry !== descriptor.id,
@@ -232,6 +234,7 @@ async function deregisterPackage(
 		reconciledInstalls,
 		undefined,
 		registryIds,
+		...resolution,
 	);
 
 	if (!(await hasProjectDevDependency(project.projectRoot, descriptor.id)))
@@ -281,8 +284,9 @@ async function promptForInstalledAddonId(
 
 export async function runRemove(
 	addonId: string | undefined,
-	_values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | undefined>,
 ) {
+	const resolution = resolutionArguments(values);
 	const project = await loadManagedProject(".", "remove");
 	const loadedRegistry = await loadProjectRegistry(
 		project.projectRoot,
@@ -349,6 +353,7 @@ export async function runRemove(
 			directDescriptor,
 			nextConfig,
 			nextInstalls,
+			resolution,
 		);
 
 		return;
@@ -474,6 +479,7 @@ export async function runRemove(
 				descriptor,
 				nextConfig satisfies ForgeConfig,
 				nextInstalls,
+				resolution,
 			);
 
 			deregistered = true;
@@ -488,5 +494,6 @@ export async function runRemove(
 		nextInstalls,
 		undefined,
 		registryIds,
+		...resolution,
 	);
 }

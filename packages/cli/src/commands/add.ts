@@ -28,6 +28,7 @@ import {
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "./lifecycle";
+import { resolutionArguments } from "./resolution";
 
 function mergeInstallRecord(
 	existing: ReadonlyArray<InstallRecord>,
@@ -207,7 +208,9 @@ function announceAdapterSupport(
 	const descriptor = loaded.descriptors.find(
 		(entry) => entry.id === registryId,
 	);
+
 	if (descriptor === undefined) return 0;
+
 	const supportByAddon = new Map<
 		string,
 		{ readonly frameworks: Set<string>; readonly name: string }
@@ -267,6 +270,7 @@ function retargetAdapterInstalls(
 				before.registry.adapters,
 			),
 		);
+
 		const compatibleAfter = modules.filter((module) =>
 			isAddonCompatibleWithModule(
 				addon,
@@ -275,17 +279,21 @@ function retargetAdapterInstalls(
 				after.registry.adapters,
 			),
 		);
+
 		if (compatibleAfter.length === 0) return install;
 
 		const compatibleAfterIds = new Set(
 			compatibleAfter.map((module) => module.id),
 		);
+
 		const compatibleBeforeIds = new Set(
 			compatibleBefore.map((module) => module.id),
 		);
+
 		const currentModuleIds = install.targets.flatMap((target) =>
 			target.kind === "module" ? [target.moduleId] : [],
 		);
+
 		const retainedIds = currentModuleIds.filter((id) =>
 			compatibleAfterIds.has(id),
 		);
@@ -315,6 +323,7 @@ function retargetAdapterInstalls(
 						.filter((module) => !compatibleBeforeIds.has(module.id))
 						.map((module) => module.id),
 				];
+
 		const uniqueTargetIds = [...new Set(targetIds)];
 
 		return {
@@ -345,7 +354,9 @@ async function selectRegistryAddon(
 			value: entry.id,
 		})),
 	});
+
 	if (isCancel(selected)) cancel();
+
 	return String(selected);
 }
 
@@ -399,6 +410,7 @@ export async function runAdd(
 	addonId: string | undefined,
 	values: Record<string, string | boolean | undefined>,
 ) {
+	const resolution = resolutionArguments(values);
 	const project = await loadManagedProject(".", "add");
 
 	let registryIds = project.manifest.registries;
@@ -483,6 +495,7 @@ export async function runAdd(
 				baseInstalls,
 				undefined,
 				registryIds,
+				...resolution,
 			);
 
 			if (announceAdapterSupport(loadedRegistry, registryId) === 0)
@@ -630,6 +643,7 @@ export async function runAdd(
 		nextInstalls,
 		undefined,
 		registryIds,
+		...resolution,
 	);
 
 	if (registeredRegistry !== undefined)

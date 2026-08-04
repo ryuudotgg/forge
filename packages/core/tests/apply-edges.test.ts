@@ -639,13 +639,156 @@ describe("apply edge coverage", () => {
 				new ApplyError({ path: "loose.txt", message: "Unmanaged File Exists" }),
 			),
 		).toBe(
-			"Forge cannot safely update these files:\nloose.txt already exists and is not managed by Forge.",
+			"Forge cannot safely update these files:\nloose.txt already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
 		);
 		expect(
 			formatApplyError(
 				new ApplyError({ path: "file.txt", message: "File Read Failed" }),
 			),
 		).toBe("File Read Failed");
+		expect(
+			formatApplyError(
+				new ApplyError({
+					path: "file.txt",
+					message: "File Read Failed",
+					preflight: {
+						hasConflicts: false,
+						hasManagedRemovals: false,
+						hasManagedRefusals: false,
+						hasUnmanagedRefusals: false,
+						hasUnmanagedRemovals: false,
+					},
+				}),
+			),
+		).toBe("File Read Failed");
+	});
+
+	it("does not infer guidance classes from user-controlled conflict text", async () => {
+		await withTempDir("apply-structured-guidance", async (directory) => {
+			const path = "surface.json";
+			const base = '{"value":"base"}\n';
+			const current =
+				'{"value":"already exists and is not managed by Forge."}\n';
+			const incoming = '{"value":"forge"}\n';
+			const baseHash = await hashContent(base);
+			const incomingHash = await hashContent(incoming);
+			await writeText(join(directory, path), current);
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					yield* State.writeBase(directory, baseHash, base);
+					yield* State.writeLockfile(directory, {
+						artifacts: { surface: surfaceArtifact(path, baseHash, "json") },
+					});
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, {
+						lockfile: {
+							artifacts: {
+								surface: surfaceArtifact(path, incomingHash, "json"),
+							},
+						},
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [{ artifactId: "surface", content: incoming, path }],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+			if (!(error instanceof ApplyError))
+				throw new Error("Expected ApplyError");
+			const formatted = formatApplyError(error);
+			expect(formatted).toContain(
+				"Run again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
+			);
+			expect(formatted).not.toContain(
+				"--keep-user cannot resolve unmanaged files",
+			);
+		});
+	});
+
+	it("aborts policy-resolved writes when a preflight input drifts", async () => {
+		await withTempDir("apply-policy-drift", async (directory) => {
+			const path = "surface.json";
+			const artifactId = "surface";
+			const base = '{"value":"base"}\n';
+			const baseHash = await hashContent(base);
+			const incoming = '{"value":"forge"}\n';
+			const incomingHash = await hashContent(incoming);
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: {
+						artifacts: {
+							[artifactId]: surfaceArtifact(path, baseHash, "json"),
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, content: base, path }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+			await writeText(join(directory, path), '{"value":"user"}\n');
+			const lockBefore = await readFile(
+				join(directory, ".forge/lock.json"),
+				"utf-8",
+			);
+			let injected = false;
+			const racingLayer = applyLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				writeFileString: (target, content, options) =>
+					fileSystem.writeFileString(target, content, options).pipe(
+						Effect.tap(() => {
+							if (injected || !target.endsWith("/state/lock.json"))
+								return Effect.void;
+							injected = true;
+							return fileSystem.writeFileString(
+								join(directory, path),
+								'{"value":"mid-run"}\n',
+							);
+						}),
+					),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: {
+								artifacts: {
+									[artifactId]: surfaceArtifact(path, incomingHash, "json"),
+								},
+							},
+							manifest: {
+								config: { changed: true },
+								installs: [],
+								modules: {},
+							},
+							removals: [],
+							writes: [
+								{ artifactId, content: incoming, path },
+								{ content: "new\n", path: "new.txt" },
+							],
+						},
+						{ resolutionPolicy: "keep-user" },
+					).pipe(Effect.provide(racingLayer)),
+				),
+			);
+			expect(error).toMatchObject({ message: "Managed File Modified", path });
+			expect(await readFile(join(directory, path), "utf-8")).toBe(
+				'{"value":"mid-run"}\n',
+			);
+			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
+				lockBefore,
+			);
+			await expect(
+				readFile(join(directory, "new.txt"), "utf-8"),
+			).rejects.toThrow();
+			await expect(
+				readFile(join(directory, ".forge/bases", incomingHash), "utf-8"),
+			).rejects.toThrow();
+		});
 	});
 
 	it("maps content hashing failures", async () => {

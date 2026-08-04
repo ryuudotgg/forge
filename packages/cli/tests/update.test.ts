@@ -102,6 +102,21 @@ describe("update command", () => {
 		);
 	});
 
+	it("forwards the selected conflict resolution policy", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+		await runUpdate({ "keep-user": true });
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[],
+			undefined,
+			undefined,
+			{ resolutionPolicy: "keep-user" },
+		);
+	});
+
 	it("reports registry package version changes", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({

@@ -235,6 +235,17 @@ describe("project state", () => {
 						kind: "surface",
 						path: "package.json",
 					},
+					"project:file:opaque": {
+						base: {
+							hash: keptHash,
+							mergeKind: "opaque",
+							semanticsVersion: 1,
+						},
+						definitionIds: ["root"],
+						hash: "user-content",
+						kind: "file",
+						path: "opaque.txt",
+					},
 				},
 			};
 			await Effect.runPromise(
