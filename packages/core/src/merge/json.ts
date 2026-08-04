@@ -162,6 +162,9 @@ function isScriptMapPath(path: ReadonlyArray<string>): boolean {
 
 export interface MergeJsonOptions {
 	readonly preserveDependencyRemovals?: boolean;
+	readonly resolveConflict?: (
+		path: ReadonlyArray<string>,
+	) => MergeConflictResolution | undefined;
 	readonly resolution?: MergeConflictResolution;
 }
 
@@ -378,7 +381,7 @@ function mergeJsonObjects(
 				baseValue,
 				currentValue,
 				incomingValue,
-				options.resolution,
+				options.resolveConflict?.(keyPath) ?? options.resolution,
 			);
 
 			merged[key] = arrayResult.merged;
@@ -389,7 +392,9 @@ function mergeJsonObjects(
 		}
 
 		conflicts.push(keyPath);
-		if (options.resolution === "user") {
+
+		const resolution = options.resolveConflict?.(keyPath) ?? options.resolution;
+		if (resolution === "user") {
 			if (currentPresent) merged[key] = currentValue;
 		} else if (incomingPresent) merged[key] = incomingValue;
 	}

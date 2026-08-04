@@ -47,37 +47,54 @@ export interface ApplyPlan {
 }
 
 export type ResolutionPolicy = "accept-forge" | "keep-user" | "refuse";
+export type ConflictResolution = "forge" | "user";
+
+export type ApplyResolution =
+	| { readonly resolution: ConflictResolution }
+	| {
+			readonly expected: {
+				readonly forge: unknown;
+				readonly user: unknown;
+			};
+			readonly resolution: ConflictResolution;
+	  };
 
 export interface ApplyOptions {
+	readonly conflictResolutions?: Readonly<Record<string, ApplyResolution>>;
 	readonly resolutionPolicy?: ResolutionPolicy;
 }
 
-interface MergeConflict {
+export interface ApplyConflict {
 	readonly base: unknown;
 	readonly forge: unknown;
 	readonly label: string;
 	readonly user: unknown;
 }
 
-interface PolicyRefusal {
+export interface ApplyRefusal {
 	readonly message: "Managed File Modified" | "Unmanaged File Exists";
 	readonly operation: "removal" | "write";
 	readonly path: string;
+	readonly resolvable: boolean;
 }
 
 interface PreflightClassification {
+	readonly conflicts: ReadonlyArray<ApplyConflict>;
 	readonly hasConflicts: boolean;
 	readonly hasManagedRemovals: boolean;
 	readonly hasManagedRefusals: boolean;
 	readonly hasUnmanagedRefusals: boolean;
 	readonly hasUnmanagedRemovals: boolean;
+	readonly refusals: ReadonlyArray<ApplyRefusal>;
 }
 
 function classifyPreflight(
-	refusals: ReadonlyArray<PolicyRefusal>,
-	conflicts: ReadonlyArray<MergeConflict>,
+	refusals: ReadonlyArray<ApplyRefusal>,
+	conflicts: ReadonlyArray<ApplyConflict>,
 ): PreflightClassification {
 	return {
+		refusals,
+		conflicts,
 		hasConflicts: conflicts.length > 0,
 		hasManagedRemovals: refusals.some(
 			(refusal) =>
@@ -106,16 +123,43 @@ function descriptorMatchesArtifact(artifact: LockfileArtifact): boolean {
 	return artifact.kind === "surface" || artifact.base.mergeKind === "opaque";
 }
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function conflictValuesEqual(left: unknown, right: unknown): boolean {
+	if (left === right) return true;
+	if (Array.isArray(left) && Array.isArray(right)) {
+		if (left.length !== right.length) return false;
+		return left.every((value, index) =>
+			conflictValuesEqual(value, right[index]),
+		);
+	}
+
+	if (!isRecord(left) || !isRecord(right)) return false;
+
+	const leftKeys = Object.keys(left);
+	const rightKeys = Object.keys(right);
+	if (leftKeys.length !== rightKeys.length) return false;
+
+	return leftKeys.every(
+		(key) =>
+			Object.hasOwn(right, key) && conflictValuesEqual(left[key], right[key]),
+	);
+}
+
 function descriptorsCompatible(
 	previous: LockfileArtifact,
 	next: LockfileArtifact,
 ): boolean {
 	if (!descriptorMatchesArtifact(previous) || !descriptorMatchesArtifact(next))
 		return false;
+
 	if (previous.kind !== next.kind) return false;
 
 	const previousBase = previous.base;
 	const nextBase = next.base;
+
 	if (previousBase === undefined)
 		return (
 			nextBase === undefined ||
@@ -153,8 +197,9 @@ function movedModuleArtifactId(
 	)
 		return undefined;
 
-	const nextRoot = current.modules[moduleId]?.root;
 	const previousRoot = previous.modules[moduleId]?.root;
+	const nextRoot = current.modules[moduleId]?.root;
+
 	if (
 		nextRoot === undefined ||
 		previousRoot === undefined ||
@@ -196,16 +241,18 @@ function formatJsonPath(path: ReadonlyArray<string>): string {
 		.join("");
 }
 
-function describeConflictValue(value: unknown): string {
+export function describeConflictValue(value: unknown): string {
 	if (value === undefined) return "missing";
+
 	const serialized = JSON.stringify(value);
 	if (serialized === undefined) return String(value);
+
 	return serialized.length <= 120
 		? serialized
 		: `${serialized.slice(0, 117)}...`;
 }
 
-function conflictMessage(conflicts: ReadonlyArray<MergeConflict>): string {
+function conflictMessage(conflicts: ReadonlyArray<ApplyConflict>): string {
 	const lines = conflicts.map(
 		(conflict) =>
 			`${conflict.label}: base was ${describeConflictValue(conflict.base)}, user has ${describeConflictValue(conflict.user)}, and forge wants ${describeConflictValue(conflict.forge)}.`,
@@ -214,15 +261,15 @@ function conflictMessage(conflicts: ReadonlyArray<MergeConflict>): string {
 	return `Semantic merge conflicts were found:\n${lines.join("\n")}\nResolve each conflict, then run Forge again.`;
 }
 
-function refusalSentence(refusal: PolicyRefusal): string {
+function refusalSentence(refusal: ApplyRefusal): string {
 	return refusal.message === "Managed File Modified"
 		? `${refusal.path} was modified after Forge last managed it.`
 		: `${refusal.path} already exists and is not managed by Forge.`;
 }
 
 function preflightMessage(
-	refusals: ReadonlyArray<PolicyRefusal>,
-	conflicts: ReadonlyArray<MergeConflict>,
+	refusals: ReadonlyArray<ApplyRefusal>,
+	conflicts: ReadonlyArray<ApplyConflict>,
 ): string {
 	const sections: string[] = [];
 	if (refusals.length > 0)
@@ -245,28 +292,19 @@ export function formatApplyError(error: ApplyError): string {
 		error.message === "Managed File Modified" ||
 		error.message === "Unmanaged File Exists"
 	) {
-		classification ??= {
-			hasConflicts: false,
-			hasManagedRemovals: false,
-			hasManagedRefusals: error.message === "Managed File Modified",
-			hasUnmanagedRefusals: error.message === "Unmanaged File Exists",
-			hasUnmanagedRemovals: false,
+		const refusal: ApplyRefusal = {
+			message: error.message,
+			operation:
+				classification?.hasManagedRemovals === true ||
+				classification?.hasUnmanagedRemovals === true
+					? "removal"
+					: "write",
+			path: error.path,
+			resolvable: false,
 		};
 
-		report = preflightMessage(
-			[
-				{
-					message: error.message,
-					operation:
-						classification.hasManagedRemovals ||
-						classification.hasUnmanagedRemovals
-							? "removal"
-							: "write",
-					path: error.path,
-				},
-			],
-			[],
-		);
+		classification ??= classifyPreflight([refusal], []);
+		report = preflightMessage([refusal], []);
 	} else report = error.message;
 
 	if (classification === undefined) return report;
@@ -430,11 +468,25 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			current: string,
 			incoming: string,
 			resolution?: MergeConflictResolution,
+			resolveConflict?: (label: string) => MergeConflictResolution | undefined,
 		) {
 			if (kind === "env")
-				return threeWayMergeEnv(base, current, incoming, resolution);
+				return threeWayMergeEnv(
+					base,
+					current,
+					incoming,
+					resolution,
+					resolveConflict,
+				);
+
 			if (kind === "lines")
-				return threeWayMergeSections(base, current, incoming, resolution);
+				return threeWayMergeSections(
+					base,
+					current,
+					incoming,
+					resolution,
+					resolveConflict,
+				);
 
 			const baseJson = yield* parseJsonObject(base, path);
 			const currentJson = yield* parseJsonObject(
@@ -446,8 +498,10 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const incomingJson = yield* parseJsonObject(incoming, path);
 
 			const result = threeWayMergeJson(baseJson, currentJson, incomingJson, {
-				preserveDependencyRemovals: path.endsWith("package.json"),
 				resolution,
+				preserveDependencyRemovals: path.endsWith("package.json"),
+				resolveConflict: (conflict) =>
+					resolveConflict?.(formatJsonPath(conflict)),
 			});
 
 			return {
@@ -492,6 +546,27 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						? "user"
 						: "forge";
 
+			const requestedResolutions = new Map(
+				Object.entries(options.conflictResolutions ?? {}),
+			);
+
+			const consumedResolutionLabels = new Set<string>();
+			const resolutionFor = (label: string, conflict?: ApplyConflict) => {
+				const request = requestedResolutions.get(label);
+				if (request === undefined) return mergeResolution;
+
+				consumedResolutionLabels.add(label);
+				if (
+					conflict !== undefined &&
+					"expected" in request &&
+					(!conflictValuesEqual(request.expected.user, conflict.user) ||
+						!conflictValuesEqual(request.expected.forge, conflict.forge))
+				)
+					return undefined;
+
+				return request.resolution;
+			};
+
 			const previousLockfile = yield* State.readLockfile(projectRoot);
 			const previousManifest = yield* State.readManifestOrDefault(projectRoot);
 
@@ -511,8 +586,8 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const writesToApply: PlannedWrite[] = [];
 			const removalsToApply: string[] = [];
 
-			const conflicts: MergeConflict[] = [];
-			const refusals: PolicyRefusal[] = [];
+			const conflicts: ApplyConflict[] = [];
+			const refusals: ApplyRefusal[] = [];
 
 			for (const relativePath of plan.removals) {
 				const fullPath = yield* ensureContained(projectRoot, relativePath);
@@ -530,6 +605,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: relativePath,
 						message: "Unmanaged File Exists",
 						operation: "removal",
+						resolvable: false,
 					});
 
 					continue;
@@ -540,6 +616,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: relativePath,
 						message: "Managed File Modified",
 						operation: "removal",
+						resolvable: false,
 					});
 
 					continue;
@@ -556,7 +633,8 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					continue;
 				}
 
-				if (resolutionPolicy === "accept-forge") {
+				const fileResolution = resolutionFor(relativePath);
+				if (fileResolution === "forge") {
 					removalsToApply.push(relativePath);
 					continue;
 				}
@@ -566,6 +644,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: relativePath,
 						message: "Managed File Modified",
 						operation: "removal",
+						resolvable: false,
 					});
 
 					continue;
@@ -580,6 +659,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: relativePath,
 						message: "Managed File Modified",
 						operation: "removal",
+						resolvable: false,
 					});
 
 					continue;
@@ -598,10 +678,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				if (residueResult._tag === "Left") {
 					if (residueResult.left.message !== "Managed File Modified")
 						return yield* residueResult.left;
+
 					refusals.push({
 						path: relativePath,
 						message: "Managed File Modified",
 						operation: "removal",
+						resolvable: false,
 					});
 
 					continue;
@@ -631,6 +713,8 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				const currentHash = yield* hashContent(currentContent);
 				const nextHash = yield* hashContent(file.content);
 
+				const fileResolution = resolutionFor(file.path);
+
 				if (/^module:[^:]+:file:forge\.json$/.test(file.artifactId ?? "")) {
 					writesToApply.push(file);
 					continue;
@@ -650,6 +734,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					(renamedArtifactId === undefined
 						? undefined
 						: previousArtifactsById.get(renamedArtifactId));
+
 				const nextArtifact =
 					file.artifactId === undefined
 						? undefined
@@ -667,6 +752,11 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							? descriptorMatchesArtifact(managedArtifact)
 							: descriptorsCompatible(managedArtifact, nextArtifact);
 
+				const canRebaseCurrentContent =
+					file.artifactId !== undefined &&
+					nextArtifact !== undefined &&
+					descriptorsAreCompatible;
+
 				const adoptMatchingContent = (candidateHash: string) => {
 					if (currentHash !== candidateHash || !descriptorsAreCompatible)
 						return false;
@@ -681,12 +771,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				};
 
 				const rebaseCurrentContent = (base: ArtifactBase) => {
-					if (
-						file.artifactId === undefined ||
-						nextArtifact === undefined ||
-						!descriptorsAreCompatible
-					)
-						return false;
+					if (!canRebaseCurrentContent) return false;
 
 					committedArtifacts[file.artifactId] = {
 						...nextArtifact,
@@ -710,6 +795,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: file.path,
 						message: "Unmanaged File Exists",
 						operation: "write",
+						resolvable: false,
 					});
 
 					continue;
@@ -720,6 +806,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: file.path,
 						message: "Managed File Modified",
 						operation: "write",
+						resolvable: false,
 					});
 
 					continue;
@@ -730,6 +817,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						path: file.path,
 						message: "Managed File Modified",
 						operation: "write",
+						resolvable: false,
 					});
 
 					continue;
@@ -764,7 +852,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				}
 
 				if (previousBase?.mergeKind === "opaque") {
-					if (resolutionPolicy === "accept-forge") {
+					if (fileResolution === "forge") {
 						writesToApply.push(file);
 						continue;
 					}
@@ -775,23 +863,21 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
 					} satisfies ArtifactBase;
 
-					if (
-						resolutionPolicy === "keep-user" &&
-						rebaseCurrentContent(declinedBase)
-					)
+					if (fileResolution === "user" && rebaseCurrentContent(declinedBase))
 						continue;
 
 					refusals.push({
 						path: file.path,
 						message: "Managed File Modified",
 						operation: "write",
+						resolvable: canRebaseCurrentContent,
 					});
 
 					continue;
 				}
 
 				if (previousBase === undefined || nextBase === undefined) {
-					if (resolutionPolicy === "accept-forge") {
+					if (fileResolution === "forge") {
 						writesToApply.push(file);
 						continue;
 					}
@@ -804,16 +890,14 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
 						} satisfies ArtifactBase);
 
-					if (
-						resolutionPolicy === "keep-user" &&
-						rebaseCurrentContent(declinedBase)
-					)
+					if (fileResolution === "user" && rebaseCurrentContent(declinedBase))
 						continue;
 
 					refusals.push({
 						path: file.path,
 						message: "Managed File Modified",
 						operation: "write",
+						resolvable: canRebaseCurrentContent,
 					});
 
 					continue;
@@ -828,6 +912,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						currentContent,
 						file.content,
 						mergeResolution,
+						(label) => resolutionFor(`${file.path} -> ${label}`),
 					),
 				);
 
@@ -835,49 +920,56 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					if (mergedResult.left.message !== "Managed File Modified")
 						return yield* mergedResult.left;
 
-					if (resolutionPolicy === "accept-forge") {
+					if (fileResolution === "forge") {
 						writesToApply.push(file);
 						continue;
 					}
 
-					if (
-						resolutionPolicy === "keep-user" &&
-						rebaseCurrentContent(nextBase)
-					)
+					if (fileResolution === "user" && rebaseCurrentContent(nextBase))
 						continue;
 
 					refusals.push({
 						path: file.path,
 						message: "Managed File Modified",
 						operation: "write",
+						resolvable: canRebaseCurrentContent,
 					});
 
 					continue;
 				}
 
 				const merged = mergedResult.right;
-				if (mergeResolution === undefined)
-					if ("json" in merged)
-						for (const conflict of merged.conflicts)
-							conflicts.push({
-								base: valueAtPath(merged.json.base, conflict),
-								forge: valueAtPath(merged.json.incoming, conflict),
-								label: `${file.path} -> ${formatJsonPath(conflict)}`,
-								user: valueAtPath(merged.json.current, conflict),
-							});
-					else
-						for (const [index, conflict] of merged.conflicts.entries()) {
-							const values = merged.conflictValues?.[index];
-							conflicts.push({
-								base: values?.base,
-								forge: values?.forge,
-								label: `${file.path} -> ${conflict}`,
-								user: values?.user,
-							});
-						}
+				const discoveredConflicts: ApplyConflict[] = [];
 
-				if (merged.conflicts.length === 0 || mergeResolution !== undefined) {
-					if (mergeResolution !== undefined)
+				if ("json" in merged)
+					for (const conflict of merged.conflicts)
+						discoveredConflicts.push({
+							base: valueAtPath(merged.json.base, conflict),
+							forge: valueAtPath(merged.json.incoming, conflict),
+							label: `${file.path} -> ${formatJsonPath(conflict)}`,
+							user: valueAtPath(merged.json.current, conflict),
+						});
+				else
+					for (const [index, conflict] of merged.conflicts.entries()) {
+						const values = merged.conflictValues?.[index];
+						discoveredConflicts.push({
+							base: values?.base,
+							forge: values?.forge,
+							label: `${file.path} -> ${conflict}`,
+							user: values?.user,
+						});
+					}
+
+				const unresolvedConflicts = discoveredConflicts.filter(
+					(conflict) => resolutionFor(conflict.label, conflict) === undefined,
+				);
+
+				conflicts.push(...unresolvedConflicts);
+				const conflictsResolved =
+					discoveredConflicts.length > 0 && unresolvedConflicts.length === 0;
+
+				if (merged.conflicts.length === 0 || conflictsResolved) {
+					if (mergeResolution !== undefined || conflictsResolved)
 						policyReadHashes.set(file.path, currentHash);
 
 					const mergedWrite = { ...file, content: merged.merged };
@@ -892,6 +984,13 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						};
 				}
 			}
+
+			for (const label of requestedResolutions.keys())
+				if (!consumedResolutionLabels.has(label))
+					return yield* new ApplyError({
+						path: label,
+						message: `Resolution Label Unknown: ${label}`,
+					});
 
 			const preflight = classifyPreflight(refusals, conflicts);
 			const refusal = refusals.length === 1 ? refusals[0] : undefined;

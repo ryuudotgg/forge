@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	appendLines,
+	type ConflictResolution,
 	envResidue,
 	jsonResidue,
 	mergeJson,
@@ -637,6 +638,69 @@ describe("merge helpers", () => {
 		expect(threeWayMergeEnv(baseEnv, userEnv, forgeEnv, "forge").merged).toBe(
 			"VALUE=forge\nUNCHANGED=new\nFORGE_ONLY=value\nUSER_ONLY=value\n",
 		);
+	});
+
+	it("resolves line and env conflicts with per-cell callbacks", () => {
+		const lineResolutions = new Map<string, ConflictResolution>([
+			["Build -> dist/", "user"],
+			["Cache -> .cache/", "forge"],
+		]);
+		expect(
+			threeWayMergeSections(
+				"# Build\ndist/\n\n# Cache\n.cache/\n",
+				"# Build\nbuild/\n\n# Cache\n.local-cache/\n",
+				"# Build\noutput/\n\n# Cache\n.generated-cache/\n",
+				undefined,
+				(label) => lineResolutions.get(label),
+			).merged,
+		).toBe("# Build\nbuild/\n\n# Cache\n.generated-cache/\n");
+
+		const envResolutions = new Map<string, ConflictResolution>([
+			["duplicate variable FIRST", "user"],
+			["duplicate variable SECOND", "forge"],
+		]);
+		expect(
+			threeWayMergeEnv(
+				"FIRST=old\nSECOND=old\n",
+				"FIRST=user-one\nFIRST=user-two\nSECOND=user-one\nSECOND=user-two\n",
+				"FIRST=forge-one\nFIRST=forge-two\nSECOND=forge-one\nSECOND=forge-two\n",
+				undefined,
+				(label) => envResolutions.get(label),
+			).merged,
+		).toBe("FIRST=user-two\nSECOND=forge-two\n");
+	});
+
+	it("numbers repeated line conflict labels for mixed resolutions", () => {
+		const resolutions = new Map<string, ConflictResolution>([
+			["Sec -> shared", "user"],
+			["Sec -> shared (2nd)", "forge"],
+		]);
+		const result = threeWayMergeSections(
+			"# Sec\nkeep\nshared\nmid\nshared\ntail\n",
+			"# Sec\nkeep\nuser-one\nmid\nuser-two\ntail\n",
+			"# Sec\nkeep\nforge-one\nmid\nforge-two\ntail\n",
+			undefined,
+			(label) => resolutions.get(label),
+		);
+
+		expect(result).toEqual({
+			conflicts: ["Sec -> shared", "Sec -> shared (2nd)"],
+			conflictValues: [
+				{
+					base: "shared",
+					forge: "forge-one",
+					label: "Sec -> shared",
+					user: "user-one",
+				},
+				{
+					base: "shared",
+					forge: "forge-two",
+					label: "Sec -> shared (2nd)",
+					user: "user-two",
+				},
+			],
+			merged: "# Sec\nkeep\nuser-one\nmid\nforge-two\ntail\n",
+		});
 	});
 
 	it("keeps resolved env variables at their rendered positions", () => {

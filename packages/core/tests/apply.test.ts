@@ -685,6 +685,29 @@ describe("apply", () => {
 			expect(error).toMatchObject({
 				_tag: "ApplyError",
 				path: "managed surfaces",
+				preflight: {
+					conflicts: [
+						{
+							base: "tsc",
+							forge: "tsc -b",
+							label: "package.json -> scripts.build",
+							user: "tsc --watch",
+						},
+						{
+							base: "vite",
+							forge: "vite --port 4000",
+							label: "package.json -> scripts.dev",
+							user: "vite --host",
+						},
+						{
+							base: "dist/",
+							forge: "output/",
+							label: ".gitignore -> Build -> dist/",
+							user: "build/",
+						},
+					],
+					refusals: [],
+				},
 			});
 			expect(error.message).toBe(
 				'Semantic merge conflicts were found:\npackage.json -> scripts.build: base was "tsc", user has "tsc --watch", and forge wants "tsc -b".\npackage.json -> scripts.dev: base was "vite", user has "vite --host", and forge wants "vite --port 4000".\n.gitignore -> Build -> dist/: base was "dist/", user has "build/", and forge wants "output/".\nResolve each conflict, then run Forge again.',
@@ -789,6 +812,386 @@ describe("apply", () => {
 
 		await resolve("keep-user", "vite --host");
 		await resolve("accept-forge", "vite --port 4000");
+	});
+
+	it("resolves semantic conflicts with mixed per-cell decisions", async () => {
+		await withTempDir("apply-mixed-cell-resolution", async (directory) => {
+			const artifactId = "project:surface:rootPackageJson";
+			const lineArtifactId = "project:surface:gitignore";
+			const base =
+				'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite"\n\t}\n}\n';
+			const baseHash = await hashContent(base);
+			const artifact: LockfileArtifact = {
+				base: { hash: baseHash, mergeKind: "json", semanticsVersion: 1 },
+				definitionIds: ["root"],
+				hash: baseHash,
+				kind: "surface",
+				path: "package.json",
+			};
+			const lineBase = "# Build\ndist/\n";
+			const lineBaseHash = await hashContent(lineBase);
+			const lineArtifact: LockfileArtifact = {
+				base: {
+					hash: lineBaseHash,
+					mergeKind: "lines",
+					semanticsVersion: 1,
+				},
+				definitionIds: ["root"],
+				hash: lineBaseHash,
+				kind: "surface",
+				path: ".gitignore",
+			};
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: {
+						artifacts: {
+							[artifactId]: artifact,
+							[lineArtifactId]: lineArtifact,
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [
+						{ artifactId, content: base, path: "package.json" },
+						{
+							artifactId: lineArtifactId,
+							content: lineBase,
+							path: ".gitignore",
+						},
+					],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(
+				join(directory, "package.json"),
+				'{\n\t"scripts": {\n\t\t"build": "tsc --watch",\n\t\t"dev": "vite --host"\n\t}\n}\n',
+			);
+			await writeText(join(directory, ".gitignore"), "# Build\nbuild/\n");
+			const incoming =
+				'{\n\t"scripts": {\n\t\t"build": "tsc -b",\n\t\t"dev": "vite --port 4000"\n\t}\n}\n';
+			const incomingHash = await hashContent(incoming);
+			const lineIncoming = "# Build\noutput/\n";
+			const lineIncomingHash = await hashContent(lineIncoming);
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: {
+							artifacts: {
+								[artifactId]: {
+									...artifact,
+									base: {
+										hash: incomingHash,
+										mergeKind: "json",
+										semanticsVersion: 1,
+									},
+									hash: incomingHash,
+								},
+								[lineArtifactId]: {
+									...lineArtifact,
+									base: {
+										hash: lineIncomingHash,
+										mergeKind: "lines",
+										semanticsVersion: 1,
+									},
+									hash: lineIncomingHash,
+								},
+							},
+						},
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [
+							{ artifactId, content: incoming, path: "package.json" },
+							{
+								artifactId: lineArtifactId,
+								content: lineIncoming,
+								path: ".gitignore",
+							},
+						],
+					},
+					{
+						conflictResolutions: {
+							".gitignore -> Build -> dist/": { resolution: "user" },
+							"package.json -> scripts.build": { resolution: "user" },
+							"package.json -> scripts.dev": { resolution: "forge" },
+						},
+					},
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readJson(join(directory, "package.json"))).toEqual({
+				scripts: {
+					build: "tsc --watch",
+					dev: "vite --port 4000",
+				},
+			});
+			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
+				"# Build\nbuild/\n",
+			);
+		});
+	});
+
+	it("validates shown nested conflict values before resolving", async () => {
+		const verify = async (
+			name: string,
+			expectedUser: unknown,
+			expectedForge: unknown,
+			shouldResolve: boolean,
+		) => {
+			await withTempDir(`apply-expected-values-${name}`, async (directory) => {
+				const artifactId = "project:surface:config";
+				const path = "config.json";
+				const base = `${JSON.stringify({ value: [{ side: "base" }] })}\n`;
+				const userValue = [{ local: true, side: "user" }];
+				const forgeValue = [{ generated: true, side: "forge" }];
+				const user = `${JSON.stringify({ value: userValue })}\n`;
+				const incoming = `${JSON.stringify({ value: forgeValue })}\n`;
+				const baseHash = await hashContent(base);
+				const incomingHash = await hashContent(incoming);
+				await Effect.runPromise(
+					Apply.applyPlan(directory, {
+						lockfile: {
+							artifacts: {
+								[artifactId]: {
+									base: {
+										hash: baseHash,
+										mergeKind: "json",
+										semanticsVersion: 1,
+									},
+									definitionIds: ["fixture"],
+									hash: baseHash,
+									kind: "surface",
+									path,
+								},
+							},
+						},
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [{ artifactId, content: base, path }],
+					}).pipe(Effect.provide(coreLayer)),
+				);
+				await writeText(join(directory, path), user);
+
+				const result = await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: {
+								artifacts: {
+									[artifactId]: {
+										base: {
+											hash: incomingHash,
+											mergeKind: "json",
+											semanticsVersion: 1,
+										},
+										definitionIds: ["fixture"],
+										hash: incomingHash,
+										kind: "surface",
+										path,
+									},
+								},
+							},
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [],
+							writes: [{ artifactId, content: incoming, path }],
+						},
+						{
+							conflictResolutions: {
+								"config.json -> value": {
+									expected: {
+										forge: expectedForge,
+										user: expectedUser,
+									},
+									resolution: "user",
+								},
+							},
+						},
+					).pipe(
+						Effect.match({
+							onFailure: (error) => ({ error }),
+							onSuccess: () => ({ success: true }),
+						}),
+						Effect.provide(coreLayer),
+					),
+				);
+
+				if (shouldResolve) {
+					expect(result).toEqual({ success: true });
+					expect(await readJson(join(directory, path))).toEqual({
+						value: userValue,
+					});
+				} else {
+					expect(result).toEqual({
+						error: expect.objectContaining({
+							path: "managed surfaces",
+						}),
+					});
+					expect(await readJson(join(directory, path))).toEqual({
+						value: userValue,
+					});
+				}
+			});
+		};
+
+		await verify(
+			"equal",
+			[{ local: true, side: "user" }],
+			[{ generated: true, side: "forge" }],
+			true,
+		);
+		await verify("array-length", [], [], false);
+		await verify("object-size", [{ local: true }], [], false);
+		await verify("object-key", [{ generated: true, side: "user" }], [], false);
+		await verify("primitive", "user", [], false);
+	});
+
+	it("resolves a non-mergeable file by its path", async () => {
+		await withTempDir("apply-file-resolution", async (directory) => {
+			const artifactId = "project:file:managed.txt";
+			const initial = "managed\n";
+			const initialHash = await hashContent(initial);
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: {
+						artifacts: {
+							[artifactId]: {
+								definitionIds: ["fixture"],
+								hash: initialHash,
+								kind: "file",
+								path: "managed.txt",
+							},
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, content: initial, path: "managed.txt" }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, "managed.txt"), "user\n");
+			const incoming = "forge\n";
+			const incomingHash = await hashContent(incoming);
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: {
+							artifacts: {
+								[artifactId]: {
+									definitionIds: ["fixture"],
+									hash: incomingHash,
+									kind: "file",
+									path: "managed.txt",
+								},
+							},
+						},
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [{ artifactId, content: incoming, path: "managed.txt" }],
+					},
+					{
+						conflictResolutions: {
+							"managed.txt": { resolution: "user" },
+						},
+					},
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, "managed.txt"), "utf-8")).toBe(
+				"user\n",
+			);
+		});
+	});
+
+	it("fails loudly for unknown resolution labels", async () => {
+		await withTempDir("apply-unknown-resolution", async (directory) => {
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [],
+					},
+					{
+						conflictResolutions: {
+							"missing -> value": { resolution: "user" },
+						},
+					},
+				).pipe(
+					Effect.match({
+						onFailure: (error) => ({ error }),
+						onSuccess: () => ({ success: true }),
+					}),
+					Effect.provide(coreLayer),
+				),
+			);
+
+			expect(result).toEqual({
+				error: expect.objectContaining({
+					message: "Resolution Label Unknown: missing -> value",
+					path: "missing -> value",
+				}),
+			});
+		});
+	});
+
+	it("ignores prototype members when falling back to a policy", async () => {
+		await withTempDir("apply-resolution-prototype", async (directory) => {
+			const artifactId = "project:file:toString";
+			const initial = "managed\n";
+			const initialHash = await hashContent(initial);
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: {
+						artifacts: {
+							[artifactId]: {
+								definitionIds: ["fixture"],
+								hash: initialHash,
+								kind: "file",
+								path: "toString",
+							},
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, content: initial, path: "toString" }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, "toString"), "user\n");
+			const incoming = "forge\n";
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: {
+							artifacts: {
+								[artifactId]: {
+									definitionIds: ["fixture"],
+									hash: await hashContent(incoming),
+									kind: "file",
+									path: "toString",
+								},
+							},
+						},
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [{ artifactId, content: incoming, path: "toString" }],
+					},
+					{
+						conflictResolutions: {},
+						resolutionPolicy: "accept-forge",
+					},
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, "toString"), "utf-8")).toBe(
+				incoming,
+			);
+		});
 	});
 
 	it("keeps a resolved user cell durable without rewriting the file", async () => {

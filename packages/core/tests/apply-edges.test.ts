@@ -791,6 +791,85 @@ describe("apply edge coverage", () => {
 		});
 	});
 
+	it("aborts clean policy merges when a preflight input drifts", async () => {
+		await withTempDir("apply-clean-policy-drift", async (directory) => {
+			const path = "surface.json";
+			const artifactId = "surface";
+			const base = '{"forge":"base","user":"base"}\n';
+			const baseHash = await hashContent(base);
+			const incoming = '{"forge":"next","user":"base"}\n';
+			const incomingHash = await hashContent(incoming);
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: {
+						artifacts: {
+							[artifactId]: surfaceArtifact(path, baseHash, "json"),
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, content: base, path }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+			await writeText(
+				join(directory, path),
+				'{"forge":"base","user":"local"}\n',
+			);
+			const lockBefore = await readFile(
+				join(directory, ".forge/lock.json"),
+				"utf-8",
+			);
+			let injected = false;
+			const racingLayer = applyLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				writeFileString: (target, content, options) =>
+					fileSystem.writeFileString(target, content, options).pipe(
+						Effect.tap(() => {
+							if (injected || !target.endsWith("/state/lock.json"))
+								return Effect.void;
+							injected = true;
+							return fileSystem.writeFileString(
+								join(directory, path),
+								'{"forge":"mid-run","user":"mid-run"}\n',
+							);
+						}),
+					),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: {
+								artifacts: {
+									[artifactId]: surfaceArtifact(path, incomingHash, "json"),
+								},
+							},
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [],
+							writes: [
+								{ artifactId, content: incoming, path },
+								{ content: "new\n", path: "new.txt" },
+							],
+						},
+						{ resolutionPolicy: "keep-user" },
+					).pipe(Effect.provide(racingLayer)),
+				),
+			);
+			expect(error).toMatchObject({ message: "Managed File Modified", path });
+			expect(await readFile(join(directory, path), "utf-8")).toBe(
+				'{"forge":"mid-run","user":"mid-run"}\n',
+			);
+			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
+				lockBefore,
+			);
+			await expect(
+				readFile(join(directory, "new.txt"), "utf-8"),
+			).rejects.toThrow();
+		});
+	});
+
 	it("maps content hashing failures", async () => {
 		await withTempDir("apply-hash-failure", async (directory) => {
 			await writeText(join(directory, "existing.txt"), "existing\n");

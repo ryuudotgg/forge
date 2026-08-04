@@ -1,5 +1,5 @@
 import type { LineMergeConflict } from "./lines";
-import type { MergeConflictResolution } from "./types";
+import type { MergeConflictResolution, MergeConflictResolver } from "./types";
 
 export interface EnvMergeResult {
 	readonly merged: string;
@@ -95,6 +95,7 @@ export function threeWayMergeEnv(
 	current: string,
 	incoming: string,
 	resolution?: MergeConflictResolution,
+	resolveConflict?: MergeConflictResolver,
 ): EnvMergeResult {
 	const baseLines = parseEnv(base);
 	const currentLines = parseEnv(current);
@@ -110,26 +111,48 @@ export function threeWayMergeEnv(
 			(name) => `duplicate variable ${name}`,
 		);
 
-		const nonConflictingMerge =
-			resolution === undefined
-				? undefined
-				: threeWayMergeEnv(
-						serializeEnv(collapseDuplicateVariables(baseLines, duplicateNames)),
-						serializeEnv(
-							collapseDuplicateVariables(currentLines, duplicateNames),
-						),
-						serializeEnv(
-							collapseDuplicateVariables(incomingLines, duplicateNames),
-						),
-						resolution,
-					);
-
-		const selectedVariables = variables(
-			collapseDuplicateVariables(
-				resolution === "user" ? currentLines : incomingLines,
-				duplicateNames,
-			),
+		const resolutions = new Map(
+			[...duplicateNames].map((name) => [
+				name,
+				resolveConflict?.(`duplicate variable ${name}`) ?? resolution,
+			]),
 		);
+
+		const fullyResolved = [...resolutions.values()].every(
+			(candidate) => candidate !== undefined,
+		);
+
+		const nonConflictingMerge = !fullyResolved
+			? undefined
+			: threeWayMergeEnv(
+					serializeEnv(collapseDuplicateVariables(baseLines, duplicateNames)),
+					serializeEnv(
+						collapseDuplicateVariables(currentLines, duplicateNames),
+					),
+					serializeEnv(
+						collapseDuplicateVariables(incomingLines, duplicateNames),
+					),
+					resolution,
+					resolveConflict,
+				);
+
+		const currentVariables = variables(
+			collapseDuplicateVariables(currentLines, duplicateNames),
+		);
+
+		const incomingVariables = variables(
+			collapseDuplicateVariables(incomingLines, duplicateNames),
+		);
+
+		const selectedVariables = new Map<string, string>();
+		for (const name of duplicateNames) {
+			const selected =
+				resolutions.get(name) === "user"
+					? currentVariables.get(name)
+					: incomingVariables.get(name);
+
+			if (selected !== undefined) selectedVariables.set(name, selected);
+		}
 
 		const resolvedLines =
 			nonConflictingMerge === undefined
@@ -144,7 +167,7 @@ export function threeWayMergeEnv(
 
 		return {
 			merged:
-				resolution === undefined || resolvedLines === undefined
+				!fullyResolved || resolvedLines === undefined
 					? incoming
 					: serializeEnv(resolvedLines),
 			conflicts,
