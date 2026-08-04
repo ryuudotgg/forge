@@ -230,7 +230,7 @@ export const versions = {
 
 	typesBetterSqlite3: {
 		name: "@types/better-sqlite3",
-		version: "^7.6.13",
+		version: "^9.0.0",
 		group: "Types",
 	},
 	typesNode: {
