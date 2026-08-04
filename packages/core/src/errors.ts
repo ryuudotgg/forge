@@ -64,11 +64,34 @@ export class ApplyError extends Schema.TaggedError<ApplyError>()("ApplyError", {
 	message: Schema.String,
 	preflight: Schema.optional(
 		Schema.Struct({
+			conflicts: Schema.optional(
+				Schema.Array(
+					Schema.Struct({
+						base: Schema.Unknown,
+						forge: Schema.Unknown,
+						label: Schema.String,
+						user: Schema.Unknown,
+					}),
+				),
+			),
 			hasConflicts: Schema.Boolean,
 			hasManagedRemovals: Schema.Boolean,
 			hasManagedRefusals: Schema.Boolean,
 			hasUnmanagedRefusals: Schema.Boolean,
 			hasUnmanagedRemovals: Schema.Boolean,
+			refusals: Schema.optional(
+				Schema.Array(
+					Schema.Struct({
+						resolvable: Schema.Boolean,
+						message: Schema.Literal(
+							"Managed File Modified",
+							"Unmanaged File Exists",
+						),
+						operation: Schema.Literal("removal", "write"),
+						path: Schema.String,
+					}),
+				),
+			),
 		}),
 	),
 }) {}

@@ -1,10 +1,14 @@
 export type {
+	ApplyConflict,
 	ApplyOptions,
 	ApplyPlan,
+	ApplyRefusal,
+	ApplyResolution,
+	ConflictResolution,
 	PlannedWrite,
 	ResolutionPolicy,
 } from "./apply";
-export { Apply, formatApplyError } from "./apply";
+export { Apply, describeConflictValue, formatApplyError } from "./apply";
 export type {
 	AdapterContext,
 	AdapterDefinition,

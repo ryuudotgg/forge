@@ -6,6 +6,7 @@ import {
 	Apply,
 	ApplyError,
 	type ApplyOptions,
+	type ApplyPlan,
 	ConfigStore,
 	CoreLive,
 	type DiscoveredModule,
@@ -28,6 +29,11 @@ import {
 	RegistryLoadError,
 } from "@ryuujs/generators";
 import { Cause, Effect, Either, Exit, Layer, Option, Schema } from "effect";
+import {
+	canResolveInteractively,
+	isInteractiveLifecycleSession,
+	promptForConflictResolutions,
+} from "./interactive-resolution";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
@@ -70,20 +76,65 @@ async function runLifecycleEffect<A, E extends { readonly message: string }>(
 	const exit = await Effect.runPromiseExit(effect);
 	if (Exit.isSuccess(exit)) return exit.value;
 
-	const failure = Cause.failureOption(exit.cause);
-	if (Option.isSome(failure)) {
-		const detail =
-			failure.value instanceof ApplyError
-				? formatApplyError(failure.value)
-				: failure.value.message;
-		log.error(
-			`${failureMessage} ${detail.endsWith(".") ? detail.slice(0, -1) : detail}.`,
+	return reportLifecycleFailure(failureFromCause(exit.cause), failureMessage);
+}
+
+export function failureFromCause<E>(cause: Cause.Cause<E>): E {
+	const failure = Cause.failureOption(cause);
+	if (Option.isSome(failure)) return failure.value;
+
+	throw Cause.squash(cause);
+}
+
+function reportLifecycleFailure(
+	failure: { readonly message: string },
+	failureMessage: string,
+): never {
+	const detail =
+		failure instanceof ApplyError ? formatApplyError(failure) : failure.message;
+	log.error(
+		`${failureMessage} ${detail.endsWith(".") ? detail.slice(0, -1) : detail}.`,
+	);
+
+	process.exit(1);
+}
+
+export async function applyLifecyclePlan(
+	projectRoot: string,
+	plan: ApplyPlan,
+	options: ApplyOptions,
+): Promise<void> {
+	const apply = (applyOptions: ApplyOptions) =>
+		Apply.applyPlan(projectRoot, plan, applyOptions).pipe(
+			Effect.provide(coreLayer),
 		);
 
-		process.exit(1);
+	const exit = await Effect.runPromiseExit(apply(options));
+	if (Exit.isSuccess(exit)) return;
+
+	const failure = failureFromCause(exit.cause);
+	if (
+		failure instanceof ApplyError &&
+		isInteractiveLifecycleSession() &&
+		canResolveInteractively(failure, options)
+	) {
+		const resolution = await promptForConflictResolutions(failure);
+		const retry = await Effect.runPromiseExit(
+			apply({ ...options, ...resolution.options }),
+		);
+
+		if (Exit.isSuccess(retry)) {
+			log.success(resolution.summary);
+			return;
+		}
+
+		return reportLifecycleFailure(
+			failureFromCause(retry.cause),
+			"We couldn't apply this change.",
+		);
 	}
 
-	throw Cause.squash(exit.cause);
+	return reportLifecycleFailure(failure, "We couldn't apply this change.");
 }
 
 export interface ManagedProject {
@@ -291,21 +342,18 @@ export async function applyInstalledPlan(
 		"We couldn't plan this change.",
 	);
 
-	await runLifecycleEffect(
-		Apply.applyPlan(
-			projectRoot,
-			{
-				lockfile: plan.lockfile,
-				manifest: plan.manifest,
-				removals: plan.removals,
-				writes: plan.writes.map((write) => ({
-					artifactId: write.artifactId,
-					content: write.content,
-					path: write.path,
-				})),
-			},
-			options,
-		).pipe(Effect.provide(coreLayer)),
-		"We couldn't apply this change.",
+	await applyLifecyclePlan(
+		projectRoot,
+		{
+			lockfile: plan.lockfile,
+			manifest: plan.manifest,
+			removals: plan.removals,
+			writes: plan.writes.map((write) => ({
+				artifactId: write.artifactId,
+				content: write.content,
+				path: write.path,
+			})),
+		},
+		options,
 	);
 }

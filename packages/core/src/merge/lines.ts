@@ -1,4 +1,4 @@
-import type { MergeConflictResolution } from "./types";
+import type { MergeConflictResolution, MergeConflictResolver } from "./types";
 
 export interface Section {
 	readonly header: string;
@@ -31,6 +31,7 @@ function mergeSectionLines(
 	current: ReadonlyArray<string>,
 	incoming: ReadonlyArray<string>,
 	resolution?: MergeConflictResolution,
+	resolveConflict?: MergeConflictResolver,
 ): LineMergeResult {
 	if (linesEqual(base, incoming))
 		return { merged: current.join("\n").concat("\n"), conflicts: [] };
@@ -124,6 +125,7 @@ function mergeSectionLines(
 		current.join("\n").concat("\n"),
 		incoming.join("\n").concat("\n"),
 		resolution,
+		resolveConflict,
 	);
 }
 
@@ -143,6 +145,7 @@ export function threeWayMergeSections(
 	current: string,
 	incoming: string,
 	resolution?: MergeConflictResolution,
+	resolveConflict?: MergeConflictResolver,
 ): LineMergeResult {
 	const baseSections = parseSections(base);
 	const currentSections = parseSections(current);
@@ -158,6 +161,7 @@ export function threeWayMergeSections(
 			serializeSections(currentSections),
 			serializeSections(incomingSections),
 			resolution,
+			resolveConflict,
 		);
 
 	const byHeader = (sections: ReadonlyArray<Section>) =>
@@ -179,25 +183,25 @@ export function threeWayMergeSections(
 	const conflictValues: LineMergeConflict[] = [];
 
 	for (const header of headers) {
+		const sectionLabel = header === "" ? "unsectioned" : header.slice(2);
 		const result = mergeSectionLines(
 			baseByHeader.get(header)?.lines ?? [],
 			currentByHeader.get(header)?.lines ?? [],
 			incomingByHeader.get(header)?.lines ?? [],
 			resolution,
+			(label) => resolveConflict?.(`${sectionLabel} -> ${label}`),
 		);
 
 		const lines = splitLines(result.merged);
 		if (header !== "" || lines.length > 0) sections.push({ header, lines });
 
 		for (const conflict of result.conflicts)
-			conflicts.push(
-				`${header === "" ? "unsectioned" : header.slice(2)} -> ${conflict}`,
-			);
+			conflicts.push(`${sectionLabel} -> ${conflict}`);
 
 		for (const conflict of result.conflictValues ?? [])
 			conflictValues.push({
 				...conflict,
-				label: `${header === "" ? "unsectioned" : header.slice(2)} -> ${conflict.label}`,
+				label: `${sectionLabel} -> ${conflict.label}`,
 			});
 	}
 
@@ -316,11 +320,27 @@ export interface LineMergeConflict {
 	readonly user?: string;
 }
 
+function ordinal(value: number): string {
+	const moduloHundred = value % 100;
+	if (moduloHundred >= 11 && moduloHundred <= 13) return `${value}th`;
+
+	return `${value}${
+		value % 10 === 1
+			? "st"
+			: value % 10 === 2
+				? "nd"
+				: value % 10 === 3
+					? "rd"
+					: "th"
+	}`;
+}
+
 export function threeWayMergeLines(
 	base: string,
 	current: string,
 	incoming: string,
 	resolution?: MergeConflictResolution,
+	resolveConflict?: MergeConflictResolver,
 ): LineMergeResult {
 	const baseLines = splitLines(base);
 	const currentLines = splitLines(current);
@@ -350,6 +370,7 @@ export function threeWayMergeLines(
 
 	const conflicts: string[] = [];
 	const conflictValues: LineMergeConflict[] = [];
+	const labelOccurrences = new Map<string, number>();
 
 	let prevBase = 0;
 	let prevCurrent = 0;
@@ -376,10 +397,16 @@ export function threeWayMergeLines(
 		else if (linesEqual(baseSeg, currentSeg)) merged.push(...incomingSeg);
 		else if (linesEqual(baseSeg, incomingSeg)) merged.push(...currentSeg);
 		else {
-			merged.push(...(resolution === "user" ? currentSeg : incomingSeg));
-
-			const label =
+			const baseLabel =
 				baseSeg.length > 0 ? baseSeg.join(", ") : "concurrent insertion";
+			const occurrence = (labelOccurrences.get(baseLabel) ?? 0) + 1;
+			labelOccurrences.set(baseLabel, occurrence);
+			const label =
+				occurrence === 1 ? baseLabel : `${baseLabel} (${ordinal(occurrence)})`;
+			const conflictResolution = resolveConflict?.(label) ?? resolution;
+			merged.push(
+				...(conflictResolution === "user" ? currentSeg : incomingSeg),
+			);
 
 			conflicts.push(label);
 			conflictValues.push({
