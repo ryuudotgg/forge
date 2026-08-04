@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { FileSystem, Error as PlatformError } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
@@ -12,6 +13,28 @@ import {
 import { withTempDir, writeJson, writeText } from "./harness";
 
 const projectLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+
+function systemFailure(method: string, path: string) {
+	return Effect.fail(
+		new PlatformError.SystemError({
+			method,
+			module: "FileSystem",
+			pathOrDescriptor: path,
+			reason: "PermissionDenied",
+		}),
+	);
+}
+
+function configLayerWithFileSystem(
+	transform: (fileSystem: FileSystem.FileSystem) => FileSystem.FileSystem,
+) {
+	const fileSystemLayer = Layer.effect(
+		FileSystem.FileSystem,
+		Effect.map(FileSystem.FileSystem, transform),
+	).pipe(Layer.provide(NodeContext.layer));
+
+	return CoreLive.pipe(Layer.provideMerge(fileSystemLayer));
+}
 
 function appConfig(id: string) {
 	return {
@@ -128,6 +151,52 @@ describe("module config store", () => {
 			expect(modules).toHaveLength(1);
 			expect(modules[0]?.id).toBe("qmkta");
 			expect(modules[0]?.root).toBe("apps/web");
+			expect(modules[0]?.packageName).toBeUndefined();
+		});
+	});
+
+	it("treats package.json as absent when its existence check fails", async () => {
+		await withTempDir("config-package-exists-failure", async (directory) => {
+			const moduleRoot = join(directory, "apps/web");
+			const packagePath = join(moduleRoot, "package.json");
+
+			await writeJson(join(moduleRoot, "forge.json"), appConfig("qmkta"));
+			await writeJson(packagePath, { name: "@forge/web" });
+
+			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === packagePath
+						? systemFailure("exists", target)
+						: fileSystem.exists(target),
+			}));
+			const modules = await Effect.runPromise(
+				ConfigStore.discover(directory).pipe(Effect.provide(failingLayer)),
+			);
+
+			expect(modules[0]?.packageName).toBeUndefined();
+		});
+	});
+
+	it("treats package.json as absent when reading it fails", async () => {
+		await withTempDir("config-package-read-failure", async (directory) => {
+			const moduleRoot = join(directory, "apps/web");
+			const packagePath = join(moduleRoot, "package.json");
+
+			await writeJson(join(moduleRoot, "forge.json"), appConfig("qmkta"));
+			await writeJson(packagePath, { name: "@forge/web" });
+
+			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				readFileString: (target, encoding) =>
+					target === packagePath
+						? systemFailure("readFileString", target)
+						: fileSystem.readFileString(target, encoding),
+			}));
+			const modules = await Effect.runPromise(
+				ConfigStore.discover(directory).pipe(Effect.provide(failingLayer)),
+			);
+
 			expect(modules[0]?.packageName).toBeUndefined();
 		});
 	});

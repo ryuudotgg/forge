@@ -162,7 +162,7 @@ export class AdoptionDetector extends Effect.Service<AdoptionDetector>()(
 				function* (filePath: string) {
 					return yield* fs.readLink(filePath).pipe(
 						Effect.map(() => true),
-						Effect.catchAll(() => Effect.succeed(false)),
+						Effect.orElseSucceed(() => false),
 					);
 				},
 			);
