@@ -304,18 +304,21 @@ function normalizeContributionResult(
 		| Promise<ReadonlyArray<Contribution>>
 		| Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, CommandProbe>,
 ): Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, CommandProbe> {
-	return Effect.try({
-		try: contribute,
-		catch: (error) =>
-			new GeneratorError({
-				generatorId,
-				message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
-			}),
-	}).pipe(
-		Effect.flatMap((result) => {
-			if (Effect.isEffect(result)) return result;
-			if (!(result instanceof Promise)) return Effect.succeed(result);
+	return Effect.suspend(() => {
+		let result: ReturnType<typeof contribute>;
+		try {
+			result = contribute();
+		} catch (error) {
+			return Effect.fail(
+				new GeneratorError({
+					generatorId,
+					message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
+				}),
+			);
+		}
 
+		if (Effect.isEffect(result)) return result;
+		if (result instanceof Promise) {
 			return Effect.tryPromise({
 				try: () => result,
 				catch: (error) =>
@@ -324,8 +327,10 @@ function normalizeContributionResult(
 						message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
 					}),
 			});
-		}),
-	);
+		}
+
+		return Effect.succeed(result);
+	});
 }
 
 function isSlotPath(path: string | SlotPath): path is SlotPath {

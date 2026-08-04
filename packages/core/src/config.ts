@@ -106,13 +106,13 @@ function maybeReadPackageName(
 		const packageJsonPath = join(moduleRoot, "package.json");
 		const exists = yield* fs
 			.exists(packageJsonPath)
-			.pipe(Effect.catchAll(() => Effect.succeed(false)));
+			.pipe(Effect.orElseSucceed(() => false));
 
 		if (!exists) return undefined;
 
 		const raw = yield* fs
 			.readFileString(packageJsonPath)
-			.pipe(Effect.catchAll(() => Effect.succeed("")));
+			.pipe(Effect.orElseSucceed(() => ""));
 
 		if (raw === "") return undefined;
 
