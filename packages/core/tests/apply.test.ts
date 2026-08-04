@@ -701,6 +701,174 @@ describe("apply", () => {
 		});
 	});
 
+	it("resolves only conflicted cells while preserving clean changes", async () => {
+		const resolve = async (
+			policy: "accept-forge" | "keep-user",
+			expectedDev: string,
+		) => {
+			await withTempDir(
+				`apply-cell-resolution-${policy}`,
+				async (directory) => {
+					const base =
+						'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite"\n\t}\n}\n';
+					const baseHash = await hashContent(base);
+					const artifact: LockfileArtifact = {
+						base: { hash: baseHash, mergeKind: "json", semanticsVersion: 1 },
+						definitionIds: ["root"],
+						hash: baseHash,
+						kind: "surface",
+						path: "package.json",
+					};
+					await Effect.runPromise(
+						Apply.applyPlan(directory, {
+							lockfile: {
+								artifacts: { "project:surface:rootPackageJson": artifact },
+							},
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [],
+							writes: [
+								{
+									artifactId: "project:surface:rootPackageJson",
+									content: base,
+									path: "package.json",
+								},
+							],
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					await writeText(
+						join(directory, "package.json"),
+						'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite --host",\n\t\t"user": "custom"\n\t}\n}\n',
+					);
+					const incoming =
+						'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite --port 4000",\n\t\t"test": "vitest"\n\t}\n}\n';
+					const incomingHash = await hashContent(incoming);
+
+					await Effect.runPromise(
+						Apply.applyPlan(
+							directory,
+							{
+								lockfile: {
+									artifacts: {
+										"project:surface:rootPackageJson": {
+											...artifact,
+											base: {
+												hash: incomingHash,
+												mergeKind: "json",
+												semanticsVersion: 1,
+											},
+											hash: incomingHash,
+										},
+									},
+								},
+								manifest: { config: {}, installs: [], modules: {} },
+								removals: [],
+								writes: [
+									{
+										artifactId: "project:surface:rootPackageJson",
+										content: incoming,
+										path: "package.json",
+									},
+								],
+							},
+							{ resolutionPolicy: policy },
+						).pipe(Effect.provide(coreLayer)),
+					);
+
+					expect(await readJson(join(directory, "package.json"))).toEqual({
+						scripts: {
+							build: "tsc",
+							dev: expectedDev,
+							test: "vitest",
+							user: "custom",
+						},
+					});
+				},
+			);
+		};
+
+		await resolve("keep-user", "vite --host");
+		await resolve("accept-forge", "vite --port 4000");
+	});
+
+	it("keeps a resolved user cell durable without rewriting the file", async () => {
+		await withTempDir("apply-cell-resolution-durable", async (directory) => {
+			const base = '{\n\t"scripts": {\n\t\t"dev": "vite"\n\t}\n}\n';
+			const baseHash = await hashContent(base);
+			const artifact: LockfileArtifact = {
+				base: { hash: baseHash, mergeKind: "json", semanticsVersion: 1 },
+				definitionIds: ["root"],
+				hash: baseHash,
+				kind: "surface",
+				path: "package.json",
+			};
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: {
+						artifacts: { "project:surface:rootPackageJson": artifact },
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [
+						{
+							artifactId: "project:surface:rootPackageJson",
+							content: base,
+							path: "package.json",
+						},
+					],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+			await writeText(
+				join(directory, "package.json"),
+				'{\n\t"scripts": {\n\t\t"dev": "vite --host"\n\t}\n}\n',
+			);
+
+			const incoming =
+				'{\n\t"scripts": {\n\t\t"dev": "vite --port 4000",\n\t\t"test": "vitest"\n\t}\n}\n';
+			const incomingHash = await hashContent(incoming);
+			const nextPlan: ApplyPlan = {
+				lockfile: {
+					artifacts: {
+						"project:surface:rootPackageJson": {
+							...artifact,
+							base: {
+								hash: incomingHash,
+								mergeKind: "json",
+								semanticsVersion: 1,
+							},
+							hash: incomingHash,
+						},
+					},
+				},
+				manifest: { config: {}, installs: [], modules: {} },
+				removals: [],
+				writes: [
+					{
+						artifactId: "project:surface:rootPackageJson",
+						content: incoming,
+						path: "package.json",
+					},
+				],
+			};
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, nextPlan, {
+					resolutionPolicy: "keep-user",
+				}).pipe(Effect.provide(coreLayer)),
+			);
+			const packagePath = join(directory, "package.json");
+			const resolved = await readFile(packagePath, "utf-8");
+			const inode = (await stat(packagePath)).ino;
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, nextPlan).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(packagePath, "utf-8")).toBe(resolved);
+			expect((await stat(packagePath)).ino).toBe(inode);
+		});
+	});
+
 	it("reports concise section-entry conflict values", async () => {
 		await withTempDir("apply-line-conflict", async (directory) => {
 			const base = "# Build\ndist/\n";
@@ -1685,6 +1853,16 @@ describe("apply", () => {
 				),
 			);
 			expect(versionError).toMatchObject({ message: "Managed File Modified" });
+			const keepUserError = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, plan, {
+						resolutionPolicy: "keep-user",
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+			expect(keepUserError).toMatchObject({
+				message: "Managed File Modified",
+			});
 		});
 	});
 
@@ -1798,7 +1976,7 @@ describe("apply", () => {
 			if (!(error instanceof ApplyError))
 				throw new Error("Expected ApplyError");
 			expect(formatApplyError(error)).toBe(
-				"Forge cannot safely update these files:\nturbo.json was modified after Forge last managed it.",
+				"Forge cannot safely update these files:\nturbo.json was modified after Forge last managed it.\nRun again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
 			);
 		});
 	});
@@ -1861,6 +2039,402 @@ describe("apply", () => {
 		});
 	});
 
+	it("resolves modified non-mergeable files according to policy", async () => {
+		const resolve = async (policy: "accept-forge" | "keep-user") => {
+			await withTempDir(
+				`apply-managed-resolution-${policy}`,
+				async (directory) => {
+					const artifactId = "project:file:config.txt";
+					const oldContent = "old-managed\n";
+					const userContent = "user-change\n";
+					const forgeContent = "new-managed\n";
+					await writeText(join(directory, "config.txt"), userContent);
+					await Effect.runPromise(
+						State.writeLockfile(directory, {
+							artifacts: {
+								[artifactId]: {
+									definitionIds: ["test"],
+									hash: await hashContent(oldContent),
+									kind: "file",
+									path: "config.txt",
+								},
+							},
+						}).pipe(Effect.provide(coreLayer)),
+					);
+					const plan: ApplyPlan = {
+						lockfile: {
+							artifacts: {
+								[artifactId]: {
+									definitionIds: ["test"],
+									hash: await hashContent(forgeContent),
+									kind: "file",
+									path: "config.txt",
+								},
+							},
+						},
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [
+							{
+								artifactId,
+								content: forgeContent,
+								path: "config.txt",
+							},
+						],
+					};
+
+					await Effect.runPromise(
+						Apply.applyPlan(directory, plan, {
+							resolutionPolicy: policy,
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					const expected = policy === "keep-user" ? userContent : forgeContent;
+					expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
+						expected,
+					);
+					const lockfile = await readJson(join(directory, ".forge/lock.json"));
+					expect(lockfile).toMatchObject({
+						artifacts: { [artifactId]: { hash: await hashContent(expected) } },
+					});
+
+					if (policy === "keep-user") {
+						await Effect.runPromise(
+							Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+						);
+						expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
+							userContent,
+						);
+						const rebased = await readJson(join(directory, ".forge/lock.json"));
+						expect(rebased).toMatchObject({
+							artifacts: {
+								[artifactId]: {
+									base: {
+										hash: await hashContent(forgeContent),
+										mergeKind: "opaque",
+										semanticsVersion: 1,
+									},
+								},
+							},
+						});
+						expect(
+							await readFile(
+								join(
+									directory,
+									".forge/bases",
+									await hashContent(forgeContent),
+								),
+								"utf-8",
+							),
+						).toBe(forgeContent);
+
+						await Effect.runPromise(
+							Apply.applyPlan(directory, plan, {
+								resolutionPolicy: "accept-forge",
+							}).pipe(Effect.provide(coreLayer)),
+						);
+						expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
+							forgeContent,
+						);
+						await Effect.runPromise(
+							Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+						);
+						expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
+							forgeContent,
+						);
+					}
+				},
+			);
+		};
+
+		await resolve("keep-user");
+		await resolve("accept-forge");
+	});
+
+	it("makes keep-user durable for base-less surfaces", async () => {
+		await withTempDir(
+			"apply-base-less-surface-resolution",
+			async (directory) => {
+				const artifactId = "module:web:surface:page";
+				const path = "apps/web/app/page.tsx";
+				const render = "export default function Page() {}\n";
+				const changedRender =
+					"export default function Page() { return null; }\n";
+				const acceptedRender =
+					"export default function Page() { return <main />; }\n";
+				const userContent = `${render}// my page tweak\n`;
+				const obsoleteBase = "obsolete render\n";
+				const obsoleteHash = await hashContent(obsoleteBase);
+				const renderHash = await hashContent(render);
+				const planFor = async (content: string): Promise<ApplyPlan> => ({
+					lockfile: {
+						artifacts: {
+							[artifactId]: {
+								definitionIds: ["nextjs/base"],
+								hash: await hashContent(content),
+								kind: "surface",
+								path,
+							},
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, content, path }],
+				});
+
+				await writeText(join(directory, path), userContent);
+				await Effect.runPromise(
+					Effect.gen(function* () {
+						yield* State.writeBase(directory, obsoleteHash, obsoleteBase);
+						yield* State.writeLockfile(directory, {
+							artifacts: {
+								[artifactId]: {
+									definitionIds: ["nextjs/base"],
+									hash: renderHash,
+									kind: "surface",
+									path,
+								},
+							},
+						});
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const plan = await planFor(render);
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan, {
+						resolutionPolicy: "keep-user",
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe(
+					userContent,
+				);
+				expect(
+					await readJson<Lockfile>(join(directory, ".forge/lock.json")),
+				).toMatchObject({
+					artifacts: {
+						[artifactId]: {
+							base: {
+								hash: renderHash,
+								mergeKind: "opaque",
+								semanticsVersion: 1,
+							},
+							hash: await hashContent(userContent),
+							kind: "surface",
+						},
+					},
+				});
+				expect(
+					await readFile(join(directory, ".forge/bases", renderHash), "utf-8"),
+				).toBe(render);
+				expect(
+					await pathExists(join(directory, ".forge/bases", obsoleteHash)),
+				).toBe(false);
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+				expect(await readFile(join(directory, path), "utf-8")).toBe(
+					userContent,
+				);
+				expect(
+					await pathExists(join(directory, ".forge/bases", renderHash)),
+				).toBe(true);
+
+				const changedPlan = await planFor(changedRender);
+				const lockBeforeRefusal = await readFile(
+					join(directory, ".forge/lock.json"),
+					"utf-8",
+				);
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(directory, changedPlan).pipe(
+							Effect.provide(coreLayer),
+						),
+					),
+				);
+				expect(error).toMatchObject({ message: "Managed File Modified", path });
+				expect(await readFile(join(directory, path), "utf-8")).toBe(
+					userContent,
+				);
+				expect(
+					await readFile(join(directory, ".forge/lock.json"), "utf-8"),
+				).toBe(lockBeforeRefusal);
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, changedPlan, {
+						resolutionPolicy: "keep-user",
+					}).pipe(Effect.provide(coreLayer)),
+				);
+				const changedHash = await hashContent(changedRender);
+				expect(await readFile(join(directory, path), "utf-8")).toBe(
+					userContent,
+				);
+				expect(
+					await readFile(join(directory, ".forge/bases", changedHash), "utf-8"),
+				).toBe(changedRender);
+				expect(
+					await pathExists(join(directory, ".forge/bases", renderHash)),
+				).toBe(false);
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, await planFor(acceptedRender), {
+						resolutionPolicy: "accept-forge",
+					}).pipe(Effect.provide(coreLayer)),
+				);
+				expect(await readFile(join(directory, path), "utf-8")).toBe(
+					acceptedRender,
+				);
+			},
+		);
+	});
+
+	it("refuses keep-user rebases without an artifact id", async () => {
+		await withTempDir(
+			"apply-keep-user-missing-artifact-id",
+			async (directory) => {
+				const path = "managed.txt";
+				const managed = "managed\n";
+				const user = "user\n";
+				await writeText(join(directory, path), user);
+				await Effect.runPromise(
+					State.writeLockfile(directory, {
+						artifacts: {
+							artifact: {
+								definitionIds: ["fixture"],
+								hash: await hashContent(managed),
+								kind: "file",
+								path,
+							},
+						},
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(
+							directory,
+							{
+								lockfile: { artifacts: {} },
+								manifest: { config: {}, installs: [], modules: {} },
+								removals: [],
+								writes: [{ content: "incoming\n", path }],
+							},
+							{ resolutionPolicy: "keep-user" },
+						).pipe(Effect.provide(coreLayer)),
+					),
+				);
+
+				expect(error).toMatchObject({ message: "Managed File Modified", path });
+				expect(await readFile(join(directory, path), "utf-8")).toBe(user);
+			},
+		);
+	});
+
+	it("resolves JSONC parse refusals according to policy", async () => {
+		const resolve = async (policy: "accept-forge" | "keep-user") => {
+			await withTempDir(
+				`apply-jsonc-resolution-${policy}`,
+				async (directory) => {
+					const artifactId = "project:surface:turboConfig";
+					const base = '{\n\t"tasks": {}\n}\n';
+					const baseHash = await hashContent(base);
+					const user = '{\n\t// user comment\n\t"tasks": {}\n}\n';
+					const incoming = '{\n\t"tasks": { "build": {} }\n}\n';
+					const incomingHash = await hashContent(incoming);
+					await writeText(join(directory, "turbo.json"), user);
+					await Effect.runPromise(
+						Effect.gen(function* () {
+							yield* State.writeBase(directory, baseHash, base);
+							yield* State.writeLockfile(directory, {
+								artifacts: {
+									[artifactId]: {
+										base: {
+											hash: baseHash,
+											mergeKind: "json",
+											semanticsVersion: 1,
+										},
+										definitionIds: ["turbo"],
+										hash: baseHash,
+										kind: "surface",
+										path: "turbo.json",
+									},
+								},
+							});
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					await Effect.runPromise(
+						Apply.applyPlan(
+							directory,
+							{
+								lockfile: {
+									artifacts: {
+										[artifactId]: {
+											base: {
+												hash: incomingHash,
+												mergeKind: "json",
+												semanticsVersion: 1,
+											},
+											definitionIds: ["turbo"],
+											hash: incomingHash,
+											kind: "surface",
+											path: "turbo.json",
+										},
+									},
+								},
+								manifest: { config: {}, installs: [], modules: {} },
+								removals: [],
+								writes: [{ artifactId, content: incoming, path: "turbo.json" }],
+							},
+							{ resolutionPolicy: policy },
+						).pipe(Effect.provide(coreLayer)),
+					);
+
+					const expected = policy === "keep-user" ? user : incoming;
+					expect(await readFile(join(directory, "turbo.json"), "utf-8")).toBe(
+						expected,
+					);
+					expect(
+						await readJson(join(directory, ".forge/lock.json")),
+					).toMatchObject({
+						artifacts: { [artifactId]: { hash: await hashContent(expected) } },
+					});
+					if (policy === "keep-user") {
+						await Effect.runPromise(
+							Apply.applyPlan(directory, {
+								lockfile: {
+									artifacts: {
+										[artifactId]: {
+											base: {
+												hash: incomingHash,
+												mergeKind: "json",
+												semanticsVersion: 1,
+											},
+											definitionIds: ["turbo"],
+											hash: incomingHash,
+											kind: "surface",
+											path: "turbo.json",
+										},
+									},
+								},
+								manifest: { config: {}, installs: [], modules: {} },
+								removals: [],
+								writes: [{ artifactId, content: incoming, path: "turbo.json" }],
+							}).pipe(Effect.provide(coreLayer)),
+						);
+						expect(await readFile(join(directory, "turbo.json"), "utf-8")).toBe(
+							user,
+						);
+					}
+				},
+			);
+		};
+
+		await resolve("keep-user");
+		await resolve("accept-forge");
+	});
+
 	it("refuses to remove a modified managed file", async () => {
 		await withTempDir("apply-remove", async (directory) => {
 			await writeText(`${directory}/packages/ui/forge.json`, "{\n}\n");
@@ -1898,7 +2472,13 @@ describe("apply", () => {
 				_tag: "ApplyError",
 				message: "Managed File Modified",
 				path: "packages/ui/forge.json",
+				preflight: { hasManagedRemovals: true },
 			});
+			if (!(error instanceof ApplyError))
+				throw new Error("Expected ApplyError");
+			expect(formatApplyError(error)).toBe(
+				"Forge cannot safely update these files:\npackages/ui/forge.json was modified after Forge last managed it.\nRun again with --accept-forge to remove modified managed files that Forge no longer plans.",
+			);
 
 			expect(
 				await readFile(`${directory}/packages/ui/forge.json`, "utf-8"),
@@ -1911,6 +2491,91 @@ describe("apply", () => {
 			expect(await pathExists(join(directory, ".forge/manifest.json"))).toBe(
 				false,
 			);
+		});
+	});
+
+	it("refuses keep-user removal of a modified opaque artifact", async () => {
+		await withTempDir("apply-keep-user-remove", async (directory) => {
+			const path = "opaque.txt";
+			await writeText(join(directory, path), "user\n");
+			const previous: Lockfile = {
+				schemaVersion: 1,
+				artifacts: {
+					opaque: {
+						definitionIds: ["fixture"],
+						hash: await hashContent("managed\n"),
+						kind: "file",
+						path,
+					},
+				},
+			};
+			await Effect.runPromise(
+				State.writeLockfile(directory, previous).pipe(
+					Effect.provide(coreLayer),
+				),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [path],
+							writes: [],
+						},
+						{ resolutionPolicy: "keep-user" },
+					).pipe(Effect.provide(coreLayer)),
+				),
+			);
+			expect(error).toMatchObject({ message: "Managed File Modified", path });
+			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+			expect(await readJson(join(directory, ".forge/lock.json"))).toEqual(
+				previous,
+			);
+		});
+	});
+
+	it("refuses removal when the stored descriptor is incompatible", async () => {
+		await withTempDir("apply-incompatible-remove", async (directory) => {
+			const path = "surface.txt";
+			const content = "user\n";
+			await writeText(join(directory, path), content);
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						artifact: {
+							base: {
+								hash: await hashContent("managed\n"),
+								mergeKind: "json",
+								semanticsVersion: 1,
+							},
+							definitionIds: ["fixture"],
+							hash: await hashContent("managed\n"),
+							kind: "file",
+							path,
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [path],
+							writes: [],
+						},
+						{ resolutionPolicy: "accept-forge" },
+					).pipe(Effect.provide(coreLayer)),
+				),
+			);
+			expect(error).toMatchObject({ message: "Managed File Modified", path });
+			expect(await readFile(join(directory, path), "utf-8")).toBe(content);
 		});
 	});
 
@@ -1949,6 +2614,154 @@ describe("apply", () => {
 		});
 	});
 
+	it("keeps unmanaged refusals asymmetric between resolution policies", async () => {
+		const plan: ApplyPlan = {
+			lockfile: {
+				artifacts: {
+					"project:file:config.txt": {
+						definitionIds: ["test"],
+						hash: await hashContent("forge\n"),
+						kind: "file",
+						path: "config.txt",
+					},
+				},
+			},
+			manifest: { config: {}, installs: [], modules: {} },
+			removals: [],
+			writes: [
+				{
+					artifactId: "project:file:config.txt",
+					content: "forge\n",
+					path: "config.txt",
+				},
+			],
+		};
+
+		await withTempDir("apply-unmanaged-keep-user", async (directory) => {
+			await writeText(join(directory, "config.txt"), "user\n");
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, plan, {
+						resolutionPolicy: "keep-user",
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+			expect(error).toMatchObject({ message: "Unmanaged File Exists" });
+			if (!(error instanceof ApplyError))
+				throw new Error("Expected ApplyError");
+			expect(formatApplyError(error)).toBe(
+				"Forge cannot safely update these files:\nconfig.txt already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
+			);
+			expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
+				"user\n",
+			);
+			expect(await pathExists(join(directory, ".forge/lock.json"))).toBe(false);
+		});
+
+		await withTempDir("apply-unmanaged-accept-forge", async (directory) => {
+			await writeText(join(directory, "config.txt"), "user\n");
+			await Effect.runPromise(
+				Apply.applyPlan(directory, plan, {
+					resolutionPolicy: "accept-forge",
+				}).pipe(Effect.provide(coreLayer)),
+			);
+			expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
+				"forge\n",
+			);
+			expect(await readJson(join(directory, ".forge/lock.json"))).toEqual({
+				...plan.lockfile,
+				schemaVersion: 1,
+			});
+		});
+	});
+
+	it("aborts a keep-user run when an unmanaged file remains", async () => {
+		await withTempDir("apply-resolution-abort", async (directory) => {
+			const base = '{\n\t"scripts": { "dev": "vite" }\n}\n';
+			const baseHash = await hashContent(base);
+			const artifactId = "project:surface:rootPackageJson";
+			const artifact: LockfileArtifact = {
+				base: { hash: baseHash, mergeKind: "json", semanticsVersion: 1 },
+				definitionIds: ["root"],
+				hash: baseHash,
+				kind: "surface",
+				path: "package.json",
+			};
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: { artifacts: { [artifactId]: artifact } },
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, content: base, path: "package.json" }],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+			const userPackage = '{\n\t"scripts": { "dev": "vite --host" }\n}\n';
+			await writeText(join(directory, "package.json"), userPackage);
+			await writeText(join(directory, "config.txt"), "user\n");
+			const lockBefore = await readFile(
+				join(directory, ".forge/lock.json"),
+				"utf-8",
+			);
+			const incoming = '{\n\t"scripts": { "dev": "vite --port 4000" }\n}\n';
+			const incomingHash = await hashContent(incoming);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: {
+								artifacts: {
+									[artifactId]: {
+										...artifact,
+										base: {
+											hash: incomingHash,
+											mergeKind: "json",
+											semanticsVersion: 1,
+										},
+										hash: incomingHash,
+									},
+									"project:file:config.txt": {
+										definitionIds: ["test"],
+										hash: await hashContent("forge\n"),
+										kind: "file",
+										path: "config.txt",
+									},
+								},
+							},
+							manifest: {
+								config: { changed: true },
+								installs: [],
+								modules: {},
+							},
+							removals: [],
+							writes: [
+								{ artifactId, content: incoming, path: "package.json" },
+								{
+									artifactId: "project:file:config.txt",
+									content: "forge\n",
+									path: "config.txt",
+								},
+							],
+						},
+						{ resolutionPolicy: "keep-user" },
+					).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({ message: "Unmanaged File Exists" });
+			expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
+				userPackage,
+			);
+			expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
+				"user\n",
+			);
+			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
+				lockBefore,
+			);
+		});
+	});
+
 	it("refuses to remove an unmanaged file", async () => {
 		await withTempDir("apply-unmanaged-remove", async (directory) => {
 			await writeText(join(directory, "packages/ui/notes.txt"), "keep me\n");
@@ -1973,6 +2786,68 @@ describe("apply", () => {
 			expect(
 				await readFile(join(directory, "packages/ui/notes.txt"), "utf-8"),
 			).toBe("keep me\n");
+			if (!(error instanceof ApplyError))
+				throw new Error("Expected ApplyError");
+			expect(formatApplyError(error)).toBe(
+				"Forge cannot safely update these files:\npackages/ui/notes.txt already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to remove files Forge no longer plans.",
+			);
+		});
+	});
+
+	it("accepts explicit removal of unmanaged and modified files", async () => {
+		await withTempDir("apply-accept-removals", async (directory) => {
+			const base = '{\n\t"tasks": {}\n}\n';
+			const baseHash = await hashContent(base);
+			const oldOpaqueHash = await hashContent("old\n");
+			await writeText(join(directory, "unmanaged.txt"), "user\n");
+			await writeText(join(directory, "opaque.txt"), "user\n");
+			await writeText(
+				join(directory, "turbo.json"),
+				'{\n\t// user comment\n\t"tasks": {}\n}\n',
+			);
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					yield* State.writeBase(directory, baseHash, base);
+					yield* State.writeLockfile(directory, {
+						artifacts: {
+							"project:file:opaque": {
+								definitionIds: ["test"],
+								hash: oldOpaqueHash,
+								kind: "file",
+								path: "opaque.txt",
+							},
+							"project:surface:turboConfig": {
+								base: {
+									hash: baseHash,
+									mergeKind: "json",
+									semanticsVersion: 1,
+								},
+								definitionIds: ["turbo"],
+								hash: baseHash,
+								kind: "surface",
+								path: "turbo.json",
+							},
+						},
+					});
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: ["unmanaged.txt", "opaque.txt", "turbo.json"],
+						writes: [],
+					},
+					{ resolutionPolicy: "accept-forge" },
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await pathExists(join(directory, "unmanaged.txt"))).toBe(false);
+			expect(await pathExists(join(directory, "opaque.txt"))).toBe(false);
+			expect(await pathExists(join(directory, "turbo.json"))).toBe(false);
 		});
 	});
 

@@ -1,4 +1,9 @@
-export type { ApplyPlan, PlannedWrite } from "./apply";
+export type {
+	ApplyOptions,
+	ApplyPlan,
+	PlannedWrite,
+	ResolutionPolicy,
+} from "./apply";
 export { Apply, formatApplyError } from "./apply";
 export type {
 	AdapterContext,
@@ -166,6 +171,7 @@ export { Renderer } from "./renderer";
 export type {
 	ArtifactBase,
 	ArtifactIndex,
+	ArtifactMergeKind,
 	InstallRecord,
 	InstallTarget,
 	Lockfile,

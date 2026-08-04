@@ -15,8 +15,10 @@ import { hashContentHex } from "./hash";
 import { envResidue, threeWayMergeEnv } from "./merge/env";
 import { jsonResidue, threeWayMergeJson } from "./merge/json";
 import { sectionResidue, threeWayMergeSections } from "./merge/lines";
+import type { MergeConflictResolution } from "./merge/types";
 import { sortPackageJson } from "./sort/package-json";
 import type {
+	ArtifactBase,
 	Lockfile,
 	LockfileArtifact,
 	LockfileInput,
@@ -44,6 +46,12 @@ export interface ApplyPlan {
 	readonly writes: ReadonlyArray<PlannedWrite>;
 }
 
+export type ResolutionPolicy = "accept-forge" | "keep-user" | "refuse";
+
+export interface ApplyOptions {
+	readonly resolutionPolicy?: ResolutionPolicy;
+}
+
 interface MergeConflict {
 	readonly base: unknown;
 	readonly forge: unknown;
@@ -53,7 +61,75 @@ interface MergeConflict {
 
 interface PolicyRefusal {
 	readonly message: "Managed File Modified" | "Unmanaged File Exists";
+	readonly operation: "removal" | "write";
 	readonly path: string;
+}
+
+interface PreflightClassification {
+	readonly hasConflicts: boolean;
+	readonly hasManagedRemovals: boolean;
+	readonly hasManagedRefusals: boolean;
+	readonly hasUnmanagedRefusals: boolean;
+	readonly hasUnmanagedRemovals: boolean;
+}
+
+function classifyPreflight(
+	refusals: ReadonlyArray<PolicyRefusal>,
+	conflicts: ReadonlyArray<MergeConflict>,
+): PreflightClassification {
+	return {
+		hasConflicts: conflicts.length > 0,
+		hasManagedRemovals: refusals.some(
+			(refusal) =>
+				refusal.message === "Managed File Modified" &&
+				refusal.operation === "removal",
+		),
+		hasManagedRefusals: refusals.some(
+			(refusal) => refusal.message === "Managed File Modified",
+		),
+		hasUnmanagedRefusals: refusals.some(
+			(refusal) => refusal.message === "Unmanaged File Exists",
+		),
+		hasUnmanagedRemovals: refusals.some(
+			(refusal) =>
+				refusal.message === "Unmanaged File Exists" &&
+				refusal.operation === "removal",
+		),
+	};
+}
+
+function descriptorMatchesArtifact(artifact: LockfileArtifact): boolean {
+	if (artifact.base === undefined) return true;
+	if (artifact.base.semanticsVersion !== SURFACE_MERGE_SEMANTICS_VERSION)
+		return false;
+
+	return artifact.kind === "surface" || artifact.base.mergeKind === "opaque";
+}
+
+function descriptorsCompatible(
+	previous: LockfileArtifact,
+	next: LockfileArtifact,
+): boolean {
+	if (!descriptorMatchesArtifact(previous) || !descriptorMatchesArtifact(next))
+		return false;
+	if (previous.kind !== next.kind) return false;
+
+	const previousBase = previous.base;
+	const nextBase = next.base;
+	if (previousBase === undefined)
+		return (
+			nextBase === undefined ||
+			(previous.kind === "surface" && nextBase.mergeKind !== "opaque")
+		);
+
+	if (previousBase.mergeKind === "opaque")
+		return nextBase === undefined || nextBase.mergeKind === "opaque";
+
+	return (
+		nextBase !== undefined &&
+		nextBase.mergeKind === previousBase.mergeKind &&
+		nextBase.semanticsVersion === previousBase.semanticsVersion
+	);
 }
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
@@ -162,13 +238,67 @@ function preflightMessage(
 }
 
 export function formatApplyError(error: ApplyError): string {
+	let report: string;
+	let classification = error.preflight;
+
 	if (
 		error.message === "Managed File Modified" ||
 		error.message === "Unmanaged File Exists"
-	)
-		return preflightMessage([{ message: error.message, path: error.path }], []);
+	) {
+		classification ??= {
+			hasConflicts: false,
+			hasManagedRemovals: false,
+			hasManagedRefusals: error.message === "Managed File Modified",
+			hasUnmanagedRefusals: error.message === "Unmanaged File Exists",
+			hasUnmanagedRemovals: false,
+		};
 
-	return error.message;
+		report = preflightMessage(
+			[
+				{
+					message: error.message,
+					operation:
+						classification.hasManagedRemovals ||
+						classification.hasUnmanagedRemovals
+							? "removal"
+							: "write",
+					path: error.path,
+				},
+			],
+			[],
+		);
+	} else report = error.message;
+
+	if (classification === undefined) return report;
+	if (
+		!classification.hasConflicts &&
+		!classification.hasManagedRefusals &&
+		!classification.hasUnmanagedRefusals
+	)
+		return report;
+
+	const guidance: string[] = [];
+	if (
+		(classification.hasConflicts || classification.hasManagedRefusals) &&
+		!classification.hasManagedRemovals
+	)
+		guidance.push(
+			"Run again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
+		);
+
+	if (classification.hasManagedRemovals)
+		guidance.push(
+			"Run again with --accept-forge to remove modified managed files that Forge no longer plans.",
+		);
+
+	if (classification.hasUnmanagedRefusals)
+		guidance.push(
+			classification.hasUnmanagedRemovals
+				? "--keep-user cannot resolve unmanaged files; use --accept-forge to remove files Forge no longer plans."
+				: "--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
+		);
+
+	return `${report}\n${guidance.join("\n")}`;
 }
 
 function formatMergedJson(
@@ -299,10 +429,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			base: string,
 			current: string,
 			incoming: string,
+			resolution?: MergeConflictResolution,
 		) {
-			if (kind === "env") return threeWayMergeEnv(base, current, incoming);
+			if (kind === "env")
+				return threeWayMergeEnv(base, current, incoming, resolution);
 			if (kind === "lines")
-				return threeWayMergeSections(base, current, incoming);
+				return threeWayMergeSections(base, current, incoming, resolution);
 
 			const baseJson = yield* parseJsonObject(base, path);
 			const currentJson = yield* parseJsonObject(
@@ -315,6 +447,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 			const result = threeWayMergeJson(baseJson, currentJson, incomingJson, {
 				preserveDependencyRemovals: path.endsWith("package.json"),
+				resolution,
 			});
 
 			return {
@@ -349,7 +482,16 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 		const applyPlan = Effect.fn("Apply.applyPlan")(function* (
 			projectRoot: string,
 			plan: ApplyPlan,
+			options: ApplyOptions = {},
 		) {
+			const resolutionPolicy = options.resolutionPolicy ?? "refuse";
+			const mergeResolution =
+				resolutionPolicy === "refuse"
+					? undefined
+					: resolutionPolicy === "keep-user"
+						? "user"
+						: "forge";
+
 			const previousLockfile = yield* State.readLockfile(projectRoot);
 			const previousManifest = yield* State.readManifestOrDefault(projectRoot);
 
@@ -379,9 +521,25 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 				const previousArtifact = previousArtifacts.get(relativePath);
 				if (previousArtifact === undefined) {
+					if (resolutionPolicy === "accept-forge") {
+						removalsToApply.push(relativePath);
+						continue;
+					}
+
 					refusals.push({
 						path: relativePath,
 						message: "Unmanaged File Exists",
+						operation: "removal",
+					});
+
+					continue;
+				}
+
+				if (!descriptorMatchesArtifact(previousArtifact)) {
+					refusals.push({
+						path: relativePath,
+						message: "Managed File Modified",
+						operation: "removal",
 					});
 
 					continue;
@@ -398,14 +556,30 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					continue;
 				}
 
+				if (resolutionPolicy === "accept-forge") {
+					removalsToApply.push(relativePath);
+					continue;
+				}
+
+				if (resolutionPolicy === "keep-user") {
+					refusals.push({
+						path: relativePath,
+						message: "Managed File Modified",
+						operation: "removal",
+					});
+
+					continue;
+				}
+
 				const baseDescriptor = previousArtifact.base;
 				if (
 					baseDescriptor === undefined ||
-					baseDescriptor.semanticsVersion !== SURFACE_MERGE_SEMANTICS_VERSION
+					baseDescriptor.mergeKind === "opaque"
 				) {
 					refusals.push({
 						path: relativePath,
 						message: "Managed File Modified",
+						operation: "removal",
 					});
 
 					continue;
@@ -424,10 +598,10 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				if (residueResult._tag === "Left") {
 					if (residueResult.left.message !== "Managed File Modified")
 						return yield* residueResult.left;
-
 					refusals.push({
 						path: relativePath,
 						message: "Managed File Modified",
+						operation: "removal",
 					});
 
 					continue;
@@ -442,6 +616,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					});
 			}
 
+			const policyReadHashes = new Map<string, string>();
 			for (const file of plan.writes) {
 				const fullPath = yield* ensureContained(projectRoot, file.path);
 				if (!(yield* fs.exists(fullPath))) {
@@ -484,21 +659,57 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 				const previousBase = managedArtifact?.base;
 				const nextBase = nextArtifact?.base;
+				const descriptorsAreCompatible =
+					managedArtifact === undefined
+						? nextArtifact === undefined ||
+							descriptorMatchesArtifact(nextArtifact)
+						: nextArtifact === undefined
+							? descriptorMatchesArtifact(managedArtifact)
+							: descriptorsCompatible(managedArtifact, nextArtifact);
 
-				const descriptorsCompatible =
-					previousBase === undefined
-						? nextBase === undefined ||
-							nextBase.semanticsVersion === SURFACE_MERGE_SEMANTICS_VERSION
-						: nextBase !== undefined &&
-							previousBase.mergeKind === nextBase.mergeKind &&
-							previousBase.semanticsVersion === nextBase.semanticsVersion &&
-							nextBase.semanticsVersion === SURFACE_MERGE_SEMANTICS_VERSION;
+				const adoptMatchingContent = (candidateHash: string) => {
+					if (currentHash !== candidateHash || !descriptorsAreCompatible)
+						return false;
 
-				if (currentHash === nextHash && descriptorsCompatible) continue;
+					if (file.artifactId !== undefined && nextArtifact !== undefined)
+						committedArtifacts[file.artifactId] = {
+							...nextArtifact,
+							hash: candidateHash,
+						};
+
+					return true;
+				};
+
+				const rebaseCurrentContent = (base: ArtifactBase) => {
+					if (
+						file.artifactId === undefined ||
+						nextArtifact === undefined ||
+						!descriptorsAreCompatible
+					)
+						return false;
+
+					committedArtifacts[file.artifactId] = {
+						...nextArtifact,
+						base,
+						hash: currentHash,
+					};
+
+					policyReadHashes.set(file.path, currentHash);
+
+					return true;
+				};
+
+				if (adoptMatchingContent(nextHash)) continue;
 				if (previousArtifact === undefined && movedArtifact === undefined) {
+					if (resolutionPolicy === "accept-forge") {
+						writesToApply.push(file);
+						continue;
+					}
+
 					refusals.push({
 						path: file.path,
 						message: "Unmanaged File Exists",
+						operation: "write",
 					});
 
 					continue;
@@ -508,9 +719,39 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					refusals.push({
 						path: file.path,
 						message: "Managed File Modified",
+						operation: "write",
 					});
 
 					continue;
+				}
+
+				if (!descriptorsAreCompatible) {
+					refusals.push({
+						path: file.path,
+						message: "Managed File Modified",
+						operation: "write",
+					});
+
+					continue;
+				}
+
+				if (
+					resolutionPolicy !== "accept-forge" &&
+					currentHash === managedArtifact.hash &&
+					previousBase !== undefined &&
+					previousBase.hash === nextHash
+				) {
+					const storedBase = yield* readBase(projectRoot, managedArtifact);
+					if (storedBase === file.content) {
+						if (file.artifactId !== undefined && nextArtifact !== undefined)
+							committedArtifacts[file.artifactId] = {
+								...nextArtifact,
+								base: previousBase,
+								hash: currentHash,
+							};
+
+						continue;
+					}
 				}
 
 				const currentIsPureRender =
@@ -522,16 +763,57 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					continue;
 				}
 
-				if (
-					previousBase === undefined ||
-					nextBase === undefined ||
-					previousBase.mergeKind !== nextBase.mergeKind ||
-					previousBase.semanticsVersion !== nextBase.semanticsVersion ||
-					nextBase.semanticsVersion !== SURFACE_MERGE_SEMANTICS_VERSION
-				) {
+				if (previousBase?.mergeKind === "opaque") {
+					if (resolutionPolicy === "accept-forge") {
+						writesToApply.push(file);
+						continue;
+					}
+
+					const declinedBase = {
+						hash: nextHash,
+						mergeKind: "opaque",
+						semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
+					} satisfies ArtifactBase;
+
+					if (
+						resolutionPolicy === "keep-user" &&
+						rebaseCurrentContent(declinedBase)
+					)
+						continue;
+
 					refusals.push({
 						path: file.path,
 						message: "Managed File Modified",
+						operation: "write",
+					});
+
+					continue;
+				}
+
+				if (previousBase === undefined || nextBase === undefined) {
+					if (resolutionPolicy === "accept-forge") {
+						writesToApply.push(file);
+						continue;
+					}
+
+					const declinedBase =
+						nextBase ??
+						({
+							hash: nextHash,
+							mergeKind: "opaque",
+							semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
+						} satisfies ArtifactBase);
+
+					if (
+						resolutionPolicy === "keep-user" &&
+						rebaseCurrentContent(declinedBase)
+					)
+						continue;
+
+					refusals.push({
+						path: file.path,
+						message: "Managed File Modified",
+						operation: "write",
 					});
 
 					continue;
@@ -545,6 +827,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						base,
 						currentContent,
 						file.content,
+						mergeResolution,
 					),
 				);
 
@@ -552,57 +835,79 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					if (mergedResult.left.message !== "Managed File Modified")
 						return yield* mergedResult.left;
 
+					if (resolutionPolicy === "accept-forge") {
+						writesToApply.push(file);
+						continue;
+					}
+
+					if (
+						resolutionPolicy === "keep-user" &&
+						rebaseCurrentContent(nextBase)
+					)
+						continue;
+
 					refusals.push({
 						path: file.path,
 						message: "Managed File Modified",
+						operation: "write",
 					});
 
 					continue;
 				}
 
 				const merged = mergedResult.right;
-				if ("json" in merged)
-					for (const conflict of merged.conflicts)
-						conflicts.push({
-							base: valueAtPath(merged.json.base, conflict),
-							forge: valueAtPath(merged.json.incoming, conflict),
-							label: `${file.path} -> ${formatJsonPath(conflict)}`,
-							user: valueAtPath(merged.json.current, conflict),
-						});
-				else
-					for (const [index, conflict] of merged.conflicts.entries()) {
-						const values = merged.conflictValues?.[index];
-						conflicts.push({
-							base: values?.base,
-							forge: values?.forge,
-							label: `${file.path} -> ${conflict}`,
-							user: values?.user,
-						});
-					}
+				if (mergeResolution === undefined)
+					if ("json" in merged)
+						for (const conflict of merged.conflicts)
+							conflicts.push({
+								base: valueAtPath(merged.json.base, conflict),
+								forge: valueAtPath(merged.json.incoming, conflict),
+								label: `${file.path} -> ${formatJsonPath(conflict)}`,
+								user: valueAtPath(merged.json.current, conflict),
+							});
+					else
+						for (const [index, conflict] of merged.conflicts.entries()) {
+							const values = merged.conflictValues?.[index];
+							conflicts.push({
+								base: values?.base,
+								forge: values?.forge,
+								label: `${file.path} -> ${conflict}`,
+								user: values?.user,
+							});
+						}
 
-				if (merged.conflicts.length === 0) {
+				if (merged.conflicts.length === 0 || mergeResolution !== undefined) {
+					if (mergeResolution !== undefined)
+						policyReadHashes.set(file.path, currentHash);
+
 					const mergedWrite = { ...file, content: merged.merged };
-					writesToApply.push(mergedWrite);
+
+					const mergedHash = yield* hashContent(merged.merged);
+					if (mergedHash !== currentHash) writesToApply.push(mergedWrite);
 
 					if (file.artifactId !== undefined && nextArtifact !== undefined)
 						committedArtifacts[file.artifactId] = {
 							...nextArtifact,
-							hash: yield* hashContent(merged.merged),
+							hash: mergedHash,
 						};
 				}
 			}
 
+			const preflight = classifyPreflight(refusals, conflicts);
 			const refusal = refusals.length === 1 ? refusals[0] : undefined;
+
 			if (refusal !== undefined && conflicts.length === 0)
 				return yield* new ApplyError({
 					path: refusal.path,
 					message: refusal.message,
+					preflight,
 				});
 
 			if (refusals.length > 0 || conflicts.length > 0)
 				return yield* new ApplyError({
 					path: refusals.length === 0 ? "managed surfaces" : "managed files",
 					message: preflightMessage(refusals, conflicts),
+					preflight,
 				});
 
 			const committedManifest = {
@@ -634,7 +939,10 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				committedLockfile.artifacts,
 			)) {
 				if (artifact.base === undefined) continue;
-				if (artifact.kind !== "surface" || isUserOwnedEnv(artifact.path))
+				if (
+					!descriptorMatchesArtifact(artifact) ||
+					isUserOwnedEnv(artifact.path)
+				)
 					return yield* new ApplyError({
 						path: artifact.path,
 						message: "Managed Base Forbidden",
@@ -673,6 +981,33 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 								path: baseRelative,
 								message: "Managed Base Hash Mismatch",
 							});
+					}
+				},
+			);
+
+			const revalidatePolicyInputs = Effect.fn("Apply.revalidatePolicyInputs")(
+				function* () {
+					for (const [relativePath, expectedHash] of policyReadHashes) {
+						const fullPath = yield* ensureContained(projectRoot, relativePath);
+						const exists = yield* fs.exists(fullPath);
+						const currentHash = exists
+							? yield* readFile(fullPath, relativePath).pipe(
+									Effect.flatMap(hashContent),
+								)
+							: undefined;
+
+						if (currentHash === expectedHash) continue;
+						return yield* new ApplyError({
+							path: relativePath,
+							message: "Managed File Modified",
+							preflight: {
+								hasConflicts: false,
+								hasManagedRemovals: false,
+								hasManagedRefusals: true,
+								hasUnmanagedRefusals: false,
+								hasUnmanagedRemovals: false,
+							},
+						});
 					}
 				},
 			);
@@ -783,6 +1118,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				);
 
 				yield* validateExistingBases();
+				yield* revalidatePolicyInputs();
 				const stateBundlePath = yield* ensureContained(
 					projectRoot,
 					".forge/state.json",

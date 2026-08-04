@@ -613,4 +613,88 @@ describe("merge helpers", () => {
 			"VALUE=user-one\nVALUE=user-two\n",
 		);
 	});
+
+	it("resolves line and env conflicts without dropping clean changes", () => {
+		const baseLines = "# Build\ndist/\n\n# Cache\n.cache/\n";
+		const userLines = "# Build\nbuild/\n\n# Cache\n.local-cache/\n";
+		const forgeLines =
+			"# Build\noutput/\n\n# Cache\n.cache/\n\n# Test\ncoverage/\n";
+
+		expect(
+			threeWayMergeSections(baseLines, userLines, forgeLines, "user").merged,
+		).toBe("# Build\nbuild/\n\n# Cache\n.local-cache/\n\n# Test\ncoverage/\n");
+		expect(
+			threeWayMergeSections(baseLines, userLines, forgeLines, "forge").merged,
+		).toBe("# Build\noutput/\n\n# Cache\n.local-cache/\n\n# Test\ncoverage/\n");
+
+		const baseEnv = "VALUE=old\nUNCHANGED=old\n";
+		const userEnv =
+			"VALUE=user-one\nVALUE=user-two\nUNCHANGED=old\nUSER_ONLY=value\n";
+		const forgeEnv = "VALUE=forge\nUNCHANGED=new\nFORGE_ONLY=value\n";
+		expect(threeWayMergeEnv(baseEnv, userEnv, forgeEnv, "user").merged).toBe(
+			"VALUE=user-two\nUNCHANGED=new\nFORGE_ONLY=value\nUSER_ONLY=value\n",
+		);
+		expect(threeWayMergeEnv(baseEnv, userEnv, forgeEnv, "forge").merged).toBe(
+			"VALUE=forge\nUNCHANGED=new\nFORGE_ONLY=value\nUSER_ONLY=value\n",
+		);
+	});
+
+	it("keeps resolved env variables at their rendered positions", () => {
+		const base = "BEFORE=old\nVALUE=old\nAFTER=old\n";
+		const user =
+			"BEFORE=old\nVALUE=user-one\nVALUE=user-two\nAFTER=old\nUSER_ONLY=value\n";
+		const forge = "BEFORE=new\nVALUE=forge-one\nVALUE=forge-two\nAFTER=new\n";
+
+		expect(threeWayMergeEnv(base, user, forge, "user").merged).toBe(
+			"BEFORE=new\nVALUE=user-two\nAFTER=new\nUSER_ONLY=value\n",
+		);
+		expect(threeWayMergeEnv(base, user, forge, "forge").merged).toBe(
+			"BEFORE=new\nVALUE=forge-two\nAFTER=new\nUSER_ONLY=value\n",
+		);
+	});
+
+	it("honors selected-side env deletion with duplicate variables", () => {
+		expect(
+			threeWayMergeEnv(
+				"VALUE=old\n",
+				"VALUE=user-one\nVALUE=user-two\n",
+				"",
+				"forge",
+			).merged,
+		).toBe("");
+		expect(
+			threeWayMergeEnv(
+				"VALUE=old\n",
+				"",
+				"VALUE=forge-one\nVALUE=forge-two\n",
+				"user",
+			).merged,
+		).toBe("");
+	});
+
+	it("selects either side of a structurally ambiguous array conflict", () => {
+		const base = { commands: ["base"] };
+		const user = { commands: ["user", "custom"] };
+		const forge = { commands: ["forge", "generated"] };
+
+		expect(
+			threeWayMergeJson(base, user, forge, { resolution: "user" }).merged,
+		).toEqual(user);
+		expect(
+			threeWayMergeJson(base, user, forge, { resolution: "forge" }).merged,
+		).toEqual(forge);
+	});
+
+	it("selects a conflicting array as one whole cell", () => {
+		const base = { commands: ["a", "b"] };
+		const user = { commands: ["u", "b"] };
+		const forge = { commands: ["f", "x"] };
+
+		expect(
+			threeWayMergeJson(base, user, forge, { resolution: "user" }).merged,
+		).toEqual(user);
+		expect(
+			threeWayMergeJson(base, user, forge, { resolution: "forge" }).merged,
+		).toEqual(forge);
+	});
 });

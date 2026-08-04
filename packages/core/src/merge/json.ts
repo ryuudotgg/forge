@@ -1,3 +1,5 @@
+import type { MergeConflictResolution } from "./types";
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -41,6 +43,7 @@ function threeWayMergeArrays(
 	base: ReadonlyArray<unknown>,
 	current: ReadonlyArray<unknown>,
 	incoming: ReadonlyArray<unknown>,
+	resolution?: MergeConflictResolution,
 ): { readonly conflicts: boolean; readonly merged: unknown[] } {
 	if (base.length === current.length && base.length === incoming.length) {
 		const indexed: unknown[] = [];
@@ -56,9 +59,15 @@ function threeWayMergeArrays(
 			else if (jsonEqual(baseValue, incomingValue)) indexed.push(currentValue);
 			else {
 				conflicts = true;
-				indexed.push(incomingValue);
+				indexed.push(resolution === "user" ? currentValue : incomingValue);
 			}
 		}
+
+		if (conflicts && resolution !== undefined)
+			return {
+				conflicts,
+				merged: [...(resolution === "user" ? current : incoming)],
+			};
 
 		return { conflicts, merged: indexed };
 	}
@@ -125,7 +134,10 @@ function threeWayMergeArrays(
 	if (currentAdds.length === 0 && incomingAdds.length === 0)
 		return { conflicts: false, merged };
 
-	return { conflicts: true, merged: [...incoming] };
+	return {
+		conflicts: true,
+		merged: [...(resolution === "user" ? current : incoming)],
+	};
 }
 
 function isDependencyPath(path: ReadonlyArray<string>): boolean {
@@ -150,6 +162,7 @@ function isScriptMapPath(path: ReadonlyArray<string>): boolean {
 
 export interface MergeJsonOptions {
 	readonly preserveDependencyRemovals?: boolean;
+	readonly resolution?: MergeConflictResolution;
 }
 
 export interface JsonMergeResult {
@@ -365,6 +378,7 @@ function mergeJsonObjects(
 				baseValue,
 				currentValue,
 				incomingValue,
+				options.resolution,
 			);
 
 			merged[key] = arrayResult.merged;
@@ -375,7 +389,9 @@ function mergeJsonObjects(
 		}
 
 		conflicts.push(keyPath);
-		if (incomingPresent) merged[key] = incomingValue;
+		if (options.resolution === "user") {
+			if (currentPresent) merged[key] = currentValue;
+		} else if (incomingPresent) merged[key] = incomingValue;
 	}
 
 	return { merged, conflicts };

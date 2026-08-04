@@ -290,6 +290,19 @@ describe("add", () => {
 			expect(await pathExists(join(workspace.projectRoot, "packages/db"))).toBe(
 				false,
 			);
+
+			await runForge(
+				workspace.projectRoot,
+				["add", "prisma", "--accept-forge"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+			const resolvedPackage = await readJson<AppPackageJson>(packagePath);
+			expect(resolvedPackage.scripts?.["db:generate"]).toBe(
+				"pnpm --filter @acme/db run generate",
+			);
+			expect(await pathExists(join(workspace.projectRoot, "packages/db"))).toBe(
+				true,
+			);
 		});
 	}, 240_000);
 

@@ -47,6 +47,8 @@ describe("CLI argument parsing", () => {
 				"default",
 				"--no-install",
 				"--no-git",
+				"--keep-user",
+				"--accept-forge",
 				"--web",
 				"nextjs",
 			]),
@@ -189,6 +191,21 @@ describe("CLI entry dispatch", () => {
 		await runCli(["add", "drizzle"], testCli.cli);
 
 		expect(runAdd).toHaveBeenCalledWith(["drizzle"], {});
+		expect(runCreate).not.toHaveBeenCalled();
+	});
+
+	it("rejects mutually exclusive resolution flags", async () => {
+		const runCreate = vi.fn(async (): Promise<void> => {});
+		const testCli = createTestCli({
+			defaultCommand: command(runCreate),
+		});
+
+		await runCli(["--keep-user", "--accept-forge"], testCli.cli);
+
+		expect(testCli.error).toHaveBeenCalledWith(
+			"You can't use --keep-user and --accept-forge together.",
+		);
+		expect(testCli.setExitCode).toHaveBeenCalledWith(1);
 		expect(runCreate).not.toHaveBeenCalled();
 	});
 

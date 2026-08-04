@@ -85,6 +85,12 @@ export async function runCli(
 		return;
 	}
 
+	if (values["keep-user"] === true && values["accept-forge"] === true) {
+		cli.error("You can't use --keep-user and --accept-forge together.");
+		cli.setExitCode(1);
+		return;
+	}
+
 	const subcommand = positionals[0];
 	const cmd = subcommand ? cli.getSubcommand(subcommand) : undefined;
 

@@ -5,6 +5,7 @@ import { NodeContext, NodeFileSystem } from "@effect/platform-node";
 import {
 	Apply,
 	ApplyError,
+	type ApplyOptions,
 	ConfigStore,
 	CoreLive,
 	type DiscoveredModule,
@@ -260,6 +261,7 @@ export async function applyInstalledPlan(
 	installs: ReadonlyArray<InstallRecord>,
 	providedCommandVersions?: Readonly<Record<string, string>>,
 	registryIds?: ReadonlyArray<string>,
+	options: ApplyOptions = {},
 ) {
 	const loadedRegistry = await loadProjectRegistry(
 		projectRoot,
@@ -290,16 +292,20 @@ export async function applyInstalledPlan(
 	);
 
 	await runLifecycleEffect(
-		Apply.applyPlan(projectRoot, {
-			lockfile: plan.lockfile,
-			manifest: plan.manifest,
-			removals: plan.removals,
-			writes: plan.writes.map((write) => ({
-				artifactId: write.artifactId,
-				content: write.content,
-				path: write.path,
-			})),
-		}).pipe(Effect.provide(coreLayer)),
+		Apply.applyPlan(
+			projectRoot,
+			{
+				lockfile: plan.lockfile,
+				manifest: plan.manifest,
+				removals: plan.removals,
+				writes: plan.writes.map((write) => ({
+					artifactId: write.artifactId,
+					content: write.content,
+					path: write.path,
+				})),
+			},
+			options,
+		).pipe(Effect.provide(coreLayer)),
 		"We couldn't apply this change.",
 	);
 }

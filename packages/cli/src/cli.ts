@@ -205,6 +205,16 @@ export const options = {
 		type: "boolean",
 		description: "Do not initialize a Git repository.",
 	},
+
+	"keep-user": {
+		type: "boolean",
+		description: "Keep your values when resolving conflicts.",
+	},
+
+	"accept-forge": {
+		type: "boolean",
+		description: "Take Forge's values when resolving conflicts.",
+	},
 } as const satisfies Record<string, CLIOption>;
 
 export const sections: CLISection[] = [
@@ -241,6 +251,10 @@ export const sections: CLISection[] = [
 	{
 		title: "forge list/info options",
 		keys: ["kind", "json"],
+	},
+	{
+		title: "forge add/remove/update options",
+		keys: ["keep-user", "accept-forge"],
 	},
 ];
 

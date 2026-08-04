@@ -650,7 +650,7 @@ describe("remove command", () => {
 		);
 	});
 
-	it("forwards opted-in registries when removing an addon", async () => {
+	it("forwards registries and conflict policy when removing an addon", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -660,7 +660,7 @@ describe("remove command", () => {
 			}),
 		);
 
-		await runRemove("tailwind", {});
+		await runRemove("tailwind", { "accept-forge": true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -668,6 +668,7 @@ describe("remove command", () => {
 			[],
 			undefined,
 			["@acme/forge-sentry"],
+			{ resolutionPolicy: "accept-forge" },
 		);
 	});
 
