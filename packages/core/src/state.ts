@@ -48,6 +48,22 @@ export type InstallTarget = typeof InstallTargetSchema.Type;
 const InstallRecordSchema = Schema.Struct({
 	definitionId: Schema.String,
 	targets: Schema.Array(InstallTargetSchema),
+	versions: Schema.optional(
+		Schema.Array(
+			Schema.Struct({
+				name: Schema.String,
+				root: Schema.String,
+				section: Schema.Literal(
+					"dependencies",
+					"devDependencies",
+					"optionalDependencies",
+					"peerDependencies",
+				),
+				specifier: Schema.String,
+				version: Schema.optional(Schema.String),
+			}),
+		),
+	),
 });
 
 export type InstallRecord = typeof InstallRecordSchema.Type;
@@ -67,6 +83,7 @@ export type ArtifactMergeKind = typeof ArtifactMergeKindSchema.Type;
 const ArtifactBaseSchema = Schema.Struct({
 	hash: Schema.String,
 	mergeKind: ArtifactMergeKindSchema,
+	origin: Schema.optional(Schema.Literal("adopted")),
 	semanticsVersion: Schema.Number,
 });
 
@@ -579,6 +596,7 @@ export class State extends Effect.Service<State>()("State", {
 			readLockfile,
 			readManifest,
 			readManifestOrDefault,
+			readStateBundle,
 			writeLockfile,
 			writeManifest,
 			writeBase,

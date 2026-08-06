@@ -43,13 +43,33 @@ async function readJson(path: string): Promise<unknown> {
 	return JSON.parse(await readFile(path, "utf-8"));
 }
 
-function scaffoldWebModule(directory: string) {
-	return writeJson(join(directory, "apps/web/forge.json"), {
+async function scaffoldWebModule(directory: string) {
+	const marker = {
 		framework: "nextjs",
 		id: "abcde",
 		slots: { api: "app/api", layout: "app/layout.tsx", page: "app/page.tsx" },
 		template: { id: "nextjs/base", version: 1 },
 		type: "app",
+	};
+	const content = `${JSON.stringify(marker, null, "\t")}\n`;
+	const buffer = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(content),
+	);
+	const hash = Array.from(new Uint8Array(buffer))
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join("");
+	await writeJson(join(directory, "apps/web/forge.json"), marker);
+	await writeJson(join(directory, ".forge/lock.json"), {
+		artifacts: {
+			"module:abcde:file:forge.json": {
+				definitionIds: ["nextjs/base"],
+				hash,
+				kind: "file",
+				path: "apps/web/forge.json",
+			},
+		},
+		schemaVersion: 1,
 	});
 }
 

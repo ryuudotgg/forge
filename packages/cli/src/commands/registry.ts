@@ -19,6 +19,14 @@ export const subcommands = {
 		},
 	},
 
+	init: {
+		description: "Adopt an existing project into Forge.",
+		async run(_positionals, values) {
+			const { runInit } = await import("./init");
+			await runInit(values);
+		},
+	},
+
 	update: {
 		description: "Reconcile your installed addons and templates.",
 		async run(_positionals, values) {

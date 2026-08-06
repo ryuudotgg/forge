@@ -5,10 +5,16 @@ export type {
 	ApplyRefusal,
 	ApplyResolution,
 	ConflictResolution,
+	FormatApplyErrorOptions,
 	PlannedWrite,
 	ResolutionPolicy,
 } from "./apply";
-export { Apply, describeConflictValue, formatApplyError } from "./apply";
+export {
+	Apply,
+	describeConflictValue,
+	formatApplyError,
+	isUserOwnedEnv,
+} from "./apply";
 export type {
 	AdapterContext,
 	AdapterDefinition,
@@ -134,6 +140,7 @@ export {
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
+export { hashContentHex } from "./hash";
 export { decodeJsonString, formatSchemaIssues } from "./json";
 export { CoreLive } from "./layer";
 export { envResidue, threeWayMergeEnv } from "./merge/env";
@@ -162,7 +169,11 @@ export {
 	dependencyValue,
 	filePath,
 } from "./operations";
-export type { PlannedFile, ProjectPlan } from "./planner";
+export type {
+	InstalledPlanningSeed,
+	PlannedFile,
+	ProjectPlan,
+} from "./planner";
 export { Planner } from "./planner";
 export type {
 	ModuleBucketTarget,
@@ -196,4 +207,5 @@ export {
 	ManifestSchema,
 	RegistryDescriptorSchema,
 	State,
+	SURFACE_MERGE_SEMANTICS_VERSION,
 } from "./state";

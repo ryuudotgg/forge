@@ -19,7 +19,7 @@ const ui = defineAddon<ForgeConfig, "ui">({
 	category: "ui",
 	exclusive: true,
 	dependencies: [{ id: "typescript", type: "addon" }],
-	targetMode: "single",
+	targetMode: "multiple",
 	when: (config) => !!config.web,
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";

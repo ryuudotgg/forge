@@ -305,6 +305,13 @@ export class AdoptionDetector extends Effect.Service<AdoptionDetector>()(
 				return (yield* inspectWorkspace(projectRoot)).roots;
 			});
 
+			const rootPackageName = Effect.fn("AdoptionDetector.rootPackageName")(
+				function* (projectRoot: string) {
+					return (yield* readPackageJson(join(projectRoot, "package.json")))
+						?.name;
+				},
+			);
+
 			const readComponentsStyle = Effect.fn(
 				"AdoptionDetector.readComponentsStyle",
 			)(function* (filePath: string) {
@@ -552,7 +559,7 @@ export class AdoptionDetector extends Effect.Service<AdoptionDetector>()(
 				} satisfies AdoptionDetection;
 			});
 
-			return { detect, enumerate };
+			return { detect, enumerate, rootPackageName };
 		}),
 	},
 ) {}

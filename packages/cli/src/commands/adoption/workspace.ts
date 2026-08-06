@@ -7,6 +7,7 @@ const DependencyRecordSchema = Schema.Record({
 
 export const PackageJsonSchema = Schema.parseJson(
 	Schema.Struct({
+		name: Schema.optional(Schema.String),
 		dependencies: Schema.optional(DependencyRecordSchema),
 		devDependencies: Schema.optional(DependencyRecordSchema),
 		engines: Schema.optional(DependencyRecordSchema),
