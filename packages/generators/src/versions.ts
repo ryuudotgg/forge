@@ -48,17 +48,17 @@ export const versions = {
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
-		version: "1.170.18",
+		version: "1.170.20",
 		group: "Framework",
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.35",
+		version: "1.168.37",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.21",
+		version: "1.167.23",
 		group: "Tooling",
 	},
 
@@ -102,7 +102,7 @@ export const versions = {
 
 	drizzleOrm: {
 		name: "drizzle-orm",
-		version: "1.0.0-rc.4-de6c356",
+		version: "1.0.0-rc.4-fb12281",
 		group: "Database",
 	},
 	drizzleKit: {
