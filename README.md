@@ -52,12 +52,29 @@ bunx @ryuujs/forge
 | Command | What it does |
 | --- | --- |
 | `forge` (`create`) | Forge a new project from a framework, template, and addons. |
-| `forge init` | Adopt an existing project into Forge. |
+| `forge init` | Record an existing project's Forge configuration and managed modules. |
 | `forge add [addon-id]` | Add an addon to your project. |
 | `forge remove [addon-id]` | Remove an addon from your project. |
 | `forge update` | Reconcile your installed addons and templates. |
 | `forge list [query]` | Browse the Forge catalog. |
 | `forge info <id>` | Show details for a catalog entry. |
+
+### Adopt an existing project
+
+Run `forge init` from an existing workspace to record its detected configuration, installed addons, and managed modules. Forge writes project metadata under `.forge` and a `forge.json` marker in each adopted module. Existing project files stay unchanged during this first step.
+
+Preview the adoption or reconcile immediately when you are ready:
+
+```bash
+pnpm dlx @ryuujs/forge init --dry-run
+pnpm dlx @ryuujs/forge init
+pnpm dlx @ryuujs/forge update
+
+# Or adopt and reconcile in one command.
+pnpm dlx @ryuujs/forge init --reconcile
+```
+
+The default flow is intentionally two steps: `forge init` records the current project, then `forge update` reconciles it with Forge's templates and addons. If conflicts surface in an interactive terminal, Forge guides you through each choice. You can also pass `--keep-user` or `--accept-forge` for one policy across the update.
 
 ### Non-interactive
 

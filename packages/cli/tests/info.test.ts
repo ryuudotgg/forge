@@ -7,7 +7,11 @@ import {
 	buildInfoOutput,
 	runInfo,
 } from "../src/commands/info";
-import { loadDiscoveryFixture } from "./discovery-fixtures";
+import {
+	loadAdoptedDiscoveryFixture,
+	loadDiscoveryFixture,
+} from "./discovery-fixtures";
+import { withTempDir } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
@@ -190,6 +194,31 @@ describe("forge info builders", () => {
 				].join("\n"),
 			].join("\n\n"),
 		);
+	});
+
+	it("renders the exact catalog card for an adopted project", async () => {
+		await withTempDir("info-adopted", async (directory) => {
+			const loaded = await loadAdoptedDiscoveryFixture(directory);
+
+			expect(loaded.descriptors).toEqual([]);
+
+			await runInfo("drizzle", {}, () => Promise.resolve(loaded));
+
+			expect(promptMocks.logMessage).toHaveBeenCalledWith(
+				[
+					"Drizzle drizzle",
+					"Add Drizzle ORM support.",
+					"Adds Drizzle ORM configuration, schema surfaces, and database tooling to a compatible app.",
+					[
+						"Publisher:  Ryuu (first party)",
+						"Category:   orm",
+						"Targets:    Single target",
+						"Keywords:   database, drizzle, orm, and sql",
+						"",
+					].join("\n"),
+				].join("\n\n"),
+			);
+		});
 	});
 
 	it("adds publisherVersion only to third-party info JSON", async () => {

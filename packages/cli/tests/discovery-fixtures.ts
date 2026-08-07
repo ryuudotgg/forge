@@ -1,9 +1,17 @@
-import { defineAdapter, defineAddon, defineFramework } from "@ryuujs/core";
+import { join } from "node:path";
+import {
+	defineAdapter,
+	defineAddon,
+	defineFramework,
+	type Manifest,
+} from "@ryuujs/core";
 import {
 	type ForgeConfig,
 	loadDefinitionRegistry,
 	type RegistryPackageManifest,
 } from "@ryuujs/generators";
+import { loadDiscoveryRegistry } from "../src/commands/lifecycle";
+import { writeJson } from "./lifecycle-fixtures";
 
 export const fixtureRegistryId = "@acme/forge-sentry";
 export const adapterFixtureRegistryId = "@solid/forge-sentry";
@@ -107,4 +115,55 @@ export function loadDiscoveryFixture() {
 		projectRoot: "/fixture-project",
 		registries: [fixtureRegistryId, adapterFixtureRegistryId],
 	});
+}
+
+export async function loadAdoptedDiscoveryFixture(directory: string) {
+	const manifest = {
+		config: {
+			database: "sqlite",
+			orm: "drizzle",
+			packageManager: "pnpm",
+			slug: "acme",
+		},
+		installs: [
+			{
+				definitionId: "drizzle",
+				targets: [{ kind: "module", moduleId: "abcde" }],
+				versions: [
+					{
+						name: "drizzle-orm",
+						root: "packages/db",
+						section: "dependencies",
+						specifier: "1.0.0-rc.4",
+						version: "1.0.0-rc.4",
+					},
+					{
+						name: "drizzle-kit",
+						root: "packages/db",
+						section: "devDependencies",
+						specifier: "0.31.0",
+						version: "0.31.0",
+					},
+					{
+						name: "postgres",
+						root: "packages/db",
+						section: "dependencies",
+						specifier: "3.4.7",
+						version: "3.4.7",
+					},
+				],
+			},
+		],
+		modules: {
+			abcde: {
+				definitionIds: ["drizzle"],
+				root: "packages/db",
+			},
+		},
+		schemaVersion: 1,
+	} satisfies Manifest;
+
+	await writeJson(join(directory, ".forge/manifest.json"), manifest);
+
+	return loadDiscoveryRegistry(directory);
 }
