@@ -7,6 +7,8 @@ import { Cause, Effect, Layer } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import type { ModuleKind } from "../src/commands/adoption";
 import {
+	adoptionConflictGuidance,
+	adoptionOutro,
 	adoptionReport,
 	buildAdoptionPlan,
 	contentHashError,
@@ -66,6 +68,18 @@ async function exists(path: string) {
 }
 
 describe("init command", () => {
+	it("guides the next adoption step and conflict resolution", () => {
+		expect(adoptionOutro(false)).toBe(
+			"This project is now managed by Forge. Run forge update to reconcile it.",
+		);
+		expect(adoptionConflictGuidance()).toBe(
+			"If conflicts surface, we can guide you through them interactively, or you can run forge update with --keep-user or --accept-forge.",
+		);
+		expect(adoptionOutro(true)).toBe(
+			"This project is managed by Forge and reconciled.",
+		);
+	});
+
 	it("reads config fields and module mappings from the same JSON file", async () => {
 		await withTempDir("init-config", async (directory) => {
 			const path = join(directory, "forge.init.json");

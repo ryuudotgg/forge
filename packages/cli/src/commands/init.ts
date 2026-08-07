@@ -654,11 +654,18 @@ async function executePlannedAdoption(
 			...resolutionArguments(values),
 		);
 
-	outro(
-		values.reconcile === true
-			? "This project is managed by Forge and reconciled."
-			: "This project is now managed by Forge. Run forge update when you're ready to reconcile it.",
-	);
+	const reconciled = values.reconcile === true;
+	if (!reconciled) log.message(adoptionConflictGuidance());
+	outro(adoptionOutro(reconciled));
+}
+
+export function adoptionConflictGuidance(): string {
+	return "If conflicts surface, we can guide you through them interactively, or you can run forge update with --keep-user or --accept-forge.";
+}
+
+export function adoptionOutro(reconciled: boolean): string {
+	if (reconciled) return "This project is managed by Forge and reconciled.";
+	return "This project is now managed by Forge. Run forge update to reconcile it.";
 }
 
 export async function runInit(

@@ -10,7 +10,10 @@ import {
 	runList,
 	selectListEntries,
 } from "../src/commands/list";
-import { loadDiscoveryFixture } from "./discovery-fixtures";
+import {
+	loadAdoptedDiscoveryFixture,
+	loadDiscoveryFixture,
+} from "./discovery-fixtures";
 import { withTempDir, writeJson } from "./lifecycle-fixtures";
 
 const catalog = listCatalogEntries();
@@ -211,6 +214,26 @@ describe("forge list builders", () => {
 				"",
 			].join("\n"),
 		);
+	});
+
+	it("renders exact first-party provenance for an adopted project", async () => {
+		await withTempDir("list-adopted", async (directory) => {
+			const loaded = await loadAdoptedDiscoveryFixture(directory);
+
+			expect(loaded.descriptors).toEqual([]);
+
+			await runList("drizzle", {}, () => Promise.resolve(loaded));
+
+			expect(promptMocks.logMessage).toHaveBeenCalledWith(
+				[
+					"Addons",
+					"  Drizzle  drizzle  Add Drizzle ORM support.",
+					"",
+					"1 entry. Run forge info <id> for details.",
+					"",
+				].join("\n"),
+			);
+		});
 	});
 
 	it("writes pure registry JSON with source on every entry", async () => {

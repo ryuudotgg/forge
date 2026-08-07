@@ -28,6 +28,16 @@ async function fixture(projectRoot: string) {
 		"utf-8",
 	);
 	await writeFile(join(projectRoot, ".env"), secret, "utf-8");
+	await writeJson(join(projectRoot, "apps/api/package.json"), {
+		dependencies: { hono: "^4.0.0" },
+		name: "@ajito/api",
+		private: true,
+	});
+	await writeJson(join(projectRoot, "apps/mobile/package.json"), {
+		dependencies: { expo: "^54.0.0" },
+		name: "@ajito/mobile",
+		private: true,
+	});
 	await writeJson(join(projectRoot, "apps/web/package.json"), {
 		dependencies: {
 			next: "^16.0.0",
@@ -151,6 +161,14 @@ describe("init", () => {
 			expect(
 				await pathExists(join(workspace.projectRoot, ".forge/manifest.json")),
 			).toBe(true);
+			const manifest = await readJson<{
+				modules: Record<string, { root: string }>;
+			}>(join(workspace.projectRoot, ".forge/manifest.json"));
+			expect(
+				Object.values(manifest.modules)
+					.map((module) => module.root)
+					.sort(),
+			).toEqual(["apps/admin", "apps/web", "packages/db"]);
 			const bases = await readdir(join(workspace.projectRoot, ".forge/bases"));
 			const baseContents = await Promise.all(
 				bases.map((base) =>
@@ -167,6 +185,12 @@ describe("init", () => {
 			expect(
 				await pathExists(join(workspace.projectRoot, "apps/admin/forge.json")),
 			).toBe(true);
+			expect(
+				await pathExists(join(workspace.projectRoot, "apps/api/forge.json")),
+			).toBe(false);
+			expect(
+				await pathExists(join(workspace.projectRoot, "apps/mobile/forge.json")),
+			).toBe(false);
 
 			const pagePath = join(workspace.projectRoot, "apps/web/app/page.tsx");
 			const layoutPath = join(workspace.projectRoot, "apps/web/app/layout.tsx");
