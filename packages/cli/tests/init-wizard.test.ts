@@ -70,7 +70,7 @@ describe("init wizard", () => {
 					"exit:1",
 				);
 				expect(promptMocks.error).toHaveBeenCalledWith(
-					'A ".forge" directory already exists here. Remove it before running forge init.',
+					'A ".forge" directory already exists here. You need to remove it before running forge init.',
 				);
 				expect(await readFile(junk, "utf-8")).toBe("keep me\n");
 			} finally {
@@ -124,7 +124,7 @@ describe("init wizard", () => {
 					"exit:1",
 				);
 				expect(promptMocks.error).toHaveBeenCalledWith(
-					'A previous Forge adoption stopped before it finished. Delete the ".forge" directory, then run forge init again.',
+					'A previous Forge adoption stopped before it finished. You need to delete the ".forge" directory, then run forge init again.',
 				);
 			} finally {
 				exit.mockRestore();

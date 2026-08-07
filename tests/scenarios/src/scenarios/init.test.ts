@@ -238,7 +238,7 @@ describe("init", () => {
 			);
 			expect(repeated.exitCode).toBe(1);
 			expect(repeated.stdout + repeated.stderr).toContain(
-				'A ".forge" directory already exists here. Remove it before running forge init.',
+				'A ".forge" directory already exists here. You need to remove it before running forge init.',
 			);
 		});
 	}, 120_000);
