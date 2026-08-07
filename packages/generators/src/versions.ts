@@ -48,21 +48,21 @@ export const versions = {
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
-		version: "1.170.20",
+		version: "1.170.21",
 		group: "Framework",
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.37",
+		version: "1.168.38",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.23",
+		version: "1.167.24",
 		group: "Tooling",
 	},
 
-	vite: { name: "vite", version: "8.2.0", group: "Tooling" },
+	vite: { name: "vite", version: "8.2.1", group: "Tooling" },
 	viteReact: {
 		name: "@vitejs/plugin-react",
 		version: "6.0.5",
