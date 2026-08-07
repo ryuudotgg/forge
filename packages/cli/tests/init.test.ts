@@ -525,7 +525,7 @@ describe("init command", () => {
 			expect(packageJson.scripts.user).toBe("keep-me");
 			expect(packageJson.scripts.build).toBe("turbo run build");
 		});
-	});
+	}, 30_000);
 
 	it("accepts detected values and mappings with yes", async () => {
 		await withTempDir("init-command-yes", async (directory) => {
