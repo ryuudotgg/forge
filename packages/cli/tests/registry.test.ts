@@ -9,6 +9,7 @@ const commandMocks = vi.hoisted(() => ({
 	runAdd: vi.fn(),
 	runCreate: vi.fn(),
 	runInfo: vi.fn(),
+	runInit: vi.fn(),
 	runList: vi.fn(),
 	runRemove: vi.fn(),
 	runUpdate: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock("../src/commands/create", () => ({
 	runCreate: commandMocks.runCreate,
 }));
 vi.mock("../src/commands/info", () => ({ runInfo: commandMocks.runInfo }));
+vi.mock("../src/commands/init", () => ({ runInit: commandMocks.runInit }));
 vi.mock("../src/commands/list", () => ({ runList: commandMocks.runList }));
 vi.mock("../src/commands/remove", () => ({
 	runRemove: commandMocks.runRemove,
@@ -31,6 +33,7 @@ beforeEach(() => {
 	commandMocks.runAdd.mockReset();
 	commandMocks.runCreate.mockReset();
 	commandMocks.runInfo.mockReset();
+	commandMocks.runInit.mockReset();
 	commandMocks.runList.mockReset();
 	commandMocks.runRemove.mockReset();
 	commandMocks.runUpdate.mockReset();
@@ -40,6 +43,7 @@ describe("command registry", () => {
 	it("exposes every subcommand through getSubcommand", () => {
 		expect(getSubcommand("create")).toBe(subcommands.create);
 		expect(getSubcommand("update")).toBe(subcommands.update);
+		expect(getSubcommand("init")).toBe(subcommands.init);
 		expect(getSubcommand("add")).toBe(subcommands.add);
 		expect(getSubcommand("remove")).toBe(subcommands.remove);
 		expect(getSubcommand("list")).toBe(subcommands.list);
@@ -72,6 +76,12 @@ describe("command registry", () => {
 		expect(commandMocks.runUpdate).toHaveBeenCalledWith({
 			config: "./forge.config.json",
 		});
+	});
+
+	it("forwards values to runInit", async () => {
+		await subcommands.init.run([], { "dry-run": true });
+
+		expect(commandMocks.runInit).toHaveBeenCalledWith({ "dry-run": true });
 	});
 
 	it("forwards the addon id and values to runAdd", async () => {

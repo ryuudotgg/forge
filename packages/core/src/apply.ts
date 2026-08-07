@@ -40,6 +40,7 @@ export interface PlannedWrite {
 }
 
 export interface ApplyPlan {
+	readonly baseContents?: Readonly<Record<string, string>>;
 	readonly lockfile: LockfileInput;
 	readonly manifest: ManifestInput;
 	readonly removals: ReadonlyArray<string>;
@@ -62,6 +63,10 @@ export type ApplyResolution =
 export interface ApplyOptions {
 	readonly conflictResolutions?: Readonly<Record<string, ApplyResolution>>;
 	readonly resolutionPolicy?: ResolutionPolicy;
+}
+
+export interface FormatApplyErrorOptions {
+	readonly includeResolutionGuidance?: boolean;
 }
 
 export interface ApplyConflict {
@@ -212,7 +217,7 @@ function movedModuleArtifactId(
 	return `module:${moduleId}:file:${previousRoot}/${relativePath}`;
 }
 
-function isUserOwnedEnv(relativePath: string): boolean {
+export function isUserOwnedEnv(relativePath: string): boolean {
 	return basename(relativePath) === ".env";
 }
 
@@ -284,7 +289,10 @@ function preflightMessage(
 	return sections.join("\n");
 }
 
-export function formatApplyError(error: ApplyError): string {
+export function formatApplyError(
+	error: ApplyError,
+	options: FormatApplyErrorOptions = {},
+): string {
 	let report: string;
 	let classification = error.preflight;
 
@@ -314,6 +322,7 @@ export function formatApplyError(error: ApplyError): string {
 		!classification.hasUnmanagedRefusals
 	)
 		return report;
+	if (options.includeResolutionGuidance === false) return report;
 
 	const guidance: string[] = [];
 	if (
@@ -624,6 +633,21 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 				const currentContent = yield* readFile(fullPath, relativePath);
 				const currentHash = yield* hashContent(currentContent);
+
+				const fileResolution = resolutionFor(relativePath);
+				if (previousArtifact.base?.origin === "adopted") {
+					if (fileResolution === "forge") removalsToApply.push(relativePath);
+					else
+						refusals.push({
+							path: relativePath,
+							message: "Managed File Modified",
+							operation: "removal",
+							resolvable: false,
+						});
+
+					continue;
+				}
+
 				if (
 					currentHash === previousArtifact.hash &&
 					(previousArtifact.base === undefined ||
@@ -633,7 +657,6 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					continue;
 				}
 
-				const fileResolution = resolutionFor(relativePath);
 				if (fileResolution === "forge") {
 					removalsToApply.push(relativePath);
 					continue;
@@ -706,7 +729,15 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					continue;
 				}
 
-				if (isUserOwnedEnv(file.path)) continue;
+				if (isUserOwnedEnv(file.path)) {
+					for (const [artifactId, artifact] of Object.entries(
+						committedArtifacts,
+					))
+						if (artifact.path === file.path)
+							delete committedArtifacts[artifactId];
+
+					continue;
+				}
 
 				const currentContent = yield* readFile(fullPath, file.path);
 
@@ -714,11 +745,6 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				const nextHash = yield* hashContent(file.content);
 
 				const fileResolution = resolutionFor(file.path);
-
-				if (/^module:[^:]+:file:forge\.json$/.test(file.artifactId ?? "")) {
-					writesToApply.push(file);
-					continue;
-				}
 
 				const previousArtifact = previousArtifacts.get(file.path);
 				const renamedArtifactId = movedModuleArtifactId(
@@ -741,6 +767,9 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						: committedArtifacts[file.artifactId];
 
 				const managedArtifact = previousArtifact ?? movedArtifact;
+				const isModuleMarker = /^module:[^:]+:file:forge\.json$/.test(
+					file.artifactId ?? "",
+				);
 
 				const previousBase = managedArtifact?.base;
 				const nextBase = nextArtifact?.base;
@@ -801,6 +830,11 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					continue;
 				}
 
+				if (isModuleMarker) {
+					writesToApply.push(file);
+					continue;
+				}
+
 				if (managedArtifact === undefined) {
 					refusals.push({
 						path: file.path,
@@ -846,7 +880,11 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					managedArtifact.base === undefined ||
 					managedArtifact.base.hash === currentHash;
 
-				if (currentHash === managedArtifact.hash && currentIsPureRender) {
+				if (
+					currentHash === managedArtifact.hash &&
+					currentIsPureRender &&
+					previousBase?.origin !== "adopted"
+				) {
 					writesToApply.push(file);
 					continue;
 				}
@@ -904,11 +942,18 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				}
 
 				const base = yield* readBase(projectRoot, managedArtifact);
+				const mergeBase =
+					previousBase.origin === "adopted"
+						? previousBase.mergeKind === "json"
+							? "{}\n"
+							: ""
+						: base;
+
 				const mergedResult = yield* Effect.either(
 					mergeSurface(
 						previousBase.mergeKind,
 						file.path,
-						base,
+						mergeBase,
 						currentContent,
 						file.content,
 						mergeResolution,
@@ -1032,6 +1077,11 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						: [[write.artifactId, write.content]],
 				),
 			);
+
+			for (const [artifactId, content] of Object.entries(
+				plan.baseContents ?? {},
+			))
+				pureWritesById.set(artifactId, content);
 
 			const bases = new Map<string, string>();
 			for (const [artifactId, artifact] of Object.entries(

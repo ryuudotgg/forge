@@ -5,7 +5,10 @@ import type {
 	AddonDefinition,
 	Contribution,
 	DefinitionRegistry,
+	EnsuredModuleTarget,
 	EnsureModuleContribution,
+	ModuleTarget,
+	ResolvedModuleTarget,
 	SlotPath,
 	TargetRef,
 	TemplateDefinition,
@@ -59,6 +62,149 @@ interface EvaluatedDefinition {
 	readonly order: number;
 }
 
+function retargetAdoptedTarget(
+	target: TargetRef,
+	moduleKey: string,
+	module: DiscoveredModule,
+): TargetRef {
+	if (target._tag !== "EnsuredModuleTarget" || target.moduleKey !== moduleKey)
+		return target;
+
+	return {
+		_tag: "ResolvedModuleTarget",
+		moduleId: module.id,
+		moduleRoot: module.root,
+	};
+}
+
+function retargetAdoptedModuleTarget(
+	target: ModuleTarget,
+	moduleKey: string,
+	module: DiscoveredModule,
+): ModuleTarget {
+	if (target._tag !== "EnsuredModuleTarget" || target.moduleKey !== moduleKey)
+		return target;
+
+	return {
+		_tag: "ResolvedModuleTarget",
+		moduleId: module.id,
+		moduleRoot: module.root,
+	};
+}
+
+function retargetAdoptedSlotTarget(
+	target: EnsuredModuleTarget | ResolvedModuleTarget,
+	moduleKey: string,
+	module: DiscoveredModule,
+): EnsuredModuleTarget | ResolvedModuleTarget {
+	if (target._tag !== "EnsuredModuleTarget" || target.moduleKey !== moduleKey)
+		return target;
+
+	return {
+		_tag: "ResolvedModuleTarget",
+		moduleId: module.id,
+		moduleRoot: module.root,
+	};
+}
+
+export function retargetAdoptedContribution(
+	contribution: Contribution,
+	moduleKey: string,
+	module: DiscoveredModule,
+	instanceModuleKey: string,
+): Contribution {
+	switch (contribution._tag) {
+		case "EnsureModuleContribution":
+			return contribution.moduleKey === moduleKey
+				? {
+						...contribution,
+						moduleKey: instanceModuleKey,
+						root: module.root,
+					}
+				: contribution;
+
+		case "LeafTextFileContribution":
+			return {
+				...contribution,
+				path:
+					typeof contribution.path === "string"
+						? contribution.path
+						: {
+								...contribution.path,
+								target: retargetAdoptedSlotTarget(
+									contribution.path.target,
+									moduleKey,
+									module,
+								),
+							},
+				target: retargetAdoptedTarget(contribution.target, moduleKey, module),
+			};
+
+		case "ManagedDependenciesSurfaceContribution":
+		case "ManagedJsonSurfaceContribution":
+		case "ManagedLinesSurfaceContribution":
+		case "ManagedScriptsSurfaceContribution":
+		case "ManagedTextSurfaceContribution":
+			return {
+				...contribution,
+				target: retargetAdoptedTarget(contribution.target, moduleKey, module),
+			};
+
+		case "ModuleCapabilitiesContribution":
+			return {
+				...contribution,
+				target: retargetAdoptedModuleTarget(
+					contribution.target,
+					moduleKey,
+					module,
+				),
+			};
+	}
+}
+
+function expandAdoptedTemplateEvaluations<ConfigValue>(
+	evaluated: ReadonlyArray<EvaluatedDefinition>,
+	registry: DefinitionRegistry<ConfigValue>,
+	modules: ReadonlyArray<DiscoveredModule>,
+): ReadonlyArray<EvaluatedDefinition> {
+	if (modules.length === 0) return evaluated;
+
+	const templateIds = new Set(
+		registry.templates.map((template) => template.id),
+	);
+
+	return evaluated.flatMap((entry) => {
+		if (!templateIds.has(entry.definitionId)) return [entry];
+
+		const ensured = entry.contributions.find(
+			(contribution) => contribution._tag === "EnsureModuleContribution",
+		);
+
+		if (ensured?.module.type !== "app") return [entry];
+
+		const matchingModules = modules.filter(
+			(module) =>
+				module.type === "app" &&
+				module.template.id === entry.definitionId &&
+				module.template.version === ensured.module.template.version,
+		);
+
+		if (matchingModules.length === 0) return [entry];
+
+		return matchingModules.map((module, index) => ({
+			...entry,
+			contributions: entry.contributions.map((contribution) =>
+				retargetAdoptedContribution(
+					contribution,
+					ensured.moduleKey,
+					module,
+					index === 0 ? ensured.moduleKey : `${ensured.moduleKey}:${module.id}`,
+				),
+			),
+		}));
+	});
+}
+
 interface ManagedModuleRecord {
 	config: Config;
 	readonly definitionIds: ReadonlyArray<string>;
@@ -104,10 +250,69 @@ export interface PlannedFile {
 }
 
 export interface ProjectPlan {
+	readonly dependencyNames: Readonly<Record<string, ReadonlyArray<string>>>;
 	readonly lockfile: Lockfile;
 	readonly manifest: Manifest;
 	readonly removals: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedFile>;
+}
+
+function collectDependencyNames<ConfigValue>(
+	inputs: ReadonlyArray<SurfaceRenderContribution>,
+	definitions: ReadonlyArray<Definition<ConfigValue>>,
+): ProjectPlan["dependencyNames"] {
+	const directNames = new Map<string, Set<string>>();
+
+	for (const input of inputs) {
+		if (input.contribution._tag !== "ManagedDependenciesSurfaceContribution")
+			continue;
+
+		const names = directNames.get(input.definitionId) ?? new Set<string>();
+		for (const dependency of input.contribution.dependencies)
+			names.add(dependency.name);
+
+		directNames.set(input.definitionId, names);
+	}
+
+	const definitionsById = new Map(
+		definitions.map((definition) => [definition.id, definition]),
+	);
+
+	const collectedNames = new Map<string, ReadonlySet<string>>();
+	const collect = (definitionId: string): ReadonlySet<string> => {
+		const existing = collectedNames.get(definitionId);
+		if (existing !== undefined) return existing;
+
+		const names = new Set(directNames.get(definitionId));
+		const definition = definitionsById.get(definitionId);
+		if (definition !== undefined)
+			for (const dependency of definition.dependencies) {
+				const dependencyDefinition = definitionsById.get(dependency.id);
+				if (dependencyDefinition === undefined) continue;
+
+				for (const name of collect(dependencyDefinition.id)) names.add(name);
+			}
+
+		collectedNames.set(definitionId, names);
+		return names;
+	};
+
+	const entries: Array<readonly [string, ReadonlyArray<string>]> =
+		definitions.map((definition) => [
+			definition.id,
+			[...collect(definition.id)].sort(),
+		]);
+
+	return Object.fromEntries(
+		entries.sort(([left], [right]) =>
+			left < right ? -1 : left > right ? 1 : 0,
+		),
+	);
+}
+
+export interface InstalledPlanningSeed {
+	readonly modules: ReadonlyArray<DiscoveredModule>;
+	readonly records: Manifest["modules"];
 }
 
 function definitionKey<ConfigValue>(definition: Definition<ConfigValue>) {
@@ -371,25 +576,48 @@ function buildTargetCandidates<ConfigValue>(
 	return compatibleModules;
 }
 
-function mergeInstallRecords(installs: ReadonlyArray<InstallRecord>) {
-	const records = new Map<string, InstallTarget[]>();
+export function mergeInstallRecords(installs: ReadonlyArray<InstallRecord>) {
+	const records = new Map<
+		string,
+		{
+			targets: InstallTarget[];
+			versions: NonNullable<InstallRecord["versions"]>[number][];
+		}
+	>();
 
 	for (const install of installs) {
-		const existing = records.get(install.definitionId) ?? [];
-		const next = [...existing];
+		const existing = records.get(install.definitionId) ?? {
+			targets: [],
+			versions: [],
+		};
+
+		const targets = [...existing.targets];
 
 		for (const target of install.targets) {
 			const key = installTargetKey(target);
-			if (next.some((entry) => installTargetKey(entry) === key)) continue;
-			next.push(target);
+			if (targets.some((entry) => installTargetKey(entry) === key)) continue;
+			targets.push(target);
 		}
 
-		records.set(install.definitionId, next);
+		const versions = [...existing.versions];
+		for (const version of install.versions ?? []) {
+			const exists = versions.some(
+				(entry) =>
+					entry.root === version.root &&
+					entry.section === version.section &&
+					entry.name === version.name,
+			);
+
+			if (!exists) versions.push(version);
+		}
+
+		records.set(install.definitionId, { targets, versions });
 	}
 
-	return [...records.entries()].map(([definitionId, targets]) => ({
+	return [...records.entries()].map(([definitionId, record]) => ({
 		definitionId,
-		targets,
+		targets: record.targets,
+		...(record.versions.length === 0 ? {} : { versions: record.versions }),
 	}));
 }
 
@@ -876,7 +1104,10 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 								) && module.config.template.version === target.template.version,
 						)
 						.map(
-							(module) => ({ kind: "module", moduleId: module.id }) as const,
+							(module): InstallTarget => ({
+								kind: "module",
+								moduleId: module.id,
+							}),
 						);
 
 					if (matches.length === 0)
@@ -1048,11 +1279,26 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 								? contributionPath
 								: `${byId.get(target.moduleId)?.root ?? ""}/${contributionPath}`;
 
-						if (leafFiles.has(relativePath))
+						const existing = leafFiles.get(relativePath);
+						if (existing !== undefined) {
+							const sameTarget =
+								existing.bucket.kind === "project"
+									? target.kind === "project"
+									: target.kind === "module" &&
+										existing.bucket.moduleId === target.moduleId;
+
+							if (
+								sameTarget &&
+								existing.content === contribution.content &&
+								existing.definitionIds.includes(entry.definitionId)
+							)
+								continue;
+
 							return yield* new PlannerError({
 								path: "leaf-files",
 								message: "Leaf File Conflict",
 							});
+						}
 
 						leafFiles.set(relativePath, {
 							bucket: target,
@@ -1262,8 +1508,12 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			projectRoot: string,
 			registry: DefinitionRegistry<ConfigValue>,
 			intent: PlanIntent<ConfigValue>,
+			seed?: InstalledPlanningSeed,
 		) {
-			const discovered = yield* configStore.discover(projectRoot);
+			const discovered =
+				seed === undefined
+					? yield* configStore.discover(projectRoot)
+					: seed.modules;
 
 			const existingManifest = yield* state.readManifestOrDefault(projectRoot);
 			const existingLockfile = yield* state.readLockfile(projectRoot);
@@ -1351,11 +1601,17 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				selection.directAddons,
 			);
 
-			const evaluated = yield* evaluateDefinitions(
+			const baseEvaluated = yield* evaluateDefinitions(
 				intent.commandVersions,
 				intent.config,
 				definitions,
 				registry.frameworks,
+			);
+
+			const evaluated = expandAdoptedTemplateEvaluations(
+				baseEvaluated,
+				registry,
+				discovered,
 			);
 
 			const {
@@ -1365,7 +1621,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				onDiskSlots,
 			} = yield* collectModules(
 				discovered,
-				existingManifest.modules,
+				seed?.records ?? existingManifest.modules,
 				evaluated,
 			);
 
@@ -1501,6 +1757,11 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				selectedTargets,
 			);
 
+			const dependencyNames = collectDependencyNames(
+				managedInputs,
+				definitions,
+			);
+
 			const renderedSurfaces = yield* renderer.render(
 				managedInputs,
 				modules.map((module) => ({ ...module.config, root: module.root })),
@@ -1547,6 +1808,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			);
 
 			return {
+				dependencyNames,
 				lockfile,
 				manifest,
 				removals,
@@ -1561,12 +1823,18 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			config: ConfigValue,
 			registry: DefinitionRegistry<ConfigValue>,
 			commandVersions: Readonly<Record<string, string>>,
+			seed?: InstalledPlanningSeed,
 		) {
-			return yield* plan(projectRoot, registry, {
-				_tag: "Create",
-				commandVersions,
-				config,
-			});
+			return yield* plan(
+				projectRoot,
+				registry,
+				{
+					_tag: "Create",
+					commandVersions,
+					config,
+				},
+				seed,
+			);
 		});
 
 		const planInstalled = Effect.fn("Planner.planInstalled")(function* <
@@ -1579,15 +1847,21 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 			commandVersions: Readonly<Record<string, string>>,
 			registryDescriptors?: ReadonlyArray<RegistryDescriptor>,
 			registries?: ReadonlyArray<string>,
+			seed?: InstalledPlanningSeed,
 		) {
-			return yield* plan(projectRoot, registry, {
-				_tag: "Installed",
-				commandVersions,
-				config,
-				installs,
-				registryDescriptors,
-				registries,
-			});
+			return yield* plan(
+				projectRoot,
+				registry,
+				{
+					_tag: "Installed",
+					commandVersions,
+					config,
+					installs,
+					registryDescriptors,
+					registries,
+				},
+				seed,
+			);
 		});
 
 		return { planCreate, planInstalled };

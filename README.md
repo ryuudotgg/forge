@@ -52,6 +52,7 @@ bunx @ryuujs/forge
 | Command | What it does |
 | --- | --- |
 | `forge` (`create`) | Forge a new project from a framework, template, and addons. |
+| `forge init` | Adopt an existing project into Forge. |
 | `forge add [addon-id]` | Add an addon to your project. |
 | `forge remove [addon-id]` | Remove an addon from your project. |
 | `forge update` | Reconcile your installed addons and templates. |

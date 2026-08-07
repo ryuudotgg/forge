@@ -10,6 +10,7 @@ import {
 	ConfigStore,
 	CoreLive,
 	type DefinitionRegistry,
+	type Dependency,
 	type DiscoveredModule,
 	defineAdapter,
 	defineAddon,
@@ -41,12 +42,17 @@ import {
 	surfaceText,
 	templateModuleTarget,
 } from "../src/index";
+import {
+	mergeInstallRecords,
+	retargetAdoptedContribution,
+} from "../src/planner";
 import { readJson, withTempDir, writeJson, writeText } from "./harness";
 
 interface TestConfig extends Record<string, unknown> {
 	readonly audit?: boolean;
 	readonly auth?: boolean;
 	readonly collision?: boolean;
+	readonly database?: "postgres" | "sqlite";
 	readonly dual?: boolean;
 	readonly kit?: boolean;
 	readonly logs?: boolean;
@@ -54,6 +60,7 @@ interface TestConfig extends Record<string, unknown> {
 	readonly orm?: "a" | "b";
 	readonly packageManager?: string;
 	readonly rpc?: "trpc";
+	readonly style?: "tailwind";
 	readonly theme?: boolean;
 	readonly ui?: boolean;
 	readonly web?: "nextjs" | "tanstack-start";
@@ -575,6 +582,112 @@ const adapterGuardUnsupportedRegistry = defineRegistry({
 });
 
 describe("planner", () => {
+	it("retargets adopted template contributions and preserves other targets", () => {
+		const adopted = {
+			framework: "nextjs",
+			id: "adopted-web",
+			root: "apps/adopted",
+			slots: { layout: "app/layout.tsx" },
+			template: { id: "nextjs/base", version: 1 },
+			type: "app",
+		} satisfies DiscoveredModule;
+		const adoptedTarget = ensuredModuleTarget("web");
+
+		expect(
+			retargetAdoptedContribution(
+				leafTextFile(
+					adoptedTarget,
+					slotPath(adoptedTarget, "layout"),
+					"layout\n",
+				),
+				"web",
+				adopted,
+				"web:adopted-web",
+			),
+		).toMatchObject({
+			path: {
+				target: {
+					_tag: "ResolvedModuleTarget",
+					moduleId: "adopted-web",
+				},
+			},
+			target: {
+				_tag: "ResolvedModuleTarget",
+				moduleRoot: "apps/adopted",
+			},
+		});
+
+		const otherTarget = ensuredModuleTarget("other");
+		expect(
+			retargetAdoptedContribution(
+				leafTextFile(
+					projectTarget(),
+					slotPath(otherTarget, "layout"),
+					"other\n",
+				),
+				"web",
+				adopted,
+				"web:adopted-web",
+			),
+		).toMatchObject({ path: { target: otherTarget }, target: projectTarget() });
+
+		expect(
+			retargetAdoptedContribution(
+				moduleCapabilities(adoptedTarget, ["ui"]),
+				"web",
+				adopted,
+				"web:adopted-web",
+			),
+		).toMatchObject({
+			target: { _tag: "ResolvedModuleTarget", moduleId: "adopted-web" },
+		});
+		expect(
+			retargetAdoptedContribution(
+				moduleCapabilities(
+					moduleTarget({
+						config: adopted,
+						id: adopted.id,
+						root: adopted.root,
+					}),
+					["ui"],
+				),
+				"web",
+				adopted,
+				"web:adopted-web",
+			),
+		).toMatchObject({
+			target: { _tag: "ResolvedModuleTarget", moduleId: "adopted-web" },
+		});
+	});
+
+	it("merges captured install versions without duplicates", () => {
+		const drizzle = {
+			name: "drizzle-orm",
+			root: "packages/db",
+			section: "dependencies",
+			specifier: "1.0.0",
+		} satisfies NonNullable<InstallRecord["versions"]>[number];
+		const kit = {
+			name: "drizzle-kit",
+			root: "packages/db",
+			section: "devDependencies",
+			specifier: "1.0.0",
+		} satisfies NonNullable<InstallRecord["versions"]>[number];
+
+		expect(
+			mergeInstallRecords([
+				{ definitionId: "drizzle", targets: [], versions: [drizzle] },
+				{ definitionId: "drizzle", targets: [], versions: [drizzle, kit] },
+			]),
+		).toEqual([
+			{
+				definitionId: "drizzle",
+				targets: [],
+				versions: [drizzle, kit],
+			},
+		]);
+	});
+
 	it("omits empty registry metadata from an installed replan", async () => {
 		await withTempDir("planner-registryless-replan", async (directory) => {
 			await Effect.runPromise(
@@ -1053,6 +1166,38 @@ describe("planner", () => {
 
 			expect(error?.message).toBe("Leaf File Conflict");
 			expect(error?.path).toBe("leaf-files");
+		});
+	});
+
+	it("deduplicates identical leaf files from the same definition", async () => {
+		await withTempDir("planner-leaf-deduplicate", async (directory) => {
+			const duplicate = defineAddon<TestConfig>({
+				id: "duplicate",
+				name: "Duplicate",
+				version: "0.1.0",
+				category: "tooling",
+				exclusive: false,
+				targetMode: "single",
+				when: (config) => config.audit === true,
+				contribute: () => [
+					leafTextFile(projectTarget(), "duplicate.txt", "same\n"),
+					leafTextFile(projectTarget(), "duplicate.txt", "same\n"),
+				],
+			});
+			const registry = defineRegistry({
+				adapters: [],
+				addons: [duplicate],
+				frameworks: [],
+				templates: [],
+			});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, { audit: true }, registry),
+			);
+
+			expect(
+				plan.writes.filter((write) => write.path === "duplicate.txt"),
+			).toHaveLength(1);
 		});
 	});
 
@@ -3199,6 +3344,112 @@ describe("planner", () => {
 
 			expect(error?.message).toBe("Target Module Missing");
 			expect(error?.path).toBe("decor");
+		});
+	});
+
+	it("attributes dependency names in create and installed plans", async () => {
+		await withTempDir("planner-dependency-names", async (directory) => {
+			const ui = defineAddon<TestConfig>({
+				id: "ui",
+				name: "UI",
+				version: "0.1.0",
+				category: "ui",
+				exclusive: false,
+				targetMode: "single",
+				when: (config) => config.style === "tailwind",
+				contribute: () => [
+					surfaceDependencies(projectTarget(), "rootPackageJson", [
+						{
+							name: "tailwindcss",
+							version: "^4.0.0",
+							type: "devDependencies",
+						},
+					]),
+				],
+			});
+			const tailwind = defineAddon<TestConfig>({
+				id: "tailwind",
+				name: "Tailwind",
+				version: "0.1.0",
+				category: "style",
+				exclusive: false,
+				dependencies: [{ id: "ui", type: "addon" }],
+				targetMode: "single",
+				when: (config) => config.style === "tailwind",
+				contribute: () => [],
+			});
+			const drizzle = defineAddon<TestConfig>({
+				id: "drizzle",
+				name: "Drizzle",
+				version: "0.1.0",
+				category: "orm",
+				exclusive: false,
+				targetMode: "single",
+				when: (config) => config.orm === "a",
+				contribute: ({ config }) => {
+					const driverDependencies: ReadonlyArray<Dependency> =
+						config.database === "postgres"
+							? [
+									{
+										name: "postgres",
+										version: "^3.0.0",
+										type: "dependencies",
+									},
+								]
+							: [];
+
+					return [
+						surfaceDependencies(projectTarget(), "rootPackageJson", [
+							{
+								name: "drizzle-orm",
+								version: "^1.0.0",
+								type: "dependencies",
+							},
+							{
+								name: "drizzle-kit",
+								version: "^1.0.0",
+								type: "devDependencies",
+							},
+							...driverDependencies,
+						]),
+					];
+				},
+			});
+			const registry = defineRegistry({
+				frameworks: [],
+				templates: [],
+				addons: [drizzle, ui, tailwind],
+			});
+			const plannedConfig: TestConfig = {
+				database: "postgres",
+				orm: "a",
+				style: "tailwind",
+			};
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, plannedConfig, registry),
+			);
+			const installedPlan = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					plannedConfig,
+					[
+						{ definitionId: "drizzle", targets: [{ kind: "project" }] },
+						{ definitionId: "tailwind", targets: [{ kind: "project" }] },
+					],
+					registry,
+				),
+			);
+
+			for (const plan of [createPlan, installedPlan]) {
+				expect(plan.dependencyNames.drizzle).toEqual([
+					"drizzle-kit",
+					"drizzle-orm",
+					"postgres",
+				]);
+				expect(plan.dependencyNames.tailwind).toEqual(["tailwindcss"]);
+				expect(new Set(plan.dependencyNames.unknown)).toEqual(new Set());
+			}
 		});
 	});
 

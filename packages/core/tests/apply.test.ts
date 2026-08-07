@@ -28,6 +28,47 @@ async function pathExists(path: string) {
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 describe("apply", () => {
+	it("stages adopted base content without writing the managed artifact", async () => {
+		await withTempDir("apply-adopted-base", async (directory) => {
+			const content = '{\n\t"name": "user-project"\n}\n';
+			const hash = await hashContent(content);
+			const path = "package.json";
+			const artifactId = "project:surface:rootPackageJson";
+			await writeText(join(directory, path), content);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					baseContents: { [artifactId]: content },
+					lockfile: {
+						artifacts: {
+							[artifactId]: {
+								base: {
+									hash,
+									mergeKind: "json",
+									semanticsVersion: 1,
+								},
+								definitionIds: ["root"],
+								hash,
+								kind: "surface",
+								path,
+							},
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe(content);
+			await expect(
+				Effect.runPromise(
+					State.readBase(directory, hash).pipe(Effect.provide(coreLayer)),
+				),
+			).resolves.toBe(content);
+		});
+	});
+
 	it("refuses writes whose paths escape the project root", async () => {
 		await withTempDir("apply-write-escape", async (scratch) => {
 			const projectRoot = join(scratch, "project");
@@ -182,37 +223,76 @@ describe("apply", () => {
 	it("creates a missing .env", async () => {
 		await withTempDir("apply-create-env", async (directory) => {
 			const content = 'AUTH_SECRET="generated"\n';
+			const hash = await hashContent(content);
+			const artifact = {
+				definitionIds: ["better-auth"],
+				hash,
+				kind: "surface",
+				path: ".env",
+			} satisfies LockfileArtifact;
 
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
-					lockfile: { artifacts: {} },
+					lockfile: {
+						artifacts: { "project:surface:rootEnv": artifact },
+					},
 					manifest: { config: {}, installs: [], modules: {} },
 					removals: [],
-					writes: [{ content, path: ".env" }],
+					writes: [
+						{
+							artifactId: "project:surface:rootEnv",
+							content,
+							path: ".env",
+						},
+					],
 				}).pipe(Effect.provide(coreLayer)),
 			);
 
 			expect(await readFile(join(directory, ".env"), "utf-8")).toBe(content);
+			const lockfile = await Effect.runPromise(
+				State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
+			);
+			expect(lockfile.artifacts["project:surface:rootEnv"]).toEqual(artifact);
 		});
 	});
 
 	it("leaves an existing .env unchanged", async () => {
 		await withTempDir("apply-user-owned-env", async (directory) => {
 			const userContent = 'AUTH_SECRET="user-secret"\n';
+			const generatedContent = 'AUTH_SECRET="generated"\n';
 			await writeText(join(directory, ".env"), userContent);
 
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
-					lockfile: { artifacts: {} },
+					lockfile: {
+						artifacts: {
+							"project:surface:rootEnv": {
+								definitionIds: ["better-auth"],
+								hash: await hashContent(generatedContent),
+								kind: "surface",
+								path: ".env",
+							},
+						},
+					},
 					manifest: { config: {}, installs: [], modules: {} },
 					removals: [],
-					writes: [{ content: 'AUTH_SECRET="generated"\n', path: ".env" }],
+					writes: [
+						{
+							artifactId: "project:surface:rootEnv",
+							content: generatedContent,
+							path: ".env",
+						},
+					],
 				}).pipe(Effect.provide(coreLayer)),
 			);
 
 			expect(await readFile(join(directory, ".env"), "utf-8")).toBe(
 				userContent,
 			);
+			const lockfile = await Effect.runPromise(
+				State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
+			);
+			expect(lockfile.artifacts).toEqual({});
 		});
 	});
 
@@ -2897,6 +2977,84 @@ describe("apply", () => {
 		});
 	});
 
+	it("requires accept-forge to remove an unchanged adopted artifact", async () => {
+		await withTempDir("apply-remove-adopted", async (directory) => {
+			const path = "commitlint.config.ts";
+			const content = "export default { rules: {} };\n";
+			const hash = await hashContent(content);
+			await writeText(join(directory, path), content);
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					yield* State.writeBase(directory, hash, content);
+					yield* State.writeLockfile(directory, {
+						artifacts: {
+							commitlint: {
+								base: {
+									hash,
+									mergeKind: "opaque",
+									origin: "adopted",
+									semanticsVersion: 1,
+								},
+								definitionIds: ["commitlint"],
+								hash,
+								kind: "file",
+								path,
+							},
+						},
+					});
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const resolutionPolicies: ReadonlyArray<"refuse" | "keep-user"> = [
+				"refuse",
+				"keep-user",
+			];
+			for (const resolutionPolicy of resolutionPolicies) {
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(
+							directory,
+							{
+								lockfile: { artifacts: {} },
+								manifest: { config: {}, installs: [], modules: {} },
+								removals: [path],
+								writes: [],
+							},
+							{ resolutionPolicy },
+						).pipe(Effect.provide(coreLayer)),
+					),
+				);
+
+				expect(error).toMatchObject({
+					message: "Managed File Modified",
+					path,
+					preflight: { hasManagedRemovals: true },
+				});
+				if (!(error instanceof ApplyError))
+					throw new Error("Expected ApplyError");
+				expect(formatApplyError(error)).toContain(
+					"Run again with --accept-forge to remove",
+				);
+				expect(formatApplyError(error)).not.toContain("--keep-user");
+				expect(await readFile(join(directory, path), "utf-8")).toBe(content);
+			}
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [path],
+						writes: [],
+					},
+					{ resolutionPolicy: "accept-forge" },
+				).pipe(Effect.provide(coreLayer)),
+			);
+			expect(await pathExists(join(directory, path))).toBe(false);
+		});
+	});
+
 	it("refuses keep-user removal of a modified opaque artifact", async () => {
 		await withTempDir("apply-keep-user-remove", async (directory) => {
 			const path = "opaque.txt";
@@ -3413,6 +3571,109 @@ describe("apply", () => {
 			expect(
 				await readFile(join(directory, "apps/web/forge.json"), "utf-8"),
 			).toBe('{\n\t"id": "abcde",\n\t"slots": {}\n}\n');
+		});
+	});
+
+	it("adopts an identical unmanaged module marker", async () => {
+		await withTempDir("apply-adopt-marker", async (directory) => {
+			const path = "apps/web/forge.json";
+			const content = '{\n\t"id": "abcde",\n\t"slots": {}\n}\n';
+			const hash = await hashContent(content);
+			await writeText(join(directory, path), content);
+			const nodeLayer = NodeContext.layer;
+			const fileSystemLayer = Layer.effect(
+				FileSystem.FileSystem,
+				Effect.map(FileSystem.FileSystem, (fileSystem) => ({
+					...fileSystem,
+					rename: (oldPath, newPath) =>
+						newPath.endsWith(`/${path}`)
+							? Effect.fail(
+									new PlatformError.SystemError({
+										method: "rename",
+										module: "FileSystem",
+										pathOrDescriptor: newPath,
+										reason: "PermissionDenied",
+									}),
+								)
+							: fileSystem.rename(oldPath, newPath),
+				})),
+			).pipe(Layer.provide(nodeLayer));
+			const noMarkerWriteLayer = Layer.mergeAll(
+				Apply.Default,
+				State.Default,
+			).pipe(Layer.provide(fileSystemLayer));
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: {
+						artifacts: {
+							"module:abcde:file:forge.json": {
+								definitionIds: ["nextjs/base"],
+								hash,
+								kind: "file",
+								path,
+							},
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [
+						{
+							artifactId: "module:abcde:file:forge.json",
+							content,
+							path,
+						},
+					],
+				}).pipe(Effect.provide(noMarkerWriteLayer)),
+			);
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe(content);
+			expect(
+				await readJson<Lockfile>(join(directory, ".forge/lock.json")),
+			).toMatchObject({
+				artifacts: { "module:abcde:file:forge.json": { hash } },
+			});
+		});
+	});
+
+	it("refuses a differing unmanaged module marker", async () => {
+		await withTempDir("apply-refuse-marker", async (directory) => {
+			const path = "apps/web/forge.json";
+			const userContent = '{\n\t"user": true\n}\n';
+			const forgeContent = '{\n\t"id": "abcde",\n\t"slots": {}\n}\n';
+			await writeText(join(directory, path), userContent);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, {
+						lockfile: {
+							artifacts: {
+								"module:abcde:file:forge.json": {
+									definitionIds: ["nextjs/base"],
+									hash: await hashContent(forgeContent),
+									kind: "file",
+									path,
+								},
+							},
+						},
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [
+							{
+								artifactId: "module:abcde:file:forge.json",
+								content: forgeContent,
+								path,
+							},
+						],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				message: "Unmanaged File Exists",
+				path,
+			});
+			expect(await readFile(join(directory, path), "utf-8")).toBe(userContent);
 		});
 	});
 

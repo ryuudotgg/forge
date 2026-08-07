@@ -111,6 +111,7 @@ function normalizeInstalls(
 async function expectMatchingProjects(
 	actualRoot: string,
 	expectedRoot: string,
+	options: { readonly skippedUserEnv?: boolean } = {},
 ) {
 	const [actualFiles, expectedFiles] = await Promise.all([
 		listProjectFiles(actualRoot),
@@ -174,11 +175,24 @@ async function expectMatchingProjects(
 	}) =>
 		Object.values(lockfile.artifacts)
 			.map((artifact) => artifact.path)
+			.filter((path) => !options.skippedUserEnv || path !== ".env")
 			.sort();
 
 	expect(artifactPaths(actualLockfile)).toEqual(
 		artifactPaths(expectedLockfile),
 	);
+	if (options.skippedUserEnv) {
+		expect(
+			Object.values(actualLockfile.artifacts).some(
+				(artifact) => artifact.path === ".env",
+			),
+		).toBe(false);
+		expect(
+			Object.values(expectedLockfile.artifacts).some(
+				(artifact) => artifact.path === ".env",
+			),
+		).toBe(true);
+	}
 }
 
 describe("add", () => {
@@ -440,6 +454,7 @@ describe("add", () => {
 			await expectMatchingProjects(
 				workspace.projectRoot,
 				join(workspace.workspaceRoot, "expected"),
+				{ skippedUserEnv: true },
 			);
 		});
 	}, 240_000);

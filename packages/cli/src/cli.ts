@@ -215,6 +215,21 @@ export const options = {
 		type: "boolean",
 		description: "Take Forge's values when resolving conflicts.",
 	},
+
+	"dry-run": {
+		type: "boolean",
+		description: "Preview adoption without writing files.",
+	},
+
+	reconcile: {
+		type: "boolean",
+		description: "Reconcile the project immediately after adoption.",
+	},
+
+	yes: {
+		type: "boolean",
+		description: "Accept detected defaults and proposed module mappings.",
+	},
 } as const satisfies Record<string, CLIOption>;
 
 export const sections: CLISection[] = [
@@ -251,6 +266,10 @@ export const sections: CLISection[] = [
 	{
 		title: "forge list/info options",
 		keys: ["kind", "json"],
+	},
+	{
+		title: "forge init options",
+		keys: ["dry-run", "reconcile", "yes"],
 	},
 	{
 		title: "forge add/remove/update options",
