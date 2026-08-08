@@ -1,6 +1,7 @@
 import { isCancel, log, select } from "@clack/prompts";
 import { checkPackageManager, packageManagers } from "@ryuujs/core";
 import { Either, Schema } from "effect";
+import { runCliEffectValue } from "../../runtime";
 import { cancel } from "../../utils/cancel";
 import { defineStep, type PartialConfig } from "../types";
 
@@ -35,11 +36,11 @@ const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
 
 	shouldRun: () => true,
 
-	validate(value) {
+	async validate(value) {
 		const result = Schema.decodeUnknownEither(packageManagerSchema)(value);
 		if (Either.isLeft(result)) return;
 
-		const check = checkPackageManager(result.right);
+		const check = await runCliEffectValue(checkPackageManager(result.right));
 		if (!check.ok) {
 			log.error(check.message);
 			process.exit(1);
@@ -50,7 +51,7 @@ const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
 		const smartDefault = getSmartDefault(config.runtime);
 
 		if (!interactive) {
-			const check = checkPackageManager(smartDefault);
+			const check = await runCliEffectValue(checkPackageManager(smartDefault));
 			if (!check.ok) {
 				log.error(check.message);
 				process.exit(1);
@@ -69,7 +70,7 @@ const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
 
 		if (isCancel(packageManager)) cancel();
 
-		const check = checkPackageManager(packageManager);
+		const check = await runCliEffectValue(checkPackageManager(packageManager));
 		if (!check.ok) {
 			log.error(check.message);
 			process.exit(1);

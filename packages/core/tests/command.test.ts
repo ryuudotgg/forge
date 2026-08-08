@@ -1,29 +1,22 @@
 import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
-import { Effect } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { Effect, Layer } from "effect";
+import { describe, expect, it } from "vitest";
 import { CommandProbe, readPersistedCommandVersions } from "../src/command";
+import { Subprocess } from "../src/subprocess";
 import { withTempDir, writeJson, writeText } from "./harness";
 
-vi.mock("node:child_process", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("node:child_process")>();
-	return {
-		...actual,
-		execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
-			if (args[0] === "forge-test-non-error-4242") {
-				throw "plain failure string";
-			}
-			return actual.execFileSync(...args);
-		},
-	};
-});
+const subprocessLayer = Subprocess.Default.pipe(
+	Layer.provide(NodeContext.layer),
+);
+const commandLayer = CommandProbe.Default.pipe(Layer.provide(subprocessLayer));
 
 describe("CommandProbe", () => {
 	it("maps a missing binary to a CommandProbeError", async () => {
 		const error = await Effect.runPromise(
 			CommandProbe.readVersion("forge-test-missing-binary-4242").pipe(
 				Effect.flip,
-				Effect.provide(CommandProbe.Default),
+				Effect.provide(commandLayer),
 			),
 		);
 
@@ -33,17 +26,14 @@ describe("CommandProbe", () => {
 		expect(error.detail.length).toBeGreaterThan(0);
 	});
 
-	it("maps a non-Error failure to a CommandProbeError", async () => {
-		const error = await Effect.runPromise(
-			CommandProbe.readVersion("forge-test-non-error-4242").pipe(
-				Effect.flip,
-				Effect.provide(CommandProbe.Default),
+	it("reads and normalizes a command version asynchronously", async () => {
+		const version = await Effect.runPromise(
+			CommandProbe.readVersion(process.execPath).pipe(
+				Effect.provide(commandLayer),
 			),
 		);
 
-		expect(error._tag).toBe("CommandProbeError");
-		expect(error.command).toBe("forge-test-non-error-4242");
-		expect(error.detail).toBe("plain failure string");
+		expect(version).toBe(process.versions.node);
 	});
 });
 

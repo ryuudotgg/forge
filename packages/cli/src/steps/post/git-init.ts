@@ -1,5 +1,5 @@
 import { confirm, isCancel, log, text } from "@clack/prompts";
-import { Command } from "@effect/platform";
+import { LONG_RUNNING_TIMEOUT_MS, Subprocess } from "@ryuujs/core";
 import { Cause, Effect, Exit, Option } from "effect";
 import { runCliEffect } from "../../runtime";
 import { cancel } from "../../utils/cancel";
@@ -9,21 +9,20 @@ const DEFAULT_MESSAGE = "chore: initialize repository via forge";
 
 function gitInit(dir: string, message: string) {
 	return Effect.gen(function* () {
-		yield* Command.string(
-			Command.make("git", "init").pipe(Command.workingDirectory(dir)),
-		);
+		const runGit = (args: ReadonlyArray<string>) =>
+			Subprocess.run({
+				command: "git",
+				args,
+				cwd: dir,
+				timeoutMs: LONG_RUNNING_TIMEOUT_MS,
+				outputMode: "capture",
+			});
 
-		yield* Command.string(
-			Command.make("git", "add", "-A").pipe(Command.workingDirectory(dir)),
-		);
+		yield* runGit(["init"]);
+		yield* runGit(["add", "-A"]);
 
-		const sha = yield* Command.string(
-			Command.make("git", "commit", "-m", message).pipe(
-				Command.workingDirectory(dir),
-			),
-		);
-
-		return sha.trim();
+		const commit = yield* runGit(["commit", "-m", message]);
+		return commit.output.trim();
 	});
 }
 

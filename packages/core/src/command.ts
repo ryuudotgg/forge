@@ -1,7 +1,11 @@
-import { execFileSync } from "node:child_process";
 import { FileSystem } from "@effect/platform";
 import { Effect, Either, Option, Schema } from "effect";
 import { CommandProbeError } from "./errors";
+import {
+	PROBE_MAX_OUTPUT_BYTES,
+	PROBE_TIMEOUT_MS,
+	Subprocess,
+} from "./subprocess";
 
 const PersistedPackageJsonSchema = Schema.parseJson(
 	Schema.Struct({
@@ -17,23 +21,30 @@ export class CommandProbe extends Effect.Service<CommandProbe>()(
 	{
 		accessors: true,
 		effect: Effect.gen(function* () {
+			const subprocess = yield* Subprocess;
 			const readVersion = Effect.fn("CommandProbe.readVersion")(function* (
 				command: string,
 			) {
-				return yield* Effect.try({
-					try: () =>
-						execFileSync(command, ["--version"], { encoding: "utf-8" })
-							.trim()
-							.replace(/^v/, ""),
-
-					catch: (error) =>
-						new CommandProbeError({
-							command,
-							reason: "probe-failed",
-							detail: error instanceof Error ? error.message : String(error),
-							cause: error,
-						}),
-				});
+				return yield* subprocess
+					.run({
+						command,
+						args: ["--version"],
+						timeoutMs: PROBE_TIMEOUT_MS,
+						maxOutputBytes: PROBE_MAX_OUTPUT_BYTES,
+						outputMode: "capture",
+					})
+					.pipe(
+						Effect.map((result) => result.output.trim().replace(/^v/, "")),
+						Effect.mapError(
+							(error) =>
+								new CommandProbeError({
+									command,
+									reason: "probe-failed",
+									detail: error.message,
+									cause: error,
+								}),
+						),
+					);
 			});
 
 			return { readVersion };

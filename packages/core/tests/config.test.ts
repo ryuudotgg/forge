@@ -43,7 +43,10 @@ function configLayerWithFileSystem(
 		Effect.map(FileSystem.FileSystem, transform),
 	).pipe(Layer.provide(NodeContext.layer));
 
-	return CoreLive.pipe(Layer.provideMerge(fileSystemLayer));
+	return CoreLive.pipe(
+		Layer.provideMerge(fileSystemLayer),
+		Layer.provideMerge(NodeContext.layer),
+	);
 }
 
 function appConfig(id: string) {
@@ -404,7 +407,7 @@ describe("command probe", () => {
 	it("maps a missing command to a typed probe error", async () => {
 		const error = await failure(
 			CommandProbe.readVersion("forge-test-nonexistent-cmd-xyz").pipe(
-				Effect.provide(CommandProbe.Default),
+				Effect.provide(projectLayer),
 			),
 		);
 
