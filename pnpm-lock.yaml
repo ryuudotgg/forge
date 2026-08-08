@@ -33,8 +33,8 @@ catalogs:
       specifier: ^0.108.1
       version: 0.108.1
     '@effect/tsgo':
-      specifier: ^0.33.0
-      version: 0.33.0
+      specifier: ^0.34.0
+      version: 0.34.0
     effect:
       specifier: ^3.22.1
       version: 3.22.1
@@ -158,7 +158,7 @@ importers:
     devDependencies:
       '@effect/tsgo':
         specifier: catalog:effect
-        version: 0.33.0
+        version: 0.34.0
       '@ryuujs/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
@@ -195,7 +195,7 @@ importers:
         version: 0.108.1(@effect/cluster@0.60.2(@effect/platform@0.97.1(effect@3.22.1))(@effect/rpc@0.76.2(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(@effect/platform@0.97.1(effect@3.22.1))(@effect/rpc@0.76.2(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(effect@3.22.1))(effect@3.22.1))(@effect/platform@0.97.1(effect@3.22.1))(@effect/rpc@0.76.2(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(effect@3.22.1)
       '@effect/tsgo':
         specifier: catalog:effect
-        version: 0.33.0
+        version: 0.34.0
       '@ryuujs/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
@@ -487,43 +487,43 @@ packages:
       '@effect/platform': ^0.97.1
       effect: ^3.22.1
 
-  '@effect/tsgo-darwin-arm64@0.33.0':
-    resolution: {integrity: sha512-L2dBd2d+mORd4+v1c43AW7fRkxrO6CNM7ROc7dfy4jqB/3Oeq/PxNIbvnC+k0ST/xWsol2K/j+yg9wHYN8qSZw==}
+  '@effect/tsgo-darwin-arm64@0.34.0':
+    resolution: {integrity: sha512-PuFlXaZQpUQWIhX7/u83rUGvBhO5PDqnS+7Nk628sKaRjacz5e+237qbhUqCZ3nBftQ+XjbEYnRIiVnJeJTwOw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@effect/tsgo-darwin-x64@0.33.0':
-    resolution: {integrity: sha512-W8ebnRhbIeOPvL5E3Vnrv8xwOVEcIcT3+p4QpzUGA37pE0JgkM05RgcZYdoLdwiFVnPkKYMN6L+iZmvWz4sIMA==}
+  '@effect/tsgo-darwin-x64@0.34.0':
+    resolution: {integrity: sha512-UlR5wy7eYaYCoiUrIoQd4iW5fl/gRszfTouCzHHGTKWm333FZHFKRdLAdfKlSWqQSFj5il4HYI9VcadH/l4uEA==}
     cpu: [x64]
     os: [darwin]
 
-  '@effect/tsgo-linux-arm64@0.33.0':
-    resolution: {integrity: sha512-9O3kscD8zQZtNqo9Hj4uYlQh38cg+r8yDvCHUY5eZuhBEPnTflZpu5y5RmIC9FdPso5/ycd5KEtjRRwOJMQfzg==}
+  '@effect/tsgo-linux-arm64@0.34.0':
+    resolution: {integrity: sha512-wIVIq1RQyTfzjs26n4Cz42sKSzexeHcgyRoFIJhQ6+/88655LCDaKaMo4UXMCds11eCRtZa4++RYZ20OkUY+Yg==}
     cpu: [arm64]
     os: [linux]
 
-  '@effect/tsgo-linux-arm@0.33.0':
-    resolution: {integrity: sha512-pN8jLPLH1D/Jag1DkyYeVfzZDQL8AVmRBZ8KnUHTnTQvyFKNBp6XrJBX+Q/Rb4YO3IJP2ycu3aNUgXoCoMFfiw==}
+  '@effect/tsgo-linux-arm@0.34.0':
+    resolution: {integrity: sha512-ipXkBIlBD6a4u9EjLgnLUvraX70vf4YiD6VU4VIF1V4f1KIqkS5S6CPuprK4vI+p1VgWDECfIdfxRovfAaiJaQ==}
     cpu: [arm]
     os: [linux]
 
-  '@effect/tsgo-linux-x64@0.33.0':
-    resolution: {integrity: sha512-KQyNIL/VAmGfRpJIdcuKn8SxVtj1T+X2uSl3qFH33tN3xQN5n2Pu0tOpRIw7Xw4Tij7wByMXYgvPUwOKDpI/Aw==}
+  '@effect/tsgo-linux-x64@0.34.0':
+    resolution: {integrity: sha512-psACSGLhLDFhIOt921BUtw+u8BnUzZO8f2ihxmdRA8nGHX4gQ6Ad/bzVBNVzaVLtYwVfjEtgdNZ29iHUx3a0ng==}
     cpu: [x64]
     os: [linux]
 
-  '@effect/tsgo-win32-arm64@0.33.0':
-    resolution: {integrity: sha512-6i/LXjV/KkBrv+97q5g8+iiOCaJ2epqGZ60aUreF/s7IeV6MdXzOocA5v2QJblFLhss26T8IyzHIeXvVgmYC8w==}
+  '@effect/tsgo-win32-arm64@0.34.0':
+    resolution: {integrity: sha512-CTGVt4wHNxtaQWgznKJ3WWLd6daHHIlLvXOXxWGTKk1KjuHNpJyPHlMTa0ILE2q53ezZMjATtvPxXqBh5LIryQ==}
     cpu: [arm64]
     os: [win32]
 
-  '@effect/tsgo-win32-x64@0.33.0':
-    resolution: {integrity: sha512-k9oWfXHOxLjWp3UYQ81MzJyXB+U5PPx6xenEXX2w2a+85PvJd0fiT1TqE2X9CmUzDN49mvqHAIdBEUP8lChkrw==}
+  '@effect/tsgo-win32-x64@0.34.0':
+    resolution: {integrity: sha512-wWVG8MQEHSpIYMBBS+uMSsqUTyf1ytIGu9MKbvyNfEowNubhmS7ET6s2nrFrLwk5+ffvfUTWQOFYxxmIAPHoOw==}
     cpu: [x64]
     os: [win32]
 
-  '@effect/tsgo@0.33.0':
-    resolution: {integrity: sha512-08RZaL/eoqbUv4CaRor8rN/qfYFyDKAAnSJze24LcCGVoNFYlQS+/I+LEfDFiDa3jQBPfUv9aUT/qMx8Bd/p5w==}
+  '@effect/tsgo@0.34.0':
+    resolution: {integrity: sha512-HtIgpWgjn6UePPcwtxYO2MHrnYT27tGdtcB7aLn4WNwjvuZZQqodYH7CmMdqhJHVVM4PPGyJIhb4s0SfweskFQ==}
     hasBin: true
 
   '@effect/workflow@0.19.1':
@@ -2152,36 +2152,36 @@ snapshots:
       effect: 3.22.1
       uuid: 11.1.1
 
-  '@effect/tsgo-darwin-arm64@0.33.0':
+  '@effect/tsgo-darwin-arm64@0.34.0':
     optional: true
 
-  '@effect/tsgo-darwin-x64@0.33.0':
+  '@effect/tsgo-darwin-x64@0.34.0':
     optional: true
 
-  '@effect/tsgo-linux-arm64@0.33.0':
+  '@effect/tsgo-linux-arm64@0.34.0':
     optional: true
 
-  '@effect/tsgo-linux-arm@0.33.0':
+  '@effect/tsgo-linux-arm@0.34.0':
     optional: true
 
-  '@effect/tsgo-linux-x64@0.33.0':
+  '@effect/tsgo-linux-x64@0.34.0':
     optional: true
 
-  '@effect/tsgo-win32-arm64@0.33.0':
+  '@effect/tsgo-win32-arm64@0.34.0':
     optional: true
 
-  '@effect/tsgo-win32-x64@0.33.0':
+  '@effect/tsgo-win32-x64@0.34.0':
     optional: true
 
-  '@effect/tsgo@0.33.0':
+  '@effect/tsgo@0.34.0':
     optionalDependencies:
-      '@effect/tsgo-darwin-arm64': 0.33.0
-      '@effect/tsgo-darwin-x64': 0.33.0
-      '@effect/tsgo-linux-arm': 0.33.0
-      '@effect/tsgo-linux-arm64': 0.33.0
-      '@effect/tsgo-linux-x64': 0.33.0
-      '@effect/tsgo-win32-arm64': 0.33.0
-      '@effect/tsgo-win32-x64': 0.33.0
+      '@effect/tsgo-darwin-arm64': 0.34.0
+      '@effect/tsgo-darwin-x64': 0.34.0
+      '@effect/tsgo-linux-arm': 0.34.0
+      '@effect/tsgo-linux-arm64': 0.34.0
+      '@effect/tsgo-linux-x64': 0.34.0
+      '@effect/tsgo-win32-arm64': 0.34.0
+      '@effect/tsgo-win32-x64': 0.34.0
 
   '@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(@effect/platform@0.97.1(effect@3.22.1))(@effect/rpc@0.76.2(@effect/platform@0.97.1(effect@3.22.1))(effect@3.22.1))(effect@3.22.1)':
     dependencies:
