@@ -1608,27 +1608,26 @@ describe("add command", () => {
 		}
 	});
 
-	it("reports adapter support when the project framework is unsupported", async () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation(((
-			code?: string | number | null,
-		) => {
-			throw new Error(`exit:${code ?? 0}`);
-		}) as never);
+	it("adds tRPC to a React Router module", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ modules: [packageModule, reactRouterModule] }),
+		);
 
-		try {
-			lifecycleMocks.loadManagedProject.mockResolvedValue(
-				managedProject({ modules: [packageModule, reactRouterModule] }),
-			);
+		await runAdd("trpc", {});
 
-			await expect(runAdd("trpc", {})).rejects.toThrow("exit:1");
-
-			expect(promptMocks.logError).toHaveBeenCalledWith(
-				"tRPC does not support React Router yet.",
-			);
-			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
-		} finally {
-			exit.mockRestore();
-		}
+		expect(promptMocks.logError).not.toHaveBeenCalled();
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ rpc: "trpc", slug: "acme", web: "nextjs" },
+			[
+				{
+					definitionId: "trpc",
+					targets: [{ kind: "module", moduleId: reactRouterModule.id }],
+				},
+			],
+			undefined,
+			undefined,
+		);
 	});
 
 	it("shows a friendly error when the addon id is unknown", async () => {

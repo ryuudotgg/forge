@@ -151,6 +151,72 @@ describe("generate step", () => {
 		});
 	}, 120_000);
 
+	it("plans a full React Router project with registered resource routes", async () => {
+		await withTempDir("generate-react-router", async (directory) => {
+			const result = await generateStep.execute(
+				{
+					authentication: "better-auth",
+					database: "postgresql",
+					linter: "biome",
+					name: "Acme",
+					orm: "drizzle",
+					packageManager: "pnpm",
+					path: directory,
+					platforms: ["web"],
+					rpc: "trpc",
+					runtime: "Node.js",
+					slug: "acme",
+					style: "tailwind",
+					web: "react-router",
+				},
+				false,
+			);
+
+			expect(result).toBe(SKIP);
+
+			for (const path of [
+				"app/root.tsx",
+				"app/routes/home.tsx",
+				"app/routes/api.trpc.$.ts",
+				"app/routes/api.auth.$.ts",
+				"app/providers.tsx",
+				"app/routes.ts",
+				"react-router.config.ts",
+				"vite.config.ts",
+				"components.json",
+			])
+				expect(
+					await readFile(join(directory, "apps/web", path), "utf-8"),
+					path,
+				).not.toHaveLength(0);
+
+			const routes = await readFile(
+				join(directory, "apps/web/app/routes.ts"),
+				"utf-8",
+			);
+			expect(routes).toContain('route("api/trpc/*", "routes/api.trpc.$.ts")');
+			expect(routes).toContain('route("api/auth/*", "routes/api.auth.$.ts")');
+			expect(routes).not.toMatch(/__[A-Z_]+__/);
+
+			const authIndex = await readFile(
+				join(directory, "packages/auth/src/index.ts"),
+				"utf-8",
+			);
+			expect(authIndex).not.toContain("tanstackStartCookies");
+			expect(authIndex).not.toContain("nextCookies");
+
+			const manifest = await readJson(
+				join(directory, ".forge", "manifest.json"),
+			);
+			expect(manifest).toMatchObject({
+				config: expect.objectContaining({ web: "react-router" }),
+			});
+			expect(JSON.stringify(manifest)).toContain(
+				'"definitionIds":["react-router/base"]',
+			);
+		});
+	}, 120_000);
+
 	it("requires an orm before generating with better auth", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(((
 			code?: string | number | null,

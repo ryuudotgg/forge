@@ -1,9 +1,11 @@
 import { defineRegistry } from "@ryuujs/core";
 import trpc, { trpcMetadata } from "../api/trpc";
 import { trpcNextjsAdapter } from "../api/trpc/adapters/nextjs";
+import { trpcReactRouterAdapter } from "../api/trpc/adapters/react-router";
 import { trpcTanstackStartAdapter } from "../api/trpc/adapters/tanstack-start";
 import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
 import { betterAuthNextjsAdapter } from "../auth/better-auth/adapters/nextjs";
+import { betterAuthReactRouterAdapter } from "../auth/better-auth/adapters/react-router";
 import { betterAuthTanstackStartAdapter } from "../auth/better-auth/adapters/tanstack-start";
 import {
 	authenticationProviders,
@@ -17,6 +19,11 @@ import nextjsBaseTemplate, {
 	nextjsFramework,
 	nextjsFrameworkMetadata,
 } from "../frameworks/nextjs";
+import reactRouterBaseTemplate, {
+	reactRouterBaseTemplateMetadata,
+	reactRouterFramework,
+	reactRouterFrameworkMetadata,
+} from "../frameworks/react-router";
 import tanstackStartBaseTemplate, {
 	tanstackStartBaseTemplateMetadata,
 	tanstackStartFramework,
@@ -36,6 +43,7 @@ import vitest, { vitestMetadata } from "../tooling/vitest";
 import vscode, { vscodeMetadata } from "../tooling/vscode";
 import ui, { uiMetadata } from "../ui";
 import { uiNextjsAdapter } from "../ui/adapters/nextjs";
+import { uiReactRouterAdapter } from "../ui/adapters/react-router";
 import { uiTanstackStartAdapter } from "../ui/adapters/tanstack-start";
 import bun, { bunMetadata } from "../workspace/bun";
 import pnpm, { pnpmMetadata } from "../workspace/pnpm";
@@ -52,14 +60,21 @@ import {
 export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 	adapters: [
 		trpcNextjsAdapter,
+		trpcReactRouterAdapter,
 		trpcTanstackStartAdapter,
 		betterAuthNextjsAdapter,
+		betterAuthReactRouterAdapter,
 		betterAuthTanstackStartAdapter,
 		uiNextjsAdapter,
+		uiReactRouterAdapter,
 		uiTanstackStartAdapter,
 	],
-	frameworks: [nextjsFramework, tanstackStartFramework],
-	templates: [nextjsBaseTemplate, tanstackStartBaseTemplate],
+	frameworks: [nextjsFramework, reactRouterFramework, tanstackStartFramework],
+	templates: [
+		nextjsBaseTemplate,
+		reactRouterBaseTemplate,
+		tanstackStartBaseTemplate,
+	],
 	addons: [
 		root,
 		pnpm,
@@ -86,6 +101,11 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 export const firstPartyCatalog = [
 	frameworkCatalogEntry(nextjsFramework, nextjsFrameworkMetadata),
 	templateCatalogEntry(nextjsBaseTemplate, nextjsBaseTemplateMetadata),
+	frameworkCatalogEntry(reactRouterFramework, reactRouterFrameworkMetadata),
+	templateCatalogEntry(
+		reactRouterBaseTemplate,
+		reactRouterBaseTemplateMetadata,
+	),
 	frameworkCatalogEntry(tanstackStartFramework, tanstackStartFrameworkMetadata),
 	templateCatalogEntry(
 		tanstackStartBaseTemplate,

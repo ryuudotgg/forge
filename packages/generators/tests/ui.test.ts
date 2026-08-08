@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
 import { loadAddonDefinition, loadDefinitionRegistry } from "../src";
 import { nextjsFramework } from "../src/frameworks/nextjs";
+import { reactRouterFramework } from "../src/frameworks/react-router";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 import { plannedProject } from "./planner-harness";
 
@@ -16,7 +17,11 @@ const { addon } = loadAddonDefinition("ui");
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const framework =
-		config.web === "tanstack-start" ? tanstackStartFramework : nextjsFramework;
+		config.web === "tanstack-start"
+			? tanstackStartFramework
+			: config.web === "react-router"
+				? reactRouterFramework
+				: nextjsFramework;
 
 	const result = addon.contribute({
 		commandVersions: {},
@@ -35,7 +40,9 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const slots =
 		framework.id === "tanstack-start"
 			? { layout: "src/routes/__root.tsx" }
-			: { layout: "app/layout.tsx" };
+			: framework.id === "react-router"
+				? { layout: "app/root.tsx" }
+				: { layout: "app/layout.tsx" };
 
 	const module: AdapterModule = {
 		config: {
@@ -201,20 +208,26 @@ describe("ui addon", () => {
 		});
 	});
 
-	it("disables React Server Components for TanStack Start", () => {
-		const contributions = contributionsFor({
-			...baseConfig,
-			web: "tanstack-start",
-		});
-		const uiJson: unknown = JSON.parse(
-			leafFile(contributions, "ui", "components.json").content,
-		);
-		const appJson: unknown = JSON.parse(
-			leafFile(contributions, "web", "components.json").content,
-		);
+	it("disables React Server Components outside Next.js", () => {
+		const nonRscFrameworks: ReadonlyArray<"react-router" | "tanstack-start"> = [
+			"react-router",
+			"tanstack-start",
+		];
+		for (const web of nonRscFrameworks) {
+			const contributions = contributionsFor({ ...baseConfig, web });
+			const uiJson: unknown = JSON.parse(
+				leafFile(contributions, "ui", "components.json").content,
+			);
+			const appJson: unknown = JSON.parse(
+				leafFile(contributions, "web", "components.json").content,
+			);
 
-		expect(uiJson).toMatchObject({ rsc: false });
-		expect(appJson).toMatchObject({ rsc: false });
+			expect(uiJson).toMatchObject({ rsc: false });
+			expect(appJson).toMatchObject({
+				rsc: false,
+				aliases: { components: "@/components", hooks: "@/hooks", lib: "@/lib" },
+			});
+		}
 	});
 
 	it("flips to the radix style and drops the base-ui dependency", () => {
@@ -296,6 +309,20 @@ describe("ui addon", () => {
 			dependencyEntries(tanstackWithTailwind, "web").map(({ name }) => name),
 		).not.toContain("@tailwindcss/postcss");
 
+		const reactRouterWithTailwind = contributionsFor({
+			...baseConfig,
+			web: "react-router",
+		});
+		expect(dependencyEntries(reactRouterWithTailwind, "web")).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ name: "tailwindcss" }),
+				expect.objectContaining({ name: "@tailwindcss/vite" }),
+			]),
+		);
+		expect(
+			dependencyEntries(reactRouterWithTailwind, "web").map(({ name }) => name),
+		).not.toContain("@tailwindcss/postcss");
+
 		const ensure = must(
 			withTailwind.find(byTag("EnsureModuleContribution")),
 			"ui module",
@@ -366,6 +393,16 @@ describe("ui addon", () => {
 			"ui module",
 		);
 		expect(ensure.module.slots).not.toHaveProperty("postcssConfig");
+
+		const reactRouter = contributionsFor({
+			...baseConfig,
+			web: "react-router",
+		});
+		expect(
+			reactRouter
+				.filter(byTag("LeafTextFileContribution"))
+				.filter((entry) => entry.path === "postcss.config.mjs"),
+		).toEqual([]);
 	});
 
 	it("shapes the ui package exports and the shadcn add script per package manager", () => {
@@ -425,6 +462,12 @@ describe("ui addon", () => {
 		expect(
 			await exportsOrder({ ...baseConfig, web: "tanstack-start" }),
 		).toEqual(["./globals.css", "./hooks/*", "./lib/*", "./*"]);
+		expect(await exportsOrder({ ...baseConfig, web: "react-router" })).toEqual([
+			"./globals.css",
+			"./hooks/*",
+			"./lib/*",
+			"./*",
+		]);
 	});
 
 	it("renders every leaf template with placeholders interpolated", () => {

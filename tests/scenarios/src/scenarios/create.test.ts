@@ -121,6 +121,49 @@ describe("create", () => {
 		});
 	}, 240_000);
 
+	it("creates a React Router workspace at its framework slot paths", async () => {
+		await withScenarioWorkspace("create-react-router", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				database: "postgresql",
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "react-router",
+			});
+
+			for (const path of [
+				"app/root.tsx",
+				"app/routes/home.tsx",
+				"app/routes/api.trpc.$.ts",
+				"app/routes/api.auth.$.ts",
+				"app/routes.ts",
+				"react-router.config.ts",
+				"vite.config.ts",
+			])
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/web", path)),
+					path,
+				).toBe(true);
+
+			const appConfig = await readJson<{
+				framework: string;
+				slots: Record<string, string>;
+			}>(join(workspace.projectRoot, "apps/web/forge.json"));
+			expect(appConfig).toMatchObject({
+				framework: "react-router",
+				slots: {
+					auth: "app/routes/api.auth.$.ts",
+					layout: "app/root.tsx",
+					page: "app/routes/home.tsx",
+					trpc: "app/routes/api.trpc.$.ts",
+				},
+			});
+		});
+	}, 240_000);
+
 	it("rejects better auth configs without an orm before generating anything", async () => {
 		await withScenarioWorkspace("create-auth-no-orm", async (workspace) => {
 			await expect(

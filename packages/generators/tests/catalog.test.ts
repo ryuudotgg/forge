@@ -51,12 +51,13 @@ describe("catalog", () => {
 
 		expect(frameworks.map((entry) => entry.id)).toEqual([
 			"nextjs",
-			"tanstack-start",
 			"react-router",
+			"tanstack-start",
 			"tanstack-router",
 		]);
 		expect(templates.map((entry) => entry.id)).toEqual([
 			"nextjs/base",
+			"react-router/base",
 			"tanstack-start/base",
 		]);
 		expect(addons.every((entry) => entry.kind === "addon")).toBe(true);
@@ -93,7 +94,7 @@ describe("catalog", () => {
 	});
 
 	it("derives adapter addon frameworks and slots from the registry", async () => {
-		const expectedFrameworks = ["nextjs", "tanstack-start"];
+		const expectedFrameworks = ["nextjs", "react-router", "tanstack-start"];
 
 		expect(await getCatalogEntry("trpc")).toMatchObject({
 			frameworks: expectedFrameworks,

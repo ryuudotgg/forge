@@ -19,6 +19,7 @@ const trpc = defineAddon<ForgeConfig, "trpc">({
 	exclusive: false,
 	dependencies: [
 		{ id: "nextjs/base", type: "template" },
+		{ id: "react-router/base", type: "template" },
 		{ id: "tanstack-start/base", type: "template" },
 		{ id: "typescript", type: "addon" },
 	],

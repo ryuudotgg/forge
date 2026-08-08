@@ -98,7 +98,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		});
 	}, 600_000);
 
-	// The framework dimension gets one pnpm-only acceptance case; the
+	// Each framework addition gets one pnpm-only acceptance case; the
 	// package-manager matrix remains Next.js-only to keep smoke cost bounded.
 	it("installs, builds, and typechecks a full TanStack Start project", async () => {
 		await withScenarioWorkspace("smoke-tanstack-start", async (workspace) => {
@@ -111,6 +111,23 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				rpc: "trpc",
 				style: "tailwind",
 				web: "tanstack-start",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+		});
+	}, 600_000);
+
+	it("installs, builds, and typechecks a full React Router project", async () => {
+		await withScenarioWorkspace("smoke-react-router", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				database: "postgresql",
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "react-router",
 			});
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");

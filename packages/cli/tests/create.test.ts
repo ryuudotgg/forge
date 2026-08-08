@@ -132,6 +132,25 @@ describe("create command", () => {
 		});
 	});
 
+	it("passes React Router through from a config file", async () => {
+		await withTempDir("create-react-router", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+
+			await writeFile(
+				configPath,
+				JSON.stringify({ name: "Acme", web: "react-router" }),
+				"utf-8",
+			);
+
+			await runCreate({ config: configPath });
+
+			expect(orchestratorMocks.orchestrate).toHaveBeenCalledWith(steps, {
+				initialConfig: { name: "Acme", web: "react-router" },
+				interactive: false,
+			});
+		});
+	});
+
 	it("logs a helpful error when the preset is unknown", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(((
 			code?: string | number | null,

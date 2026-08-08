@@ -26,6 +26,7 @@ import {
 	typescript,
 } from "../src";
 import { nextjsFramework } from "../src/frameworks/nextjs";
+import { reactRouterFramework } from "../src/frameworks/react-router";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 import { readTemplate } from "../src/template";
 import { versions } from "../src/versions";
@@ -176,7 +177,9 @@ function betterAuthContributions(
 			auth:
 				framework.id === "tanstack-start"
 					? "src/routes/api/auth/$.ts"
-					: "app/api/auth/[...all]/route.ts",
+					: framework.id === "react-router"
+						? "app/routes/api.auth.$.ts"
+						: "app/api/auth/[...all]/route.ts",
 		}),
 	];
 }
@@ -359,10 +362,45 @@ describe("better-auth addon", () => {
 		}
 	});
 
-	it("declares both framework base templates as dependency alternatives", () => {
+	it("renders React Router handlers without a framework cookie plugin", () => {
+		const authOrms: ReadonlyArray<"drizzle" | "prisma"> = ["drizzle", "prisma"];
+
+		for (const orm of authOrms) {
+			const contributions = betterAuthContributions(
+				{
+					authentication: "better-auth",
+					database: "postgresql",
+					orm,
+					slug: "acme",
+					web: "react-router",
+				},
+				reactRouterFramework,
+			);
+			const index = leafFile(contributions, "src/index.ts");
+			expect(index.content, orm).not.toContain("tanstackStartCookies");
+			expect(index.content, orm).not.toContain("nextCookies");
+			expect(index.content, orm).not.toContain("plugins:");
+
+			const route = ofTag(contributions, "LeafTextFileContribution").find(
+				(contribution) =>
+					typeof contribution.path !== "string" &&
+					contribution.path.slot === "auth",
+			);
+			if (!route) throw new Error("Missing Leaf File: auth slot");
+
+			expect(route.content, orm).toContain(
+				'import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";',
+			);
+			expect(route.content, orm).toContain("return auth.handler(request);");
+			expect(route.content, orm).not.toContain("createFileRoute");
+		}
+	});
+
+	it("declares all framework base templates as dependency alternatives", () => {
 		expect(betterAuth.dependencies).toEqual(
 			expect.arrayContaining([
 				{ id: "nextjs/base", type: "template" },
+				{ id: "react-router/base", type: "template" },
 				{ id: "tanstack-start/base", type: "template" },
 			]),
 		);

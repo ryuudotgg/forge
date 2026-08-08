@@ -62,7 +62,7 @@ describe("assembleSchema", () => {
 		expect(Either.isRight(result)).toBe(true);
 	});
 
-	it("rejects unavailable web frameworks with a friendly sentence", () => {
+	it("accepts React Router in a complete create config", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
@@ -71,8 +71,23 @@ describe("assembleSchema", () => {
 			web: "react-router",
 		});
 
+		expect(Either.getOrThrow(result)).toMatchObject({
+			platforms: ["web"],
+			web: "react-router",
+		});
+	});
+
+	it("rejects unavailable web frameworks with a friendly sentence", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			path: "./acme",
+			platforms: ["web"],
+			web: "tanstack-router",
+		});
+
 		expect(decodeMessages(result)).toContain(
-			"We don't support React Router yet.",
+			"We don't support TanStack Router yet.",
 		);
 	});
 

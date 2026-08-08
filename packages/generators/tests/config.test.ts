@@ -67,7 +67,11 @@ describe("generator config choices", () => {
 	it("marks roadmap-gated choices as unavailable", () => {
 		expect(platforms.availableIds).toEqual(["web"]);
 		expect(platforms.available("desktop")).toBe(false);
-		expect(webFrameworks.availableIds).toEqual(["nextjs", "tanstack-start"]);
+		expect(webFrameworks.availableIds).toEqual([
+			"nextjs",
+			"react-router",
+			"tanstack-start",
+		]);
 		expect(authenticationProviders.availableIds).toEqual(["better-auth"]);
 	});
 
