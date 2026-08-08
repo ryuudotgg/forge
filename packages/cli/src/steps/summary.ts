@@ -1,20 +1,13 @@
 import { note } from "@clack/prompts";
-import { NodeContext } from "@effect/platform-node";
-import {
-	CoreLive,
-	Planner,
-	packageManagerCommand,
-	runtimeCommand,
-} from "@ryuujs/core";
+import { Planner, packageManagerCommand, runtimeCommand } from "@ryuujs/core";
 import {
 	type ForgeConfig,
 	listVisibleAddons,
 	loadDefinitionRegistry,
 } from "@ryuujs/generators";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
+import { runCliEffect } from "../runtime";
 import { defineStep, SKIP } from "./types";
-
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 function formatLine(label: string, value: string) {
 	return `${label}: ${value}`;
@@ -65,26 +58,28 @@ const summaryStep = defineStep({
 			formatLine("Addons", addons.length > 0 ? addons.join(", ") : "None"),
 		];
 
-		try {
-			const plan = await Effect.runPromise(
-				Effect.gen(function* () {
-					const planner = yield* Planner;
-					return yield* planner.planCreate(
-						String(forgeConfig.path ?? "."),
-						forgeConfig,
-						loadedRegistry.registry,
-						summaryCommandVersions(forgeConfig),
-					);
-				}).pipe(Effect.provide(coreLayer)),
-			);
+		const planExit = await runCliEffect(
+			Effect.gen(function* () {
+				const planner = yield* Planner;
+				return yield* planner.planCreate(
+					String(forgeConfig.path ?? "."),
+					forgeConfig,
+					loadedRegistry.registry,
+					summaryCommandVersions(forgeConfig),
+				);
+			}),
+		);
 
+		if (Exit.isSuccess(planExit)) {
+			const plan = planExit.value;
 			const moduleRoots = Object.values(plan.manifest.modules)
 				.map((record) => record.root)
 				.filter((root): root is string => typeof root === "string");
 
 			if (moduleRoots.length > 0)
 				lines.push(formatLine("Modules", moduleRoots.join(", ")));
-		} catch {}
+		} else if (Option.isNone(Cause.failureOption(planExit.cause)))
+			console.error(Cause.squash(planExit.cause));
 
 		note(lines.join("\n"), "Forge Plan");
 		return SKIP;

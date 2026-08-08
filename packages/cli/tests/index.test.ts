@@ -8,6 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { Context, Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { isUnknownCommand, parseCliArgs } from "../src/cli";
 import {
@@ -16,6 +17,7 @@ import {
 	type SubcommandDef,
 } from "../src/commands/registry";
 import { isEntryPoint, runCli } from "../src/index";
+import { cliLayer, runCliEffect, withCliRuntime } from "../src/runtime";
 
 function parse(args: string[]) {
 	return parseCliArgs(args);
@@ -111,7 +113,58 @@ function command(
 	};
 }
 
+interface RuntimeProbeService {
+	readonly ready: true;
+}
+
+const RuntimeProbe = Context.GenericTag<RuntimeProbeService>("RuntimeProbe");
+
+function runtimeWithProbe(construct: () => void, dispose: () => void) {
+	const service = Layer.scoped(
+		RuntimeProbe,
+		Effect.acquireRelease(
+			Effect.sync(() => {
+				construct();
+				return { ready: true } satisfies RuntimeProbeService;
+			}),
+			() => Effect.sync(dispose),
+		),
+	);
+	const probe = Layer.effectDiscard(Effect.asVoid(RuntimeProbe)).pipe(
+		Layer.provide(service),
+	);
+
+	return ManagedRuntime.make(Layer.merge(cliLayer, probe));
+}
+
 describe("CLI entry dispatch", () => {
+	it("constructs services once and disposes them after a command", async () => {
+		const construct = vi.fn();
+		const dispose = vi.fn();
+		const runtime = runtimeWithProbe(construct, dispose);
+
+		await withCliRuntime(async () => {
+			await runCliEffect(Effect.void);
+			await runCliEffect(Effect.void);
+		}, runtime);
+
+		expect(construct).toHaveBeenCalledOnce();
+		expect(dispose).toHaveBeenCalledOnce();
+	});
+
+	it("disposes the runtime when a command throws", async () => {
+		const dispose = vi.fn();
+		const runtime = runtimeWithProbe(() => {}, dispose);
+
+		await expect(
+			withCliRuntime(async () => {
+				await runCliEffect(Effect.void);
+				throw new Error("prompt cancelled");
+			}, runtime),
+		).rejects.toThrow("prompt cancelled");
+		expect(dispose).toHaveBeenCalledOnce();
+	});
+
 	it("identifies an exact executable entry-point path", () => {
 		const directory = mkdtempSync(
 			join(realpathSync(tmpdir()), "forge-entrypoint-"),

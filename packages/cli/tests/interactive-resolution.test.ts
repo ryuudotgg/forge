@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { inspect } from "node:util";
 import {
 	ApplyError,
 	type ApplyPlan,
@@ -13,10 +14,8 @@ import {
 	isInteractiveLifecycleSession,
 	promptForConflictResolutions,
 } from "../src/commands/interactive-resolution";
-import {
-	applyLifecyclePlan,
-	failureFromCause,
-} from "../src/commands/lifecycle";
+import { applyLifecyclePlan } from "../src/commands/lifecycle";
+import { failureFromCause } from "../src/runtime";
 import { withTempDir, writeText } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
@@ -416,11 +415,48 @@ describe("interactive resolution", () => {
 		}
 	});
 
-	it("squashes defects from the apply effect", () => {
+	it("renders defects with a friendly sentence and the defect", () => {
 		const defect = new Error("apply defect");
+		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exit = vi
+			.spyOn(process, "exit")
+			.mockImplementation((code?: string | number | null): never => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
 
-		expect(() => failureFromCause(Cause.die(defect))).toThrow(defect);
-		expect(promptMocks.logError).not.toHaveBeenCalled();
+		try {
+			expect(() => failureFromCause(Cause.die(defect))).toThrow("exit:1");
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We couldn't complete this command because an unexpected error occurred.",
+			);
+			expect(stderr).toHaveBeenCalledWith(defect);
+		} finally {
+			exit.mockRestore();
+			stderr.mockRestore();
+		}
+	});
+
+	it("renders a defect cause chain to stderr", () => {
+		const source = new Error("source defect");
+		const defect = new Error("outer defect", { cause: source });
+		let rendered = "";
+		const stderr = vi.spyOn(console, "error").mockImplementation((value) => {
+			rendered += inspect(value);
+		});
+		const exit = vi
+			.spyOn(process, "exit")
+			.mockImplementation((code?: string | number | null): never => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+		try {
+			expect(() => failureFromCause(Cause.die(defect))).toThrow("exit:1");
+			expect(rendered).toContain("outer defect");
+			expect(rendered).toContain("source defect");
+		} finally {
+			exit.mockRestore();
+			stderr.mockRestore();
+		}
 	});
 
 	it("cancels mid-flow without changing the project", async () => {

@@ -10,13 +10,11 @@ import {
 	outro,
 } from "@clack/prompts";
 import { FileSystem } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
 import {
 	Apply,
 	ApplyError,
 	ConfigSchema,
 	ConfigStore,
-	CoreLive,
 	formatApplyError,
 	hashContentHex,
 	type InstalledPlanningSeed,
@@ -35,9 +33,10 @@ import {
 	loadDefinitionRegistry,
 	probeWorkspaceCommandVersions,
 } from "@ryuujs/generators";
-import { Cause, Effect, Either, Exit, Layer, Option, Schema } from "effect";
+import { Effect, Either, Exit, Option, Schema } from "effect";
 import { ArrayFormatter } from "effect/ParseResult";
 import { orchestrate } from "../orchestrator";
+import { failureFromCause, runCliEffect, runCliEffectValue } from "../runtime";
 import { steps } from "../steps";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
@@ -51,12 +50,6 @@ import {
 } from "./adoption";
 import { applyInstalledPlan } from "./lifecycle";
 import { resolutionArguments } from "./resolution";
-
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
-const initLayer = Layer.mergeAll(
-	coreLayer,
-	AdoptionDetector.Default.pipe(Layer.provide(NodeContext.layer)),
-);
 
 const moduleKinds: ReadonlyArray<ModuleKind> = [
 	"web-app",
@@ -249,16 +242,6 @@ function attachVersions(
 	});
 }
 
-function runEffect<A, E>(effect: Effect.Effect<A, E, never>): Promise<A> {
-	return Effect.runPromise(effect);
-}
-
-export function effectFailure<E>(cause: Cause.Cause<E>): E {
-	const failure = Cause.failureOption(cause);
-	if (Option.isSome(failure)) return failure.value;
-	throw Cause.squash(cause);
-}
-
 export function contentHashError(path: string) {
 	return new InitPlanningError({ message: `Content Hash Failed: ${path}` });
 }
@@ -281,7 +264,7 @@ export function buildAdoptionPlan(
 	confirmedModules: ReadonlyArray<ConfirmedModule>,
 	versions: ReadonlyArray<AdoptedModuleVersions>,
 	proposals: ReadonlyArray<ModuleMappingProposal> = [],
-): Effect.Effect<AdoptionPlan, unknown, never> {
+) {
 	return Effect.gen(function* () {
 		const loadedRegistry = yield* Effect.sync(() => loadDefinitionRegistry());
 		const commandVersions = yield* probeWorkspaceCommandVersions(config);
@@ -501,7 +484,7 @@ export function buildAdoptionPlan(
 			manifest,
 			markerPaths: markerWrites.map((write) => write.path),
 		};
-	}).pipe(Effect.provide(initLayer));
+	});
 }
 
 function existingArtifacts(count: number): string {
@@ -578,7 +561,7 @@ export function initDirectoryRefusal(projectRoot: string) {
 			return 'A previous Forge adoption stopped before it finished. You need to delete the ".forge" directory, then run forge init again.';
 
 		return 'A ".forge" directory already exists here. You need to remove it before running forge init.';
-	}).pipe(Effect.provide(initLayer));
+	});
 }
 
 function executeAdoptionPlanning(
@@ -588,7 +571,7 @@ function executeAdoptionPlanning(
 	versions: ReadonlyArray<AdoptedModuleVersions>,
 	proposals: ReadonlyArray<ModuleMappingProposal>,
 ) {
-	return runEffect(
+	return runCliEffectValue(
 		buildAdoptionPlan(projectRoot, config, modules, versions, proposals).pipe(
 			Effect.catchAll((failure) =>
 				Effect.sync(() =>
@@ -631,14 +614,12 @@ async function executePlannedAdoption(
 		return;
 	}
 
-	const applyExit = await Effect.runPromiseExit(
-		Apply.applyPlan(projectRoot, plan.applyPlan).pipe(
-			Effect.provide(coreLayer),
-		),
+	const applyExit = await runCliEffect(
+		Apply.applyPlan(projectRoot, plan.applyPlan),
 	);
 
 	if (Exit.isFailure(applyExit)) {
-		const failure = effectFailure(applyExit.cause);
+		const failure = failureFromCause(applyExit.cause);
 		return reportFailure(
 			`We couldn't adopt this project. ${failure instanceof ApplyError ? formatInitApplyError(failure) : failure instanceof Error ? failure.message : String(failure)}`,
 		);
@@ -672,28 +653,37 @@ export async function runInit(
 	values: Record<string, string | boolean | undefined>,
 	projectRoot = resolve("."),
 ) {
-	const directoryRefusal = await runEffect(initDirectoryRefusal(projectRoot));
+	const directoryRefusal = await runCliEffectValue(
+		initDirectoryRefusal(projectRoot),
+	);
+
 	if (directoryRefusal !== undefined) return reportFailure(directoryRefusal);
 
 	intro("We're adopting this project into Forge...");
-	const detectionExit = await Effect.runPromiseExit(
-		AdoptionDetector.detect(projectRoot).pipe(Effect.provide(initLayer)),
+	const detectionExit = await runCliEffect(
+		AdoptionDetector.detect(projectRoot),
 	);
 
 	if (Exit.isFailure(detectionExit)) {
-		const failure = effectFailure(detectionExit.cause);
+		const failure = failureFromCause(detectionExit.cause);
 		return reportFailure(
 			failure instanceof Error ? failure.message : String(failure),
 		);
 	}
 
 	const detection = detectionExit.value;
-	const rootPackageName = await runEffect(
-		AdoptionDetector.rootPackageName(projectRoot).pipe(
-			Effect.provide(initLayer),
-		),
+	const rootPackageNameExit = await runCliEffect(
+		AdoptionDetector.rootPackageName(projectRoot),
 	);
 
+	if (Exit.isFailure(rootPackageNameExit)) {
+		const failure = failureFromCause(rootPackageNameExit.cause);
+		return reportFailure(
+			failure instanceof Error ? failure.message : String(failure),
+		);
+	}
+
+	const rootPackageName = rootPackageNameExit.value;
 	const configFile =
 		typeof values.config === "string"
 			? readInitConfigFile(values.config)

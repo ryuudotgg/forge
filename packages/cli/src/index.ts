@@ -8,6 +8,7 @@ import {
 	getSubcommand,
 	type SubcommandDef,
 } from "./commands/registry";
+import { withCliRuntime } from "./runtime";
 import { printHelp } from "./utils/help";
 
 interface CliDependencies {
@@ -116,7 +117,7 @@ export async function runCli(
 			return;
 		}
 
-		await command.run(commandArgs, values);
+		await withCliRuntime(() => command.run(commandArgs, values));
 		if (!machineOutput) cli.log();
 	} catch (error) {
 		cli.error(error);

@@ -1,7 +1,7 @@
 import { confirm, isCancel, log, text } from "@clack/prompts";
 import { Command } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
+import { runCliEffect } from "../../runtime";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
@@ -24,16 +24,20 @@ function gitInit(dir: string, message: string) {
 		);
 
 		return sha.trim();
-	}).pipe(Effect.provide(NodeContext.layer));
+	});
 }
 
 async function runGitInit(dir: string, message: string) {
-	const exit = await Effect.runPromiseExit(gitInit(dir, message));
+	const exit = await runCliEffect(gitInit(dir, message));
 
-	if (Exit.isFailure(exit))
+	if (Exit.isFailure(exit)) {
+		if (Option.isNone(Cause.failureOption(exit.cause)))
+			console.error(Cause.squash(exit.cause));
+
 		log.warn(
 			"We couldn't create the initial commit, so set up git yourself when you're ready.",
 		);
+	}
 }
 
 const gitInitStep = defineStep({

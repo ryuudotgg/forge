@@ -3,9 +3,13 @@ import { join } from "node:path";
 import { NodeContext } from "@effect/platform-node";
 import { Apply, CoreLive, State } from "@ryuujs/core";
 import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
-import { Cause, Effect, Layer } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import type { ModuleKind } from "../src/commands/adoption";
+import {
+	AdoptionDetector,
+	AdoptionFileReadError,
+	type ModuleKind,
+} from "../src/commands/adoption";
 import {
 	adoptionConflictGuidance,
 	adoptionOutro,
@@ -13,13 +17,19 @@ import {
 	buildAdoptionPlan,
 	contentHashError,
 	defaultIdentity,
-	effectFailure,
 	readInitConfigFile,
 	runInit,
 } from "../src/commands/init";
+import { cliLayer, withCliRuntime } from "../src/runtime";
 import { withTempDir, writeJson, writeText } from "./lifecycle-fixtures";
 
 const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+
+function buildAdoptionPlanForTest(
+	...parameters: Parameters<typeof buildAdoptionPlan>
+) {
+	return buildAdoptionPlan(...parameters).pipe(Effect.provide(cliLayer));
+}
 
 const config: ForgeConfig = {
 	addons: [],
@@ -162,9 +172,6 @@ describe("init command", () => {
 		expect(contentHashError("apps/web/package.json").message).toBe(
 			"Content Hash Failed: apps/web/package.json",
 		);
-		expect(() => effectFailure(Cause.die(new Error("defect")))).toThrow(
-			"defect",
-		);
 	});
 
 	it("derives yes-mode identity from the root package name", () => {
@@ -230,7 +237,7 @@ describe("init command", () => {
 			);
 
 			const plan = await Effect.runPromise(
-				buildAdoptionPlan(
+				buildAdoptionPlanForTest(
 					directory,
 					{
 						...config,
@@ -368,7 +375,7 @@ describe("init command", () => {
 
 			const invalidMapping = await Effect.runPromise(
 				Effect.flip(
-					buildAdoptionPlan(
+					buildAdoptionPlanForTest(
 						directory,
 						config,
 						[{ kind: "auth", root: "apps/web" }],
@@ -401,7 +408,7 @@ describe("init command", () => {
 			try {
 				const hashingFailure = await Effect.runPromise(
 					Effect.flip(
-						buildAdoptionPlan(
+						buildAdoptionPlanForTest(
 							directory,
 							config,
 							[
@@ -433,7 +440,7 @@ describe("init command", () => {
 			});
 
 			const plan = await Effect.runPromise(
-				buildAdoptionPlan(
+				buildAdoptionPlanForTest(
 					directory,
 					config,
 					[
@@ -600,6 +607,42 @@ describe("init command", () => {
 		} finally {
 			exit.mockRestore();
 		}
+	});
+
+	it("reports root package name failures through the init boundary", async () => {
+		await withTempDir("init-root-name-error", async (directory) => {
+			await fixture(directory);
+			const filePath = join(directory, "package.json");
+			const failure = new AdoptionFileReadError({
+				detail: "Synthetic root package read failure",
+				filePath,
+				message: `Adoption File Read Failed: ${filePath}`,
+			});
+			const detectorOverride = Layer.effect(
+				AdoptionDetector,
+				Effect.map(AdoptionDetector, (detector) => ({
+					...detector,
+					rootPackageName: () => Effect.fail(failure),
+				})),
+			).pipe(Layer.provide(cliLayer));
+			const runtime = ManagedRuntime.make(
+				Layer.merge(cliLayer, detectorOverride),
+			);
+			const exit = vi
+				.spyOn(process, "exit")
+				.mockImplementation((code?: string | number | null): never => {
+					throw new Error(`exit:${code ?? 0}`);
+				});
+
+			try {
+				await expect(
+					withCliRuntime(() => runInit({ yes: true }, directory), runtime),
+				).rejects.toThrow("exit:1");
+				expect(exit).toHaveBeenCalledWith(1);
+			} finally {
+				exit.mockRestore();
+			}
+		});
 	});
 
 	it("refuses a rejected workspace module required by the confirmed graph", async () => {
