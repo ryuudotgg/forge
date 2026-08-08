@@ -44,7 +44,9 @@ describe("forge info builders", () => {
 
 		expect(addon).toContain("Category:        addon");
 		expect(addon).toContain("Targets:         Single target");
-		expect(addon).toContain("Frameworks:      nextjs and tanstack-start");
+		expect(addon).toContain(
+			"Frameworks:      nextjs, react-router, and tanstack-start",
+		);
 		expect(addon).toContain("Required slots:  trpc");
 		expect(framework).toContain("Slots:");
 		expect(template).toContain("Framework:  nextjs");
@@ -61,7 +63,7 @@ describe("forge info builders", () => {
 					"Publisher:       Ryuu (first party)",
 					"Category:        addon",
 					"Targets:         Single target",
-					"Frameworks:      nextjs and tanstack-start",
+					"Frameworks:      nextjs, react-router, and tanstack-start",
 					"Required slots:  trpc",
 					"Keywords:        api, rpc, trpc, and typescript",
 					"",

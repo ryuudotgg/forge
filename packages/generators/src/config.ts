@@ -60,9 +60,7 @@ export const webFrameworks = defineChoices(
 		"tanstack-router": "TanStack Router",
 		"tanstack-start": "TanStack Start",
 	} as const,
-	{
-		unavailable: ["react-router", "tanstack-router"],
-	},
+	{ unavailable: ["tanstack-router"] },
 );
 
 export type WebFramework = keyof typeof webFrameworks.definitions;

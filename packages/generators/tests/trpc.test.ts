@@ -5,13 +5,19 @@ import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
 import { trpc } from "../src";
 import { trpcNextjsAdapter } from "../src/api/trpc/adapters/nextjs";
+import { trpcReactRouterAdapter } from "../src/api/trpc/adapters/react-router";
 import { trpcTanstackStartAdapter } from "../src/api/trpc/adapters/tanstack-start";
 import { nextjsFramework } from "../src/frameworks/nextjs";
+import { reactRouterFramework } from "../src/frameworks/react-router";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const framework =
-		config.web === "tanstack-start" ? tanstackStartFramework : nextjsFramework;
+		config.web === "tanstack-start"
+			? tanstackStartFramework
+			: config.web === "react-router"
+				? reactRouterFramework
+				: nextjsFramework;
 
 	const core = trpc.contribute({
 		commandVersions: {},
@@ -24,7 +30,9 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const slots =
 		config.web === "tanstack-start"
 			? { trpc: "src/routes/api/trpc/$.ts" }
-			: { trpc: "app/api/trpc/[trpc]/route.ts" };
+			: config.web === "react-router"
+				? { trpc: "app/routes/api.trpc.$.ts" }
+				: { trpc: "app/api/trpc/[trpc]/route.ts" };
 
 	const module: AdapterModule = {
 		config: {
@@ -41,7 +49,9 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const adapter =
 		config.web === "tanstack-start"
 			? trpcTanstackStartAdapter
-			: trpcNextjsAdapter;
+			: config.web === "react-router"
+				? trpcReactRouterAdapter
+				: trpcNextjsAdapter;
 
 	const adapted = adapter.contribute({
 		config,
@@ -318,27 +328,27 @@ const tanstackRouteWithoutAuth = expectedContent([
 	"});",
 ]);
 
-const tanstackServerWithAuth = expectedContent([
+const sharedServerWithAuth = expectedContent([
 	'import { createCaller, createTRPCContext } from "@acme/trpc";',
 	'import { auth } from "@acme/auth";',
 	"",
 	"export async function createServerCaller(request: Request) {",
 	"  const headers = new Headers(request.headers);",
 	'  headers.set("x-trpc-source", "server");',
-	"  const context = await createTRPCContext({ auth, headers });",
 	"",
+	"  const context = await createTRPCContext({ auth, headers });",
 	"  return createCaller(context);",
 	"}",
 ]);
 
-const tanstackServerWithoutAuth = expectedContent([
+const sharedServerWithoutAuth = expectedContent([
 	'import { createCaller, createTRPCContext } from "@acme/trpc";',
 	"",
 	"export async function createServerCaller(request: Request) {",
 	"  const headers = new Headers(request.headers);",
 	'  headers.set("x-trpc-source", "server");',
-	"  const context = await createTRPCContext({ headers });",
 	"",
+	"  const context = await createTRPCContext({ headers });",
 	"  return createCaller(context);",
 	"}",
 ]);
@@ -422,7 +432,7 @@ describe("trpc tanstack-start variant", () => {
 		const server = leafFile(contributions, "web", "src/trpc/server.ts");
 
 		expect(route).toBe(tanstackRouteWithAuth);
-		expect(server).toBe(tanstackServerWithAuth);
+		expect(server).toBe(sharedServerWithAuth);
 		expect(route).not.toContain("next/");
 		expect(server).not.toContain("next/");
 		expect(server).not.toContain("server-only");
@@ -438,7 +448,7 @@ describe("trpc tanstack-start variant", () => {
 		const server = leafFile(contributions, "web", "src/trpc/server.ts");
 
 		expect(route).toBe(tanstackRouteWithoutAuth);
-		expect(server).toBe(tanstackServerWithoutAuth);
+		expect(server).toBe(sharedServerWithoutAuth);
 		expect(route).not.toMatch(/__[A-Z_]+__/);
 		expect(server).not.toMatch(/__[A-Z_]+__/);
 	});
@@ -458,12 +468,72 @@ describe("trpc tanstack-start variant", () => {
 		expect(provider).not.toContain("process.env.NODE_ENV");
 	});
 
-	it("declares both framework base templates as dependency alternatives", () => {
+	it("declares all framework base templates as dependency alternatives", () => {
 		expect(trpc.dependencies).toEqual(
 			expect.arrayContaining([
 				{ id: "nextjs/base", type: "template" },
+				{ id: "react-router/base", type: "template" },
 				{ id: "tanstack-start/base", type: "template" },
 			]),
 		);
+	});
+});
+
+describe("trpc react-router variant", () => {
+	const reactRouterConfig: ForgeConfig = {
+		orm: "drizzle",
+		rpc: "trpc",
+		slug: "acme",
+		web: "react-router",
+	};
+
+	it("renders fetch loader and action handlers with auth", () => {
+		const contributions = contributionsFor({
+			...reactRouterConfig,
+			authentication: "better-auth",
+		});
+		const route = leafFile(
+			contributions,
+			"web",
+			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
+		);
+		const server = leafFile(contributions, "web", "app/trpc/server.ts");
+
+		expect(route).toContain('import { auth } from "@acme/auth";');
+		expect(route).toContain(
+			"function handler({ request }: LoaderFunctionArgs | ActionFunctionArgs)",
+		);
+		expect(route).toContain(
+			"export const loader = (args: LoaderFunctionArgs) => handler(args);",
+		);
+		expect(route).toContain(
+			"export const action = (args: ActionFunctionArgs) => handler(args);",
+		);
+		expect(route).not.toContain("createFileRoute");
+		expect(server).toBe(sharedServerWithAuth);
+	});
+
+	it("removes auth markers and writes support files beneath app/trpc", () => {
+		const contributions = contributionsFor(reactRouterConfig);
+		const route = leafFile(
+			contributions,
+			"web",
+			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
+		);
+		const server = leafFile(contributions, "web", "app/trpc/server.ts");
+		const queryClient = leafFile(
+			contributions,
+			"web",
+			"app/trpc/query-client.ts",
+		);
+		const provider = leafFile(contributions, "web", "app/trpc/react.tsx");
+
+		expect(route).toContain("createTRPCContext({ headers })");
+		expect(route).not.toContain("@acme/auth");
+		expect(route).not.toMatch(/__[A-Z_]+__/);
+		expect(server).toBe(sharedServerWithoutAuth);
+		expect(queryClient).toContain("export function createQueryClient");
+		expect(provider).toContain("import.meta.env.DEV");
+		expect(provider).not.toContain('"use client"');
 	});
 });

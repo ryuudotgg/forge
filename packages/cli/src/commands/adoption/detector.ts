@@ -57,6 +57,7 @@ const ignoredDirectories = new Set([
 	".next",
 	".output",
 	".pnpm-store",
+	".react-router",
 	".turbo",
 	".vercel",
 	".yarn",
@@ -404,6 +405,9 @@ export class AdoptionDetector extends Effect.Service<AdoptionDetector>()(
 				const web = oneDetected([
 					directDependencies.has("next")
 						? webFrameworks.normalize("nextjs")
+						: undefined,
+					directDependencies.has("react-router")
+						? webFrameworks.normalize("react-router")
 						: undefined,
 					directDependencies.has("@tanstack/react-start")
 						? webFrameworks.normalize("tanstack-start")

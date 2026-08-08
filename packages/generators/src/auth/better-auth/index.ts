@@ -29,6 +29,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 	exclusive: true,
 	dependencies: [
 		{ id: "nextjs/base", type: "template" },
+		{ id: "react-router/base", type: "template" },
 		{ id: "tanstack-start/base", type: "template" },
 		{ id: "drizzle", type: "addon" },
 		{ id: "prisma", type: "addon" },

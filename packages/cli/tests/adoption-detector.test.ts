@@ -981,6 +981,35 @@ describe("AdoptionDetector", () => {
 		);
 	});
 
+	it("detects React Router from a direct web dependency", async () => {
+		await withFixture(
+			"react-router",
+			{
+				"apps/web/.react-router/generated/package.json": json({
+					dependencies: { next: "^16" },
+				}),
+				"apps/web/package.json": json({
+					dependencies: { "react-router": "8.3.0" },
+				}),
+				"package.json": json({ workspaces: ["apps/*"] }),
+			},
+			async (root) => {
+				const result = await detect(root);
+				expect(result.config).toMatchObject({
+					platforms: ["web"],
+					web: "react-router",
+				});
+				expect(result.modules).toEqual([
+					{
+						evidence: "found react-router in its dependencies",
+						proposal: "web-app",
+						root: "apps/web",
+					},
+				]);
+			},
+		);
+	});
+
 	it("keeps the first module signature and reports the others", async () => {
 		await withFixture(
 			"multi-signature",

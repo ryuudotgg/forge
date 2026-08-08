@@ -122,6 +122,12 @@ export function moduleProposal(
 			proposal: "web-app",
 		});
 
+	if (dependencies.has("react-router"))
+		signatures.push({
+			evidence: "found react-router in its dependencies",
+			proposal: "web-app",
+		});
+
 	if (dependencies.has("drizzle-orm"))
 		signatures.push({
 			evidence: "found drizzle-orm in its dependencies",

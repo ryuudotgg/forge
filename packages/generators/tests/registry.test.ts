@@ -68,11 +68,15 @@ describe("registry loader", () => {
 		expect(loaded.registry).toBe(builtins);
 
 		expect(loaded.registry.frameworks.map((entry) => entry.id)).toEqual(
-			expect.arrayContaining(["nextjs", "tanstack-start"]),
+			expect.arrayContaining(["nextjs", "react-router", "tanstack-start"]),
 		);
 
 		expect(loaded.registry.templates.map((entry) => entry.id)).toEqual(
-			expect.arrayContaining(["nextjs/base", "tanstack-start/base"]),
+			expect.arrayContaining([
+				"nextjs/base",
+				"react-router/base",
+				"tanstack-start/base",
+			]),
 		);
 
 		expect(loaded.registry.addons.map((entry) => entry.id)).toEqual(
@@ -935,6 +939,15 @@ describe("removal blockers", () => {
 			);
 
 			expect(nextjsBlockers.frameworks, addonId).toEqual(["Next.js"]);
+
+			const reactRouterBlockers = findRemovalBlockers(
+				addonId,
+				{ web: "react-router" },
+				[],
+				[{ id: "react-router/base", version: 1 }],
+			);
+
+			expect(reactRouterBlockers.frameworks, addonId).toEqual(["React Router"]);
 
 			const tanstackBlockers = findRemovalBlockers(
 				addonId,

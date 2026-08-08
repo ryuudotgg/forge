@@ -75,6 +75,10 @@ export {
 } from "./data/providers";
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
 export {
+	default as reactRouter,
+	reactRouterFramework,
+} from "./frameworks/react-router";
+export {
 	default as tanstackStart,
 	tanstackStartFramework,
 } from "./frameworks/tanstack-start";

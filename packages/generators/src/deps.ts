@@ -15,10 +15,18 @@ export const deps = {
 	typescript: dep("typescript"),
 	vitest: dep("vitest"),
 
+	isbot: dep("isbot"),
+	serverOnly: dep("serverOnly"),
+
 	next: dep("next"),
+
 	react: dep("react"),
 	reactDom: dep("reactDom"),
-	serverOnly: dep("serverOnly"),
+
+	reactRouter: dep("reactRouter"),
+	reactRouterDev: dep("reactRouterDev"),
+	reactRouterNode: dep("reactRouterNode"),
+	reactRouterServe: dep("reactRouterServe"),
 
 	tanstackReactRouter: dep("tanstackReactRouter"),
 	tanstackReactStart: dep("tanstackReactStart"),
