@@ -103,7 +103,7 @@ export interface SlotPath {
 	readonly slot: string;
 }
 
-export class SlotPathError extends Schema.TaggedError<SlotPathError>()(
+export class SlotPathError extends Schema.TaggedErrorClass<SlotPathError>()(
 	"SlotPathError",
 	{
 		message: Schema.String,

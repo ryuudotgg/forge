@@ -1,5 +1,13 @@
-import { Command, CommandExecutor } from "@effect/platform";
-import { Clock, Effect, Option, Stream } from "effect";
+import {
+	Clock,
+	Context,
+	Effect,
+	Layer,
+	Option,
+	type PlatformError,
+	Stream,
+} from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { SubprocessError } from "./errors";
 
 export const PROBE_TIMEOUT_MS = 10_000;
@@ -26,13 +34,12 @@ export interface SubprocessResult {
 }
 
 function configureCommand(input: SubprocessInput) {
-	let command = Command.make(input.command, ...input.args);
-	if (input.cwd !== undefined)
-		command = command.pipe(Command.workingDirectory(input.cwd));
-
-	if (input.env !== undefined) command = command.pipe(Command.env(input.env));
-
-	return command.pipe(Command.stdout("pipe"), Command.stderr("pipe"));
+	return ChildProcess.make(input.command, input.args, {
+		...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+		...(input.env === undefined ? {} : { env: input.env, extendEnv: true }),
+		stdout: "pipe",
+		stderr: "pipe",
+	});
 }
 
 function errorFields(input: SubprocessInput) {
@@ -43,20 +50,38 @@ function errorFields(input: SubprocessInput) {
 	};
 }
 
+function platformErrorDetail(cause: PlatformError.PlatformError) {
+	const reason = cause.reason;
+	if (reason._tag === "BadArgument" || reason.cause === undefined)
+		return reason.message;
+
+	const nested = reason.cause;
+	if (!(nested instanceof Error)) return `${reason.message}: ${String(nested)}`;
+
+	const code = "code" in nested ? nested.code : undefined;
+	const nestedMessage = nested.message;
+	const detail =
+		typeof code === "string" && !nestedMessage.includes(code)
+			? `${code}: ${nestedMessage}`
+			: nestedMessage;
+
+	return `${reason.message}: ${detail}`;
+}
+
 function collectOutput(
 	input: SubprocessInput,
-	command: Command.Command,
-	executor: CommandExecutor.CommandExecutor,
+	command: ChildProcess.Command,
+	spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
 ) {
 	return Effect.scoped(
 		Effect.gen(function* () {
-			const process = yield* executor.start(command);
+			const process = yield* spawner.spawn(command);
 			const maxOutputBytes = input.maxOutputBytes;
 			const decoder = new TextDecoder();
 
 			const collect = Stream.runFoldEffect(
 				process.stdout,
-				{ bytes: 0, text: "" },
+				() => ({ bytes: 0, text: "" }),
 				(state, chunk) => {
 					const bytes = state.bytes + chunk.byteLength;
 					if (maxOutputBytes !== undefined && bytes > maxOutputBytes)
@@ -102,18 +127,18 @@ function appendTail(tail: Uint8Array, chunk: Uint8Array): Uint8Array {
 function collectTail<Error, Requirements>(
 	stream: Stream.Stream<Uint8Array, Error, Requirements>,
 ) {
-	return Stream.runFold(stream, new Uint8Array(), appendTail).pipe(
+	return Stream.runFold(stream, () => new Uint8Array(), appendTail).pipe(
 		Effect.map((tail) => new TextDecoder().decode(tail)),
 	);
 }
 
 function drainOutput(
-	command: Command.Command,
-	executor: CommandExecutor.CommandExecutor,
+	command: ChildProcess.Command,
+	spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
 ) {
 	return Effect.scoped(
 		Effect.gen(function* () {
-			const process = yield* executor.start(command);
+			const process = yield* spawner.spawn(command);
 			const [, stderrTail, exitCode] = yield* Effect.all(
 				[
 					Stream.runDrain(process.stdout),
@@ -128,66 +153,65 @@ function drainOutput(
 	);
 }
 
-export class Subprocess extends Effect.Service<Subprocess>()("Subprocess", {
-	accessors: true,
-	effect: Effect.gen(function* () {
-		const executor = yield* CommandExecutor.CommandExecutor;
-		const run = Effect.fn("Subprocess.run")(function* (input: SubprocessInput) {
-			const command = configureCommand(input);
-			const execution =
-				input.outputMode === "capture"
-					? collectOutput(input, command, executor)
-					: drainOutput(command, executor);
+const makeSubprocess = Effect.gen(function* () {
+	const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+	const run = Effect.fn("Subprocess.run")(function* (input: SubprocessInput) {
+		const command = configureCommand(input);
+		const execution =
+			input.outputMode === "capture"
+				? collectOutput(input, command, spawner)
+				: drainOutput(command, spawner);
 
-			const startedAt = yield* Clock.currentTimeMillis;
-			const resultOption = yield* execution.pipe(
-				Effect.catchTags({
-					BadArgument: (cause) =>
-						Effect.fail(
-							new SubprocessError({
-								...errorFields(input),
-								reason: "spawn-error",
-								detail: cause.message,
-								cause,
-							}),
-						),
-					SystemError: (cause) =>
-						Effect.fail(
-							new SubprocessError({
-								...errorFields(input),
-								reason: "spawn-error",
-								detail: cause.message,
-								cause,
-							}),
-						),
-				}),
-				Effect.timeoutOption(input.timeoutMs),
-			);
+		const startedAt = yield* Clock.currentTimeMillis;
+		const resultOption = yield* execution.pipe(
+			Effect.mapError((cause) => {
+				if (cause instanceof SubprocessError) return cause;
+				const detail = platformErrorDetail(cause);
 
-			if (Option.isNone(resultOption)) {
-				const finishedAt = yield* Clock.currentTimeMillis;
-				return yield* new SubprocessError({
+				return new SubprocessError({
 					...errorFields(input),
-					reason: "timeout-error",
-					timeoutMs: input.timeoutMs,
-					elapsedMs: finishedAt - startedAt,
+					reason: "spawn-error",
+					detail,
+					cause,
 				});
-			}
+			}),
+			Effect.timeoutOption(input.timeoutMs),
+		);
 
-			const result = resultOption.value;
-			if (result.exitCode !== 0)
-				return yield* new SubprocessError({
-					...errorFields(input),
-					reason: "non-zero-exit",
-					exitCode: result.exitCode,
-					...(result.stderrTail.length === 0
-						? {}
-						: { detail: result.stderrTail }),
-				});
+		if (Option.isNone(resultOption)) {
+			const finishedAt = yield* Clock.currentTimeMillis;
+			return yield* new SubprocessError({
+				...errorFields(input),
+				reason: "timeout-error",
+				timeoutMs: input.timeoutMs,
+				elapsedMs: finishedAt - startedAt,
+			});
+		}
 
-			return { exitCode: Number(result.exitCode), output: result.output };
-		});
+		const result = resultOption.value;
+		if (result.exitCode !== 0)
+			return yield* new SubprocessError({
+				...errorFields(input),
+				reason: "non-zero-exit",
+				exitCode: result.exitCode,
+				...(result.stderrTail.length === 0
+					? {}
+					: { detail: result.stderrTail }),
+			});
 
-		return { run };
-	}),
-}) {}
+		return { exitCode: Number(result.exitCode), output: result.output };
+	});
+
+	return { run };
+});
+
+type SubprocessService = Effect.Success<typeof makeSubprocess>;
+
+export class Subprocess extends Context.Service<
+	Subprocess,
+	SubprocessService
+>()("Subprocess") {
+	static readonly Default = Layer.effect(Subprocess, makeSubprocess);
+	static readonly run = (...args: Parameters<SubprocessService["run"]>) =>
+		Subprocess.use((service) => service.run(...args));
+}

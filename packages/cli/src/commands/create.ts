@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
-import { Either, Schema } from "effect";
-import { ArrayFormatter } from "effect/ParseResult";
+import { formatSchemaError } from "@ryuujs/core";
+import { Result, Schema } from "effect";
 import { buildFlagOverrides } from "../cli";
 import { orchestrate } from "../orchestrator";
 import { presets } from "../presets";
@@ -41,15 +41,12 @@ export async function runCreate(
 			process.exit(1);
 		}
 
-		const configSchema = Schema.Record({
-			key: Schema.String,
-			value: Schema.Unknown,
-		});
+		const configSchema = Schema.Record(Schema.String, Schema.Unknown);
 
-		const configResult = Schema.decodeUnknownEither(configSchema)(parsed);
+		const configResult = Schema.decodeUnknownResult(configSchema)(parsed);
 
-		if (Either.isLeft(configResult)) {
-			const issues = ArrayFormatter.formatErrorSync(configResult.left);
+		if (Result.isFailure(configResult)) {
+			const issues = formatSchemaError(configResult.failure, parsed);
 			const message = issues
 				.map((i) =>
 					i.path.length > 0
@@ -62,7 +59,7 @@ export async function runCreate(
 			process.exit(1);
 		}
 
-		initialConfig = { ...initialConfig, ...configResult.right };
+		initialConfig = { ...initialConfig, ...configResult.success };
 	}
 
 	initialConfig = { ...initialConfig, ...buildFlagOverrides(values) };

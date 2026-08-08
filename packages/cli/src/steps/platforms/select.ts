@@ -3,23 +3,25 @@ import {
 	type Platform,
 	platforms as platformChoices,
 } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { choiceOptions, unsupportedMessage } from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
 export const platformsSchema = Schema.NonEmptyArray(
-	Schema.Literal(...platformChoices.ids),
+	Schema.Literals(platformChoices.ids),
 ).pipe(
-	Schema.filter((values) => {
-		const unavailable = values.filter(
-			(value) => !platformChoices.available(value),
-		);
+	Schema.check(
+		Schema.makeFilter((values) => {
+			const unavailable = values.filter(
+				(value) => !platformChoices.available(value),
+			);
 
-		return unavailable.length === 0
-			? undefined
-			: unsupportedMessage(platformChoices, unavailable);
-	}),
+			return unavailable.length === 0
+				? undefined
+				: unsupportedMessage(platformChoices, unavailable);
+		}),
+	),
 );
 
 const platformsStep = defineStep<typeof platformsSchema.Type>({
@@ -37,8 +39,8 @@ const platformsStep = defineStep<typeof platformsSchema.Type>({
 					.map((platform) => platformChoices.normalize(platform))
 					.filter((platform): platform is Platform => platform !== undefined);
 
-				const result = Schema.decodeUnknownEither(platformsSchema)(normalized);
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeUnknownResult(platformsSchema)(normalized);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;
@@ -64,11 +66,11 @@ const platformsStep = defineStep<typeof platformsSchema.Type>({
 			}
 
 			const result =
-				Schema.decodeUnknownEither(platformsSchema)(selectedPlatforms);
+				Schema.decodeUnknownResult(platformsSchema)(selectedPlatforms);
 
-			if (Either.isLeft(result)) return SKIP;
+			if (Result.isFailure(result)) return SKIP;
 
-			return result.right;
+			return result.success;
 		}
 	},
 });

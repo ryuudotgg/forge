@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Context, Effect, Layer } from "effect";
 import type {
 	FrameworkDefinition,
 	ManagedDependenciesSurfaceContribution,
@@ -329,99 +329,104 @@ function buildKey(bucket: RenderBucket, surface: ManagedSurfaceName) {
 		: `module:${bucket.moduleId}:${surface}`;
 }
 
-export class Renderer extends Effect.Service<Renderer>()("Renderer", {
-	accessors: true,
-	effect: Effect.succeed({
-		render: (
-			inputs: ReadonlyArray<SurfaceRenderContribution>,
-			modules: ReadonlyArray<DiscoveredModule>,
-			dependencyFormat?: DependencyFormat,
-			frameworks: ReadonlyArray<FrameworkDefinition> = [],
-		) =>
-			Effect.try({
-				try: () => {
-					const format = dependencyFormat ?? defaultDependencyFormat;
-					const modulesById = new Map(
-						modules.map((module) => [module.id, module]),
+const makeRenderer = Effect.succeed({
+	render: (
+		inputs: ReadonlyArray<SurfaceRenderContribution>,
+		modules: ReadonlyArray<DiscoveredModule>,
+		dependencyFormat?: DependencyFormat,
+		frameworks: ReadonlyArray<FrameworkDefinition> = [],
+	) =>
+		Effect.try({
+			try: () => {
+				const format = dependencyFormat ?? defaultDependencyFormat;
+				const modulesById = new Map(
+					modules.map((module) => [module.id, module]),
+				);
+
+				const frameworksById = new Map(
+					frameworks.map((framework) => [framework.id, framework]),
+				);
+
+				const groups = new Map<string, SurfaceRenderContribution[]>();
+
+				for (const input of inputs) {
+					const key = buildKey(input.bucket, input.contribution.surface);
+					const existing = groups.get(key) ?? [];
+					existing.push(input);
+					groups.set(key, existing);
+				}
+
+				const rendered: RenderedArtifact[] = [];
+
+				for (const entries of groups.values()) {
+					const first = entries[0];
+					if (!first) continue;
+
+					const path = resolveManagedPath(
+						first.contribution.surface,
+						first.bucket,
+						modulesById,
+						frameworksById,
 					);
 
-					const frameworksById = new Map(
-						frameworks.map((framework) => [framework.id, framework]),
-					);
+					const definitionIds = [
+						...new Set(entries.map((entry) => entry.definitionId)),
+					];
 
-					const groups = new Map<string, SurfaceRenderContribution[]>();
+					const tags = new Set(entries.map((entry) => entry.contribution._tag));
 
-					for (const input of inputs) {
-						const key = buildKey(input.bucket, input.contribution.surface);
-						const existing = groups.get(key) ?? [];
-						existing.push(input);
-						groups.set(key, existing);
-					}
-
-					const rendered: RenderedArtifact[] = [];
-
-					for (const entries of groups.values()) {
-						const first = entries[0];
-						if (!first) continue;
-
-						const path = resolveManagedPath(
-							first.contribution.surface,
-							first.bucket,
-							modulesById,
-							frameworksById,
+					const kindCount =
+						Number(tags.has("ManagedTextSurfaceContribution")) +
+						Number(tags.has("ManagedLinesSurfaceContribution")) +
+						Number(
+							tags.has("ManagedJsonSurfaceContribution") ||
+								tags.has("ManagedDependenciesSurfaceContribution") ||
+								tags.has("ManagedScriptsSurfaceContribution"),
 						);
 
-						const definitionIds = [
-							...new Set(entries.map((entry) => entry.definitionId)),
-						];
-
-						const tags = new Set(
-							entries.map((entry) => entry.contribution._tag),
+					if (kindCount > 1)
+						throw new Error(
+							`Managed Surface Kind Conflict: ${first.contribution.surface} received mixed contribution kinds from ${definitionIds.join(", ")}`,
 						);
 
-						const kindCount =
-							Number(tags.has("ManagedTextSurfaceContribution")) +
-							Number(tags.has("ManagedLinesSurfaceContribution")) +
-							Number(
-								tags.has("ManagedJsonSurfaceContribution") ||
-									tags.has("ManagedDependenciesSurfaceContribution") ||
-									tags.has("ManagedScriptsSurfaceContribution"),
-							);
+					const content = tags.has("ManagedTextSurfaceContribution")
+						? renderTextSurface(entries)
+						: tags.has("ManagedLinesSurfaceContribution")
+							? renderLinesSurface(entries)
+							: renderJsonSurface(path, entries, format);
 
-						if (kindCount > 1)
-							throw new Error(
-								`Managed Surface Kind Conflict: ${first.contribution.surface} received mixed contribution kinds from ${definitionIds.join(", ")}`,
-							);
+					const mergeKind = resolveSurfaceMergeKind(path, tags);
+					rendered.push({
+						bucket: first.bucket,
+						content,
+						definitionIds,
+						key:
+							first.bucket.kind === "project"
+								? first.contribution.surface
+								: `${first.contribution.surface}`,
+						kind: "surface",
+						...(mergeKind === undefined ? {} : { mergeKind }),
+						path,
+					});
+				}
 
-						const content = tags.has("ManagedTextSurfaceContribution")
-							? renderTextSurface(entries)
-							: tags.has("ManagedLinesSurfaceContribution")
-								? renderLinesSurface(entries)
-								: renderJsonSurface(path, entries, format);
+				return rendered;
+			},
+			catch: (cause) =>
+				new RendererError({
+					path: "renderer",
+					reason: "render-failed",
+					cause,
+				}),
+		}),
+});
 
-						const mergeKind = resolveSurfaceMergeKind(path, tags);
-						rendered.push({
-							bucket: first.bucket,
-							content,
-							definitionIds,
-							key:
-								first.bucket.kind === "project"
-									? first.contribution.surface
-									: `${first.contribution.surface}`,
-							kind: "surface",
-							...(mergeKind === undefined ? {} : { mergeKind }),
-							path,
-						});
-					}
+type RendererService = Effect.Success<typeof makeRenderer>;
 
-					return rendered;
-				},
-				catch: (cause) =>
-					new RendererError({
-						path: "renderer",
-						reason: "render-failed",
-						cause,
-					}),
-			}),
-	}),
-}) {}
+export class Renderer extends Context.Service<Renderer, RendererService>()(
+	"Renderer",
+) {
+	static readonly Default = Layer.effect(Renderer, makeRenderer);
+	static readonly render = (...args: Parameters<RendererService["render"]>) =>
+		Renderer.use((service) => service.render(...args));
+}

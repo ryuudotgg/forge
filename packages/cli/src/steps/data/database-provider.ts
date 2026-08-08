@@ -1,10 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
 import { databaseProviders, postgresProviderIdsFor } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const databaseProviderSchema = Schema.Literal(...databaseProviders.ids);
+export const databaseProviderSchema = Schema.Literals(databaseProviders.ids);
 
 type DatabaseProvider = typeof databaseProviderSchema.Type;
 type ProviderOption = DatabaseProvider | "none";
@@ -22,11 +22,11 @@ const databaseProviderStep = defineStep<DatabaseProvider>({
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.databaseProvider) {
-				const result = Schema.decodeUnknownEither(databaseProviderSchema)(
+				const result = Schema.decodeUnknownResult(databaseProviderSchema)(
 					config.databaseProvider,
 				);
 
-				if (Either.isRight(result)) return result.right;
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;

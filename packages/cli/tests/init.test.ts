@@ -1,6 +1,7 @@
 import { access, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
+import { log } from "@clack/prompts";
+import { NodeServices } from "@effect/platform-node";
 import { Apply, CoreLive, State } from "@ryuujs/core";
 import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
 import { Effect, Layer, ManagedRuntime } from "effect";
@@ -23,7 +24,7 @@ import {
 import { cliLayer, withCliRuntime } from "../src/runtime";
 import { withTempDir, writeJson, writeText } from "./lifecycle-fixtures";
 
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
 
 function buildAdoptionPlanForTest(
 	...parameters: Parameters<typeof buildAdoptionPlan>
@@ -121,6 +122,35 @@ describe("init command", () => {
 				});
 				expect(() => readInitConfigFile(invalid)).toThrow("exit:1");
 			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
+	it("preserves v3 init-config field diagnostics", async () => {
+		await withTempDir("init-config-diagnostics", async (directory) => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+			const logError = vi.spyOn(log, "error").mockImplementation(() => {});
+			try {
+				const invalid = join(directory, "invalid.json");
+				await writeJson(invalid, { modules: "bad" });
+
+				expect(() => readInitConfigFile(invalid)).toThrow("exit:1");
+				expect(logError).toHaveBeenLastCalledWith(
+					'Your config file is invalid.\n  modules: Expected ReadonlyArray<{ readonly kind: "web-app" | "db" | "auth" | "trpc" | "ui"; readonly root: string }>, actual "bad"',
+				);
+
+				const missing = join(directory, "missing-modules.json");
+				await writeJson(missing, {});
+
+				expect(() => readInitConfigFile(missing)).toThrow("exit:1");
+				expect(logError).toHaveBeenLastCalledWith(
+					"Your config file is invalid.\n  modules: is missing",
+				);
+			} finally {
+				logError.mockRestore();
 				exit.mockRestore();
 			}
 		});

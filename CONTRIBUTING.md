@@ -65,6 +65,14 @@ We prioritize:
 - Function components over class components
 - Descriptive naming over brevity
 
+## Test Placement and Harnesses
+
+All package tests live in the package's `tests/` directory. Source directories do not contain test files.
+
+Use `it.effect` when the behavior under test returns an Effect or needs an Effect test service. Use an `@effect/vitest` layer-scoped suite when multiple tests share a service layer or a scoped resource. Core service tests can use the `layerTest` factories in `packages/core/tests/layers.ts` for State, ConfigStore, Environment, and Subprocess. Those factories create temporary directories with `FileSystem.makeTempDirectoryScoped`, so the suite owns cleanup.
+
+Use the classic Vitest harness for synchronous pure functions, table tests, and existing suites that gain no clearer setup from layers. Use the classic `withTempDir` helper when the test callback is Promise-based instead of Effect-based. Keep mock layers inline with the suite or test that owns them. Do not replace a stable classic suite unless the layer version reduces setup or makes resource ownership clearer.
+
 ## Documentation
 
 For any new features or changes:

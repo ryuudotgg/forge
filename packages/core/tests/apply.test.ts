@@ -1,8 +1,7 @@
 import { mkdir, readFile, stat, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { FileSystem, Error as PlatformError } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	Apply,
@@ -25,7 +24,7 @@ async function pathExists(path: string) {
 	}
 }
 
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
 
 describe("apply", () => {
 	it("stages adopted base content without writing the managed artifact", async () => {
@@ -1852,7 +1851,7 @@ describe("apply", () => {
 						return fileSystem.rename(oldPath, newPath);
 					},
 				})),
-			).pipe(Layer.provide(NodeContext.layer));
+			).pipe(Layer.provide(NodeServices.layer));
 			const crashingLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
 				Layer.provide(failingFileSystem),
 			);
@@ -1920,7 +1919,7 @@ describe("apply", () => {
 							? Effect.die("simulated state crash")
 							: fileSystem.rename(oldPath, newPath),
 				})),
-			).pipe(Layer.provide(NodeContext.layer));
+			).pipe(Layer.provide(NodeServices.layer));
 			const crashingLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
 				Layer.provide(failingFileSystem),
 			);
@@ -1994,19 +1993,22 @@ describe("apply", () => {
 				FileSystem.FileSystem,
 				Effect.map(FileSystem.FileSystem, (fileSystem) => ({
 					...fileSystem,
-					remove: (path: string, options?: FileSystem.RemoveOptions) =>
+					remove: (
+						path: string,
+						options?: Parameters<FileSystem.FileSystem["remove"]>[1],
+					) =>
 						path === oldBasePath
 							? Effect.fail(
-									new PlatformError.SystemError({
+									PlatformError.systemError({
 										method: "remove",
 										module: "FileSystem",
 										pathOrDescriptor: path,
-										reason: "PermissionDenied",
+										_tag: "PermissionDenied",
 									}),
 								)
 							: fileSystem.remove(path, options),
 				})),
-			).pipe(Layer.provide(NodeContext.layer));
+			).pipe(Layer.provide(NodeServices.layer));
 			const gcFailingLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
 				Layer.provide(failingFileSystem),
 			);
@@ -3580,7 +3582,7 @@ describe("apply", () => {
 			const content = '{\n\t"id": "abcde",\n\t"slots": {}\n}\n';
 			const hash = await hashContent(content);
 			await writeText(join(directory, path), content);
-			const nodeLayer = NodeContext.layer;
+			const nodeLayer = NodeServices.layer;
 			const fileSystemLayer = Layer.effect(
 				FileSystem.FileSystem,
 				Effect.map(FileSystem.FileSystem, (fileSystem) => ({
@@ -3588,11 +3590,11 @@ describe("apply", () => {
 					rename: (oldPath, newPath) =>
 						newPath.endsWith(`/${path}`)
 							? Effect.fail(
-									new PlatformError.SystemError({
+									PlatformError.systemError({
 										method: "rename",
 										module: "FileSystem",
 										pathOrDescriptor: newPath,
-										reason: "PermissionDenied",
+										_tag: "PermissionDenied",
 									}),
 								)
 							: fileSystem.rename(oldPath, newPath),

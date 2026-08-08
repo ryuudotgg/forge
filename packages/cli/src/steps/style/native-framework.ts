@@ -1,6 +1,6 @@
 import { isCancel, select } from "@clack/prompts";
 import { mobileFrameworks, nativeStyleFrameworks } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
@@ -13,11 +13,13 @@ type ValidNativeStyleFramework = Exclude<
 	(typeof nativeStyleFrameworkOptions)[number],
 	"none"
 >;
+
 const validNativeStyleFrameworks = nativeStyleFrameworkOptions.filter(
 	(x): x is ValidNativeStyleFramework => x !== "none",
 );
-export const nativeStyleFrameworkSchema = Schema.Literal(
-	...validNativeStyleFrameworks,
+
+export const nativeStyleFrameworkSchema = Schema.Literals(
+	validNativeStyleFrameworks,
 );
 
 const nativeStyleFrameworkStep = defineStep<
@@ -33,11 +35,11 @@ const nativeStyleFrameworkStep = defineStep<
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.nativeStyleFramework) {
-				const result = Schema.decodeUnknownEither(nativeStyleFrameworkSchema)(
+				const result = Schema.decodeUnknownResult(nativeStyleFrameworkSchema)(
 					config.nativeStyleFramework,
 				);
 
-				if (Either.isRight(result)) return result.right;
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;

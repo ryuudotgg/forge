@@ -35,7 +35,7 @@ async function runInstall(
 
 	if (Exit.isFailure(exit)) {
 		s.stop("We couldn't install your dependencies.");
-		if (Option.isNone(Cause.failureOption(exit.cause)))
+		if (Option.isNone(Cause.findErrorOption(exit.cause)))
 			console.error(Cause.squash(exit.cause));
 
 		log.warn(

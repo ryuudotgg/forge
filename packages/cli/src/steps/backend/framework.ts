@@ -9,8 +9,8 @@ import {
 } from "../../utils/choices";
 import { defineStep, SKIP, type Skip } from "../types";
 
-export const backendSchema = Schema.Literal(...backends.ids).pipe(
-	Schema.filter(availableChoice(backends)),
+export const backendSchema = Schema.Literals(backends.ids).pipe(
+	Schema.check(Schema.makeFilter(availableChoice(backends))),
 );
 
 export default defineStep<typeof backendSchema.Type>({

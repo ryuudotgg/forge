@@ -1,8 +1,14 @@
-import { Schema } from "effect";
+import { PlatformError, Schema } from "effect";
 
-const optionalCause = Schema.optional(Schema.Defect);
+function formatCause(cause: unknown) {
+	return cause instanceof PlatformError.PlatformError
+		? String(cause.reason)
+		: String(cause);
+}
 
-const GeneratorErrorReason = Schema.Literal(
+const optionalCause = Schema.optional(Schema.Defect());
+
+const GeneratorErrorReason = Schema.Literals([
 	"definition-failed",
 	"framework-template-required",
 	"framework-not-supported",
@@ -11,7 +17,7 @@ const GeneratorErrorReason = Schema.Literal(
 	"required-slots-missing",
 	"command-version-probe-failed",
 	"command-version-missing",
-);
+]);
 
 const GeneratorErrorFields = Schema.Struct({
 	generatorId: Schema.String,
@@ -41,14 +47,16 @@ const generatorRequiredFields = {
 >;
 
 const ValidGeneratorErrorFields = GeneratorErrorFields.pipe(
-	Schema.filter((payload) =>
-		generatorRequiredFields[payload.reason].every(
-			(key) => payload[key] !== undefined,
+	Schema.check(
+		Schema.makeFilter((payload) =>
+			generatorRequiredFields[payload.reason].every(
+				(key) => payload[key] !== undefined,
+			),
 		),
 	),
 );
 
-export class GeneratorError extends Schema.TaggedError<GeneratorError>()(
+export class GeneratorError extends Schema.TaggedErrorClass<GeneratorError>()(
 	"GeneratorError",
 	ValidGeneratorErrorFields,
 ) {
@@ -86,20 +94,20 @@ const generatorMessages = {
 	(error: GeneratorError) => string
 >;
 
-const RegistryErrorReason = Schema.Literal(
+const RegistryErrorReason = Schema.Literals([
 	"duplicate",
 	"framework-slots-invalid",
 	"adapter-duplicate",
 	"adapter-addon-missing",
 	"adapter-framework-missing",
 	"adapter-slot-missing",
-);
+]);
 
 const RegistryErrorFields = Schema.Struct({
 	reason: RegistryErrorReason,
 	registryId: Schema.String,
 	subject: Schema.String,
-	kind: Schema.optional(Schema.Literal("Addon", "Framework", "Template")),
+	kind: Schema.optional(Schema.Literals(["Addon", "Framework", "Template"])),
 	cause: optionalCause,
 });
 
@@ -118,14 +126,16 @@ const registryRequiredFields = {
 >;
 
 const ValidRegistryErrorFields = RegistryErrorFields.pipe(
-	Schema.filter((payload) =>
-		registryRequiredFields[payload.reason].every(
-			(key) => payload[key] !== undefined,
+	Schema.check(
+		Schema.makeFilter((payload) =>
+			registryRequiredFields[payload.reason].every(
+				(key) => payload[key] !== undefined,
+			),
 		),
 	),
 );
 
-export class RegistryError extends Schema.TaggedError<RegistryError>()(
+export class RegistryError extends Schema.TaggedErrorClass<RegistryError>()(
 	"RegistryError",
 	ValidRegistryErrorFields,
 ) {
@@ -152,7 +162,7 @@ const registryMessages = {
 	(error: RegistryError) => string
 >;
 
-export class CommandProbeError extends Schema.TaggedError<CommandProbeError>()(
+export class CommandProbeError extends Schema.TaggedErrorClass<CommandProbeError>()(
 	"CommandProbeError",
 	{
 		command: Schema.String,
@@ -166,12 +176,12 @@ export class CommandProbeError extends Schema.TaggedError<CommandProbeError>()(
 	}
 }
 
-const SubprocessErrorReason = Schema.Literal(
+const SubprocessErrorReason = Schema.Literals([
 	"spawn-error",
 	"timeout-error",
 	"output-limit-error",
 	"non-zero-exit",
-);
+]);
 
 const SubprocessErrorFields = Schema.Struct({
 	reason: SubprocessErrorReason,
@@ -179,10 +189,10 @@ const SubprocessErrorFields = Schema.Struct({
 	args: Schema.Array(Schema.String),
 	cwd: Schema.optional(Schema.String),
 	detail: Schema.optional(Schema.String),
-	timeoutMs: Schema.optional(Schema.Number),
-	elapsedMs: Schema.optional(Schema.Number),
-	maxOutputBytes: Schema.optional(Schema.Number),
-	exitCode: Schema.optional(Schema.Number),
+	timeoutMs: Schema.optional(Schema.Finite),
+	elapsedMs: Schema.optional(Schema.Finite),
+	maxOutputBytes: Schema.optional(Schema.Finite),
+	exitCode: Schema.optional(Schema.Finite),
 	cause: optionalCause,
 });
 
@@ -199,14 +209,16 @@ const subprocessRequiredFields = {
 >;
 
 const ValidSubprocessErrorFields = SubprocessErrorFields.pipe(
-	Schema.filter((payload) =>
-		subprocessRequiredFields[payload.reason].every(
-			(key) => payload[key] !== undefined,
+	Schema.check(
+		Schema.makeFilter((payload) =>
+			subprocessRequiredFields[payload.reason].every(
+				(key) => payload[key] !== undefined,
+			),
 		),
 	),
 );
 
-export class SubprocessError extends Schema.TaggedError<SubprocessError>()(
+export class SubprocessError extends Schema.TaggedErrorClass<SubprocessError>()(
 	"SubprocessError",
 	ValidSubprocessErrorFields,
 ) {
@@ -233,14 +245,14 @@ const subprocessMessages = {
 	(error: SubprocessError) => string
 >;
 
-const ModuleConfigErrorReason = Schema.Literal(
+const ModuleConfigErrorReason = Schema.Literals([
 	"not-found",
 	"read-failed",
 	"parse-failed",
 	"invalid",
 	"directory-failed",
 	"write-failed",
-);
+]);
 
 const ModuleConfigErrorFields = Schema.Struct({
 	filePath: Schema.String,
@@ -265,14 +277,16 @@ const moduleConfigRequiredFields = {
 >;
 
 const ValidModuleConfigErrorFields = ModuleConfigErrorFields.pipe(
-	Schema.filter((payload) =>
-		moduleConfigRequiredFields[payload.reason].every(
-			(key) => payload[key] !== undefined,
+	Schema.check(
+		Schema.makeFilter((payload) =>
+			moduleConfigRequiredFields[payload.reason].every(
+				(key) => payload[key] !== undefined,
+			),
 		),
 	),
 );
 
-export class ModuleConfigError extends Schema.TaggedError<ModuleConfigError>()(
+export class ModuleConfigError extends Schema.TaggedErrorClass<ModuleConfigError>()(
 	"ModuleConfigError",
 	ValidModuleConfigErrorFields,
 ) {
@@ -297,7 +311,7 @@ const moduleConfigMessages = {
 	(error: ModuleConfigError) => string
 >;
 
-export class DuplicateModuleIdError extends Schema.TaggedError<DuplicateModuleIdError>()(
+export class DuplicateModuleIdError extends Schema.TaggedErrorClass<DuplicateModuleIdError>()(
 	"DuplicateModuleIdError",
 	{
 		moduleId: Schema.String,
@@ -311,7 +325,7 @@ export class DuplicateModuleIdError extends Schema.TaggedError<DuplicateModuleId
 	}
 }
 
-export class ModuleIdGenerationError extends Schema.TaggedError<ModuleIdGenerationError>()(
+export class ModuleIdGenerationError extends Schema.TaggedErrorClass<ModuleIdGenerationError>()(
 	"ModuleIdGenerationError",
 	{ cause: optionalCause },
 ) {
@@ -320,7 +334,7 @@ export class ModuleIdGenerationError extends Schema.TaggedError<ModuleIdGenerati
 	}
 }
 
-const StateErrorReason = Schema.Literal(
+const StateErrorReason = Schema.Literals([
 	"manifest-parse-failed",
 	"manifest-invalid",
 	"lockfile-parse-failed",
@@ -343,7 +357,7 @@ const StateErrorReason = Schema.Literal(
 	"base-write-failed",
 	"base-directory-read-failed",
 	"base-remove-failed",
-);
+]);
 
 const StateErrorFields = Schema.Struct({
 	filePath: Schema.String,
@@ -384,14 +398,16 @@ const stateRequiredFields = {
 >;
 
 const ValidStateErrorFields = StateErrorFields.pipe(
-	Schema.filter((payload) =>
-		stateRequiredFields[payload.reason].every(
-			(key) => payload[key] !== undefined,
+	Schema.check(
+		Schema.makeFilter((payload) =>
+			stateRequiredFields[payload.reason].every(
+				(key) => payload[key] !== undefined,
+			),
 		),
 	),
 );
 
-export class StateError extends Schema.TaggedError<StateError>()(
+export class StateError extends Schema.TaggedErrorClass<StateError>()(
 	"StateError",
 	ValidStateErrorFields,
 ) {
@@ -437,20 +453,20 @@ const stateMessages = {
 	"base-remove-failed": () => "Base Remove Failed",
 } satisfies Record<typeof StateErrorReason.Type, (error: StateError) => string>;
 
-export class DiscoveryError extends Schema.TaggedError<DiscoveryError>()(
+export class DiscoveryError extends Schema.TaggedErrorClass<DiscoveryError>()(
 	"DiscoveryError",
 	{
 		path: Schema.String,
 		reason: Schema.Literal("module-discovery-failed"),
-		cause: Schema.Defect,
+		cause: Schema.Defect(),
 	},
 ) {
 	override get message() {
-		return `Module Discovery Failed: ${String(this.cause)}`;
+		return `Module Discovery Failed: ${formatCause(this.cause)}`;
 	}
 }
 
-const PlannerErrorReason = Schema.Literal(
+const PlannerErrorReason = Schema.Literals([
 	"ensured-module-type-conflict",
 	"ensured-app-module-conflict",
 	"ensured-package-module-conflict",
@@ -476,7 +492,7 @@ const PlannerErrorReason = Schema.Literal(
 	"write-path-collision",
 	"definition-missing",
 	"multiple-targets-selected",
-);
+]);
 
 const PlannerErrorFields = Schema.Struct({
 	path: Schema.String,
@@ -519,14 +535,16 @@ const plannerRequiredFields = {
 >;
 
 const ValidPlannerErrorFields = PlannerErrorFields.pipe(
-	Schema.filter((payload) =>
-		plannerRequiredFields[payload.reason].every(
-			(key) => payload[key] !== undefined,
+	Schema.check(
+		Schema.makeFilter((payload) =>
+			plannerRequiredFields[payload.reason].every(
+				(key) => payload[key] !== undefined,
+			),
 		),
 	),
 );
 
-export class PlannerError extends Schema.TaggedError<PlannerError>()(
+export class PlannerError extends Schema.TaggedErrorClass<PlannerError>()(
 	"PlannerError",
 	ValidPlannerErrorFields,
 ) {
@@ -566,26 +584,26 @@ const plannerMessages = {
 	(error: PlannerError) => string
 >;
 
-export class RendererError extends Schema.TaggedError<RendererError>()(
+export class RendererError extends Schema.TaggedErrorClass<RendererError>()(
 	"RendererError",
 	{
 		path: Schema.String,
 		reason: Schema.Literal("render-failed"),
-		cause: Schema.Defect,
+		cause: Schema.Defect(),
 	},
 ) {
 	override get message() {
-		return `Render Failed: ${String(this.cause)}`;
+		return `Render Failed: ${formatCause(this.cause)}`;
 	}
 }
 
-export const ApplyRefusalReason = Schema.Literal(
+export const ApplyRefusalReason = Schema.Literals([
 	"managed-file-modified",
 	"unmanaged-file-exists",
-);
+]);
 export type ApplyRefusalReason = typeof ApplyRefusalReason.Type;
 
-const ApplyErrorReason = Schema.Literal(
+const ApplyErrorReason = Schema.Literals([
 	"path-escapes-project-root",
 	"content-hash-failed",
 	"file-read-failed",
@@ -610,7 +628,7 @@ const ApplyErrorReason = Schema.Literal(
 	"atomic-manifest-write-failed",
 	"atomic-lockfile-write-failed",
 	"atomic-state-publish-failed",
-);
+]);
 
 const ApplyPreflightSchema = Schema.Struct({
 	conflicts: Schema.optional(
@@ -633,7 +651,7 @@ const ApplyPreflightSchema = Schema.Struct({
 			Schema.Struct({
 				resolvable: Schema.Boolean,
 				reason: ApplyRefusalReason,
-				operation: Schema.Literal("removal", "write"),
+				operation: Schema.Literals(["removal", "write"]),
 				path: Schema.String,
 			}),
 		),
@@ -681,14 +699,16 @@ const applyRequiredFields = {
 >;
 
 const ValidApplyErrorFields = ApplyErrorFields.pipe(
-	Schema.filter((payload) =>
-		applyRequiredFields[payload.reason].every(
-			(key) => payload[key] !== undefined,
+	Schema.check(
+		Schema.makeFilter((payload) =>
+			applyRequiredFields[payload.reason].every(
+				(key) => payload[key] !== undefined,
+			),
 		),
 	),
 );
 
-export class ApplyError extends Schema.TaggedError<ApplyError>()(
+export class ApplyError extends Schema.TaggedErrorClass<ApplyError>()(
 	"ApplyError",
 	ValidApplyErrorFields,
 ) {
@@ -724,7 +744,7 @@ const applyMessages = {
 	"atomic-state-publish-failed": () => "Atomic State Publish Failed",
 } satisfies Record<typeof ApplyErrorReason.Type, (error: ApplyError) => string>;
 
-export const PlannerErrors = Schema.Union(
+export const PlannerErrors = Schema.Union([
 	PlannerError,
 	GeneratorError,
 	DiscoveryError,
@@ -733,14 +753,14 @@ export const PlannerErrors = Schema.Union(
 	ModuleIdGenerationError,
 	RendererError,
 	StateError,
-);
+]);
 export type PlannerErrors = typeof PlannerErrors.Type;
 
-export const ApplyErrors = Schema.Union(ApplyError, StateError);
+export const ApplyErrors = Schema.Union([ApplyError, StateError]);
 export type ApplyErrors = typeof ApplyErrors.Type;
 
-export const StateErrors = Schema.Union(StateError);
+export const StateErrors = Schema.Union([StateError]);
 export type StateErrors = typeof StateErrors.Type;
 
-export const RegistryErrors = Schema.Union(RegistryError, GeneratorError);
+export const RegistryErrors = Schema.Union([RegistryError, GeneratorError]);
 export type RegistryErrors = typeof RegistryErrors.Type;

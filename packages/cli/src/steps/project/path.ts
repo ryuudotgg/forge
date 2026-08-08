@@ -1,23 +1,23 @@
 import { normalize } from "node:path";
 import { isCancel, log, text } from "@clack/prompts";
-import { Either, Schema } from "effect";
-import { ArrayFormatter } from "effect/ParseResult";
+import { formatSchemaError } from "@ryuujs/core";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
 export const pathSchema = Schema.Trim.pipe(
-	Schema.minLength(1, { message: () => "You need to provide a path." }),
-	Schema.pattern(/^(\.\/.*|\.)$/, {
-		message: () => "You need to provide a relative path.",
-	}),
-	Schema.filter(
-		(value) => {
-			const normalized = normalize(value);
-			return normalized !== ".." && !normalized.startsWith("..");
-		},
-		{
-			message: () => "You need to provide a path inside the current directory.",
-		},
+	Schema.check(
+		Schema.isMinLength(1, { message: "You need to provide a path." }),
+		Schema.isPattern(/^(\.\/.*|\.)$/, {
+			message: "You need to provide a relative path.",
+		}),
+		Schema.makeFilter(
+			(value) => {
+				const normalized = normalize(value);
+				return normalized !== ".." && !normalized.startsWith("..");
+			},
+			{ message: "You need to provide a path inside the current directory." },
+		),
 	),
 );
 
@@ -32,10 +32,10 @@ const pathStep = defineStep<string>({
 	shouldRun: () => true,
 
 	validate(value) {
-		const result = Schema.decodeUnknownEither(pathSchema)(value);
-		if (Either.isRight(result)) return;
+		const result = Schema.decodeUnknownResult(pathSchema)(value);
+		if (Result.isSuccess(result)) return;
 
-		const issues = ArrayFormatter.formatErrorSync(result.left);
+		const issues = formatSchemaError(result.failure);
 		log.error(issues[0]?.message ?? "You need to provide a valid path.");
 
 		process.exit(1);
@@ -47,10 +47,10 @@ const pathStep = defineStep<string>({
 		if (!interactive) {
 			const value = config.path ?? `./${slug}`;
 
-			const result = Schema.decodeUnknownEither(pathSchema)(value);
-			if (Either.isLeft(result)) return SKIP;
+			const result = Schema.decodeUnknownResult(pathSchema)(value);
+			if (Result.isFailure(result)) return SKIP;
 
-			return result.right;
+			return result.success;
 		}
 
 		const defaultValue = `./${slug}`;
@@ -60,12 +60,12 @@ const pathStep = defineStep<string>({
 			defaultValue,
 			placeholder: defaultValue,
 			validate: (value) => {
-				const result = Schema.decodeUnknownEither(pathSchema)(
+				const result = Schema.decodeUnknownResult(pathSchema)(
 					value || defaultValue,
 				);
 
-				if (Either.isLeft(result)) {
-					const issues = ArrayFormatter.formatErrorSync(result.left);
+				if (Result.isFailure(result)) {
+					const issues = formatSchemaError(result.failure);
 					return issues[0]?.message;
 				}
 			},

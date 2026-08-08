@@ -1,12 +1,12 @@
 import { isCancel, select } from "@clack/prompts";
 import { runtimes } from "@ryuujs/core";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
 const runtimeOptions = Object.values(runtimes).map((r) => r.displayName);
 
-export const runtimeSchema = Schema.Literal(...runtimeOptions);
+export const runtimeSchema = Schema.Literals(runtimeOptions);
 
 const runtimeStep = defineStep<typeof runtimeSchema.Type>({
 	id: "runtime",
@@ -19,11 +19,11 @@ const runtimeStep = defineStep<typeof runtimeSchema.Type>({
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.runtime) {
-				const result = Schema.decodeUnknownEither(runtimeSchema)(
+				const result = Schema.decodeUnknownResult(runtimeSchema)(
 					config.runtime,
 				);
 
-				if (Either.isRight(result)) return result.right;
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return "Node.js";

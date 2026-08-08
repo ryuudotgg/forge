@@ -19,7 +19,7 @@ import {
 function probeLayer(versions: Record<string, string>, probed: string[]) {
 	return Layer.succeed(
 		CommandProbe,
-		CommandProbe.make({
+		CommandProbe.of({
 			readVersion: (command: string) =>
 				Effect.sync(() => {
 					probed.push(command);
@@ -33,7 +33,7 @@ const successfulProbeLayer = probeLayer({ pnpm: "10.4.0" }, []);
 
 const failingProbeLayer = Layer.succeed(
 	CommandProbe,
-	CommandProbe.make({
+	CommandProbe.of({
 		readVersion: (command: string) =>
 			Effect.fail(
 				new CommandProbeError({
@@ -49,7 +49,7 @@ const timedOutProbeLayer = CommandProbe.Default.pipe(
 	Layer.provide(
 		Layer.succeed(
 			Subprocess,
-			Subprocess.make({
+			Subprocess.of({
 				run: (input) =>
 					Effect.fail(
 						new SubprocessError({
@@ -65,15 +65,66 @@ const timedOutProbeLayer = CommandProbe.Default.pipe(
 	),
 );
 
+function withProcessVersion(
+	name: string,
+	value: string | undefined,
+	run: () => void,
+) {
+	const descriptor = Object.getOwnPropertyDescriptor(process.versions, name);
+
+	if (value === undefined) Reflect.deleteProperty(process.versions, name);
+	else
+		Object.defineProperty(process.versions, name, {
+			configurable: true,
+			enumerable: true,
+			value,
+		});
+
+	try {
+		run();
+	} finally {
+		if (descriptor === undefined)
+			Reflect.deleteProperty(process.versions, name);
+		else Object.defineProperty(process.versions, name, descriptor);
+	}
+}
+
 describe("environment", () => {
 	it("checks the current runtime through the service", async () => {
 		const result = await Effect.runPromise(
-			Environment.checkRuntime().pipe(Effect.provide(Environment.Default)),
+			Environment.checkRuntime.pipe(Effect.provide(Environment.Default)),
 		);
 
 		expect(result).toEqual({
 			ok: true,
 			message: `Node.js v${process.versions.node}`,
+		});
+	});
+
+	it("reports unparseable and unsupported current runtime versions", () => {
+		withProcessVersion("node", "not-semver", () => {
+			expect(checkRuntime()).toEqual({
+				ok: false,
+				message: "We couldn't tell which Node.js version you're running.",
+			});
+		});
+
+		withProcessVersion("node", "21.9.0", () => {
+			expect(checkRuntime()).toEqual({
+				ok: false,
+				message:
+					"You need Node.js 22 or later to forge a project, but you're running v21.9.0.",
+			});
+		});
+	});
+
+	it("detects Bun and Deno before falling back to Node.js", () => {
+		withProcessVersion("bun", "1.2.3", () => {
+			expect(checkRuntime()).toEqual({ ok: true, message: "Bun v1.2.3" });
+		});
+
+		withProcessVersion("deno", "2.1.0", () => {
+			expect(checkRuntime()).toEqual({ ok: true, message: "Deno v2.1.0" });
 		});
 	});
 
@@ -299,7 +350,7 @@ describe("environment", () => {
 		const layer = Layer.mergeAll(successfulProbeLayer, Environment.Default);
 
 		const runtime = Effect.runSync(
-			Environment.checkRuntime().pipe(Effect.provide(Environment.Default)),
+			Environment.checkRuntime.pipe(Effect.provide(Environment.Default)),
 		);
 
 		const packageManager = await Effect.runPromise(

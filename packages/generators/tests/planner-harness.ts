@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import {
 	Apply,
 	CommandProbe,
@@ -43,7 +43,6 @@ function readWorkspaceCommandVersions(
 
 function makeCommandProbeLayer(versions: Readonly<Record<string, string>>) {
 	return Layer.succeed(CommandProbe, {
-		_tag: "CommandProbe",
 		readVersion: (command: string) =>
 			Effect.succeed(versions[command] ?? "1.0.0"),
 	});
@@ -59,7 +58,7 @@ function makePlannerLayer(versions: Readonly<Record<string, string>>) {
 
 	return Planner.Default.pipe(
 		Layer.provideMerge(plannerBaseLayer),
-		Layer.provideMerge(NodeContext.layer),
+		Layer.provideMerge(NodeServices.layer),
 	);
 }
 
@@ -141,7 +140,7 @@ export async function replannedProject(
 			}).pipe(
 				Effect.provide(
 					Layer.mergeAll(Apply.Default, State.Default).pipe(
-						Layer.provide(NodeContext.layer),
+						Layer.provide(NodeServices.layer),
 					),
 				),
 			),

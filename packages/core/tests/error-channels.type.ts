@@ -1,4 +1,4 @@
-import type { Effect } from "effect";
+import type * as Effect from "effect/Effect";
 import type { Apply } from "../src/apply";
 import type {
 	validateAdapterAgainstModule,
@@ -31,14 +31,14 @@ type Equal<Left, Right> = [Left] extends [Right]
 		: false
 	: false;
 
-type PlannerEffectErrors = EffectErrors<Planner>;
-type ApplyEffectErrors = EffectErrors<Apply>;
-type StateEffectErrors = EffectErrors<State>;
-type SubprocessEffectErrors = EffectErrors<Subprocess>;
+type PlannerEffectErrors = EffectErrors<Planner["Service"]>;
+type ApplyEffectErrors = EffectErrors<Apply["Service"]>;
+type StateEffectErrors = EffectErrors<State["Service"]>;
+type SubprocessEffectErrors = EffectErrors<Subprocess["Service"]>;
 type RegistryEffectErrors =
 	| RegistryError
-	| Effect.Effect.Error<ReturnType<typeof validateAddonAgainstSelection>>
-	| Effect.Effect.Error<ReturnType<typeof validateAdapterAgainstModule>>;
+	| Effect.Error<ReturnType<typeof validateAddonAgainstSelection>>
+	| Effect.Error<ReturnType<typeof validateAdapterAgainstModule>>;
 
 type _PlannerErrorsAreComplete = Assert<
 	Equal<PlannerEffectErrors, PlannerErrors>

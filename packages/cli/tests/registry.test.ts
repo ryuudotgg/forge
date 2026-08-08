@@ -13,6 +13,7 @@ const commandMocks = vi.hoisted(() => ({
 	runList: vi.fn(),
 	runRemove: vi.fn(),
 	runUpdate: vi.fn(),
+	updateLayer: {},
 }));
 
 vi.mock("../src/commands/add", () => ({ runAdd: commandMocks.runAdd }));
@@ -27,6 +28,7 @@ vi.mock("../src/commands/remove", () => ({
 }));
 vi.mock("../src/commands/update", () => ({
 	runUpdate: commandMocks.runUpdate,
+	UpdateCommand: { Default: commandMocks.updateLayer },
 }));
 
 beforeEach(() => {
@@ -73,9 +75,10 @@ describe("command registry", () => {
 	it("forwards values to runUpdate", async () => {
 		await subcommands.update.run([], { config: "./forge.config.json" });
 
-		expect(commandMocks.runUpdate).toHaveBeenCalledWith({
-			config: "./forge.config.json",
-		});
+		expect(commandMocks.runUpdate).toHaveBeenCalledWith(
+			{ config: "./forge.config.json" },
+			commandMocks.updateLayer,
+		);
 	});
 
 	it("forwards values to runInit", async () => {

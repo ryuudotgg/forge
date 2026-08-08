@@ -9,13 +9,13 @@ import {
 	note,
 	outro,
 } from "@clack/prompts";
-import { FileSystem } from "@effect/platform";
 import {
 	Apply,
 	ApplyError,
 	ConfigSchema,
 	ConfigStore,
 	formatApplyError,
+	formatSchemaError,
 	hashContentHex,
 	type InstalledPlanningSeed,
 	type InstallRecord,
@@ -33,8 +33,7 @@ import {
 	loadDefinitionRegistry,
 	probeWorkspaceCommandVersions,
 } from "@ryuujs/generators";
-import { Effect, Either, Exit, Option, Schema } from "effect";
-import { ArrayFormatter } from "effect/ParseResult";
+import { Effect, Exit, FileSystem, Option, Result, Schema } from "effect";
 import { orchestrate } from "../orchestrator";
 import { failureFromCause, runCliEffect, runCliEffectValue } from "../runtime";
 import { steps } from "../steps";
@@ -81,7 +80,7 @@ interface InitConfigFile {
 	readonly modules: ReadonlyArray<ConfirmedModule>;
 }
 
-class InitPlanningError extends Schema.TaggedError<InitPlanningError>()(
+class InitPlanningError extends Schema.TaggedErrorClass<InitPlanningError>()(
 	"InitPlanningError",
 	{ message: Schema.String },
 ) {}
@@ -94,15 +93,15 @@ export interface AdoptionPlan {
 	readonly markerPaths: ReadonlyArray<string>;
 }
 
-const InitConfigFileSchema = Schema.Struct({
-	modules: Schema.Array(
-		Schema.Struct({
-			kind: Schema.Literal(...moduleKinds),
-			root: Schema.String,
-		}),
-	),
-}).pipe(
-	Schema.extend(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+const ConfirmedModulesSchema = Schema.Array(
+	Schema.Struct({
+		kind: Schema.Literals(moduleKinds),
+		root: Schema.String,
+	}),
+);
+const InitConfigFileSchema = Schema.StructWithRest(
+	Schema.Struct({ modules: ConfirmedModulesSchema }),
+	[Schema.Record(Schema.String, Schema.Unknown)],
 );
 
 function reportFailure(message: string): never {
@@ -110,10 +109,8 @@ function reportFailure(message: string): never {
 	process.exit(1);
 }
 
-function schemaMessage(
-	error: Parameters<typeof ArrayFormatter.formatErrorSync>[0],
-): string {
-	return ArrayFormatter.formatErrorSync(error)
+function schemaMessage(error: Schema.SchemaError, input: unknown): string {
+	return formatSchemaError(error, input)
 		.map((issue) =>
 			issue.path.length > 0
 				? `  ${issue.path.join(".")}: ${issue.message}`
@@ -132,14 +129,13 @@ export function readInitConfigFile(filePath: string): InitConfigFile {
 		);
 	}
 
-	const result = Schema.decodeUnknownEither(InitConfigFileSchema)(parsed);
-	if (Either.isLeft(result))
-		return reportFailure(
-			`Your config file is invalid.\n${schemaMessage(result.left)}`,
+	const result = Schema.decodeUnknownResult(InitConfigFileSchema)(parsed);
+	if (Result.isFailure(result))
+		reportFailure(
+			`Your config file is invalid.\n${schemaMessage(result.failure, parsed)}`,
 		);
-
-	const { modules, ...config } = result.right;
-	return { config, modules };
+	const { modules: _modules, ...config } = result.success;
+	return { config, modules: result.success.modules };
 }
 
 function displayValue(value: unknown): string {
@@ -285,7 +281,7 @@ export function buildAdoptionPlan(
 		const prototypes = yield* Effect.forEach(
 			createPlan.writes.filter((write) => write.path.endsWith("/forge.json")),
 			(write) =>
-				Schema.decodeUnknown(Schema.parseJson(ConfigSchema))(
+				Schema.decodeUnknownEffect(Schema.fromJsonString(ConfigSchema))(
 					write.content,
 				).pipe(
 					Effect.map((module) => ({
@@ -573,7 +569,7 @@ function executeAdoptionPlanning(
 ) {
 	return runCliEffectValue(
 		buildAdoptionPlan(projectRoot, config, modules, versions, proposals).pipe(
-			Effect.catchAll((failure) =>
+			Effect.catch((failure) =>
 				Effect.sync(() =>
 					reportFailure(
 						`We couldn't plan this adoption. ${failure instanceof Error ? failure.message : String(failure)}`,

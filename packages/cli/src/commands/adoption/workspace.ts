@@ -1,11 +1,8 @@
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
-const DependencyRecordSchema = Schema.Record({
-	key: Schema.String,
-	value: Schema.String,
-});
+const DependencyRecordSchema = Schema.Record(Schema.String, Schema.String);
 
-export const PackageJsonSchema = Schema.parseJson(
+export const PackageJsonSchema = Schema.fromJsonString(
 	Schema.Struct({
 		name: Schema.optional(Schema.String),
 		dependencies: Schema.optional(DependencyRecordSchema),
@@ -14,15 +11,15 @@ export const PackageJsonSchema = Schema.parseJson(
 		optionalDependencies: Schema.optional(DependencyRecordSchema),
 		peerDependencies: Schema.optional(DependencyRecordSchema),
 		workspaces: Schema.optional(
-			Schema.Union(
+			Schema.Union([
 				Schema.Array(Schema.String),
 				Schema.Struct({ packages: Schema.Array(Schema.String) }),
-			),
+			]),
 		),
 	}),
 );
 
-export const ComponentsJsonSchema = Schema.parseJson(
+export const ComponentsJsonSchema = Schema.fromJsonString(
 	Schema.Struct({ style: Schema.optional(Schema.String) }),
 );
 
@@ -45,12 +42,12 @@ export interface CatalogEntry {
 	readonly version: string;
 }
 
-export class AdoptionFileReadError extends Schema.TaggedError<AdoptionFileReadError>()(
+export class AdoptionFileReadError extends Schema.TaggedErrorClass<AdoptionFileReadError>()(
 	"AdoptionFileReadError",
 	{ detail: Schema.String, filePath: Schema.String, message: Schema.String },
 ) {}
 
-export class AdoptionFileParseError extends Schema.TaggedError<AdoptionFileParseError>()(
+export class AdoptionFileParseError extends Schema.TaggedErrorClass<AdoptionFileParseError>()(
 	"AdoptionFileParseError",
 	{ detail: Schema.String, filePath: Schema.String, message: Schema.String },
 ) {}
@@ -149,11 +146,11 @@ function yamlScalar(value: string): string | undefined {
 	if (trimmed.length === 0) return undefined;
 	if (trimmed.startsWith('"')) {
 		if (!trimmed.endsWith('"')) return undefined;
-		const decoded = Schema.decodeUnknownEither(Schema.parseJson(Schema.String))(
-			trimmed,
-		);
+		const decoded = Schema.decodeUnknownResult(
+			Schema.fromJsonString(Schema.String),
+		)(trimmed);
 
-		return Either.isRight(decoded) ? decoded.right : undefined;
+		return Result.isSuccess(decoded) ? decoded.success : undefined;
 	}
 
 	if (trimmed.startsWith("'")) {
@@ -280,17 +277,17 @@ export function parsePnpmWorkspace(raw: string, filePath: string) {
 			invalidDetails.push(`Invalid package entry on line ${index + 1}.`);
 	}
 
-	const decoded = Schema.decodeUnknownEither(PnpmWorkspaceSchema)({
+	const decoded = Schema.decodeUnknownResult(PnpmWorkspaceSchema)({
 		catalogEntries,
 		...(packages.length === 0 ? {} : { packages }),
 	});
 
-	if (invalidDetails.length > 0 || Either.isLeft(decoded))
+	if (invalidDetails.length > 0 || Result.isFailure(decoded))
 		return Effect.fail(
 			new AdoptionFileParseError({
 				detail: [
 					...invalidDetails,
-					...(Either.isLeft(decoded) ? [String(decoded.left)] : []),
+					...(Result.isFailure(decoded) ? [String(decoded.failure)] : []),
 				].join("\n"),
 				filePath,
 				message: `Adoption File Parse Failed: ${filePath}`,
@@ -298,7 +295,7 @@ export function parsePnpmWorkspace(raw: string, filePath: string) {
 		);
 
 	return Effect.succeed({
-		catalogEntries: decoded.right.catalogEntries,
-		packages: decoded.right.packages ?? [],
+		catalogEntries: decoded.success.catalogEntries,
+		packages: decoded.success.packages ?? [],
 	});
 }

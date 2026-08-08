@@ -1,10 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
 import { databases } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const databaseSchema = Schema.Literal(...databases.ids);
+export const databaseSchema = Schema.Literals(databases.ids);
 
 const databaseStep = defineStep<typeof databaseSchema.Type>({
 	id: "database",
@@ -18,8 +18,8 @@ const databaseStep = defineStep<typeof databaseSchema.Type>({
 		if (!interactive) {
 			const normalized = databases.normalize(config.database);
 			if (normalized) {
-				const result = Schema.decodeUnknownEither(databaseSchema)(normalized);
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeUnknownResult(databaseSchema)(normalized);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;

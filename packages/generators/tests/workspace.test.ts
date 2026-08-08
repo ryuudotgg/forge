@@ -32,7 +32,7 @@ const commandVersions: Record<string, string> = {
 
 const probeLayer = Layer.succeed(
 	CommandProbe,
-	CommandProbe.make({
+	CommandProbe.of({
 		readVersion: (command: string) => {
 			const version = commandVersions[command];
 			return version === undefined
@@ -50,7 +50,7 @@ const probeLayer = Layer.succeed(
 
 const failingProbeLayer = Layer.succeed(
 	CommandProbe,
-	CommandProbe.make({
+	CommandProbe.of({
 		readVersion: (command: string) =>
 			Effect.fail(
 				new CommandProbeError({
@@ -285,7 +285,7 @@ describe("root workspace", () => {
 	it("pins the probed node version in .nvmrc for Bun projects", async () => {
 		const layer = Layer.succeed(
 			CommandProbe,
-			CommandProbe.make({
+			CommandProbe.of({
 				readVersion: (command: string) => {
 					const versions: Record<string, string> = {
 						bun: "1.3.2",
@@ -326,7 +326,7 @@ describe("root workspace", () => {
 	it("falls back to the minimum node major for .nvmrc when node probing fails", async () => {
 		const layer = Layer.succeed(
 			CommandProbe,
-			CommandProbe.make({
+			CommandProbe.of({
 				readVersion: (command: string) =>
 					command === "node"
 						? Effect.fail(

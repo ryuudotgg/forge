@@ -1,8 +1,15 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FileSystem, Error as PlatformError } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import {
+	Cause,
+	Effect,
+	Exit,
+	FileSystem,
+	Layer,
+	Option,
+	PlatformError,
+} from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	CommandProbe,
@@ -12,22 +19,22 @@ import {
 } from "../src/index";
 import { withTempDir, writeJson, writeText } from "./harness";
 
-const projectLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+const projectLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
 
 function systemFailure(method: string, path: string) {
 	return Effect.fail(
-		new PlatformError.SystemError({
+		PlatformError.systemError({
 			method,
 			module: "FileSystem",
 			pathOrDescriptor: path,
-			reason: "PermissionDenied",
+			_tag: "PermissionDenied",
 		}),
 	);
 }
 
 function badArgumentFailure(method: string) {
 	return Effect.fail(
-		new PlatformError.BadArgument({
+		PlatformError.badArgument({
 			description: "invalid traversal argument",
 			method,
 			module: "FileSystem",
@@ -41,11 +48,11 @@ function configLayerWithFileSystem(
 	const fileSystemLayer = Layer.effect(
 		FileSystem.FileSystem,
 		Effect.map(FileSystem.FileSystem, transform),
-	).pipe(Layer.provide(NodeContext.layer));
+	).pipe(Layer.provide(NodeServices.layer));
 
 	return CoreLive.pipe(
 		Layer.provideMerge(fileSystemLayer),
-		Layer.provideMerge(NodeContext.layer),
+		Layer.provideMerge(NodeServices.layer),
 	);
 }
 
@@ -64,7 +71,7 @@ async function failure<A, E>(effect: Effect.Effect<A, E, never>) {
 
 	if (!Exit.isFailure(exit)) throw new Error("Expected Effect Failure");
 
-	const failed = Cause.failureOption(exit.cause);
+	const failed = Cause.findErrorOption(exit.cause);
 	if (Option.isNone(failed)) throw new Error("Expected Effect Failure");
 
 	return failed.value;
@@ -118,11 +125,11 @@ describe("module config store", () => {
 	it("maps config existence failures with the original cause", async () => {
 		await withTempDir("config-exists-failure", async (directory) => {
 			const path = join(directory, "forge.json");
-			const cause = new PlatformError.SystemError({
+			const cause = PlatformError.systemError({
 				method: "exists",
 				module: "FileSystem",
 				pathOrDescriptor: path,
-				reason: "PermissionDenied",
+				_tag: "PermissionDenied",
 			});
 			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
@@ -141,10 +148,12 @@ describe("module config store", () => {
 			expect(error.reason).toBe("read-failed");
 			expect(error.message).toBe("Module Config Read Failed");
 			expect(error.cause).toMatchObject({
-				_tag: "SystemError",
-				method: "exists",
-				pathOrDescriptor: path,
-				reason: "PermissionDenied",
+				_tag: "PlatformError",
+				reason: {
+					_tag: "PermissionDenied",
+					method: "exists",
+					pathOrDescriptor: path,
+				},
 			});
 		});
 	});
@@ -287,6 +296,29 @@ describe("module config store", () => {
 		});
 	});
 
+	it("surfaces bad stat arguments while traversing entries", async () => {
+		await withTempDir("config-stat-bad-argument", async (directory) => {
+			const child = join(directory, "apps");
+			await mkdir(child);
+			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				stat: (target) =>
+					target === child
+						? badArgumentFailure("stat")
+						: fileSystem.stat(target),
+			}));
+
+			const error = await failure(
+				ConfigStore.discover(directory).pipe(Effect.provide(failingLayer)),
+			);
+
+			expect(error._tag).toBe("DiscoveryError");
+			expect(error.message).toBe(
+				"Module Discovery Failed: BadArgument: FileSystem.stat: invalid traversal argument",
+			);
+		});
+	});
+
 	it("returns discovered modules in root-path order", async () => {
 		await withTempDir("config-order", async (directory) => {
 			await writeJson(
@@ -359,11 +391,11 @@ describe("module config store", () => {
 		await withTempDir("config-directory-failure", async (directory) => {
 			const moduleRoot = join(directory, "packages/utils");
 			const path = join(moduleRoot, "forge.json");
-			const cause = new PlatformError.SystemError({
+			const cause = PlatformError.systemError({
 				method: "makeDirectory",
 				module: "FileSystem",
 				pathOrDescriptor: moduleRoot,
-				reason: "PermissionDenied",
+				_tag: "PermissionDenied",
 			});
 			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
@@ -394,10 +426,12 @@ describe("module config store", () => {
 			expect(error.reason).toBe("directory-failed");
 			expect(error.message).toBe("Module Config Directory Failed");
 			expect(error.cause).toMatchObject({
-				_tag: "SystemError",
-				method: "makeDirectory",
-				pathOrDescriptor: moduleRoot,
-				reason: "PermissionDenied",
+				_tag: "PlatformError",
+				reason: {
+					_tag: "PermissionDenied",
+					method: "makeDirectory",
+					pathOrDescriptor: moduleRoot,
+				},
 			});
 		});
 	});

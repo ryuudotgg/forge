@@ -8,6 +8,7 @@ import {
 	type Manifest,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "@ryuujs/generators";
+import type { ManagedProject } from "../src/commands/lifecycle";
 
 export async function withTempDir<T>(
 	name: string,
@@ -103,10 +104,11 @@ export function managedProject(options?: {
 	readonly modules?: ReadonlyArray<DiscoveredModule>;
 	readonly registries?: ReadonlyArray<string>;
 	readonly registryDescriptors?: Manifest["registryDescriptors"];
-}) {
+}): ManagedProject {
 	return {
 		config: options?.config ?? { slug: "acme", web: "nextjs" },
 		manifest: {
+			schemaVersion: 1,
 			config: {},
 			installs: [...(options?.installs ?? [])],
 			modules: {},

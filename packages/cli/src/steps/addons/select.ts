@@ -5,11 +5,11 @@ import {
 	optionalAddons,
 	recommendedAddons,
 } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const addonsSchema = Schema.Array(Schema.Literal(...optionalAddons.ids));
+export const addonsSchema = Schema.Array(Schema.Literals(optionalAddons.ids));
 
 function addonOption(addon: OptionalAddon) {
 	const entry = getCatalogEntry(addon);
@@ -39,8 +39,8 @@ const addonsStep = defineStep<typeof addonsSchema.Type>({
 					.map((addon) => optionalAddons.normalize(addon))
 					.filter((addon): addon is OptionalAddon => addon !== undefined);
 
-				const result = Schema.decodeUnknownEither(addonsSchema)(normalized);
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeUnknownResult(addonsSchema)(normalized);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;
@@ -60,11 +60,10 @@ const addonsStep = defineStep<typeof addonsSchema.Type>({
 
 		if (isCancel(selectedAddons)) cancel();
 
-		const result = Schema.decodeUnknownEither(addonsSchema)(selectedAddons);
+		const result = Schema.decodeUnknownResult(addonsSchema)(selectedAddons);
+		if (Result.isFailure(result)) return SKIP;
 
-		if (Either.isLeft(result)) return SKIP;
-
-		return result.right;
+		return result.success;
 	},
 });
 

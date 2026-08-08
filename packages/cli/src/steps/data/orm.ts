@@ -1,10 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
 import { orms } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const ormSchema = Schema.Literal("drizzle", "prisma");
+export const ormSchema = Schema.Literals(["drizzle", "prisma"]);
 
 const ormStep = defineStep<typeof ormSchema.Type>({
 	id: "orm",
@@ -20,8 +20,8 @@ const ormStep = defineStep<typeof ormSchema.Type>({
 		if (!interactive) {
 			const normalized = orms.normalize(config.orm);
 			if (normalized) {
-				const result = Schema.decodeUnknownEither(ormSchema)(normalized);
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeUnknownResult(ormSchema)(normalized);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;

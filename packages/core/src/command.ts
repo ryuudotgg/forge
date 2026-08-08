@@ -1,5 +1,12 @@
-import { FileSystem } from "@effect/platform";
-import { Effect, Either, Option, Schema } from "effect";
+import {
+	Context,
+	Effect,
+	FileSystem,
+	Layer,
+	Option,
+	Result,
+	Schema,
+} from "effect";
 import { CommandProbeError } from "./errors";
 import {
 	PROBE_MAX_OUTPUT_BYTES,
@@ -7,50 +14,54 @@ import {
 	Subprocess,
 } from "./subprocess";
 
-const PersistedPackageJsonSchema = Schema.parseJson(
+const PersistedPackageJsonSchema = Schema.fromJsonString(
 	Schema.Struct({
-		engines: Schema.optional(
-			Schema.Record({ key: Schema.String, value: Schema.String }),
-		),
+		engines: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 		packageManager: Schema.optional(Schema.String),
 	}),
 );
 
-export class CommandProbe extends Effect.Service<CommandProbe>()(
-	"CommandProbe",
-	{
-		accessors: true,
-		effect: Effect.gen(function* () {
-			const subprocess = yield* Subprocess;
-			const readVersion = Effect.fn("CommandProbe.readVersion")(function* (
-				command: string,
-			) {
-				return yield* subprocess
-					.run({
-						command,
-						args: ["--version"],
-						timeoutMs: PROBE_TIMEOUT_MS,
-						maxOutputBytes: PROBE_MAX_OUTPUT_BYTES,
-						outputMode: "capture",
-					})
-					.pipe(
-						Effect.map((result) => result.output.trim().replace(/^v/, "")),
-						Effect.mapError(
-							(error) =>
-								new CommandProbeError({
-									command,
-									reason: "probe-failed",
-									detail: error.message,
-									cause: error,
-								}),
-						),
-					);
-			});
+const makeCommandProbe = Effect.gen(function* () {
+	const subprocess = yield* Subprocess;
+	const readVersion = Effect.fn("CommandProbe.readVersion")(function* (
+		command: string,
+	) {
+		return yield* subprocess
+			.run({
+				command,
+				args: ["--version"],
+				timeoutMs: PROBE_TIMEOUT_MS,
+				maxOutputBytes: PROBE_MAX_OUTPUT_BYTES,
+				outputMode: "capture",
+			})
+			.pipe(
+				Effect.map((result) => result.output.trim().replace(/^v/, "")),
+				Effect.mapError(
+					(error) =>
+						new CommandProbeError({
+							command,
+							reason: "probe-failed",
+							detail: error.message,
+							cause: error,
+						}),
+				),
+			);
+	});
 
-			return { readVersion };
-		}),
-	},
-) {}
+	return { readVersion };
+});
+
+type CommandProbeService = Effect.Success<typeof makeCommandProbe>;
+
+export class CommandProbe extends Context.Service<
+	CommandProbe,
+	CommandProbeService
+>()("CommandProbe") {
+	static readonly Default = Layer.effect(CommandProbe, makeCommandProbe);
+	static readonly readVersion = (
+		...args: Parameters<CommandProbeService["readVersion"]>
+	) => CommandProbe.use((service) => service.readVersion(...args));
+}
 
 export const CommandVersionSchema = Schema.String;
 
@@ -70,21 +81,21 @@ export function readPersistedCommandVersions(
 			.pipe(Effect.option);
 
 		const packageJson = Option.flatMap(packageJsonRaw, (raw) => {
-			const decoded = Schema.decodeUnknownEither(PersistedPackageJsonSchema)(
+			const decoded = Schema.decodeUnknownResult(PersistedPackageJsonSchema)(
 				raw,
 			);
 
-			return Either.isRight(decoded)
-				? Option.some(decoded.right)
+			return Result.isSuccess(decoded)
+				? Option.some(decoded.success)
 				: Option.none();
 		});
 
 		const engines = Option.flatMap(packageJson, (value) =>
-			Option.fromNullable(value.engines),
+			Option.fromUndefinedOr(value.engines),
 		);
 
 		const runtimeVersion = Option.flatMap(engines, (value) =>
-			Option.fromNullable(value[runtimeCommandName]),
+			Option.fromUndefinedOr(value[runtimeCommandName]),
 		);
 
 		const packageManagerVersion = Option.flatMap(packageJson, (value) => {

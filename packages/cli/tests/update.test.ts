@@ -1,56 +1,72 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runUpdate } from "../src/commands/update";
+import { expect, it, vi } from "@effect/vitest";
+import { Effect, Layer } from "effect";
+import type {
+	applyInstalledPlan as ApplyInstalledPlan,
+	loadManagedProject as LoadManagedProject,
+	loadProjectRegistry as LoadProjectRegistry,
+} from "../src/commands/lifecycle";
+import {
+	runUpdate,
+	runUpdateEffect,
+	UpdateCommand,
+	type UpdateCommandService,
+} from "../src/commands/update";
 import { managedProject } from "./lifecycle-fixtures";
 
-const promptMocks = vi.hoisted(() => ({
-	intro: vi.fn(),
-	logInfo: vi.fn(),
-}));
+type ApplyInstalledPlanFunction = typeof ApplyInstalledPlan;
+type LoadManagedProjectFunction = typeof LoadManagedProject;
+type LoadProjectRegistryFunction = typeof LoadProjectRegistry;
 
-const lifecycleMocks = vi.hoisted(() => ({
-	applyInstalledPlan: vi.fn(),
-	loadManagedProject: vi.fn(),
-	loadProjectRegistry: vi.fn(),
-}));
+interface UpdateFixtureOptions {
+	readonly project?: Awaited<ReturnType<LoadManagedProjectFunction>>;
+	readonly registry?: Awaited<ReturnType<LoadProjectRegistryFunction>>;
+}
 
-vi.mock("@clack/prompts", () => ({
-	intro: promptMocks.intro,
-	log: { info: promptMocks.logInfo },
-}));
+function updateFixture(options: UpdateFixtureOptions) {
+	const project = options.project ?? managedProject();
+	const registry = options.registry ?? {
+		catalog: [],
+		descriptors: [],
+		registry: { adapters: [], addons: [], frameworks: [], templates: [] },
+	};
+	const applyInstalledPlan = vi.fn<ApplyInstalledPlanFunction>(async () => {});
+	const intro = vi.fn();
+	const loadManagedProject = vi.fn<LoadManagedProjectFunction>(
+		async () => project,
+	);
+	const loadProjectRegistry = vi.fn<LoadProjectRegistryFunction>(
+		async () => registry,
+	);
+	const logInfo = vi.fn();
+	const service: UpdateCommandService = {
+		applyInstalledPlan,
+		intro,
+		loadManagedProject,
+		loadProjectRegistry,
+		logInfo,
+	};
 
-vi.mock("../src/commands/lifecycle", () => ({
-	applyInstalledPlan: lifecycleMocks.applyInstalledPlan,
-	loadManagedProject: lifecycleMocks.loadManagedProject,
-	loadProjectRegistry: lifecycleMocks.loadProjectRegistry,
-}));
+	return {
+		applyInstalledPlan,
+		intro,
+		layer: Layer.succeed(UpdateCommand, UpdateCommand.of(service)),
+		loadManagedProject,
+		loadProjectRegistry,
+		logInfo,
+	};
+}
 
-describe("update command", () => {
-	beforeEach(() => {
-		lifecycleMocks.applyInstalledPlan.mockReset();
-		lifecycleMocks.loadManagedProject.mockReset();
-		lifecycleMocks.loadProjectRegistry.mockReset();
-		promptMocks.intro.mockReset();
-		promptMocks.logInfo.mockReset();
-		lifecycleMocks.loadProjectRegistry.mockResolvedValue({
-			catalog: [],
-			descriptors: [],
-			registry: { adapters: [], addons: [], frameworks: [], templates: [] },
-		});
+it.effect("re-applies the plan with the manifest installs", () => {
+	const project = managedProject({
+		installs: [{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
 	});
+	const fixture = updateFixture({ project });
 
-	it("re-applies the plan with the manifest installs", async () => {
-		const project = managedProject({
-			installs: [{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
-		});
-		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({});
 
-		await runUpdate({});
-
-		expect(lifecycleMocks.loadManagedProject).toHaveBeenCalledWith(
-			".",
-			"update",
-		);
-		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+		expect(fixture.loadManagedProject).toHaveBeenCalledWith(".", "update");
+		expect(fixture.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", web: "nextjs" },
 			[
@@ -63,51 +79,68 @@ describe("update command", () => {
 			undefined,
 		);
 
-		const [, config, installs] =
-			lifecycleMocks.applyInstalledPlan.mock.calls[0] ?? [];
+		const [, config, installs] = fixture.applyInstalledPlan.mock.calls[0] ?? [];
 		expect(config).toBe(project.config);
 		expect(installs).toBe(project.manifest.installs);
-	});
+	}).pipe(Effect.provide(fixture.layer));
+});
 
-	it("prints the intro before applying the plan", async () => {
-		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+it.effect("runs the Promise command wrapper with an injected layer", () => {
+	const fixture = updateFixture({});
 
-		await runUpdate({});
+	return Effect.promise(() => runUpdate({}, fixture.layer)).pipe(
+		Effect.tap(() =>
+			Effect.sync(() => {
+				expect(fixture.applyInstalledPlan).toHaveBeenCalledOnce();
+			}),
+		),
+	);
+});
 
-		expect(promptMocks.intro).toHaveBeenCalledTimes(1);
-		expect(promptMocks.intro).toHaveBeenCalledWith(
+it.effect("prints the intro before applying the plan", () => {
+	const fixture = updateFixture({});
+
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({});
+
+		expect(fixture.intro).toHaveBeenCalledOnce();
+		expect(fixture.intro).toHaveBeenCalledWith(
 			"We're reconciling your installed addons and templates...",
 		);
 
 		const introOrder =
-			promptMocks.intro.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
+			fixture.intro.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
 		const applyOrder =
-			lifecycleMocks.applyInstalledPlan.mock.invocationCallOrder[0] ?? 0;
+			fixture.applyInstalledPlan.mock.invocationCallOrder[0] ?? 0;
 		expect(introOrder).toBeLessThan(applyOrder);
+	}).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect("forwards opted-in registries", () => {
+	const fixture = updateFixture({
+		project: managedProject({ registries: ["@acme/forge-sentry"] }),
 	});
 
-	it("forwards opted-in registries", async () => {
-		lifecycleMocks.loadManagedProject.mockResolvedValue(
-			managedProject({ registries: ["@acme/forge-sentry"] }),
-		);
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({});
 
-		await runUpdate({});
-
-		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+		expect(fixture.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", web: "nextjs" },
 			[],
 			undefined,
 			["@acme/forge-sentry"],
 		);
-	});
+	}).pipe(Effect.provide(fixture.layer));
+});
 
-	it("forwards the selected conflict resolution policy", async () => {
-		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+it.effect("forwards the selected conflict resolution policy", () => {
+	const fixture = updateFixture({});
 
-		await runUpdate({ "keep-user": true });
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({ "keep-user": true });
 
-		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+		expect(fixture.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", web: "nextjs" },
 			[],
@@ -115,24 +148,24 @@ describe("update command", () => {
 			undefined,
 			{ resolutionPolicy: "keep-user" },
 		);
-	});
+	}).pipe(Effect.provide(fixture.layer));
+});
 
-	it("reports registry package version changes", async () => {
-		lifecycleMocks.loadManagedProject.mockResolvedValue(
-			managedProject({
-				registries: ["@acme/forge-sentry"],
-				registryDescriptors: [
-					{
-						apiVersion: 1,
-						id: "@acme/forge-sentry",
-						source: "npm",
-						units: [{ id: "@acme/sentry", kind: "addon" }],
-						version: "1.4.2",
-					},
-				],
-			}),
-		);
-		lifecycleMocks.loadProjectRegistry.mockResolvedValue({
+it.effect("reports registry package version changes", () => {
+	const fixture = updateFixture({
+		project: managedProject({
+			registries: ["@acme/forge-sentry"],
+			registryDescriptors: [
+				{
+					apiVersion: 1,
+					id: "@acme/forge-sentry",
+					source: "npm",
+					units: [{ id: "@acme/sentry", kind: "addon" }],
+					version: "1.4.2",
+				},
+			],
+		}),
+		registry: {
 			catalog: [],
 			descriptors: [
 				{
@@ -144,15 +177,17 @@ describe("update command", () => {
 				},
 			],
 			registry: { adapters: [], addons: [], frameworks: [], templates: [] },
-		});
+		},
+	});
 
-		await runUpdate({});
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({});
 
-		expect(lifecycleMocks.loadProjectRegistry).toHaveBeenCalledWith(".", [
+		expect(fixture.loadProjectRegistry).toHaveBeenCalledWith(".", [
 			"@acme/forge-sentry",
 		]);
-		expect(promptMocks.logInfo).toHaveBeenCalledWith(
+		expect(fixture.logInfo).toHaveBeenCalledWith(
 			"@acme/forge-sentry 1.4.2 -> 1.5.0.",
 		);
-	});
+	}).pipe(Effect.provide(fixture.layer));
 });

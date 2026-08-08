@@ -356,6 +356,31 @@ describe("registry loader", () => {
 		]);
 	});
 
+	it("accepts nested default interop and preserves package integrity", async () => {
+		const loaded = await loadDefinitionRegistry({
+			importRegistry: async () => ({
+				integrity: "sha512-fixture",
+				module: {
+					default: { default: { apiVersion: 1, catalog: [] } },
+				},
+				version: "1.0.0",
+			}),
+			projectRoot: "/fixture-project",
+			registries: ["@fixture/nested-default"],
+		});
+
+		expect(loaded.descriptors).toEqual([
+			{
+				apiVersion: 1,
+				id: "@fixture/nested-default",
+				integrity: "sha512-fixture",
+				source: "npm",
+				units: [],
+				version: "1.0.0",
+			},
+		]);
+	});
+
 	it("resolves packages from the project's node_modules", async () => {
 		const projectRoot = await mkdtemp(
 			join(tmpdir(), "forge-registry-resolve-"),
@@ -723,6 +748,15 @@ describe("registry loader", () => {
 	});
 
 	it("rejects invalid wrappers and unscoped third-party unit ids", async () => {
+		const primitiveWrapper = await loadFailure({
+			importRegistry: async () => ({ module: null, version: "1.0.0" }),
+			projectRoot: "/fixture-project",
+			registries: ["@acme/invalid"],
+		});
+		expect(primitiveWrapper.message).toBe(
+			"Registry Package Invalid: @acme/invalid",
+		);
+
 		const invalidWrapper = await loadFailure({
 			importRegistry: async () => ({
 				module: { default: { apiVersion: 1 } },
@@ -874,6 +908,36 @@ describe("registry loader", () => {
 });
 
 describe("removal blockers", () => {
+	it("ignores the removed addon in the installed-id scan", () => {
+		expect(findRemovalBlockers("drizzle", {}, ["drizzle"], [])).toEqual({
+			dependents: [],
+			frameworks: [],
+		});
+	});
+
+	it("falls back to a template's framework id in an explicit registry", () => {
+		const template = builtins.templates.find(
+			(entry) => entry.id === "nextjs/base",
+		);
+		if (template === undefined)
+			throw new Error("Missing Template: nextjs/base");
+
+		const registry = {
+			...builtins,
+			frameworks: [],
+			templates: [{ ...template, framework: "@fixture/missing-framework" }],
+		};
+		const blockers = findRemovalBlockers(
+			"root",
+			{ web: "nextjs" },
+			[],
+			[{ id: "nextjs/base", version: 1 }],
+			registry,
+		);
+
+		expect(blockers.frameworks).toEqual(["@fixture/missing-framework"]);
+	});
+
 	it("blocks removing the orm while better-auth depends on it", () => {
 		const blockers = findRemovalBlockers(
 			"drizzle",

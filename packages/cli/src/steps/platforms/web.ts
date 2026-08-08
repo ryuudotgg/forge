@@ -1,6 +1,6 @@
 import { isCancel, log, select } from "@clack/prompts";
 import { webFrameworks } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
@@ -9,8 +9,8 @@ import {
 } from "../../utils/choices";
 import { defineStep } from "../types";
 
-export const webSchema = Schema.Literal(...webFrameworks.ids).pipe(
-	Schema.filter(availableChoice(webFrameworks)),
+export const webSchema = Schema.Literals(webFrameworks.ids).pipe(
+	Schema.check(Schema.makeFilter(availableChoice(webFrameworks))),
 );
 
 const webStep = defineStep<typeof webSchema.Type>({
@@ -27,8 +27,8 @@ const webStep = defineStep<typeof webSchema.Type>({
 		if (!interactive) {
 			const normalized = webFrameworks.normalize(config.web);
 			if (normalized) {
-				const result = Schema.decodeUnknownEither(webSchema)(normalized);
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeUnknownResult(webSchema)(normalized);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return "nextjs";

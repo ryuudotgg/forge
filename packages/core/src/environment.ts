@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { CommandProbe } from "./command";
 import { type DependencyFormat, defaultDependencyFormat } from "./operations";
 
@@ -154,33 +154,48 @@ function buildPackageManagerCheck(
 	return { ok: true, message: `${displayName} v${version}` };
 }
 
-export class Environment extends Effect.Service<Environment>()("Environment", {
-	accessors: true,
-	effect: Effect.succeed({
-		checkRuntime: () => Effect.sync(checkCurrentRuntime),
-		checkPackageManager: (pm: PackageManager) => {
-			const displayName = packageManagers[pmCommandMap[pm]].displayName;
+const makeEnvironment = Effect.succeed({
+	checkRuntime: Effect.sync(checkCurrentRuntime),
+	checkPackageManager: (pm: PackageManager) => {
+		const displayName = packageManagers[pmCommandMap[pm]].displayName;
 
-			return CommandProbe.readVersion(packageManagerCommand(pm)).pipe(
-				Effect.map((version) => buildPackageManagerCheck(pm, version)),
-				Effect.catchTag("CommandProbeError", () =>
-					Effect.succeed<EnvironmentCheck>({
-						ok: false,
-						message: `You don't have ${displayName} installed, please install it and try again.`,
-					}),
-				),
-			);
-		},
-		readPackageManagerVersion: (pm: PackageManager) =>
-			CommandProbe.readVersion(packageManagerCommand(pm)),
-	}),
-}) {}
+		return CommandProbe.readVersion(packageManagerCommand(pm)).pipe(
+			Effect.map((version) => buildPackageManagerCheck(pm, version)),
+			Effect.catchTag("CommandProbeError", () =>
+				Effect.succeed<EnvironmentCheck>({
+					ok: false,
+					message: `You don't have ${displayName} installed, please install it and try again.`,
+				}),
+			),
+		);
+	},
+	readPackageManagerVersion: (pm: PackageManager) =>
+		CommandProbe.readVersion(packageManagerCommand(pm)),
+});
+
+type EnvironmentService = Effect.Success<typeof makeEnvironment>;
+
+export class Environment extends Context.Service<
+	Environment,
+	EnvironmentService
+>()("Environment") {
+	static readonly Default = Layer.effect(Environment, makeEnvironment);
+	static readonly checkRuntime = Environment.use(
+		(service) => service.checkRuntime,
+	);
+	static readonly checkPackageManager = (
+		...args: Parameters<EnvironmentService["checkPackageManager"]>
+	) => Environment.use((service) => service.checkPackageManager(...args));
+	static readonly readPackageManagerVersion = (
+		...args: Parameters<EnvironmentService["readPackageManagerVersion"]>
+	) => Environment.use((service) => service.readPackageManagerVersion(...args));
+}
 
 const environmentLayer = Environment.Default;
 
 export function checkRuntime(): EnvironmentCheck {
 	return Effect.runSync(
-		Environment.checkRuntime().pipe(Effect.provide(environmentLayer)),
+		Environment.checkRuntime.pipe(Effect.provide(environmentLayer)),
 	);
 }
 

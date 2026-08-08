@@ -4,7 +4,7 @@ import {
 	styleFrameworks,
 	webFrameworks,
 } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
@@ -14,8 +14,8 @@ import {
 import { stripNulls } from "../../utils/strip-nulls";
 import { defineStep, SKIP } from "../types";
 
-export const styleFrameworkSchema = Schema.Literal(...styleFrameworks.ids).pipe(
-	Schema.filter(availableChoice(styleFrameworks)),
+export const styleFrameworkSchema = Schema.Literals(styleFrameworks.ids).pipe(
+	Schema.check(Schema.makeFilter(availableChoice(styleFrameworks))),
 );
 
 const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
@@ -31,9 +31,9 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 			const normalized = styleFrameworks.normalize(config.style);
 			if (normalized) {
 				const result =
-					Schema.decodeUnknownEither(styleFrameworkSchema)(normalized);
+					Schema.decodeUnknownResult(styleFrameworkSchema)(normalized);
 
-				if (Either.isRight(result)) return result.right;
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;

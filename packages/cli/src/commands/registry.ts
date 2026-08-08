@@ -30,8 +30,8 @@ export const subcommands = {
 	update: {
 		description: "Reconcile your installed addons and templates.",
 		async run(_positionals, values) {
-			const { runUpdate } = await import("./update");
-			await runUpdate(values);
+			const { runUpdate, UpdateCommand } = await import("./update");
+			await runUpdate(values, UpdateCommand.Default);
 		},
 	},
 

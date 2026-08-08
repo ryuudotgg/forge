@@ -147,7 +147,12 @@ export {
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
 export { hashContentHex } from "./hash";
-export { decodeJsonString, formatSchemaIssues } from "./json";
+export type { FormattedSchemaIssue } from "./json";
+export {
+	decodeJsonString,
+	formatSchemaError,
+	formatSchemaIssues,
+} from "./json";
 export { CoreLive } from "./layer";
 export { envResidue, threeWayMergeEnv } from "./merge/env";
 export type { JsonMergeResult } from "./merge/json";

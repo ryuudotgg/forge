@@ -1,5 +1,4 @@
 import { isAbsolute, join, relative, sep } from "node:path";
-import { FileSystem } from "@effect/platform";
 import {
 	authenticationProviders,
 	catalogs,
@@ -13,7 +12,15 @@ import {
 	uiLibraries,
 	webFrameworks,
 } from "@ryuujs/generators";
-import { Effect, Either, Option, Schema } from "effect";
+import {
+	Context,
+	Effect,
+	FileSystem,
+	Layer,
+	Option,
+	Result,
+	Schema,
+} from "effect";
 import {
 	type AdoptedModuleVersions,
 	allDependencyNames,
@@ -80,490 +87,471 @@ function isWithinProject(projectRoot: string, path: string): boolean {
 	);
 }
 
-export class AdoptionDetector extends Effect.Service<AdoptionDetector>()(
-	"AdoptionDetector",
-	{
-		accessors: true,
-		effect: Effect.gen(function* () {
-			const fs = yield* FileSystem.FileSystem;
+const makeAdoptionDetector = Effect.gen(function* () {
+	const fs = yield* FileSystem.FileSystem;
 
-			const exists = Effect.fn("AdoptionDetector.exists")(function* (
-				filePath: string,
-			) {
-				return yield* fs.exists(filePath).pipe(
-					Effect.catchTags({
-						BadArgument: (error) =>
-							new AdoptionFileReadError({
-								detail: String(error),
-								filePath,
-								message: `Adoption File Read Failed: ${filePath}`,
-							}),
-						SystemError: (error) =>
-							new AdoptionFileReadError({
-								detail: String(error),
-								filePath,
-								message: `Adoption File Read Failed: ${filePath}`,
-							}),
-					}),
-				);
-			});
-
-			const readRequired = Effect.fn("AdoptionDetector.readRequired")(
-				function* (filePath: string) {
-					return yield* fs.readFileString(filePath).pipe(
-						Effect.catchTags({
-							BadArgument: (error) =>
-								new AdoptionFileReadError({
-									detail: String(error),
-									filePath,
-									message: `Adoption File Read Failed: ${filePath}`,
-								}),
-							SystemError: (error) =>
-								new AdoptionFileReadError({
-									detail: String(error),
-									filePath,
-									message: `Adoption File Read Failed: ${filePath}`,
-								}),
-						}),
-					);
-				},
-			);
-
-			const readOptional = Effect.fn("AdoptionDetector.readOptional")(
-				function* (filePath: string) {
-					if (!(yield* exists(filePath))) return undefined;
-					return yield* readRequired(filePath);
-				},
-			);
-
-			const decodePackageJson = Effect.fn("AdoptionDetector.decodePackageJson")(
-				function* (filePath: string) {
-					const raw = yield* readRequired(filePath);
-
-					const decoded = Schema.decodeUnknownEither(PackageJsonSchema)(raw);
-					if (Either.isLeft(decoded))
-						return yield* new AdoptionFileParseError({
-							detail: String(decoded.left),
-							filePath,
-							message: `Adoption File Parse Failed: ${filePath}`,
-						});
-
-					return decoded.right;
-				},
-			);
-
-			const readPackageJson = Effect.fn("AdoptionDetector.readPackageJson")(
-				function* (filePath: string) {
-					if (!(yield* exists(filePath))) return undefined;
-					return yield* decodePackageJson(filePath);
-				},
-			);
-
-			const isSymbolicLink = Effect.fn("AdoptionDetector.isSymbolicLink")(
-				function* (filePath: string) {
-					return yield* fs.readLink(filePath).pipe(
-						Effect.map(() => true),
-						Effect.orElseSucceed(() => false),
-					);
-				},
-			);
-
-			const scanPackageDirectories: (
-				projectRoot: string,
-				currentPath: string,
-				canonicalProjectRoot: string,
-			) => Effect.Effect<ReadonlyArray<string>, AdoptionFileReadError> =
-				Effect.fn("AdoptionDetector.scanPackageDirectories")(function* (
-					projectRoot: string,
-					currentPath: string,
-					canonicalProjectRoot: string,
-				) {
-					const entries = yield* fs.readDirectory(currentPath).pipe(
-						Effect.catchTags({
-							BadArgument: (error) =>
-								new AdoptionFileReadError({
-									detail: String(error),
-									filePath: currentPath,
-									message: `Adoption Directory Read Failed: ${currentPath}`,
-								}),
-							SystemError: (error) =>
-								new AdoptionFileReadError({
-									detail: String(error),
-									filePath: currentPath,
-									message: `Adoption Directory Read Failed: ${currentPath}`,
-								}),
-						}),
-					);
-
-					const roots: string[] = [];
-					if (entries.includes("package.json") && currentPath !== projectRoot)
-						roots.push(normalizePath(relative(projectRoot, currentPath)));
-
-					for (const entry of entries) {
-						if (ignoredDirectories.has(entry)) continue;
-
-						const fullPath = join(currentPath, entry);
-						if (yield* isSymbolicLink(fullPath)) continue;
-
-						const info = yield* fs.stat(fullPath).pipe(
-							Effect.map(Option.some),
-							Effect.catchTags({
-								BadArgument: () => Effect.succeed(Option.none()),
-								SystemError: () => Effect.succeed(Option.none()),
-							}),
-						);
-
-						if (Option.isNone(info) || info.value.type !== "Directory")
-							continue;
-
-						const canonicalPath = yield* fs.realPath(fullPath).pipe(
-							Effect.map(Option.some),
-							Effect.catchTags({
-								BadArgument: () => Effect.succeed(Option.none()),
-								SystemError: () => Effect.succeed(Option.none()),
-							}),
-						);
-
-						if (
-							Option.isNone(canonicalPath) ||
-							!isWithinProject(canonicalProjectRoot, canonicalPath.value)
-						)
-							continue;
-
-						roots.push(
-							...(yield* scanPackageDirectories(
-								projectRoot,
-								fullPath,
-								canonicalProjectRoot,
-							)),
-						);
-					}
-
-					return roots;
-				});
-
-			const readPnpmWorkspace = Effect.fn("AdoptionDetector.readPnpmWorkspace")(
-				function* (projectRoot: string) {
-					const filePath = join(projectRoot, "pnpm-workspace.yaml");
-					const raw = yield* readOptional(filePath);
-					return raw === undefined
-						? undefined
-						: yield* parsePnpmWorkspace(raw, filePath);
-				},
-			);
-
-			const inspectWorkspace = Effect.fn("AdoptionDetector.inspectWorkspace")(
-				function* (projectRoot: string) {
-					const pnpmWorkspace = yield* readPnpmWorkspace(projectRoot);
-					const rootPackageJson = yield* readPackageJson(
-						join(projectRoot, "package.json"),
-					);
-
-					const patterns =
-						pnpmWorkspace === undefined
-							? rootPackageJson?.workspaces === undefined
-								? []
-								: workspacePatterns(rootPackageJson.workspaces)
-							: pnpmWorkspace.packages;
-
-					if (patterns.length === 0)
-						return { pnpmWorkspace, rootPackageJson, roots: [] };
-
-					const canonicalProjectRoot = yield* fs.realPath(projectRoot).pipe(
-						Effect.catchTags({
-							BadArgument: (error) =>
-								new AdoptionFileReadError({
-									detail: String(error),
-									filePath: projectRoot,
-									message: `Adoption Directory Read Failed: ${projectRoot}`,
-								}),
-							SystemError: (error) =>
-								new AdoptionFileReadError({
-									detail: String(error),
-									filePath: projectRoot,
-									message: `Adoption Directory Read Failed: ${projectRoot}`,
-								}),
-						}),
-					);
-
-					const scannedRoots = yield* scanPackageDirectories(
-						projectRoot,
-						projectRoot,
-						canonicalProjectRoot,
-					);
-
-					const roots = scannedRoots
-						.filter((root) => matchesWorkspacePatterns(root, patterns))
-						.sort((left, right) => left.localeCompare(right));
-
-					return { pnpmWorkspace, rootPackageJson, roots };
-				},
-			);
-
-			const enumerate = Effect.fn("AdoptionDetector.enumerate")(function* (
-				projectRoot: string,
-			) {
-				return (yield* inspectWorkspace(projectRoot)).roots;
-			});
-
-			const rootPackageName = Effect.fn("AdoptionDetector.rootPackageName")(
-				function* (projectRoot: string) {
-					return (yield* readPackageJson(join(projectRoot, "package.json")))
-						?.name;
-				},
-			);
-
-			const readComponentsStyle = Effect.fn(
-				"AdoptionDetector.readComponentsStyle",
-			)(function* (filePath: string) {
-				const raw = yield* readOptional(filePath);
-				if (raw === undefined) return undefined;
-
-				const decoded = Schema.decodeUnknownEither(ComponentsJsonSchema)(raw);
-				if (Either.isLeft(decoded))
-					return yield* new AdoptionFileParseError({
-						detail: String(decoded.left),
+	const exists = Effect.fn("AdoptionDetector.exists")(function* (
+		filePath: string,
+	) {
+		return yield* fs.exists(filePath).pipe(
+			Effect.catchTag("PlatformError", (error) =>
+				Effect.fail(
+					new AdoptionFileReadError({
+						detail: String(error),
 						filePath,
-						message: `Adoption File Parse Failed: ${filePath}`,
-					});
-
-				return decoded.right.style ?? "";
-			});
-
-			const detect = Effect.fn("AdoptionDetector.detect")(function* (
-				projectRoot: string,
-			) {
-				const { pnpmWorkspace, rootPackageJson, roots } =
-					yield* inspectWorkspace(projectRoot);
-
-				const packageJsonByRoot = new Map<string, PackageJson>();
-				const componentsByRoot = new Map<string, string>();
-
-				for (const root of roots) {
-					const packageJson = yield* decodePackageJson(
-						join(projectRoot, root, "package.json"),
-					);
-
-					packageJsonByRoot.set(root, packageJson);
-
-					const componentsStyle = yield* readComponentsStyle(
-						join(projectRoot, root, "components.json"),
-					);
-
-					if (componentsStyle !== undefined)
-						componentsByRoot.set(root, componentsStyle);
-				}
-
-				const rootEntries = yield* fs.readDirectory(projectRoot).pipe(
-					Effect.catchTags({
-						BadArgument: (error) =>
-							new AdoptionFileReadError({
-								detail: String(error),
-								filePath: projectRoot,
-								message: `Adoption Directory Read Failed: ${projectRoot}`,
-							}),
-						SystemError: (error) =>
-							new AdoptionFileReadError({
-								detail: String(error),
-								filePath: projectRoot,
-								message: `Adoption Directory Read Failed: ${projectRoot}`,
-							}),
+						message: `Adoption File Read Failed: ${filePath}`,
 					}),
-				);
+				),
+			),
+		);
+	});
 
-				const rootEntrySet = new Set(rootEntries);
-				const allPackages = [
-					...(rootPackageJson === undefined ? [] : [rootPackageJson]),
-					...packageJsonByRoot.values(),
-				];
+	const readRequired = Effect.fn("AdoptionDetector.readRequired")(function* (
+		filePath: string,
+	) {
+		return yield* fs.readFileString(filePath).pipe(
+			Effect.catchTag("PlatformError", (error) =>
+				Effect.fail(
+					new AdoptionFileReadError({
+						detail: String(error),
+						filePath,
+						message: `Adoption File Read Failed: ${filePath}`,
+					}),
+				),
+			),
+		);
+	});
 
-				const directDependencies = new Set(
-					allPackages.flatMap((packageJson) => [
-						...dependencyNames(packageJson),
-					]),
-				);
+	const readOptional = Effect.fn("AdoptionDetector.readOptional")(function* (
+		filePath: string,
+	) {
+		if (!(yield* exists(filePath))) return undefined;
+		return yield* readRequired(filePath);
+	});
 
-				const allDependencies = new Set(
-					allPackages.flatMap((packageJson) => [
-						...allDependencyNames(packageJson),
-					]),
-				);
+	const decodePackageJson = Effect.fn("AdoptionDetector.decodePackageJson")(
+		function* (filePath: string) {
+			const raw = yield* readRequired(filePath);
 
-				const envFiles: string[] = [];
-				for (const name of [
-					".env",
-					".env.development",
-					".env.example",
-					".env.local",
-				]) {
-					const raw = yield* readOptional(join(projectRoot, name));
-					if (raw !== undefined) envFiles.push(raw);
-				}
-
-				const detectedEnvNames = envNames(envFiles);
-
-				const web = oneDetected([
-					directDependencies.has("next")
-						? webFrameworks.normalize("nextjs")
-						: undefined,
-					directDependencies.has("react-router")
-						? webFrameworks.normalize("react-router")
-						: undefined,
-					directDependencies.has("@tanstack/react-start")
-						? webFrameworks.normalize("tanstack-start")
-						: undefined,
-				]);
-
-				const orm = oneDetected([
-					directDependencies.has("drizzle-orm")
-						? orms.normalize("drizzle")
-						: undefined,
-					directDependencies.has("@prisma/client")
-						? orms.normalize("prisma")
-						: undefined,
-				]);
-
-				const authentication = directDependencies.has("better-auth")
-					? authenticationProviders.normalize("better-auth")
-					: undefined;
-
-				const rpc = directDependencies.has("@trpc/server")
-					? rpcProviders.normalize("trpc")
-					: undefined;
-
-				const style = allDependencies.has("tailwindcss")
-					? styleFrameworks.normalize("tailwind")
-					: undefined;
-
-				const componentsStyles = [...componentsByRoot.values()];
-				const uiLibrary = oneDetected([
-					directDependencies.has("@base-ui/react") ||
-					componentsStyles.some((value) => value.startsWith("base"))
-						? uiLibraries.normalize("base-ui")
-						: undefined,
-					componentsStyles.some((value) => value.startsWith("radix"))
-						? uiLibraries.normalize("radix")
-						: undefined,
-				]);
-
-				const hasBiome = ["biome.json", "biome.jsonc"].some((name) =>
-					rootEntrySet.has(name),
-				);
-
-				const hasEslint = [
-					".eslintrc",
-					".eslintrc.cjs",
-					".eslintrc.js",
-					".eslintrc.json",
-					".eslintrc.yaml",
-					".eslintrc.yml",
-					"eslint.config.cjs",
-					"eslint.config.js",
-					"eslint.config.mjs",
-					"eslint.config.mts",
-					"eslint.config.ts",
-				].some((name) => rootEntrySet.has(name));
-
-				const linter = oneDetected([
-					hasBiome ? linters.normalize("biome") : undefined,
-					hasEslint && linters.available("eslint-prettier")
-						? linters.normalize("eslint-prettier")
-						: undefined,
-				]);
-
-				const addons = [
-					rootEntrySet.has("commitlint.config.ts")
-						? optionalAddons.normalize("commitlint")
-						: undefined,
-					rootEntrySet.has("lefthook.yml")
-						? optionalAddons.normalize("lefthook")
-						: undefined,
-					[...rootEntrySet].some((name) => /^vitest\.config\./.test(name))
-						? optionalAddons.normalize("vitest")
-						: undefined,
-				].filter((addon) => addon !== undefined);
-
-				const packageManager = packageManagerFromLockfiles(rootEntrySet);
-
-				const nvmrc = yield* readOptional(join(projectRoot, ".nvmrc"));
-				const runtime = runtimeFromPackageJson(
-					rootPackageJson,
-					nvmrc !== undefined && nvmrc.trim().length > 0,
-				);
-
-				const database = databaseFromDependencies(allDependencies);
-				const databaseProvider = providerFromSignals(
-					database,
-					allDependencies,
-					detectedEnvNames,
-				);
-
-				const hasFlatCatalog = pnpmWorkspace?.catalogEntries.some(
-					(entry) => entry.catalog === undefined,
-				);
-
-				const hasScopedCatalog = pnpmWorkspace?.catalogEntries.some(
-					(entry) => entry.catalog !== undefined,
-				);
-
-				const catalogMode = oneDetected([
-					hasFlatCatalog ? catalogs.normalize("flat") : undefined,
-					hasScopedCatalog ? catalogs.normalize("scoped") : undefined,
-				]);
-
-				const webPlatform = platforms.normalize("web");
-
-				const config: ForgeConfig = {
-					...(addons.length === 0 ? {} : { addons }),
-					...(authentication === undefined ? {} : { authentication }),
-					...(catalogMode === undefined ? {} : { catalogs: catalogMode }),
-					...(database === undefined ? {} : { database }),
-					...(databaseProvider === undefined ? {} : { databaseProvider }),
-					...(linter === undefined ? {} : { linter }),
-					...(orm === undefined ? {} : { orm }),
-					...(packageManager === undefined ? {} : { packageManager }),
-					...(rpc === undefined ? {} : { rpc }),
-					...(runtime === undefined ? {} : { runtime }),
-					...(style === undefined ? {} : { style }),
-					...(uiLibrary === undefined ? {} : { uiLibrary }),
-					...(web === undefined || webPlatform === undefined
-						? {}
-						: { platforms: [webPlatform], web }),
-				};
-
-				const modules = roots.map((root) =>
-					moduleProposal(
-						root,
-						packageJsonByRoot.get(root) ?? {},
-						componentsByRoot.has(root),
-					),
-				);
-
-				const versions = modules.flatMap((module) => {
-					if (module.proposal === "unadopted") return [];
-
-					const packageJson = packageJsonByRoot.get(module.root);
-					return packageJson === undefined
-						? []
-						: [
-								captureVersions(
-									module.root,
-									packageJson,
-									pnpmWorkspace?.catalogEntries ?? [],
-								),
-							];
+			const decoded = Schema.decodeUnknownResult(PackageJsonSchema)(raw);
+			if (Result.isFailure(decoded))
+				return yield* new AdoptionFileParseError({
+					detail: String(decoded.failure),
+					filePath,
+					message: `Adoption File Parse Failed: ${filePath}`,
 				});
 
-				return {
-					catalogEntries: pnpmWorkspace?.catalogEntries ?? [],
-					config,
-					modules,
-					tooling: rootEntrySet.has("turbo.json") ? { turbo: true } : {},
-					versions,
-				} satisfies AdoptionDetection;
-			});
+			return decoded.success;
+		},
+	);
 
-			return { detect, enumerate, rootPackageName };
-		}),
-	},
-) {}
+	const readPackageJson = Effect.fn("AdoptionDetector.readPackageJson")(
+		function* (filePath: string) {
+			if (!(yield* exists(filePath))) return undefined;
+			return yield* decodePackageJson(filePath);
+		},
+	);
+
+	const isSymbolicLink = Effect.fn("AdoptionDetector.isSymbolicLink")(
+		function* (filePath: string) {
+			return yield* fs.readLink(filePath).pipe(
+				Effect.map(() => true),
+				Effect.orElseSucceed(() => false),
+			);
+		},
+	);
+
+	const scanPackageDirectories: (
+		projectRoot: string,
+		currentPath: string,
+		canonicalProjectRoot: string,
+	) => Effect.Effect<ReadonlyArray<string>, AdoptionFileReadError> = Effect.fn(
+		"AdoptionDetector.scanPackageDirectories",
+	)(function* (
+		projectRoot: string,
+		currentPath: string,
+		canonicalProjectRoot: string,
+	) {
+		const entries = yield* fs.readDirectory(currentPath).pipe(
+			Effect.catchTag("PlatformError", (error) =>
+				Effect.fail(
+					new AdoptionFileReadError({
+						detail: String(error),
+						filePath: currentPath,
+						message: `Adoption Directory Read Failed: ${currentPath}`,
+					}),
+				),
+			),
+		);
+
+		const roots: string[] = [];
+		if (entries.includes("package.json") && currentPath !== projectRoot)
+			roots.push(normalizePath(relative(projectRoot, currentPath)));
+
+		for (const entry of entries) {
+			if (ignoredDirectories.has(entry)) continue;
+
+			const fullPath = join(currentPath, entry);
+			if (yield* isSymbolicLink(fullPath)) continue;
+
+			const info = yield* fs.stat(fullPath).pipe(
+				Effect.map(Option.some),
+				Effect.catchTag("PlatformError", () => Effect.succeed(Option.none())),
+			);
+
+			if (Option.isNone(info) || info.value.type !== "Directory") continue;
+
+			const canonicalPath = yield* fs.realPath(fullPath).pipe(
+				Effect.map(Option.some),
+				Effect.catchTag("PlatformError", () => Effect.succeed(Option.none())),
+			);
+
+			if (
+				Option.isNone(canonicalPath) ||
+				!isWithinProject(canonicalProjectRoot, canonicalPath.value)
+			)
+				continue;
+
+			roots.push(
+				...(yield* scanPackageDirectories(
+					projectRoot,
+					fullPath,
+					canonicalProjectRoot,
+				)),
+			);
+		}
+
+		return roots;
+	});
+
+	const readPnpmWorkspace = Effect.fn("AdoptionDetector.readPnpmWorkspace")(
+		function* (projectRoot: string) {
+			const filePath = join(projectRoot, "pnpm-workspace.yaml");
+			const raw = yield* readOptional(filePath);
+			return raw === undefined
+				? undefined
+				: yield* parsePnpmWorkspace(raw, filePath);
+		},
+	);
+
+	const inspectWorkspace = Effect.fn("AdoptionDetector.inspectWorkspace")(
+		function* (projectRoot: string) {
+			const pnpmWorkspace = yield* readPnpmWorkspace(projectRoot);
+			const rootPackageJson = yield* readPackageJson(
+				join(projectRoot, "package.json"),
+			);
+
+			const patterns =
+				pnpmWorkspace === undefined
+					? rootPackageJson?.workspaces === undefined
+						? []
+						: workspacePatterns(rootPackageJson.workspaces)
+					: pnpmWorkspace.packages;
+
+			if (patterns.length === 0)
+				return { pnpmWorkspace, rootPackageJson, roots: [] };
+
+			const canonicalProjectRoot = yield* fs.realPath(projectRoot).pipe(
+				Effect.catchTag("PlatformError", (error) =>
+					Effect.fail(
+						new AdoptionFileReadError({
+							detail: String(error),
+							filePath: projectRoot,
+							message: `Adoption Directory Read Failed: ${projectRoot}`,
+						}),
+					),
+				),
+			);
+
+			const scannedRoots = yield* scanPackageDirectories(
+				projectRoot,
+				projectRoot,
+				canonicalProjectRoot,
+			);
+
+			const roots = scannedRoots
+				.filter((root) => matchesWorkspacePatterns(root, patterns))
+				.sort((left, right) => left.localeCompare(right));
+
+			return { pnpmWorkspace, rootPackageJson, roots };
+		},
+	);
+
+	const enumerate = Effect.fn("AdoptionDetector.enumerate")(function* (
+		projectRoot: string,
+	) {
+		return (yield* inspectWorkspace(projectRoot)).roots;
+	});
+
+	const rootPackageName = Effect.fn("AdoptionDetector.rootPackageName")(
+		function* (projectRoot: string) {
+			return (yield* readPackageJson(join(projectRoot, "package.json")))?.name;
+		},
+	);
+
+	const readComponentsStyle = Effect.fn("AdoptionDetector.readComponentsStyle")(
+		function* (filePath: string) {
+			const raw = yield* readOptional(filePath);
+			if (raw === undefined) return undefined;
+
+			const decoded = Schema.decodeUnknownResult(ComponentsJsonSchema)(raw);
+			if (Result.isFailure(decoded))
+				return yield* new AdoptionFileParseError({
+					detail: String(decoded.failure),
+					filePath,
+					message: `Adoption File Parse Failed: ${filePath}`,
+				});
+
+			return decoded.success.style ?? "";
+		},
+	);
+
+	const detect = Effect.fn("AdoptionDetector.detect")(function* (
+		projectRoot: string,
+	) {
+		const { pnpmWorkspace, rootPackageJson, roots } =
+			yield* inspectWorkspace(projectRoot);
+
+		const packageJsonByRoot = new Map<string, PackageJson>();
+		const componentsByRoot = new Map<string, string>();
+
+		for (const root of roots) {
+			const packageJson = yield* decodePackageJson(
+				join(projectRoot, root, "package.json"),
+			);
+
+			packageJsonByRoot.set(root, packageJson);
+
+			const componentsStyle = yield* readComponentsStyle(
+				join(projectRoot, root, "components.json"),
+			);
+
+			if (componentsStyle !== undefined)
+				componentsByRoot.set(root, componentsStyle);
+		}
+
+		const rootEntries = yield* fs.readDirectory(projectRoot).pipe(
+			Effect.catchTag("PlatformError", (error) =>
+				Effect.fail(
+					new AdoptionFileReadError({
+						detail: String(error),
+						filePath: projectRoot,
+						message: `Adoption Directory Read Failed: ${projectRoot}`,
+					}),
+				),
+			),
+		);
+
+		const rootEntrySet = new Set(rootEntries);
+		const allPackages = [
+			...(rootPackageJson === undefined ? [] : [rootPackageJson]),
+			...packageJsonByRoot.values(),
+		];
+
+		const directDependencies = new Set(
+			allPackages.flatMap((packageJson) => [...dependencyNames(packageJson)]),
+		);
+
+		const allDependencies = new Set(
+			allPackages.flatMap((packageJson) => [
+				...allDependencyNames(packageJson),
+			]),
+		);
+
+		const envFiles: string[] = [];
+		for (const name of [
+			".env",
+			".env.development",
+			".env.example",
+			".env.local",
+		]) {
+			const raw = yield* readOptional(join(projectRoot, name));
+			if (raw !== undefined) envFiles.push(raw);
+		}
+
+		const detectedEnvNames = envNames(envFiles);
+
+		const web = oneDetected([
+			directDependencies.has("next")
+				? webFrameworks.normalize("nextjs")
+				: undefined,
+			directDependencies.has("react-router")
+				? webFrameworks.normalize("react-router")
+				: undefined,
+			directDependencies.has("@tanstack/react-start")
+				? webFrameworks.normalize("tanstack-start")
+				: undefined,
+		]);
+
+		const orm = oneDetected([
+			directDependencies.has("drizzle-orm")
+				? orms.normalize("drizzle")
+				: undefined,
+			directDependencies.has("@prisma/client")
+				? orms.normalize("prisma")
+				: undefined,
+		]);
+
+		const authentication = directDependencies.has("better-auth")
+			? authenticationProviders.normalize("better-auth")
+			: undefined;
+
+		const rpc = directDependencies.has("@trpc/server")
+			? rpcProviders.normalize("trpc")
+			: undefined;
+
+		const style = allDependencies.has("tailwindcss")
+			? styleFrameworks.normalize("tailwind")
+			: undefined;
+
+		const componentsStyles = [...componentsByRoot.values()];
+		const uiLibrary = oneDetected([
+			directDependencies.has("@base-ui/react") ||
+			componentsStyles.some((value) => value.startsWith("base"))
+				? uiLibraries.normalize("base-ui")
+				: undefined,
+			componentsStyles.some((value) => value.startsWith("radix"))
+				? uiLibraries.normalize("radix")
+				: undefined,
+		]);
+
+		const hasBiome = ["biome.json", "biome.jsonc"].some((name) =>
+			rootEntrySet.has(name),
+		);
+
+		const hasEslint = [
+			".eslintrc",
+			".eslintrc.cjs",
+			".eslintrc.js",
+			".eslintrc.json",
+			".eslintrc.yaml",
+			".eslintrc.yml",
+			"eslint.config.cjs",
+			"eslint.config.js",
+			"eslint.config.mjs",
+			"eslint.config.mts",
+			"eslint.config.ts",
+		].some((name) => rootEntrySet.has(name));
+
+		const linter = oneDetected([
+			hasBiome ? linters.normalize("biome") : undefined,
+			hasEslint && linters.available("eslint-prettier")
+				? linters.normalize("eslint-prettier")
+				: undefined,
+		]);
+
+		const addons = [
+			rootEntrySet.has("commitlint.config.ts")
+				? optionalAddons.normalize("commitlint")
+				: undefined,
+			rootEntrySet.has("lefthook.yml")
+				? optionalAddons.normalize("lefthook")
+				: undefined,
+			[...rootEntrySet].some((name) => /^vitest\.config\./.test(name))
+				? optionalAddons.normalize("vitest")
+				: undefined,
+		].filter((addon) => addon !== undefined);
+
+		const packageManager = packageManagerFromLockfiles(rootEntrySet);
+
+		const nvmrc = yield* readOptional(join(projectRoot, ".nvmrc"));
+		const runtime = runtimeFromPackageJson(
+			rootPackageJson,
+			nvmrc !== undefined && nvmrc.trim().length > 0,
+		);
+
+		const database = databaseFromDependencies(allDependencies);
+		const databaseProvider = providerFromSignals(
+			database,
+			allDependencies,
+			detectedEnvNames,
+		);
+
+		const hasFlatCatalog = pnpmWorkspace?.catalogEntries.some(
+			(entry) => entry.catalog === undefined,
+		);
+
+		const hasScopedCatalog = pnpmWorkspace?.catalogEntries.some(
+			(entry) => entry.catalog !== undefined,
+		);
+
+		const catalogMode = oneDetected([
+			hasFlatCatalog ? catalogs.normalize("flat") : undefined,
+			hasScopedCatalog ? catalogs.normalize("scoped") : undefined,
+		]);
+
+		const webPlatform = platforms.normalize("web");
+
+		const config: ForgeConfig = {
+			...(addons.length === 0 ? {} : { addons }),
+			...(authentication === undefined ? {} : { authentication }),
+			...(catalogMode === undefined ? {} : { catalogs: catalogMode }),
+			...(database === undefined ? {} : { database }),
+			...(databaseProvider === undefined ? {} : { databaseProvider }),
+			...(linter === undefined ? {} : { linter }),
+			...(orm === undefined ? {} : { orm }),
+			...(packageManager === undefined ? {} : { packageManager }),
+			...(rpc === undefined ? {} : { rpc }),
+			...(runtime === undefined ? {} : { runtime }),
+			...(style === undefined ? {} : { style }),
+			...(uiLibrary === undefined ? {} : { uiLibrary }),
+			...(web === undefined || webPlatform === undefined
+				? {}
+				: { platforms: [webPlatform], web }),
+		};
+
+		const modules = roots.map((root) =>
+			moduleProposal(
+				root,
+				packageJsonByRoot.get(root) ?? {},
+				componentsByRoot.has(root),
+			),
+		);
+
+		const versions = modules.flatMap((module) => {
+			if (module.proposal === "unadopted") return [];
+
+			const packageJson = packageJsonByRoot.get(module.root);
+			return packageJson === undefined
+				? []
+				: [
+						captureVersions(
+							module.root,
+							packageJson,
+							pnpmWorkspace?.catalogEntries ?? [],
+						),
+					];
+		});
+
+		return {
+			catalogEntries: pnpmWorkspace?.catalogEntries ?? [],
+			config,
+			modules,
+			tooling: rootEntrySet.has("turbo.json") ? { turbo: true } : {},
+			versions,
+		} satisfies AdoptionDetection;
+	});
+
+	return { detect, enumerate, rootPackageName };
+});
+
+type AdoptionDetectorService = Effect.Success<typeof makeAdoptionDetector>;
+
+export class AdoptionDetector extends Context.Service<
+	AdoptionDetector,
+	AdoptionDetectorService
+>()("AdoptionDetector") {
+	static readonly Default = Layer.effect(
+		AdoptionDetector,
+		makeAdoptionDetector,
+	);
+	static readonly detect = (
+		...args: Parameters<AdoptionDetectorService["detect"]>
+	) => AdoptionDetector.use((service) => service.detect(...args));
+	static readonly enumerate = (
+		...args: Parameters<AdoptionDetectorService["enumerate"]>
+	) => AdoptionDetector.use((service) => service.enumerate(...args));
+	static readonly rootPackageName = (
+		...args: Parameters<AdoptionDetectorService["rootPackageName"]>
+	) => AdoptionDetector.use((service) => service.rootPackageName(...args));
+}

@@ -73,11 +73,11 @@ We use [Biome](https://biomejs.dev) for code formatting and linting, alongside s
 
 ### Effect
 
-Services, typed errors (`Schema.TaggedError`), and schema validation use the
-Effect library (`effect`, `@effect/platform`). Do not introduce `any` or `as`
-casts; prove types through Effect's type machinery instead. User-facing CLI
-messages are natural sentences (lists via `Intl.ListFormat`). Tooling and
-infra errors throw a Title Case prefix plus detail, e.g.
+Services (`Context.Service`), typed errors (`Schema.TaggedErrorClass`), schema
+validation, and IO (`FileSystem`) use the `effect` library. Do not introduce
+`any` or `as` casts; prove types through Effect's type machinery instead.
+User-facing CLI messages are natural sentences (lists via `Intl.ListFormat`).
+Tooling and infra errors throw a Title Case prefix plus detail, e.g.
 `Addon Not Found: ${id}`.
 
 ## Testing

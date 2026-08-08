@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 import { CommandProbe, readPersistedCommandVersions } from "../src/command";
@@ -7,7 +7,7 @@ import { Subprocess } from "../src/subprocess";
 import { withTempDir, writeJson, writeText } from "./harness";
 
 const subprocessLayer = Subprocess.Default.pipe(
-	Layer.provide(NodeContext.layer),
+	Layer.provide(NodeServices.layer),
 );
 const commandLayer = CommandProbe.Default.pipe(Layer.provide(subprocessLayer));
 
@@ -47,7 +47,7 @@ async function readPersisted(
 			directory,
 			runtimeCommandName,
 			packageManagerCommandName,
-		).pipe(Effect.provide(NodeContext.layer)),
+		).pipe(Effect.provide(NodeServices.layer)),
 	);
 }
 

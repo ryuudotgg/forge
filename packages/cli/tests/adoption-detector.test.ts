@@ -1,9 +1,16 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { FileSystem, Error as PlatformError } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import {
+	Cause,
+	Effect,
+	Exit,
+	FileSystem,
+	Layer,
+	Option,
+	PlatformError,
+} from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	AdoptionDetector,
@@ -12,21 +19,18 @@ import {
 } from "../src/commands/adoption";
 
 const detectorLayer = AdoptionDetector.Default.pipe(
-	Layer.provide(NodeContext.layer),
+	Layer.provide(NodeServices.layer),
 );
 
 const fileSystemFailures: ReadonlyArray<{
-	readonly fail: (
-		method: string,
-		path: string,
-	) => PlatformError.BadArgument | PlatformError.SystemError;
+	readonly fail: (method: string, path: string) => PlatformError.PlatformError;
 	readonly detail: string;
 	readonly name: string;
 }> = [
 	{
 		detail: "Fixture bad argument",
 		fail: (method) =>
-			new PlatformError.BadArgument({
+			PlatformError.badArgument({
 				description: "Fixture bad argument",
 				method,
 				module: "FileSystem",
@@ -36,11 +40,11 @@ const fileSystemFailures: ReadonlyArray<{
 	{
 		detail: "PermissionDenied",
 		fail: (method, path) =>
-			new PlatformError.SystemError({
+			PlatformError.systemError({
+				_tag: "PermissionDenied",
 				method,
 				module: "FileSystem",
 				pathOrDescriptor: path,
-				reason: "PermissionDenied",
 			}),
 		name: "system",
 	},
@@ -52,7 +56,7 @@ function detectorLayerWithFileSystem(
 	const fileSystemLayer = Layer.effect(
 		FileSystem.FileSystem,
 		Effect.map(FileSystem.FileSystem, transform),
-	).pipe(Layer.provide(NodeContext.layer));
+	).pipe(Layer.provide(NodeServices.layer));
 
 	return AdoptionDetector.Default.pipe(Layer.provide(fileSystemLayer));
 }
@@ -105,7 +109,7 @@ async function parseFailure<A, E>(
 	const exit = await Effect.runPromiseExit(effect.pipe(Effect.provide(layer)));
 	if (Exit.isSuccess(exit))
 		throw new Error("Expected adoption detection to fail");
-	const failure = Cause.failureOption(exit.cause);
+	const failure = Cause.findErrorOption(exit.cause);
 	if (Option.isNone(failure)) throw new Error("Expected a typed failure");
 	return failure.value;
 }

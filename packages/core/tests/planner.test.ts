@@ -1,7 +1,7 @@
 import { readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import { Cause, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	type AddonDefinition,
@@ -67,16 +67,16 @@ interface TestConfig extends Record<string, unknown> {
 	readonly web?: "nextjs" | "tanstack-start";
 }
 
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
 
 const decodePackageConfig = Schema.decodeSync(
-	Schema.parseJson(PackageConfigSchema),
+	Schema.fromJsonString(PackageConfigSchema),
 );
 
 const decodePackageJson = Schema.decodeSync(
-	Schema.parseJson(
+	Schema.fromJsonString(
 		Schema.Struct({
-			dependencies: Schema.Record({ key: Schema.String, value: Schema.String }),
+			dependencies: Schema.Record(Schema.String, Schema.String),
 		}),
 	),
 );
@@ -135,7 +135,7 @@ function planInstalledWithDiscoveryEffect(
 				State.Default,
 			),
 		),
-		Layer.provide(NodeContext.layer),
+		Layer.provide(NodeServices.layer),
 	);
 
 	return Effect.flatMap(Planner, (planner) =>
@@ -159,7 +159,7 @@ function applyPlanEffect(directory: string, plan: ProjectPlan) {
 function plannerFailure(exit: Exit.Exit<unknown, unknown>) {
 	if (!Exit.isFailure(exit)) return undefined;
 
-	const failure = Cause.failureOption(exit.cause);
+	const failure = Cause.findErrorOption(exit.cause);
 	if (Option.isNone(failure)) return undefined;
 
 	return failure.value instanceof PlannerError ? failure.value : undefined;
@@ -168,7 +168,7 @@ function plannerFailure(exit: Exit.Exit<unknown, unknown>) {
 function generatorFailure(exit: Exit.Exit<unknown, unknown>) {
 	if (!Exit.isFailure(exit)) return undefined;
 
-	const failure = Cause.failureOption(exit.cause);
+	const failure = Cause.findErrorOption(exit.cause);
 	if (Option.isNone(failure)) return undefined;
 
 	return failure.value instanceof GeneratorError ? failure.value : undefined;
@@ -797,7 +797,7 @@ describe("planner", () => {
 			expect(error?.generatorId).toBe("throwing-addon");
 			expect(error?.message).toBe("Definition Failed: definition exploded");
 			expect(
-				Exit.isFailure(exit) && Option.isNone(Cause.dieOption(exit.cause)),
+				Exit.isFailure(exit) && Result.isFailure(Cause.findDefect(exit.cause)),
 			).toBe(true);
 		});
 	});
@@ -862,7 +862,7 @@ describe("planner", () => {
 			expect(error?.generatorId).toBe("throwing-adapter");
 			expect(error?.message).toBe("Definition Failed: adapter exploded");
 			expect(
-				Exit.isFailure(exit) && Option.isNone(Cause.dieOption(exit.cause)),
+				Exit.isFailure(exit) && Result.isFailure(Cause.findDefect(exit.cause)),
 			).toBe(true);
 		});
 	});
@@ -1657,7 +1657,7 @@ describe("planner", () => {
 			expect(Exit.isFailure(exit)).toBe(true);
 			if (!Exit.isFailure(exit)) throw new Error("Missing Apply Failure");
 
-			const failure = Cause.failureOption(exit.cause);
+			const failure = Cause.findErrorOption(exit.cause);
 			expect(Option.isSome(failure)).toBe(true);
 			expect(Option.getOrThrow(failure)).toMatchObject({
 				_tag: "ApplyError",
