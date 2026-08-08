@@ -2,7 +2,7 @@ import { Effect } from "effect";
 
 export function hashContentHex<E>(
 	content: string,
-	onError: () => E,
+	onError: (cause: unknown) => E,
 ): Effect.Effect<string, E> {
 	const data = new TextEncoder().encode(content);
 

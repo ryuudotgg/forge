@@ -39,7 +39,7 @@ const probeLayer = Layer.succeed(
 				? Effect.fail(
 						new CommandProbeError({
 							command,
-							message: "Command Probe Failed",
+							reason: "probe-failed",
 							detail: "not found",
 						}),
 					)
@@ -55,7 +55,7 @@ const failingProbeLayer = Layer.succeed(
 			Effect.fail(
 				new CommandProbeError({
 					command,
-					message: "Command Probe Failed",
+					reason: "probe-failed",
 					detail: "not found",
 				}),
 			),
@@ -298,7 +298,7 @@ describe("root workspace", () => {
 						? Effect.fail(
 								new CommandProbeError({
 									command,
-									message: "Command Probe Failed",
+									reason: "probe-failed",
 									detail: "not found",
 								}),
 							)
@@ -332,7 +332,7 @@ describe("root workspace", () => {
 						? Effect.fail(
 								new CommandProbeError({
 									command,
-									message: "Command Probe Failed",
+									reason: "probe-failed",
 									detail: "not found",
 								}),
 							)

@@ -160,9 +160,7 @@ export async function loadManagedProject(
 	const manifest = await runLifecycleEffect(
 		State.readManifest(absoluteProjectRoot).pipe(
 			Effect.catchTag("StateError", (error) =>
-				error.message === "Manifest Not Found"
-					? Effect.void
-					: Effect.fail(error),
+				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),
 			Effect.provide(coreLayer),
 		),
@@ -271,9 +269,7 @@ export async function loadDiscoveryRegistry(projectRoot: string) {
 	const manifestResult = await Effect.runPromise(
 		State.readManifest(absoluteProjectRoot).pipe(
 			Effect.catchTag("StateError", (error) =>
-				error.message === "Manifest Not Found"
-					? Effect.void
-					: Effect.fail(error),
+				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),
 			Effect.either,
 			Effect.provide(coreLayer),

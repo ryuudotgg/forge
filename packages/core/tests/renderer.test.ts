@@ -1,10 +1,11 @@
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	type DependencyFormat,
 	type DiscoveredModule,
 	defineFramework,
 	type FrameworkDefinition,
+	PlannerErrors,
 	projectTarget,
 	Renderer,
 	type SurfaceRenderContribution,
@@ -413,6 +414,7 @@ describe("renderer", () => {
 		);
 
 		expect(error._tag).toBe("RendererError");
+		expect(Schema.is(PlannerErrors)(error)).toBe(true);
 		expect(error.message).toBe(
 			"Render Failed: Error: Managed Surface Conflict",
 		);

@@ -610,7 +610,7 @@ function formatInitApplyError(error: ApplyError): string {
 
 	const unmanagedRefusalCount =
 		error.preflight.refusals?.filter(
-			(refusal) => refusal.message === "Unmanaged File Exists",
+			(refusal) => refusal.reason === "unmanaged-file-exists",
 		).length ?? 0;
 
 	const subject = unmanagedRefusalCount === 1 ? "it" : "those files";

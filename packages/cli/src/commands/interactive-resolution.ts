@@ -88,7 +88,7 @@ export function canResolveInteractively(
 
 	const managedWrites = (preflight.refusals ?? []).filter(
 		(refusal) =>
-			refusal.message === "Managed File Modified" &&
+			refusal.reason === "managed-file-modified" &&
 			refusal.operation === "write" &&
 			refusal.resolvable,
 	);
@@ -108,7 +108,7 @@ export async function promptForConflictResolutions(
 	const decisions: ConflictDecision[] = [];
 	const managedWrites = (preflight.refusals ?? []).filter(
 		(refusal) =>
-			refusal.message === "Managed File Modified" &&
+			refusal.reason === "managed-file-modified" &&
 			refusal.operation === "write" &&
 			refusal.resolvable,
 	);

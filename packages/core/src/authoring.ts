@@ -623,8 +623,10 @@ export function defineRegistry<Config>(registry: {
 		for (const entry of entries) {
 			if (ids.has(entry.id))
 				throw new RegistryError({
-					message: `${kind} Duplicate: ${entry.id}`,
+					reason: "duplicate",
 					registryId: entry.id,
+					subject: entry.id,
+					kind,
 				});
 
 			ids.add(entry.id);
@@ -645,8 +647,9 @@ export function defineRegistry<Config>(registry: {
 			uniqueSlots.size !== framework.slots.length
 		)
 			throw new RegistryError({
-				message: `Framework Slots Invalid: ${framework.id}`,
+				reason: "framework-slots-invalid",
 				registryId: framework.id,
+				subject: framework.id,
 			});
 	}
 
@@ -661,20 +664,23 @@ export function defineRegistry<Config>(registry: {
 
 		if (adapterKeys.has(key))
 			throw new RegistryError({
-				message: `Adapter Duplicate: ${key}`,
+				reason: "adapter-duplicate",
 				registryId: key,
+				subject: key,
 			});
 
 		if (!addonIds.has(adapter.addon))
 			throw new RegistryError({
-				message: `Adapter Addon Missing: ${adapter.addon}`,
+				reason: "adapter-addon-missing",
 				registryId: key,
+				subject: adapter.addon,
 			});
 
 		if (!frameworkIds.has(adapter.framework))
 			throw new RegistryError({
-				message: `Adapter Framework Missing: ${adapter.framework}`,
+				reason: "adapter-framework-missing",
 				registryId: key,
+				subject: adapter.framework,
 			});
 
 		const framework = registry.frameworks.find(
@@ -687,8 +693,9 @@ export function defineRegistry<Config>(registry: {
 
 		if (invalidSlot)
 			throw new RegistryError({
-				message: `Adapter Slot Missing: ${key}:${invalidSlot}`,
+				reason: "adapter-slot-missing",
 				registryId: key,
+				subject: `${key}:${invalidSlot}`,
 			});
 
 		adapterKeys.add(key);
@@ -840,7 +847,8 @@ export function validateAddonAgainstSelection<Config>(
 			return Effect.fail(
 				new GeneratorError({
 					generatorId: addon.id,
-					message: `${addon.name} requires a web framework template.`,
+					reason: "framework-template-required",
+					generatorName: addon.name,
 				}),
 			);
 
@@ -856,7 +864,9 @@ export function validateAddonAgainstSelection<Config>(
 			? Effect.fail(
 					new GeneratorError({
 						generatorId: addon.id,
-						message: `${addon.name} does not support ${framework.name} yet.`,
+						reason: "framework-not-supported-yet",
+						generatorName: addon.name,
+						frameworkName: framework.name,
 					}),
 				)
 			: Effect.void;
@@ -865,7 +875,8 @@ export function validateAddonAgainstSelection<Config>(
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,
-				message: `${addon.name} requires a web framework template.`,
+				reason: "framework-template-required",
+				generatorName: addon.name,
 			}),
 		);
 
@@ -873,7 +884,9 @@ export function validateAddonAgainstSelection<Config>(
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,
-				message: `${addon.name} does not support ${framework.name}.`,
+				reason: "framework-not-supported",
+				generatorName: addon.name,
+				frameworkName: framework.name,
 			}),
 		);
 
@@ -886,7 +899,9 @@ export function validateAddonAgainstSelection<Config>(
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,
-				message: `${addon.name} does not support the selected ${framework.name} template.`,
+				reason: "selected-template-not-supported",
+				generatorName: addon.name,
+				frameworkName: framework.name,
 			}),
 		);
 
@@ -900,15 +915,13 @@ export function validateAddonAgainstSelection<Config>(
 			(slot) => !framework.slots.includes(slot),
 		);
 
-		const formattedSlots = new Intl.ListFormat("en", {
-			style: "long",
-			type: "conjunction",
-		}).format(missingSlots.map((slot) => `${slot} slot`));
-
 		return Effect.fail(
 			new GeneratorError({
 				generatorId: addon.id,
-				message: `${addon.name} requires the ${formattedSlots}, but ${framework.name} does not provide ${missingSlots.length === 1 ? "it" : "them"}.`,
+				reason: "required-slots-missing",
+				generatorName: addon.name,
+				frameworkName: framework.name,
+				missingSlots,
 			}),
 		);
 	}
@@ -928,15 +941,13 @@ export function validateAdapterAgainstModule<Config>(
 
 	if (missingSlots.length === 0) return Effect.void;
 
-	const formattedSlots = new Intl.ListFormat("en", {
-		style: "long",
-		type: "conjunction",
-	}).format(missingSlots.map((slot) => `${slot} slot`));
-
 	return Effect.fail(
 		new GeneratorError({
 			generatorId: addon.id,
-			message: `${addon.name} requires the ${formattedSlots}, but ${framework.name} does not provide ${missingSlots.length === 1 ? "it" : "them"}.`,
+			reason: "required-slots-missing",
+			generatorName: addon.name,
+			frameworkName: framework.name,
+			missingSlots,
 		}),
 	);
 }

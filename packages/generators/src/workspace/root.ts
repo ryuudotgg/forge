@@ -36,21 +36,24 @@ const root = defineAddon<ForgeConfig, "root">({
 			if (runtimeVersion === undefined)
 				return yield* new GeneratorError({
 					generatorId: "root",
-					message: `Command Version Missing: ${runtimeCommandName}`,
+					reason: "command-version-missing",
+					command: runtimeCommandName,
 				});
 
 			const nodeVersion = commandVersions.node;
 			if (nodeVersion === undefined)
 				return yield* new GeneratorError({
 					generatorId: "root",
-					message: "Command Version Missing: node",
+					reason: "command-version-missing",
+					command: "node",
 				});
 
 			const packageManagerVersion = commandVersions[packageManagerCommandName];
 			if (packageManagerVersion === undefined)
 				return yield* new GeneratorError({
 					generatorId: "root",
-					message: `Command Version Missing: ${packageManagerCommandName}`,
+					reason: "command-version-missing",
+					command: packageManagerCommandName,
 				});
 
 			return buildContributions(

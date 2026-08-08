@@ -25,6 +25,16 @@ function systemFailure(method: string, path: string) {
 	);
 }
 
+function badArgumentFailure(method: string) {
+	return Effect.fail(
+		new PlatformError.BadArgument({
+			description: "invalid traversal argument",
+			method,
+			module: "FileSystem",
+		}),
+	);
+}
+
 function configLayerWithFileSystem(
 	transform: (fileSystem: FileSystem.FileSystem) => FileSystem.FileSystem,
 ) {
@@ -99,6 +109,40 @@ describe("module config store", () => {
 
 			expect(error.message).toBe("Module Config Not Found");
 			expect(error.filePath).toBe(join(directory, "forge.json"));
+		});
+	});
+
+	it("maps config existence failures with the original cause", async () => {
+		await withTempDir("config-exists-failure", async (directory) => {
+			const path = join(directory, "forge.json");
+			const cause = new PlatformError.SystemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : fileSystem.exists(target),
+			}));
+
+			const error = await failure(
+				ConfigStore.read(directory).pipe(Effect.provide(failingLayer)),
+			);
+
+			expect(error._tag).toBe("ModuleConfigError");
+			if (error._tag !== "ModuleConfigError")
+				throw new Error("Expected Module Config Error");
+			expect(error.filePath).toBe(path);
+			expect(error.reason).toBe("read-failed");
+			expect(error.message).toBe("Module Config Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "exists",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
 		});
 	});
 
@@ -201,6 +245,45 @@ describe("module config store", () => {
 		});
 	});
 
+	it("returns no modules when scanning the project root fails", async () => {
+		await withTempDir("config-root-read-failure", async (directory) => {
+			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				readDirectory: (target, options) =>
+					target === directory
+						? systemFailure("readDirectory", target)
+						: fileSystem.readDirectory(target, options),
+			}));
+
+			const modules = await Effect.runPromise(
+				ConfigStore.discover(directory).pipe(Effect.provide(failingLayer)),
+			);
+
+			expect(modules).toEqual([]);
+		});
+	});
+
+	it("surfaces bad traversal arguments as discovery failures", async () => {
+		await withTempDir("config-root-bad-argument", async (directory) => {
+			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				readDirectory: (target, options) =>
+					target === directory
+						? badArgumentFailure("readDirectory")
+						: fileSystem.readDirectory(target, options),
+			}));
+
+			const error = await failure(
+				ConfigStore.discover(directory).pipe(Effect.provide(failingLayer)),
+			);
+
+			expect(error._tag).toBe("DiscoveryError");
+			expect(error.message).toBe(
+				"Module Discovery Failed: BadArgument: FileSystem.readDirectory: invalid traversal argument",
+			);
+		});
+	});
+
 	it("returns discovered modules in root-path order", async () => {
 		await withTempDir("config-order", async (directory) => {
 			await writeJson(
@@ -266,6 +349,53 @@ describe("module config store", () => {
   }
 }
 `);
+		});
+	});
+
+	it("maps config directory failures with the original cause", async () => {
+		await withTempDir("config-directory-failure", async (directory) => {
+			const moduleRoot = join(directory, "packages/utils");
+			const path = join(moduleRoot, "forge.json");
+			const cause = new PlatformError.SystemError({
+				method: "makeDirectory",
+				module: "FileSystem",
+				pathOrDescriptor: moduleRoot,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				makeDirectory: (target, options) =>
+					target === moduleRoot
+						? Effect.fail(cause)
+						: fileSystem.makeDirectory(target, options),
+			}));
+			const config: PackageConfig = {
+				id: "fghij",
+				type: "package",
+				packageType: "lib",
+				template: { id: "package/base", version: 1 },
+				capabilities: [],
+				slots: { index: "src/index.ts" },
+			};
+
+			const error = await failure(
+				ConfigStore.write(moduleRoot, config).pipe(
+					Effect.provide(failingLayer),
+				),
+			);
+
+			expect(error._tag).toBe("ModuleConfigError");
+			if (error._tag !== "ModuleConfigError")
+				throw new Error("Expected Module Config Error");
+			expect(error.filePath).toBe(path);
+			expect(error.reason).toBe("directory-failed");
+			expect(error.message).toBe("Module Config Directory Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "makeDirectory",
+				pathOrDescriptor: moduleRoot,
+				reason: "PermissionDenied",
+			});
 		});
 	});
 });

@@ -416,10 +416,11 @@ export class Renderer extends Effect.Service<Renderer>()("Renderer", {
 
 					return rendered;
 				},
-				catch: (error) =>
+				catch: (cause) =>
 					new RendererError({
 						path: "renderer",
-						message: `Render Failed: ${String(error)}`,
+						reason: "render-failed",
+						cause,
 					}),
 			}),
 	}),
