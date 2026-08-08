@@ -72,17 +72,17 @@ export const versions = {
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
-		version: "1.170.21",
+		version: "1.170.22",
 		group: "Framework",
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.38",
+		version: "1.168.39",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.24",
+		version: "1.167.25",
 		group: "Tooling",
 	},
 
