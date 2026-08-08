@@ -335,8 +335,8 @@ const sharedServerWithAuth = expectedContent([
 	"export async function createServerCaller(request: Request) {",
 	"  const headers = new Headers(request.headers);",
 	'  headers.set("x-trpc-source", "server");',
-	"  const context = await createTRPCContext({ auth, headers });",
 	"",
+	"  const context = await createTRPCContext({ auth, headers });",
 	"  return createCaller(context);",
 	"}",
 ]);
@@ -347,8 +347,8 @@ const sharedServerWithoutAuth = expectedContent([
 	"export async function createServerCaller(request: Request) {",
 	"  const headers = new Headers(request.headers);",
 	'  headers.set("x-trpc-source", "server");',
-	"  const context = await createTRPCContext({ headers });",
 	"",
+	"  const context = await createTRPCContext({ headers });",
 	"  return createCaller(context);",
 	"}",
 ]);
