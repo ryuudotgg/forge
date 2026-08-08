@@ -76,7 +76,8 @@ function setTTY(isTTY: boolean): () => void {
 
 function conflictError() {
 	return new ApplyError({
-		message: "Semantic merge conflicts were found.",
+		reason: "preflight-failed",
+		detail: "Semantic merge conflicts were found.",
 		path: "managed files",
 		preflight: {
 			conflicts: [
@@ -100,7 +101,7 @@ function conflictError() {
 			hasUnmanagedRemovals: false,
 			refusals: [
 				{
-					message: "Managed File Modified",
+					reason: "managed-file-modified",
 					operation: "write",
 					path: "README.md",
 					resolvable: true,
@@ -530,9 +531,40 @@ describe("interactive resolution", () => {
 		expect(
 			canResolveInteractively(
 				new ApplyError({
-					message: error.message,
+					reason: error.reason,
+					detail: error.message,
 					path: error.path,
 					preflight: { ...preflight, hasUnmanagedRefusals: true },
+				}),
+				{},
+			),
+		).toBe(false);
+	});
+
+	it("does not treat a resolvable unmanaged write as interactive", () => {
+		const error = conflictError();
+		const preflight = error.preflight;
+		if (preflight === undefined) throw new Error("Expected preflight details");
+
+		expect(
+			canResolveInteractively(
+				new ApplyError({
+					reason: error.reason,
+					detail: error.message,
+					path: error.path,
+					preflight: {
+						...preflight,
+						conflicts: [],
+						hasConflicts: false,
+						refusals: [
+							{
+								reason: "unmanaged-file-exists",
+								operation: "write",
+								path: "README.md",
+								resolvable: true,
+							},
+						],
+					},
 				}),
 				{},
 			),
@@ -547,7 +579,7 @@ describe("interactive resolution", () => {
 		expect(
 			canResolveInteractively(
 				new ApplyError({
-					message: "Managed File Modified",
+					reason: "managed-file-modified",
 					path: "README.md",
 					preflight: {
 						...preflight,
@@ -556,7 +588,7 @@ describe("interactive resolution", () => {
 						hasManagedRemovals: true,
 						refusals: [
 							{
-								message: "Managed File Modified",
+								reason: "managed-file-modified",
 								operation: "removal",
 								path: "README.md",
 								resolvable: false,

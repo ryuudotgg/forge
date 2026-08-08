@@ -127,6 +127,8 @@ export {
 } from "./environment";
 export {
 	ApplyError,
+	ApplyErrors,
+	ApplyRefusalReason,
 	CommandProbeError,
 	DiscoveryError,
 	DuplicateModuleIdError,
@@ -134,9 +136,12 @@ export {
 	ModuleConfigError,
 	ModuleIdGenerationError,
 	PlannerError,
+	PlannerErrors,
 	RegistryError,
+	RegistryErrors,
 	RendererError,
 	StateError,
+	StateErrors,
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";

@@ -230,51 +230,57 @@ export function buildArtifactIndex(lockfile: Lockfile): ArtifactIndex {
 
 function decodeManifest(raw: string, path: string) {
 	return decodeJsonString(raw, ManifestSchema, {
-		onParseError: (message) =>
+		onParseError: (detail, cause) =>
 			new StateError({
 				filePath: path,
-				message: `Manifest Parse Failed: ${message}`,
+				reason: "manifest-parse-failed",
+				detail,
+				cause,
 			}),
-		onValidationError: (issues) =>
+		onValidationError: (issues, cause) =>
 			new StateError({
 				filePath: path,
-				message: `Invalid Manifest\n${issues
-					.map((issue) => `  ${issue}`)
-					.join("\n")}`,
+				reason: "manifest-invalid",
+				issues,
+				cause,
 			}),
 	});
 }
 
 function decodeLockfile(raw: string, path: string) {
 	return decodeJsonString(raw, LockfileSchema, {
-		onParseError: (message) =>
+		onParseError: (detail, cause) =>
 			new StateError({
 				filePath: path,
-				message: `Lockfile Parse Failed: ${message}`,
+				reason: "lockfile-parse-failed",
+				detail,
+				cause,
 			}),
-		onValidationError: (issues) =>
+		onValidationError: (issues, cause) =>
 			new StateError({
 				filePath: path,
-				message: `Invalid Lockfile\n${issues
-					.map((issue) => `  ${issue}`)
-					.join("\n")}`,
+				reason: "lockfile-invalid",
+				issues,
+				cause,
 			}),
 	});
 }
 
 function decodeStateBundle(raw: string, path: string) {
 	return decodeJsonString(raw, StateBundleSchema, {
-		onParseError: (message) =>
+		onParseError: (detail, cause) =>
 			new StateError({
 				filePath: path,
-				message: `State Bundle Parse Failed: ${message}`,
+				reason: "state-bundle-parse-failed",
+				detail,
+				cause,
 			}),
-		onValidationError: (issues) =>
+		onValidationError: (issues, cause) =>
 			new StateError({
 				filePath: path,
-				message: `Invalid State Bundle\n${issues
-					.map((issue) => `  ${issue}`)
-					.join("\n")}`,
+				reason: "state-bundle-invalid",
+				issues,
+				cause,
 			}),
 	});
 }
@@ -290,7 +296,8 @@ export class State extends Effect.Service<State>()("State", {
 		) {
 			return yield* hashContentHex(
 				content,
-				() => new StateError({ filePath: path, message: "Base Hash Failed" }),
+				(cause) =>
+					new StateError({ filePath: path, reason: "base-hash-failed", cause }),
 			);
 		});
 
@@ -298,15 +305,25 @@ export class State extends Effect.Service<State>()("State", {
 			projectRoot: string,
 		) {
 			const path = stateBundlePath(projectRoot);
-			if (!(yield* fs.exists(path))) return undefined;
-
-			const raw = yield* fs.readFileString(path).pipe(
-				Effect.catchTag(
-					"SystemError",
-					() =>
+			const exists = yield* fs.exists(path).pipe(
+				Effect.mapError(
+					(cause) =>
 						new StateError({
 							filePath: path,
-							message: "State Bundle Read Failed",
+							reason: "state-bundle-read-failed",
+							cause,
+						}),
+				),
+			);
+			if (!exists) return undefined;
+
+			const raw = yield* fs.readFileString(path).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: path,
+							reason: "state-bundle-read-failed",
+							cause,
 						}),
 				),
 			);
@@ -321,21 +338,30 @@ export class State extends Effect.Service<State>()("State", {
 			if (bundle !== undefined) return bundle.manifest;
 
 			const path = manifestPath(projectRoot);
-			const exists = yield* fs.exists(path);
+			const exists = yield* fs.exists(path).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: path,
+							reason: "manifest-read-failed",
+							cause,
+						}),
+				),
+			);
 
 			if (!exists)
 				return yield* new StateError({
 					filePath: path,
-					message: "Manifest Not Found",
+					reason: "manifest-missing",
 				});
 
 			const raw = yield* fs.readFileString(path).pipe(
-				Effect.catchTag(
-					"SystemError",
-					() =>
+				Effect.mapError(
+					(cause) =>
 						new StateError({
 							filePath: path,
-							message: "Manifest Read Failed",
+							reason: "manifest-read-failed",
+							cause,
 						}),
 				),
 			);
@@ -350,7 +376,16 @@ export class State extends Effect.Service<State>()("State", {
 				const bundle = yield* readStateBundle(projectRoot);
 				if (bundle !== undefined) return bundle.manifest;
 
-				const exists = yield* fs.exists(path);
+				const exists = yield* fs.exists(path).pipe(
+					Effect.mapError(
+						(cause) =>
+							new StateError({
+								filePath: path,
+								reason: "manifest-read-failed",
+								cause,
+							}),
+					),
+				);
 				if (!exists) return defaultManifest();
 
 				return yield* readManifest(projectRoot);
@@ -369,12 +404,12 @@ export class State extends Effect.Service<State>()("State", {
 					recursive: true,
 				})
 				.pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new StateError({
 								filePath: path,
-								message: "Manifest Directory Failed",
+								reason: "manifest-directory-failed",
+								cause,
 							}),
 					),
 				);
@@ -385,12 +420,12 @@ export class State extends Effect.Service<State>()("State", {
 					formatJson(versionedManifest, { compact: false }),
 				)
 				.pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new StateError({
 								filePath: path,
-								message: "Manifest Write Failed",
+								reason: "manifest-write-failed",
+								cause,
 							}),
 					),
 				);
@@ -403,17 +438,26 @@ export class State extends Effect.Service<State>()("State", {
 			if (bundle !== undefined) return bundle.lockfile;
 
 			const path = lockfilePath(projectRoot);
-			const exists = yield* fs.exists(path);
+			const exists = yield* fs.exists(path).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: path,
+							reason: "lockfile-read-failed",
+							cause,
+						}),
+				),
+			);
 
 			if (!exists) return defaultLockfile();
 
 			const raw = yield* fs.readFileString(path).pipe(
-				Effect.catchTag(
-					"SystemError",
-					() =>
+				Effect.mapError(
+					(cause) =>
 						new StateError({
 							filePath: path,
-							message: "Lockfile Read Failed",
+							reason: "lockfile-read-failed",
+							cause,
 						}),
 				),
 			);
@@ -433,12 +477,12 @@ export class State extends Effect.Service<State>()("State", {
 					recursive: true,
 				})
 				.pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new StateError({
 								filePath: path,
-								message: "Lockfile Directory Failed",
+								reason: "lockfile-directory-failed",
+								cause,
 							}),
 					),
 				);
@@ -449,12 +493,12 @@ export class State extends Effect.Service<State>()("State", {
 					formatJson(versionedLockfile, { compact: false }),
 				)
 				.pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new StateError({
 								filePath: path,
-								message: "Lockfile Write Failed",
+								reason: "lockfile-write-failed",
+								cause,
 							}),
 					),
 				);
@@ -468,16 +512,16 @@ export class State extends Effect.Service<State>()("State", {
 			if (!validBaseHash(hash))
 				return yield* new StateError({
 					filePath: path,
-					message: "Invalid Base Hash",
+					reason: "base-hash-invalid",
 				});
 
 			const content = yield* fs.readFileString(path).pipe(
-				Effect.catchTag(
-					"SystemError",
-					() =>
+				Effect.mapError(
+					(cause) =>
 						new StateError({
 							filePath: path,
-							message: "Base Read Failed",
+							reason: "base-read-failed",
+							cause,
 						}),
 				),
 			);
@@ -485,7 +529,7 @@ export class State extends Effect.Service<State>()("State", {
 			if ((yield* hashBaseContent(content, path)) !== hash)
 				return yield* new StateError({
 					filePath: path,
-					message: "Base Hash Mismatch",
+					reason: "base-hash-mismatch",
 				});
 
 			return content;
@@ -500,47 +544,67 @@ export class State extends Effect.Service<State>()("State", {
 			if (!validBaseHash(hash))
 				return yield* new StateError({
 					filePath: path,
-					message: "Invalid Base Hash",
+					reason: "base-hash-invalid",
 				});
 
 			if ((yield* hashBaseContent(content, path)) !== hash)
 				return yield* new StateError({
 					filePath: path,
-					message: "Base Hash Mismatch",
+					reason: "base-hash-mismatch",
 				});
 
 			yield* fs.makeDirectory(basesPath(projectRoot), { recursive: true }).pipe(
-				Effect.catchTag(
-					"SystemError",
-					() =>
+				Effect.mapError(
+					(cause) =>
 						new StateError({
 							filePath: path,
-							message: "Base Directory Failed",
+							reason: "base-directory-failed",
+							cause,
 						}),
 				),
 			);
 
-			const exists = yield* fs.exists(path);
+			const exists = yield* fs.exists(path).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: path,
+							reason: "base-read-failed",
+							cause,
+						}),
+				),
+			);
 			if (exists) {
 				yield* readBase(projectRoot, hash);
 				return;
 			}
 
-			yield* fs
-				.writeFileString(path, content)
-				.pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
-							new StateError({ filePath: path, message: "Base Write Failed" }),
-					),
-				);
+			yield* fs.writeFileString(path, content).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: path,
+							reason: "base-write-failed",
+							cause,
+						}),
+				),
+			);
 		});
 
 		const garbageCollectBases = Effect.fn("State.garbageCollectBases")(
 			function* (projectRoot: string, lockfile: LockfileInput) {
 				const directory = basesPath(projectRoot);
-				if (!(yield* fs.exists(directory))) return;
+				const exists = yield* fs.exists(directory).pipe(
+					Effect.mapError(
+						(cause) =>
+							new StateError({
+								filePath: directory,
+								reason: "base-directory-read-failed",
+								cause,
+							}),
+					),
+				);
+				if (!exists) return;
 
 				const referenced = new Set(
 					Object.values(lockfile.artifacts).flatMap((artifact) =>
@@ -549,12 +613,12 @@ export class State extends Effect.Service<State>()("State", {
 				);
 
 				const entries = yield* fs.readDirectory(directory).pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new StateError({
 								filePath: directory,
-								message: "Base Directory Read Failed",
+								reason: "base-directory-read-failed",
+								cause,
 							}),
 					),
 				);
@@ -564,12 +628,12 @@ export class State extends Effect.Service<State>()("State", {
 
 					const path = basePath(projectRoot, entry);
 					yield* fs.remove(path).pipe(
-						Effect.catchTag(
-							"SystemError",
-							() =>
+						Effect.mapError(
+							(cause) =>
 								new StateError({
 									filePath: path,
-									message: "Base Remove Failed",
+									reason: "base-remove-failed",
+									cause,
 								}),
 						),
 					);
@@ -580,13 +644,43 @@ export class State extends Effect.Service<State>()("State", {
 		const isManagedProject = Effect.fn("State.isManagedProject")(function* (
 			projectRoot: string,
 		) {
-			const stateBundleExists = yield* fs.exists(stateBundlePath(projectRoot));
+			const stateBundle = stateBundlePath(projectRoot);
+			const stateBundleExists = yield* fs.exists(stateBundle).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: stateBundle,
+							reason: "state-bundle-read-failed",
+							cause,
+						}),
+				),
+			);
 			if (stateBundleExists) return true;
 
-			const lockfileExists = yield* fs.exists(lockfilePath(projectRoot));
+			const lockfile = lockfilePath(projectRoot);
+			const lockfileExists = yield* fs.exists(lockfile).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: lockfile,
+							reason: "lockfile-read-failed",
+							cause,
+						}),
+				),
+			);
 			if (lockfileExists) return true;
 
-			return yield* fs.exists(manifestPath(projectRoot));
+			const manifest = manifestPath(projectRoot);
+			return yield* fs.exists(manifest).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: manifest,
+							reason: "manifest-read-failed",
+							cause,
+						}),
+				),
+			);
 		});
 
 		return {

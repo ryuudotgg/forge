@@ -17,18 +17,19 @@ export function decodeJsonString<A, I, R, ParseError, ValidationError>(
 	raw: string,
 	schema: Schema.Schema<A, I, R>,
 	options: {
-		readonly onParseError: (message: string) => ParseError;
+		readonly onParseError: (message: string, cause: unknown) => ParseError;
 		readonly onValidationError: (
 			issues: ReadonlyArray<string>,
+			cause: unknown,
 		) => ValidationError;
 	},
 ): Effect.Effect<A, ParseError | ValidationError, R> {
 	return Schema.decodeUnknown(ParsedJsonSchema)(raw).pipe(
-		Effect.mapError((error) => options.onParseError(String(error))),
+		Effect.mapError((error) => options.onParseError(String(error), error)),
 		Effect.flatMap((parsed) =>
 			Schema.decodeUnknown(schema)(parsed).pipe(
 				Effect.mapError((issues) =>
-					options.onValidationError(formatSchemaIssues(issues)),
+					options.onValidationError(formatSchemaIssues(issues), issues),
 				),
 			),
 		),

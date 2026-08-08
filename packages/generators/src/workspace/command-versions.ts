@@ -14,7 +14,10 @@ function probeRequiredVersion(command: string) {
 			(error) =>
 				new GeneratorError({
 					generatorId: "root",
-					message: `Command Version Probe Failed: ${command} ${error.detail}`,
+					reason: "command-version-probe-failed",
+					command,
+					detail: error.detail,
+					cause: error,
 				}),
 		),
 	);

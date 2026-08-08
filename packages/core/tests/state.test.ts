@@ -1,6 +1,7 @@
-import { readdir, readFile, rename } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { NodeContext } from "@effect/platform-node";
+import { FileSystem, Error as PlatformError } from "@effect/platform";
+import { NodeContext, NodeFileSystem } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -12,6 +13,7 @@ import {
 	type Manifest,
 	ManifestSchema,
 	State,
+	StateErrors,
 } from "../src/index";
 import {
 	hashContent,
@@ -22,6 +24,20 @@ import {
 } from "./harness";
 
 const projectLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
+
+async function stateLayerWithFileSystem(
+	transform: (fileSystem: FileSystem.FileSystem) => FileSystem.FileSystem,
+) {
+	const fileSystem = await Effect.runPromise(
+		FileSystem.FileSystem.pipe(Effect.provide(NodeFileSystem.layer)),
+	);
+	const fileSystemLayer = Layer.succeed(
+		FileSystem.FileSystem,
+		transform(fileSystem),
+	);
+
+	return State.Default.pipe(Layer.provide(fileSystemLayer));
+}
 
 function isManaged(directory: string) {
 	return Effect.runPromise(
@@ -281,6 +297,344 @@ describe("project state", () => {
 		});
 	});
 
+	it("maps state bundle existence failures with the original cause", async () => {
+		await withTempDir("state-bundle-exists-failure", async (directory) => {
+			const path = join(directory, ".forge/state.json");
+			const cause = new PlatformError.SystemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : fileSystem.exists(target),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.readStateBundle(directory).pipe(Effect.provide(failingLayer)),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(error.filePath).toBe(path);
+			expect(error.reason).toBe("state-bundle-read-failed");
+			expect(error.message).toBe("State Bundle Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "exists",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+		});
+	});
+
+	it("maps manifest default existence failures with the original cause", async () => {
+		await withTempDir("manifest-default-exists-failure", async (directory) => {
+			const path = join(directory, ".forge/manifest.json");
+			const cause = new PlatformError.SystemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : fileSystem.exists(target),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.readManifestOrDefault(directory).pipe(
+						Effect.provide(failingLayer),
+					),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(error.filePath).toBe(path);
+			expect(error.reason).toBe("manifest-read-failed");
+			expect(error.message).toBe("Manifest Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "exists",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+		});
+	});
+
+	it("maps manifest existence failures with the original cause", async () => {
+		await withTempDir("manifest-exists-failure", async (directory) => {
+			const path = join(directory, ".forge/manifest.json");
+			const cause = new PlatformError.SystemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : Effect.succeed(false),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.readManifest(directory).pipe(Effect.provide(failingLayer)),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(error.filePath).toBe(path);
+			expect(error.reason).toBe("manifest-read-failed");
+			expect(error.message).toBe("Manifest Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "exists",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+		});
+	});
+
+	it("maps lockfile existence failures with the original cause", async () => {
+		await withTempDir("lockfile-exists-failure", async (directory) => {
+			const path = join(directory, ".forge/lock.json");
+			const cause = new PlatformError.SystemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : Effect.succeed(false),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.readLockfile(directory).pipe(Effect.provide(failingLayer)),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(error.filePath).toBe(path);
+			expect(error.reason).toBe("lockfile-read-failed");
+			expect(error.message).toBe("Lockfile Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "exists",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+		});
+	});
+
+	it("maps base hashing failures with the original cause", async () => {
+		await withTempDir("state-base-hash-failure", async (directory) => {
+			const cause = new Error("digest failed");
+			vi.spyOn(globalThis.crypto.subtle, "digest").mockRejectedValueOnce(cause);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.writeBase(directory, "a".repeat(64), "content").pipe(
+						Effect.provide(projectLayer),
+					),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(error.reason).toBe("base-hash-failed");
+			expect(error.message).toBe("Base Hash Failed");
+			expect(error.cause).toBe(cause);
+		});
+	});
+
+	it("maps base write failures with the original cause", async () => {
+		await withTempDir("state-base-write-failure", async (directory) => {
+			const content = "pure render\n";
+			const hash = await hashContent(content);
+			const path = join(directory, ".forge/bases", hash);
+			const cause = new PlatformError.SystemError({
+				method: "writeFileString",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				writeFileString: () => Effect.fail(cause),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.writeBase(directory, hash, content).pipe(
+						Effect.provide(failingLayer),
+					),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(Schema.is(StateErrors)(error)).toBe(true);
+			expect(error.reason).toBe("base-write-failed");
+			expect(error.message).toBe("Base Write Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "writeFileString",
+				pathOrDescriptor: path,
+			});
+		});
+	});
+
+	it("maps base existence failures with the original cause", async () => {
+		await withTempDir("state-base-exists-failure", async (directory) => {
+			const content = "pure render\n";
+			const hash = await hashContent(content);
+			const path = join(directory, ".forge/bases", hash);
+			const cause = new PlatformError.SystemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : fileSystem.exists(target),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.writeBase(directory, hash, content).pipe(
+						Effect.provide(failingLayer),
+					),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(error.filePath).toBe(path);
+			expect(error.reason).toBe("base-read-failed");
+			expect(error.message).toBe("Base Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "exists",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+		});
+	});
+
+	it("maps base directory existence failures with the original cause", async () => {
+		await withTempDir("bases-exists-failure", async (directory) => {
+			const path = join(directory, ".forge/bases");
+			const cause = new PlatformError.SystemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : Effect.succeed(false),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.garbageCollectBases(directory, { artifacts: {} }).pipe(
+						Effect.provide(failingLayer),
+					),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(error.filePath).toBe(path);
+			expect(error.reason).toBe("base-directory-read-failed");
+			expect(error.message).toBe("Base Directory Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "exists",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+		});
+	});
+
+	it.each([
+		[
+			"state bundle",
+			".forge/state.json",
+			"state-bundle-read-failed",
+			"State Bundle Read Failed",
+		],
+		[
+			"lockfile",
+			".forge/lock.json",
+			"lockfile-read-failed",
+			"Lockfile Read Failed",
+		],
+		[
+			"manifest",
+			".forge/manifest.json",
+			"manifest-read-failed",
+			"Manifest Read Failed",
+		],
+	] satisfies ReadonlyArray<
+		readonly [string, string, StateErrors["reason"], string]
+	>)(
+		"maps managed-project $0 existence failures with the original cause",
+		async (_label, relativePath, reason, message) => {
+			await withTempDir("managed-project-exists-failure", async (directory) => {
+				const path = join(directory, relativePath);
+				const cause = new PlatformError.SystemError({
+					method: "exists",
+					module: "FileSystem",
+					pathOrDescriptor: path,
+					reason: "PermissionDenied",
+				});
+				const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+					...fileSystem,
+					exists: (target) =>
+						target === path ? Effect.fail(cause) : Effect.succeed(false),
+				}));
+
+				const error = await Effect.runPromise(
+					Effect.flip(
+						State.isManagedProject(directory).pipe(
+							Effect.provide(failingLayer),
+						),
+					),
+				);
+
+				expect(error._tag).toBe("StateError");
+				if (error._tag !== "StateError")
+					throw new Error("Expected State Error");
+				expect(error.filePath).toBe(path);
+				expect(error.reason).toBe(reason);
+				expect(error.message).toBe(message);
+				expect(error.cause).toMatchObject({
+					_tag: "SystemError",
+					method: "exists",
+					pathOrDescriptor: path,
+					reason: "PermissionDenied",
+				});
+			});
+		},
+	);
+
 	it("fails to read a corrupt manifest", async () => {
 		await withTempDir("manifest-corrupt", async (directory) => {
 			await writeText(join(directory, ".forge/manifest.json"), "{broken");
@@ -310,6 +664,28 @@ describe("project state", () => {
 				filePath: join(directory, ".forge/manifest.json"),
 			});
 			expect(fallbackError.message).toMatch(/^Manifest Parse Failed: /);
+		});
+	});
+
+	it("preserves the original file system cause", async () => {
+		await withTempDir("manifest-read-cause", async (directory) => {
+			const path = join(directory, ".forge/manifest.json");
+			await mkdir(path, { recursive: true });
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
+				),
+			);
+
+			expect(error._tag).toBe("StateError");
+			if (error._tag !== "StateError") throw new Error("Expected State Error");
+			expect(error.reason).toBe("manifest-read-failed");
+			expect(error.message).toBe("Manifest Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				pathOrDescriptor: path,
+			});
 		});
 	});
 

@@ -29,8 +29,9 @@ export class CommandProbe extends Effect.Service<CommandProbe>()(
 					catch: (error) =>
 						new CommandProbeError({
 							command,
-							message: `Command Probe Failed`,
+							reason: "probe-failed",
 							detail: error instanceof Error ? error.message : String(error),
+							cause: error,
 						}),
 				});
 			});

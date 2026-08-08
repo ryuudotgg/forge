@@ -2,11 +2,12 @@ import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FileSystem, Error as PlatformError } from "@effect/platform";
 import { NodeContext } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
 	Apply,
 	ApplyError,
+	ApplyErrors,
 	type ApplyPlan,
 	formatApplyError,
 	type LockfileArtifact,
@@ -228,6 +229,7 @@ describe("apply edge coverage", () => {
 				expect(error.message).toBe(message);
 				if (!(error instanceof ApplyError))
 					throw new Error("Expected ApplyError");
+				expect(Schema.is(ApplyErrors)(error)).toBe(true);
 				if (path === ".forge/.staging-") expect(error.path).toContain(path);
 				else expect(error.path).toBe(path);
 			});
@@ -636,21 +638,24 @@ describe("apply edge coverage", () => {
 	it("formats both refusal variants and ordinary apply errors", () => {
 		expect(
 			formatApplyError(
-				new ApplyError({ path: "loose.txt", message: "Unmanaged File Exists" }),
+				new ApplyError({
+					path: "loose.txt",
+					reason: "unmanaged-file-exists",
+				}),
 			),
 		).toBe(
 			"Forge cannot safely update these files:\nloose.txt already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
 		);
 		expect(
 			formatApplyError(
-				new ApplyError({ path: "file.txt", message: "File Read Failed" }),
+				new ApplyError({ path: "file.txt", reason: "file-read-failed" }),
 			),
 		).toBe("File Read Failed");
 		expect(
 			formatApplyError(
 				new ApplyError({
 					path: "file.txt",
-					message: "File Read Failed",
+					reason: "file-read-failed",
 					preflight: {
 						hasConflicts: false,
 						hasManagedRemovals: false,
@@ -917,6 +922,46 @@ describe("apply edge coverage", () => {
 			expect(error).toMatchObject({
 				message: "File Read Failed",
 				path: "existing.txt",
+			});
+		});
+	});
+
+	it("maps managed file existence failures with the original cause", async () => {
+		await withTempDir("apply-exists-failure", async (directory) => {
+			const relativePath = "existing.txt";
+			const path = join(directory, relativePath);
+			const cause = new PlatformError.SystemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
+			});
+			const failingLayer = applyLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : Effect.succeed(false),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(
+						directory,
+						emptyPlan([{ content: "incoming\n", path: relativePath }]),
+					).pipe(Effect.provide(failingLayer)),
+				),
+			);
+
+			expect(error).toBeInstanceOf(ApplyError);
+			if (!(error instanceof ApplyError))
+				throw new Error("Expected ApplyError");
+			expect(error.path).toBe(relativePath);
+			expect(error.reason).toBe("file-read-failed");
+			expect(error.message).toBe("File Read Failed");
+			expect(error.cause).toMatchObject({
+				_tag: "SystemError",
+				method: "exists",
+				pathOrDescriptor: path,
+				reason: "PermissionDenied",
 			});
 		});
 	});

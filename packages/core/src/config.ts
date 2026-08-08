@@ -1,5 +1,5 @@
 import { dirname, join, relative } from "node:path";
-import { FileSystem } from "@effect/platform";
+import { FileSystem, type Error as PlatformError } from "@effect/platform";
 import { Effect, Schema } from "effect";
 import {
 	DiscoveryError,
@@ -120,7 +120,7 @@ function maybeReadPackageName(
 			raw,
 			Schema.Struct({ name: Schema.optional(Schema.String) }),
 			{ onParseError: () => undefined, onValidationError: () => undefined },
-		).pipe(Effect.catchAll(() => Effect.void));
+		).pipe(Effect.orElseSucceed(() => undefined));
 
 		return parsed?.name;
 	});
@@ -130,12 +130,15 @@ function scanModuleRoots(
 	fs: FileSystem.FileSystem,
 	projectRoot: string,
 	currentPath: string,
-): Effect.Effect<string[], unknown> {
+): Effect.Effect<string[], PlatformError.BadArgument> {
 	return Effect.gen(function* () {
 		const entries = yield* fs
 			.readDirectory(currentPath)
 			.pipe(
-				Effect.catchTag("SystemError", () => Effect.succeed([] as string[])),
+				Effect.catchTag(
+					"SystemError",
+					(): Effect.Effect<string[]> => Effect.succeed([]),
+				),
 			);
 
 		const roots: string[] = [];
@@ -167,38 +170,49 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 
 		const read = Effect.fn("ConfigStore.read")(function* (moduleRoot: string) {
 			const path = moduleConfigPath(moduleRoot);
-			const exists = yield* fs.exists(path);
+			const exists = yield* fs.exists(path).pipe(
+				Effect.mapError(
+					(cause) =>
+						new ModuleConfigError({
+							filePath: path,
+							reason: "read-failed",
+							cause,
+						}),
+				),
+			);
 
 			if (!exists)
 				return yield* new ModuleConfigError({
 					filePath: path,
-					message: "Module Config Not Found",
+					reason: "not-found",
 				});
 
 			const raw = yield* fs.readFileString(path).pipe(
-				Effect.catchTag(
-					"SystemError",
-					() =>
+				Effect.mapError(
+					(cause) =>
 						new ModuleConfigError({
 							filePath: path,
-							message: "Module Config Read Failed",
+							reason: "read-failed",
+							cause,
 						}),
 				),
 			);
 
 			return yield* decodeJsonString(raw, ConfigSchema, {
-				onParseError: (message) =>
+				onParseError: (detail, cause) =>
 					new ModuleConfigError({
 						filePath: path,
-						message: `Module Config Parse Failed: ${message}`,
+						reason: "parse-failed",
+						detail,
+						cause,
 					}),
 
-				onValidationError: (issues) =>
+				onValidationError: (issues, cause) =>
 					new ModuleConfigError({
 						filePath: path,
-						message: `Invalid Module Config\n${issues
-							.map((issue) => `  ${issue}`)
-							.join("\n")}`,
+						reason: "invalid",
+						issues,
+						cause,
 					}),
 			});
 		});
@@ -211,12 +225,12 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 			const dir = dirname(path);
 
 			yield* fs.makeDirectory(dir, { recursive: true }).pipe(
-				Effect.catchTag(
-					"SystemError",
-					() =>
+				Effect.mapError(
+					(cause) =>
 						new ModuleConfigError({
 							filePath: path,
-							message: "Module Config Directory Failed",
+							reason: "directory-failed",
+							cause,
 						}),
 				),
 			);
@@ -224,12 +238,12 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 			yield* fs
 				.writeFileString(path, formatJson(config, { compact: false }))
 				.pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new ModuleConfigError({
 								filePath: path,
-								message: "Module Config Write Failed",
+								reason: "write-failed",
+								cause,
 							}),
 					),
 				);
@@ -240,10 +254,11 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 		) {
 			const roots = yield* scanModuleRoots(fs, projectRoot, projectRoot).pipe(
 				Effect.mapError(
-					(error) =>
+					(cause) =>
 						new DiscoveryError({
 							path: projectRoot,
-							message: `Module Discovery Failed: ${String(error)}`,
+							reason: "module-discovery-failed",
+							cause,
 						}),
 				),
 			);
@@ -271,7 +286,6 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 						moduleId: module.id,
 						firstPath: existing,
 						secondPath: module.root,
-						message: "Duplicate Module Id",
 					});
 
 				seen.set(module.id, module.root);
@@ -288,9 +302,7 @@ export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
 				if (!usedIds.has(id)) return id as ModuleId;
 			}
 
-			return yield* new ModuleIdGenerationError({
-				message: "Module Id Generation Failed",
-			});
+			return yield* new ModuleIdGenerationError({});
 		});
 
 		return { discover, generateId, read, write };

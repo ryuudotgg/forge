@@ -36,7 +36,7 @@ const failingProbeLayer = Layer.succeed(
 			Effect.fail(
 				new CommandProbeError({
 					command,
-					message: "Command Probe Failed",
+					reason: "probe-failed",
 					detail: "missing",
 				}),
 			),

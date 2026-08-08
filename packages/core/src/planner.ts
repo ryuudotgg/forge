@@ -416,7 +416,7 @@ function mergeEnsuredModule(
 		return Effect.fail(
 			new PlannerError({
 				path: ensured.root,
-				message: "Ensured Module Type Conflict",
+				reason: "ensured-module-type-conflict",
 			}),
 		);
 
@@ -429,7 +429,7 @@ function mergeEnsuredModule(
 			return Effect.fail(
 				new PlannerError({
 					path: ensured.root,
-					message: "Ensured App Module Conflict",
+					reason: "ensured-app-module-conflict",
 				}),
 			);
 
@@ -462,7 +462,7 @@ function mergeEnsuredModule(
 			return Effect.fail(
 				new PlannerError({
 					path: ensured.root,
-					message: "Ensured Package Module Conflict",
+					reason: "ensured-package-module-conflict",
 				}),
 			);
 
@@ -497,7 +497,7 @@ function mergeEnsuredModule(
 	return Effect.fail(
 		new PlannerError({
 			path: ensured.root,
-			message: "Ensured Module Conflict",
+			reason: "ensured-module-conflict",
 		}),
 	);
 }
@@ -517,7 +517,9 @@ function normalizeContributionResult(
 			return Effect.fail(
 				new GeneratorError({
 					generatorId,
-					message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
+					reason: "definition-failed",
+					detail: error instanceof Error ? error.message : String(error),
+					cause: error,
 				}),
 			);
 		}
@@ -526,10 +528,12 @@ function normalizeContributionResult(
 		if (result instanceof Promise) {
 			return Effect.tryPromise({
 				try: () => result,
-				catch: (error) =>
+				catch: (cause) =>
 					new GeneratorError({
 						generatorId,
-						message: `Definition Failed: ${error instanceof Error ? error.message : String(error)}`,
+						reason: "definition-failed",
+						detail: cause instanceof Error ? cause.message : String(cause),
+						cause,
 					}),
 			});
 		}
@@ -638,7 +642,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				return Effect.fail(
 					new PlannerError({
 						path: "registry",
-						message: "Multiple Templates Selected",
+						reason: "multiple-templates-selected",
 					}),
 				);
 
@@ -688,7 +692,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							if (!dependencyDefinition)
 								return yield* new PlannerError({
 									path: definition.id,
-									message: "Definition Dependency Missing",
+									reason: "definition-dependency-missing",
 								});
 
 							dependencyDefinitions.push(dependencyDefinition);
@@ -711,7 +715,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 							if (!hasActiveAlternative)
 								return yield* new PlannerError({
 									path: definition.id,
-									message: "Definition Dependency Inactive",
+									reason: "definition-dependency-inactive",
 								});
 						}
 					});
@@ -742,7 +746,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (visiting.has(definitionKey(definition)))
 						return yield* new PlannerError({
 							path: definition.id,
-							message: "Definition Cycle Detected",
+							reason: "definition-cycle-detected",
 						});
 
 					visiting.add(definitionKey(definition));
@@ -831,14 +835,14 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (target.kind !== "module")
 						return yield* new PlannerError({
 							path: addon.id,
-							message: "Adapter Target Must Be Module",
+							reason: "adapter-target-must-be-module",
 						});
 
 					const module = modulesById.get(target.moduleId);
 					if (!module)
 						return yield* new PlannerError({
 							path: addon.id,
-							message: "Adapter Target App Missing",
+							reason: "adapter-target-app-missing",
 						});
 
 					if (module.config.type !== "app") continue;
@@ -847,7 +851,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (!framework)
 						return yield* new PlannerError({
 							path: addon.id,
-							message: "Adapter Framework Missing",
+							reason: "adapter-framework-missing",
 						});
 
 					const adapter = addonAdapters.find(
@@ -858,7 +862,9 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (!adapter)
 						return yield* new GeneratorError({
 							generatorId: addon.id,
-							message: `${addon.name} does not support ${framework.name} yet.`,
+							reason: "framework-not-supported-yet",
+							generatorName: addon.name,
+							frameworkName: framework.name,
 						});
 
 					const adapterModule: AdapterModule = {
@@ -933,7 +939,8 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						if (direct && keyed && direct.id !== keyed.id)
 							return yield* new PlannerError({
 								path: contribution.root,
-								message: `Module Key Conflict: ${contribution.moduleKey} is claimed by ${direct.root} and ${keyed.root}`,
+								reason: "module-key-conflict",
+								detail: `Module Key Conflict: ${contribution.moduleKey} is claimed by ${direct.root} and ${keyed.root}`,
 							});
 
 						const existing =
@@ -973,7 +980,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				if (claimedRoots.has(module.root))
 					return yield* new PlannerError({
 						path: module.root,
-						message: "Module Root Conflict",
+						reason: "module-root-conflict",
 					});
 
 				claimedRoots.add(module.root);
@@ -1062,7 +1069,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						return Effect.fail(
 							new PlannerError({
 								path: evaluation.definitionId,
-								message: "Selected Target Missing",
+								reason: "selected-target-missing",
 							}),
 						);
 
@@ -1082,7 +1089,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						return Effect.fail(
 							new PlannerError({
 								path: evaluation.definitionId,
-								message: "Ensured Module Missing",
+								reason: "ensured-module-missing",
 							}),
 						);
 
@@ -1114,7 +1121,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 						return Effect.fail(
 							new PlannerError({
 								path: evaluation.definitionId,
-								message: "Target Module Missing",
+								reason: "target-module-missing",
 							}),
 						);
 
@@ -1241,14 +1248,14 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 									if (target.kind !== "module")
 										return yield* new PlannerError({
 											path: entry.definitionId,
-											message: "Slot Path Requires Module Target",
+											reason: "slot-path-requires-module-target",
 										});
 
 									const module = byId.get(target.moduleId);
 									if (!module)
 										return yield* new PlannerError({
 											path: entry.definitionId,
-											message: "Slot Path Module Missing",
+											reason: "slot-path-module-missing",
 										});
 
 									const expectedModuleId =
@@ -1259,7 +1266,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 									if (expectedModuleId !== target.moduleId)
 										return yield* new PlannerError({
 											path: entry.definitionId,
-											message: "Slot Path Target Mismatch",
+											reason: "slot-path-target-mismatch",
 										});
 
 									return yield* resolveSlotPath(module.config, leafPath).pipe(
@@ -1267,7 +1274,9 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 											(error) =>
 												new PlannerError({
 													path: entry.definitionId,
-													message: error.message,
+													reason: "slot-path-invalid",
+													detail: error.message,
+													cause: error,
 												}),
 										),
 									);
@@ -1296,7 +1305,7 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 
 							return yield* new PlannerError({
 								path: "leaf-files",
-								message: "Leaf File Conflict",
+								reason: "leaf-file-conflict",
 							});
 						}
 
@@ -1351,10 +1360,11 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 		) {
 			return yield* hashContentHex(
 				content,
-				() =>
+				(cause) =>
 					new PlannerError({
 						path: "content",
-						message: "Content Hash Failed",
+						reason: "content-hash-failed",
+						cause,
 					}),
 			);
 		});
@@ -1493,7 +1503,8 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 					if (existing && existing.artifactId !== write.artifactId)
 						return yield* new PlannerError({
 							path: write.path,
-							message: `Write Path Collision: ${existing.artifactId} and ${write.artifactId}`,
+							reason: "write-path-collision",
+							detail: `Write Path Collision: ${existing.artifactId} and ${write.artifactId}`,
 						});
 
 					byPath.set(write.path, write);
@@ -1671,13 +1682,13 @@ export class Planner extends Effect.Service<Planner>()("Planner", {
 				if (!addon)
 					return yield* new PlannerError({
 						path: install.definitionId,
-						message: "Definition Missing",
+						reason: "definition-missing",
 					});
 
 				if (addon.targetMode === "single" && install.targets.length > 1)
 					return yield* new PlannerError({
 						path: install.definitionId,
-						message: "Multiple Targets Selected",
+						reason: "multiple-targets-selected",
 					});
 			}
 

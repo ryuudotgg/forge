@@ -9,7 +9,7 @@ import {
 } from "node:path";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
-import { ApplyError } from "./errors";
+import { ApplyError, type ApplyRefusalReason } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
 import { envResidue, threeWayMergeEnv } from "./merge/env";
@@ -77,7 +77,7 @@ export interface ApplyConflict {
 }
 
 export interface ApplyRefusal {
-	readonly message: "Managed File Modified" | "Unmanaged File Exists";
+	readonly reason: ApplyRefusalReason;
 	readonly operation: "removal" | "write";
 	readonly path: string;
 	readonly resolvable: boolean;
@@ -103,18 +103,18 @@ function classifyPreflight(
 		hasConflicts: conflicts.length > 0,
 		hasManagedRemovals: refusals.some(
 			(refusal) =>
-				refusal.message === "Managed File Modified" &&
+				refusal.reason === "managed-file-modified" &&
 				refusal.operation === "removal",
 		),
 		hasManagedRefusals: refusals.some(
-			(refusal) => refusal.message === "Managed File Modified",
+			(refusal) => refusal.reason === "managed-file-modified",
 		),
 		hasUnmanagedRefusals: refusals.some(
-			(refusal) => refusal.message === "Unmanaged File Exists",
+			(refusal) => refusal.reason === "unmanaged-file-exists",
 		),
 		hasUnmanagedRemovals: refusals.some(
 			(refusal) =>
-				refusal.message === "Unmanaged File Exists" &&
+				refusal.reason === "unmanaged-file-exists" &&
 				refusal.operation === "removal",
 		),
 	};
@@ -267,7 +267,7 @@ function conflictMessage(conflicts: ReadonlyArray<ApplyConflict>): string {
 }
 
 function refusalSentence(refusal: ApplyRefusal): string {
-	return refusal.message === "Managed File Modified"
+	return refusal.reason === "managed-file-modified"
 		? `${refusal.path} was modified after Forge last managed it.`
 		: `${refusal.path} already exists and is not managed by Forge.`;
 }
@@ -297,11 +297,11 @@ export function formatApplyError(
 	let classification = error.preflight;
 
 	if (
-		error.message === "Managed File Modified" ||
-		error.message === "Unmanaged File Exists"
+		error.reason === "managed-file-modified" ||
+		error.reason === "unmanaged-file-exists"
 	) {
 		const refusal: ApplyRefusal = {
-			message: error.message,
+			reason: error.reason,
 			operation:
 				classification?.hasManagedRemovals === true ||
 				classification?.hasUnmanagedRemovals === true
@@ -374,7 +374,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			)
 				return yield* new ApplyError({
 					path: relativePath,
-					message: "Path Escapes Project Root",
+					reason: "path-escapes-project-root",
 				});
 
 			const realRoot = yield* fs
@@ -398,7 +398,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 					return yield* new ApplyError({
 						path: relativePath,
-						message: "Path Escapes Project Root",
+						reason: "path-escapes-project-root",
 					});
 				}
 
@@ -413,8 +413,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 		) {
 			return yield* hashContentHex(
 				content,
-				() =>
-					new ApplyError({ path: "content", message: "Content Hash Failed" }),
+				(cause) =>
+					new ApplyError({
+						path: "content",
+						reason: "content-hash-failed",
+						cause,
+					}),
 			);
 		});
 
@@ -422,22 +426,40 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			path: string,
 			label: string,
 		) {
-			return yield* fs
-				.readFileString(path)
-				.pipe(
-					Effect.catchTag(
-						"SystemError",
-						() => new ApplyError({ path: label, message: "File Read Failed" }),
-					),
-				);
+			return yield* fs.readFileString(path).pipe(
+				Effect.mapError(
+					(cause) =>
+						new ApplyError({
+							path: label,
+							reason: "file-read-failed",
+							cause,
+						}),
+				),
+			);
+		});
+
+		const pathExists = Effect.fn("Apply.pathExists")(function* (
+			path: string,
+			label: string,
+		) {
+			return yield* fs.exists(path).pipe(
+				Effect.mapError(
+					(cause) =>
+						new ApplyError({
+							path: label,
+							reason: "file-read-failed",
+							cause,
+						}),
+				),
+			);
 		});
 
 		const parseJsonObject = Effect.fn("Apply.parseJsonObject")(function* (
 			content: string,
 			path: string,
-			message:
-				| "Managed File Modified"
-				| "Managed JSON Parse Failed" = "Managed JSON Parse Failed",
+			reason:
+				| "managed-file-modified"
+				| "json-parse-failed" = "json-parse-failed",
 		) {
 			return yield* Effect.try({
 				try: () => {
@@ -445,7 +467,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					if (!isJsonObject(parsed)) throw new Error("Expected a JSON object");
 					return parsed;
 				},
-				catch: () => new ApplyError({ path, message }),
+				catch: (cause) =>
+					new ApplyError({
+						path,
+						reason,
+						cause,
+					}),
 			});
 		});
 
@@ -456,15 +483,16 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			if (artifact.base === undefined)
 				return yield* new ApplyError({
 					path: artifact.path,
-					message: "Managed File Modified",
+					reason: "managed-file-modified",
 				});
 
 			return yield* State.readBase(projectRoot, artifact.base.hash).pipe(
 				Effect.mapError(
-					() =>
+					(cause) =>
 						new ApplyError({
 							path: artifact.path,
-							message: "Managed Base Read Failed",
+							reason: "managed-base-read-failed",
+							cause,
 						}),
 				),
 			);
@@ -501,7 +529,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const currentJson = yield* parseJsonObject(
 				current,
 				path,
-				"Managed File Modified",
+				"managed-file-modified",
 			);
 
 			const incomingJson = yield* parseJsonObject(incoming, path);
@@ -533,7 +561,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const currentJson = yield* parseJsonObject(
 				current,
 				path,
-				"Managed File Modified",
+				"managed-file-modified",
 			);
 
 			const residue = jsonResidue(baseJson, currentJson);
@@ -601,7 +629,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			for (const relativePath of plan.removals) {
 				const fullPath = yield* ensureContained(projectRoot, relativePath);
 				if (isUserOwnedEnv(relativePath)) continue;
-				if (!(yield* fs.exists(fullPath))) continue;
+				if (!(yield* pathExists(fullPath, relativePath))) continue;
 
 				const previousArtifact = previousArtifacts.get(relativePath);
 				if (previousArtifact === undefined) {
@@ -612,7 +640,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 					refusals.push({
 						path: relativePath,
-						message: "Unmanaged File Exists",
+						reason: "unmanaged-file-exists",
 						operation: "removal",
 						resolvable: false,
 					});
@@ -623,7 +651,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				if (!descriptorMatchesArtifact(previousArtifact)) {
 					refusals.push({
 						path: relativePath,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "removal",
 						resolvable: false,
 					});
@@ -640,7 +668,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					else
 						refusals.push({
 							path: relativePath,
-							message: "Managed File Modified",
+							reason: "managed-file-modified",
 							operation: "removal",
 							resolvable: false,
 						});
@@ -665,7 +693,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				if (resolutionPolicy === "keep-user") {
 					refusals.push({
 						path: relativePath,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "removal",
 						resolvable: false,
 					});
@@ -680,7 +708,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				) {
 					refusals.push({
 						path: relativePath,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "removal",
 						resolvable: false,
 					});
@@ -699,12 +727,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				);
 
 				if (residueResult._tag === "Left") {
-					if (residueResult.left.message !== "Managed File Modified")
+					if (residueResult.left.reason !== "managed-file-modified")
 						return yield* residueResult.left;
 
 					refusals.push({
 						path: relativePath,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "removal",
 						resolvable: false,
 					});
@@ -724,7 +752,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const policyReadHashes = new Map<string, string>();
 			for (const file of plan.writes) {
 				const fullPath = yield* ensureContained(projectRoot, file.path);
-				if (!(yield* fs.exists(fullPath))) {
+				if (!(yield* pathExists(fullPath, file.path))) {
 					writesToApply.push(file);
 					continue;
 				}
@@ -822,7 +850,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 					refusals.push({
 						path: file.path,
-						message: "Unmanaged File Exists",
+						reason: "unmanaged-file-exists",
 						operation: "write",
 						resolvable: false,
 					});
@@ -838,7 +866,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				if (managedArtifact === undefined) {
 					refusals.push({
 						path: file.path,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "write",
 						resolvable: false,
 					});
@@ -849,7 +877,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				if (!descriptorsAreCompatible) {
 					refusals.push({
 						path: file.path,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "write",
 						resolvable: false,
 					});
@@ -906,7 +934,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 					refusals.push({
 						path: file.path,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "write",
 						resolvable: canRebaseCurrentContent,
 					});
@@ -933,7 +961,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 					refusals.push({
 						path: file.path,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "write",
 						resolvable: canRebaseCurrentContent,
 					});
@@ -962,7 +990,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				);
 
 				if (mergedResult._tag === "Left") {
-					if (mergedResult.left.message !== "Managed File Modified")
+					if (mergedResult.left.reason !== "managed-file-modified")
 						return yield* mergedResult.left;
 
 					if (fileResolution === "forge") {
@@ -975,7 +1003,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 					refusals.push({
 						path: file.path,
-						message: "Managed File Modified",
+						reason: "managed-file-modified",
 						operation: "write",
 						resolvable: canRebaseCurrentContent,
 					});
@@ -1034,7 +1062,8 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				if (!consumedResolutionLabels.has(label))
 					return yield* new ApplyError({
 						path: label,
-						message: `Resolution Label Unknown: ${label}`,
+						reason: "resolution-label-unknown",
+						detail: `Resolution Label Unknown: ${label}`,
 					});
 
 			const preflight = classifyPreflight(refusals, conflicts);
@@ -1043,14 +1072,15 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			if (refusal !== undefined && conflicts.length === 0)
 				return yield* new ApplyError({
 					path: refusal.path,
-					message: refusal.message,
+					reason: refusal.reason,
 					preflight,
 				});
 
 			if (refusals.length > 0 || conflicts.length > 0)
 				return yield* new ApplyError({
 					path: refusals.length === 0 ? "managed surfaces" : "managed files",
-					message: preflightMessage(refusals, conflicts),
+					reason: "preflight-failed",
+					detail: preflightMessage(refusals, conflicts),
 					preflight,
 				});
 
@@ -1094,20 +1124,20 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				)
 					return yield* new ApplyError({
 						path: artifact.path,
-						message: "Managed Base Forbidden",
+						reason: "managed-base-forbidden",
 					});
 
 				const content = pureWritesById.get(artifactId);
 				if (content === undefined)
 					return yield* new ApplyError({
 						path: artifact.path,
-						message: "Managed Base Content Missing",
+						reason: "managed-base-content-missing",
 					});
 
 				if ((yield* hashContent(content)) !== artifact.base.hash)
 					return yield* new ApplyError({
 						path: artifact.path,
-						message: "Managed Base Hash Mismatch",
+						reason: "managed-base-hash-mismatch",
 					});
 
 				bases.set(artifact.base.hash, content);
@@ -1122,13 +1152,13 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 							baseRelative,
 						);
 
-						if (!(yield* fs.exists(destination))) continue;
+						if (!(yield* pathExists(destination, baseRelative))) continue;
 
 						const existing = yield* readFile(destination, baseRelative);
 						if ((yield* hashContent(existing)) !== hash)
 							return yield* new ApplyError({
 								path: baseRelative,
-								message: "Managed Base Hash Mismatch",
+								reason: "managed-base-hash-mismatch",
 							});
 					}
 				},
@@ -1138,7 +1168,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				function* () {
 					for (const [relativePath, expectedHash] of policyReadHashes) {
 						const fullPath = yield* ensureContained(projectRoot, relativePath);
-						const exists = yield* fs.exists(fullPath);
+						const exists = yield* pathExists(fullPath, relativePath);
 						const currentHash = exists
 							? yield* readFile(fullPath, relativePath).pipe(
 									Effect.flatMap(hashContent),
@@ -1148,7 +1178,7 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 						if (currentHash === expectedHash) continue;
 						return yield* new ApplyError({
 							path: relativePath,
-							message: "Managed File Modified",
+							reason: "managed-file-modified",
 							preflight: {
 								hasConflicts: false,
 								hasManagedRemovals: false,
@@ -1170,12 +1200,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			);
 
 			yield* fs.makeDirectory(stagingRoot, { recursive: true }).pipe(
-				Effect.catchTag(
-					"SystemError",
-					() =>
+				Effect.mapError(
+					(cause) =>
 						new ApplyError({
 							path: stagingRootRelative,
-							message: "Staging Directory Failed",
+							reason: "staging-directory-failed",
+							cause,
 						}),
 				),
 			);
@@ -1183,12 +1213,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 			const stagingDirectory = yield* fs
 				.makeTempDirectory({ directory: stagingRoot, prefix: ".staging-" })
 				.pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new ApplyError({
 								path: stagingRootRelative,
-								message: "Staging Directory Failed",
+								reason: "staging-directory-failed",
+								cause,
 							}),
 					),
 				);
@@ -1204,23 +1234,23 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				const stagedPath = yield* ensureContained(projectRoot, stagedRelative);
 
 				yield* fs.makeDirectory(dirname(stagedPath), { recursive: true }).pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new ApplyError({
 								path: stagedRelative,
-								message: "Staged Directory Write Failed",
+								reason: "staged-directory-write-failed",
+								cause,
 							}),
 					),
 				);
 
 				yield* fs.writeFileString(stagedPath, content).pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new ApplyError({
 								path: stagedRelative,
-								message: "Staged File Write Failed",
+								reason: "staged-file-write-failed",
+								cause,
 							}),
 					),
 				);
@@ -1273,29 +1303,29 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 					".forge/state.json",
 				);
 
-				if (!(yield* fs.exists(stateBundlePath)))
+				if (!(yield* pathExists(stateBundlePath, ".forge/state.json")))
 					yield* fs.rename(stagedPreviousStateBundle, stateBundlePath).pipe(
-						Effect.catchTag(
-							"SystemError",
-							() =>
+						Effect.mapError(
+							(cause) =>
 								new ApplyError({
 									path: ".forge/state.json",
-									message: "Atomic State Backup Failed",
+									reason: "atomic-state-backup-failed",
+									cause,
 								}),
 						),
 					);
 
 				for (const relativePath of removalsToApply) {
 					const fullPath = yield* ensureContained(projectRoot, relativePath);
-					if (!(yield* fs.exists(fullPath))) continue;
+					if (!(yield* pathExists(fullPath, relativePath))) continue;
 
 					yield* fs.remove(fullPath).pipe(
-						Effect.catchTag(
-							"SystemError",
-							() =>
+						Effect.mapError(
+							(cause) =>
 								new ApplyError({
 									path: relativePath,
-									message: "File Remove Failed",
+									reason: "file-remove-failed",
+									cause,
 								}),
 						),
 					);
@@ -1304,23 +1334,23 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				for (const staged of stagedWrites) {
 					const fullPath = yield* ensureContained(projectRoot, staged.path);
 					yield* fs.makeDirectory(dirname(fullPath), { recursive: true }).pipe(
-						Effect.catchTag(
-							"SystemError",
-							() =>
+						Effect.mapError(
+							(cause) =>
 								new ApplyError({
 									path: staged.path,
-									message: "Directory Write Failed",
+									reason: "directory-write-failed",
+									cause,
 								}),
 						),
 					);
 
 					yield* fs.rename(staged.stagedPath, fullPath).pipe(
-						Effect.catchTag(
-							"SystemError",
-							() =>
+						Effect.mapError(
+							(cause) =>
 								new ApplyError({
 									path: staged.path,
-									message: "Atomic File Write Failed",
+									reason: "atomic-file-write-failed",
+									cause,
 								}),
 						),
 					);
@@ -1332,12 +1362,12 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				);
 
 				yield* fs.makeDirectory(basesDirectory, { recursive: true }).pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new ApplyError({
 								path: ".forge/bases",
-								message: "Base Directory Failed",
+								reason: "base-directory-failed",
+								cause,
 							}),
 					),
 				);
@@ -1345,15 +1375,15 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 				for (const staged of stagedBases) {
 					const baseRelative = `.forge/bases/${staged.hash}`;
 					const destination = yield* ensureContained(projectRoot, baseRelative);
-					if (yield* fs.exists(destination)) continue;
+					if (yield* pathExists(destination, baseRelative)) continue;
 
 					yield* fs.rename(staged.stagedPath, destination).pipe(
-						Effect.catchTag(
-							"SystemError",
-							() =>
+						Effect.mapError(
+							(cause) =>
 								new ApplyError({
 									path: baseRelative,
-									message: "Atomic Base Write Failed",
+									reason: "atomic-base-write-failed",
+									cause,
 								}),
 						),
 					);
@@ -1371,31 +1401,33 @@ export class Apply extends Effect.Service<Apply>()("Apply", {
 
 				yield* fs.rename(stagedManifest, manifestPath).pipe(
 					Effect.mapError(
-						() =>
+						(cause) =>
 							new ApplyError({
 								path: ".forge/manifest.json",
-								message: "Atomic Manifest Write Failed",
+								reason: "atomic-manifest-write-failed",
+								cause,
 							}),
 					),
 				);
 
 				yield* fs.rename(stagedLockfile, lockfilePath).pipe(
 					Effect.mapError(
-						() =>
+						(cause) =>
 							new ApplyError({
 								path: ".forge/lock.json",
-								message: "Atomic Lockfile Write Failed",
+								reason: "atomic-lockfile-write-failed",
+								cause,
 							}),
 					),
 				);
 
 				yield* fs.remove(stateBundlePath).pipe(
-					Effect.catchTag(
-						"SystemError",
-						() =>
+					Effect.mapError(
+						(cause) =>
 							new ApplyError({
 								path: ".forge/state.json",
-								message: "Atomic State Publish Failed",
+								reason: "atomic-state-publish-failed",
+								cause,
 							}),
 					),
 				);
