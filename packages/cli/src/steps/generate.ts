@@ -1,12 +1,5 @@
 import { log } from "@clack/prompts";
-import { NodeContext } from "@effect/platform-node";
-import {
-	Apply,
-	ApplyError,
-	CoreLive,
-	formatApplyError,
-	Planner,
-} from "@ryuujs/core";
+import { Apply, ApplyError, formatApplyError, Planner } from "@ryuujs/core";
 import {
 	authenticationProviders,
 	type ForgeConfig,
@@ -14,7 +7,8 @@ import {
 	orms,
 	probeWorkspaceCommandVersions,
 } from "@ryuujs/generators";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
+import { runCliEffectValue } from "../runtime";
 import type { PartialConfig } from "./types";
 import { defineStep, SKIP } from "./types";
 
@@ -39,11 +33,9 @@ const generateStep = defineStep({
 		const projectRoot = String(config.path ?? ".");
 		const forgeConfig: ForgeConfig = config;
 
-		const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
-
 		try {
 			const loadedRegistry = await loadDefinitionRegistry();
-			const plan = await Effect.runPromise(
+			const plan = await runCliEffectValue(
 				Effect.gen(function* () {
 					const commandVersions =
 						yield* probeWorkspaceCommandVersions(forgeConfig);
@@ -55,10 +47,10 @@ const generateStep = defineStep({
 						loadedRegistry.registry,
 						commandVersions,
 					);
-				}).pipe(Effect.provide(coreLayer)),
+				}),
 			);
 
-			await Effect.runPromise(
+			await runCliEffectValue(
 				Apply.applyPlan(projectRoot, {
 					lockfile: plan.lockfile,
 					manifest: plan.manifest,
@@ -68,7 +60,7 @@ const generateStep = defineStep({
 						content: write.content,
 						path: write.path,
 					})),
-				}).pipe(Effect.provide(coreLayer)),
+				}),
 			);
 		} catch (error) {
 			const message =

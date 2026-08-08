@@ -1,8 +1,8 @@
 import { confirm, isCancel, log, spinner } from "@clack/prompts";
 import { Command } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
 import { type PackageManager, packageManagerCommand } from "@ryuujs/core";
-import { Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { runCliEffect } from "../../runtime";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
@@ -32,7 +32,7 @@ function installDeps(
 				exitCode: code,
 				message: `Install Failed: ${pm} Exited With Code ${code}`,
 			});
-	}).pipe(Effect.provide(NodeContext.layer));
+	});
 }
 
 async function runInstall(
@@ -43,10 +43,13 @@ async function runInstall(
 	const s = spinner();
 	s.start("We're installing your dependencies...");
 
-	const exit = await Effect.runPromiseExit(installDeps(pm, cmd, dir));
+	const exit = await runCliEffect(installDeps(pm, cmd, dir));
 
 	if (Exit.isFailure(exit)) {
 		s.stop("We couldn't install your dependencies.");
+		if (Option.isNone(Cause.failureOption(exit.cause)))
+			console.error(Cause.squash(exit.cause));
+
 		log.warn(
 			`The ${pm} install didn't finish, so run it yourself inside the project when you're ready.`,
 		);

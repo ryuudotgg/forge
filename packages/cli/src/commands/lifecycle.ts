@@ -1,14 +1,12 @@
 import { resolve } from "node:path";
 import { log } from "@clack/prompts";
 import { Command, FileSystem } from "@effect/platform";
-import { NodeContext, NodeFileSystem } from "@effect/platform-node";
 import {
 	Apply,
 	ApplyError,
 	type ApplyOptions,
 	type ApplyPlan,
 	ConfigStore,
-	CoreLive,
 	type DiscoveredModule,
 	formatApplyError,
 	type InstallRecord,
@@ -28,14 +26,18 @@ import {
 	probeWorkspaceCommandVersions,
 	RegistryLoadError,
 } from "@ryuujs/generators";
-import { Cause, Effect, Either, Exit, Layer, Option, Schema } from "effect";
+import { Effect, Either, Exit, Schema } from "effect";
+import {
+	type CliServices,
+	failureFromCause,
+	runCliEffect,
+	runCliEffectValue,
+} from "../runtime";
 import {
 	canResolveInteractively,
 	isInteractiveLifecycleSession,
 	promptForConflictResolutions,
 } from "./interactive-resolution";
-
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeContext.layer));
 
 const ProjectPackageJsonSchema = Schema.parseJson(
 	Schema.Struct({
@@ -70,20 +72,13 @@ function lifecycleUnavailableMessage() {
 }
 
 async function runLifecycleEffect<A, E extends { readonly message: string }>(
-	effect: Effect.Effect<A, E>,
+	effect: Effect.Effect<A, E, CliServices>,
 	failureMessage: string,
 ): Promise<A> {
-	const exit = await Effect.runPromiseExit(effect);
+	const exit = await runCliEffect(effect);
 	if (Exit.isSuccess(exit)) return exit.value;
 
 	return reportLifecycleFailure(failureFromCause(exit.cause), failureMessage);
-}
-
-export function failureFromCause<E>(cause: Cause.Cause<E>): E {
-	const failure = Cause.failureOption(cause);
-	if (Option.isSome(failure)) return failure.value;
-
-	throw Cause.squash(cause);
 }
 
 function reportLifecycleFailure(
@@ -105,11 +100,9 @@ export async function applyLifecyclePlan(
 	options: ApplyOptions,
 ): Promise<void> {
 	const apply = (applyOptions: ApplyOptions) =>
-		Apply.applyPlan(projectRoot, plan, applyOptions).pipe(
-			Effect.provide(coreLayer),
-		);
+		Apply.applyPlan(projectRoot, plan, applyOptions);
 
-	const exit = await Effect.runPromiseExit(apply(options));
+	const exit = await runCliEffect(apply(options));
 	if (Exit.isSuccess(exit)) return;
 
 	const failure = failureFromCause(exit.cause);
@@ -119,7 +112,7 @@ export async function applyLifecyclePlan(
 		canResolveInteractively(failure, options)
 	) {
 		const resolution = await promptForConflictResolutions(failure);
-		const retry = await Effect.runPromiseExit(
+		const retry = await runCliEffect(
 			apply({ ...options, ...resolution.options }),
 		);
 
@@ -162,7 +155,6 @@ export async function loadManagedProject(
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),
-			Effect.provide(coreLayer),
 		),
 		"We couldn't read this project's Forge metadata.",
 	);
@@ -173,7 +165,7 @@ export async function loadManagedProject(
 	}
 
 	const modules = await runLifecycleEffect(
-		ConfigStore.discover(absoluteProjectRoot).pipe(Effect.provide(coreLayer)),
+		ConfigStore.discover(absoluteProjectRoot),
 		"We couldn't read this project's modules.",
 	);
 
@@ -206,7 +198,7 @@ export async function hasProjectDevDependency(
 				packageJson.devDependencies !== undefined &&
 				Object.hasOwn(packageJson.devDependencies, packageId)
 			);
-		}).pipe(Effect.provide(NodeContext.layer)),
+		}),
 		"We couldn't read this project's package.json.",
 	);
 }
@@ -218,14 +210,14 @@ export async function runPackageManagerOperation(
 		readonly command: string;
 	},
 ) {
-	const exit = await Effect.runPromiseExit(
+	const exit = await runCliEffect(
 		Command.exitCode(
 			Command.make(operation.command, ...operation.args).pipe(
 				Command.workingDirectory(projectRoot),
 				Command.stdout("pipe"),
 				Command.stderr("pipe"),
 			),
-		).pipe(Effect.provide(NodeContext.layer)),
+		),
 	);
 
 	return Exit.isSuccess(exit) && exit.value === 0;
@@ -266,13 +258,12 @@ function discoveryWarning(action: string, error: unknown) {
 
 export async function loadDiscoveryRegistry(projectRoot: string) {
 	const absoluteProjectRoot = resolve(projectRoot);
-	const manifestResult = await Effect.runPromise(
+	const manifestResult = await runCliEffectValue(
 		State.readManifest(absoluteProjectRoot).pipe(
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),
 			Effect.either,
-			Effect.provide(coreLayer),
 		),
 	);
 
@@ -334,7 +325,7 @@ export async function applyInstalledPlan(
 				loadedRegistry.descriptors,
 				registryIds,
 			);
-		}).pipe(Effect.provide(Layer.mergeAll(coreLayer, NodeFileSystem.layer))),
+		}),
 		"We couldn't plan this change.",
 	);
 

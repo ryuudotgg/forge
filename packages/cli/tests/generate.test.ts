@@ -263,6 +263,29 @@ describe("generate step", () => {
 		});
 	}, 120_000);
 
+	it("formats create apply refusals with resolution guidance", async () => {
+		await withTempDir("generate-apply-refusal", async (directory) => {
+			await writeFile(join(directory, ".gitignore"), "user-owned\n", "utf-8");
+
+			await expect(
+				generateStep.execute(
+					{
+						name: "Acme",
+						packageManager: "pnpm",
+						path: directory,
+						runtime: "Node.js",
+						slug: "acme",
+						web: "nextjs",
+					},
+					false,
+				),
+			).rejects.toHaveProperty(
+				"message",
+				"Generation Failed: Forge cannot safely update these files:\n.gitignore already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
+			);
+		});
+	}, 120_000);
+
 	it("surfaces a missing framework slot as a natural sentence", async () => {
 		const fakeFramework = defineFramework({
 			id: "fake",

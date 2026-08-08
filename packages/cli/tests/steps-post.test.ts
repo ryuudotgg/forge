@@ -21,6 +21,7 @@ const promptMocks = vi.hoisted(() => ({
 }));
 
 const commandMocks = vi.hoisted(() => ({
+	commitDefect: vi.fn<() => Error | undefined>(),
 	exitCode: vi.fn(),
 	failCommit: false,
 	string: vi.fn(),
@@ -45,13 +46,16 @@ vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 vi.mock("@effect/platform", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@effect/platform")>();
 
-	commandMocks.string.mockImplementation((command: PlatformCommand.Command) =>
-		commandMocks.failCommit &&
-		command._tag === "StandardCommand" &&
-		command.args[0] === "commit"
+	commandMocks.string.mockImplementation((command: PlatformCommand.Command) => {
+		if (command._tag !== "StandardCommand" || command.args[0] !== "commit")
+			return original.Command.string(command);
+
+		const defect = commandMocks.commitDefect();
+		if (defect !== undefined) return Effect.die(defect);
+		return commandMocks.failCommit
 			? Effect.fail("fatal: unable to auto-detect email address")
-			: original.Command.string(command),
-	);
+			: original.Command.string(command);
+	});
 
 	return {
 		...original,
@@ -125,6 +129,8 @@ beforeEach(() => {
 	}));
 	commandMocks.exitCode.mockReset();
 	commandMocks.exitCode.mockReturnValue(Effect.succeed(0));
+	commandMocks.commitDefect.mockReset();
+	commandMocks.commitDefect.mockReturnValue(undefined);
 	commandMocks.string.mockClear();
 	commandMocks.failCommit = false;
 	cancelMocks.cancel.mockClear();
@@ -253,6 +259,33 @@ describe("git init step", () => {
 			);
 		});
 	});
+
+	it("warns and exits successfully when git defects", async () => {
+		await withTempDir("git-init-defect", async (directory) => {
+			const defect = new Error("synthetic git defect");
+			const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+			const exit = vi.spyOn(process, "exit");
+			commandMocks.commitDefect.mockReturnValue(defect);
+			await writeFile(join(directory, "README.md"), "# Forge\n", "utf-8");
+
+			try {
+				await withGitEnv(async () => {
+					await expect(
+						gitInitStep.execute({ path: directory }, false),
+					).resolves.toBe(SKIP);
+				});
+
+				expect(promptMocks.log.warn).toHaveBeenCalledWith(
+					"We couldn't create the initial commit, so set up git yourself when you're ready.",
+				);
+				expect(stderr).toHaveBeenCalledWith(defect);
+				expect(exit).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+				stderr.mockRestore();
+			}
+		});
+	});
 });
 
 describe("install deps step", () => {
@@ -346,5 +379,34 @@ describe("install deps step", () => {
 		expect(promptMocks.log.warn).toHaveBeenCalledWith(
 			"The pnpm install didn't finish, so run it yourself inside the project when you're ready.",
 		);
+	});
+
+	it("stops the spinner, warns, and exits successfully when install defects", async () => {
+		const defect = new Error("synthetic install defect");
+		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exit = vi.spyOn(process, "exit");
+		commandMocks.exitCode.mockReturnValue(Effect.die(defect));
+
+		try {
+			await expect(
+				installDepsStep.execute(
+					{ packageManager: "pnpm", path: "./project" },
+					false,
+				),
+			).resolves.toBe(SKIP);
+
+			expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
+				"We couldn't install your dependencies.",
+			);
+			expect(promptMocks.log.warn).toHaveBeenCalledWith(
+				"The pnpm install didn't finish, so run it yourself inside the project when you're ready.",
+			);
+			expect(stderr).toHaveBeenCalledWith(defect);
+			expect(promptMocks.spinnerStop).toHaveBeenCalledBefore(stderr);
+			expect(exit).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+			stderr.mockRestore();
+		}
 	});
 });

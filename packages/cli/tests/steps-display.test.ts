@@ -1,3 +1,4 @@
+import * as generators from "@ryuujs/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { version } from "../package.json" with { type: "json" };
 import introStep from "../src/steps/intro";
@@ -70,6 +71,54 @@ describe("summary step", () => {
 		expect(body).toContain("Template: None");
 		expect(body).toContain("Addons: pnpm Workspace, TypeScript, .gitignore");
 		expect(body).not.toContain("Modules:");
+	});
+
+	it("keeps the summary usable and exits successfully when planning defects", async () => {
+		const defect = new Error("synthetic summary defect");
+		const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+		const exit = vi.spyOn(process, "exit");
+		const loaded = generators.loadDefinitionRegistry();
+		let templateChecks = 0;
+		const loadRegistry = vi
+			.spyOn(generators, "loadDefinitionRegistry")
+			.mockReturnValue({
+				...loaded,
+				registry: {
+					...loaded.registry,
+					templates: loaded.registry.templates.map((template) =>
+						template.id === "nextjs/base"
+							? {
+									...template,
+									when: (config) => {
+										templateChecks += 1;
+										if (templateChecks === 1) return template.when(config);
+										throw defect;
+									},
+								}
+							: template,
+					),
+				},
+			});
+
+		try {
+			await expect(summaryStep.execute({ web: "nextjs" }, true)).resolves.toBe(
+				SKIP,
+			);
+
+			const [body, title] = promptMocks.note.mock.calls[0] ?? [];
+			expect(title).toBe("Forge Plan");
+			expect(body).toContain("Framework: Next.js");
+			expect(body).not.toContain("Modules:");
+			expect(stderr).toHaveBeenCalledTimes(1);
+			expect(String(stderr.mock.calls[0]?.[0])).toContain(
+				"synthetic summary defect",
+			);
+			expect(exit).not.toHaveBeenCalled();
+		} finally {
+			loadRegistry.mockRestore();
+			exit.mockRestore();
+			stderr.mockRestore();
+		}
 	});
 });
 
