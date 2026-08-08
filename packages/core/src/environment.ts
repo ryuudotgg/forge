@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { CommandProbe } from "./command";
 import { type DependencyFormat, defaultDependencyFormat } from "./operations";
 
@@ -176,10 +176,7 @@ export class Environment extends Effect.Service<Environment>()("Environment", {
 	}),
 }) {}
 
-const environmentLayer = Layer.mergeAll(
-	CommandProbe.Default,
-	Environment.Default,
-);
+const environmentLayer = Environment.Default;
 
 export function checkRuntime(): EnvironmentCheck {
 	return Effect.runSync(
@@ -187,8 +184,6 @@ export function checkRuntime(): EnvironmentCheck {
 	);
 }
 
-export function checkPackageManager(pm: PackageManager): EnvironmentCheck {
-	return Effect.runSync(
-		Environment.checkPackageManager(pm).pipe(Effect.provide(environmentLayer)),
-	);
+export function checkPackageManager(pm: PackageManager) {
+	return Environment.checkPackageManager(pm);
 }

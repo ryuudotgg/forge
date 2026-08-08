@@ -1,37 +1,25 @@
 import { confirm, isCancel, log, spinner } from "@clack/prompts";
-import { Command } from "@effect/platform";
-import { type PackageManager, packageManagerCommand } from "@ryuujs/core";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import {
+	LONG_RUNNING_TIMEOUT_MS,
+	type PackageManager,
+	packageManagerCommand,
+	Subprocess,
+} from "@ryuujs/core";
+import { Cause, Exit, Option } from "effect";
 import { runCliEffect } from "../../runtime";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-class InstallError extends Schema.TaggedError<InstallError>()("InstallError", {
-	pm: Schema.String,
-	exitCode: Schema.Number,
-	message: Schema.String,
-}) {}
-
 function installDeps(
-	pm: PackageManager,
 	cmd: ReturnType<typeof packageManagerCommand>,
 	dir: string,
 ) {
-	return Effect.gen(function* () {
-		const code = yield* Command.exitCode(
-			Command.make(cmd, "install").pipe(
-				Command.workingDirectory(dir),
-				Command.stdout("pipe"),
-				Command.stderr("pipe"),
-			),
-		);
-
-		if (code !== 0)
-			return yield* new InstallError({
-				pm,
-				exitCode: code,
-				message: `Install Failed: ${pm} Exited With Code ${code}`,
-			});
+	return Subprocess.run({
+		command: cmd,
+		args: ["install"],
+		cwd: dir,
+		timeoutMs: LONG_RUNNING_TIMEOUT_MS,
+		outputMode: "pipe",
 	});
 }
 
@@ -43,7 +31,7 @@ async function runInstall(
 	const s = spinner();
 	s.start("We're installing your dependencies...");
 
-	const exit = await runCliEffect(installDeps(pm, cmd, dir));
+	const exit = await runCliEffect(installDeps(cmd, dir));
 
 	if (Exit.isFailure(exit)) {
 		s.stop("We couldn't install your dependencies.");

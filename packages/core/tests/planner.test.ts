@@ -36,6 +36,7 @@ import {
 	type RenderBucket,
 	Renderer,
 	State,
+	Subprocess,
 	selectedModuleTarget,
 	slotPath,
 	surfaceDependencies,
@@ -128,7 +129,7 @@ function planInstalledWithDiscoveryEffect(
 	const plannerLayer = Planner.Default.pipe(
 		Layer.provide(
 			Layer.mergeAll(
-				CommandProbe.Default,
+				CommandProbe.Default.pipe(Layer.provide(Subprocess.Default)),
 				syntheticConfigStore,
 				Renderer.Default,
 				State.Default,

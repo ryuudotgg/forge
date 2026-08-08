@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { log } from "@clack/prompts";
-import { Command, FileSystem } from "@effect/platform";
+import { FileSystem } from "@effect/platform";
 import {
 	Apply,
 	ApplyError,
@@ -11,6 +11,7 @@ import {
 	formatApplyError,
 	type InstallRecord,
 	isPackageManager,
+	LONG_RUNNING_TIMEOUT_MS,
 	type Manifest,
 	type PackageManager,
 	Planner,
@@ -18,6 +19,7 @@ import {
 	readPersistedCommandVersions,
 	runtimeCommand,
 	State,
+	Subprocess,
 } from "@ryuujs/core";
 import {
 	type ForgeConfig,
@@ -211,16 +213,16 @@ export async function runPackageManagerOperation(
 	},
 ) {
 	const exit = await runCliEffect(
-		Command.exitCode(
-			Command.make(operation.command, ...operation.args).pipe(
-				Command.workingDirectory(projectRoot),
-				Command.stdout("pipe"),
-				Command.stderr("pipe"),
-			),
-		),
+		Subprocess.run({
+			command: operation.command,
+			args: operation.args,
+			cwd: projectRoot,
+			timeoutMs: LONG_RUNNING_TIMEOUT_MS,
+			outputMode: "pipe",
+		}),
 	);
 
-	return Exit.isSuccess(exit) && exit.value === 0;
+	return Exit.isSuccess(exit);
 }
 
 async function loadProjectRegistryData(

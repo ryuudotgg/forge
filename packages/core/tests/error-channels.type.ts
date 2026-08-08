@@ -10,9 +10,11 @@ import type {
 	RegistryError,
 	RegistryErrors,
 	StateErrors,
+	SubprocessError,
 } from "../src/errors";
 import type { Planner } from "../src/planner";
 import type { State } from "../src/state";
+import type { Subprocess } from "../src/subprocess";
 
 type EffectErrors<Services> = {
 	readonly [Key in keyof Services]: Services[Key] extends (
@@ -32,6 +34,7 @@ type Equal<Left, Right> = [Left] extends [Right]
 type PlannerEffectErrors = EffectErrors<Planner>;
 type ApplyEffectErrors = EffectErrors<Apply>;
 type StateEffectErrors = EffectErrors<State>;
+type SubprocessEffectErrors = EffectErrors<Subprocess>;
 type RegistryEffectErrors =
 	| RegistryError
 	| Effect.Effect.Error<ReturnType<typeof validateAddonAgainstSelection>>
@@ -42,6 +45,9 @@ type _PlannerErrorsAreComplete = Assert<
 >;
 type _ApplyErrorsAreComplete = Assert<Equal<ApplyEffectErrors, ApplyErrors>>;
 type _StateErrorsAreComplete = Assert<Equal<StateEffectErrors, StateErrors>>;
+type _SubprocessErrorsAreComplete = Assert<
+	Equal<SubprocessEffectErrors, SubprocessError>
+>;
 type _RegistryErrorsAreComplete = Assert<
 	Equal<RegistryEffectErrors, RegistryErrors>
 >;

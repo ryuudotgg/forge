@@ -142,6 +142,7 @@ export {
 	RendererError,
 	StateError,
 	StateErrors,
+	SubprocessError,
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
@@ -214,3 +215,14 @@ export {
 	State,
 	SURFACE_MERGE_SEMANTICS_VERSION,
 } from "./state";
+export type {
+	SubprocessInput,
+	SubprocessOutputMode,
+	SubprocessResult,
+} from "./subprocess";
+export {
+	LONG_RUNNING_TIMEOUT_MS,
+	PROBE_MAX_OUTPUT_BYTES,
+	PROBE_TIMEOUT_MS,
+	Subprocess,
+} from "./subprocess";

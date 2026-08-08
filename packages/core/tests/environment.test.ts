@@ -12,6 +12,8 @@ import {
 	packageManagerRemoveCommand,
 	packageManagers,
 	runtimeCommand,
+	Subprocess,
+	SubprocessError,
 } from "../src/index";
 
 function probeLayer(versions: Record<string, string>, probed: string[]) {
@@ -43,14 +45,30 @@ const failingProbeLayer = Layer.succeed(
 	}),
 );
 
+const timedOutProbeLayer = CommandProbe.Default.pipe(
+	Layer.provide(
+		Layer.succeed(
+			Subprocess,
+			Subprocess.make({
+				run: (input) =>
+					Effect.fail(
+						new SubprocessError({
+							command: input.command,
+							args: input.args,
+							reason: "timeout-error",
+							timeoutMs: input.timeoutMs,
+							elapsedMs: input.timeoutMs,
+						}),
+					),
+			}),
+		),
+	),
+);
+
 describe("environment", () => {
 	it("checks the current runtime through the service", async () => {
 		const result = await Effect.runPromise(
-			Environment.checkRuntime().pipe(
-				Effect.provide(
-					Layer.mergeAll(CommandProbe.Default, Environment.Default),
-				),
-			),
+			Environment.checkRuntime().pipe(Effect.provide(Environment.Default)),
 		);
 
 		expect(result).toEqual({
@@ -183,6 +201,20 @@ describe("environment", () => {
 		});
 	});
 
+	it("treats a probe timeout exactly like a missing package manager", async () => {
+		const result = await Effect.runPromise(
+			Environment.checkPackageManager("pnpm").pipe(
+				Effect.provide(Layer.mergeAll(timedOutProbeLayer, Environment.Default)),
+			),
+		);
+
+		expect(result).toEqual({
+			ok: false,
+			message:
+				"You don't have pnpm installed, please install it and try again.",
+		});
+	});
+
 	it("reads the raw package manager version through the probe", async () => {
 		const version = await Effect.runPromise(
 			Environment.readPackageManagerVersion("pnpm").pipe(
@@ -263,19 +295,22 @@ describe("environment", () => {
 		expect(dependencyFormatFor(undefined)).toEqual(defaultDependencyFormat);
 	});
 
-	it("preserves the sync compatibility wrappers", () => {
-		const layer = Layer.mergeAll(CommandProbe.Default, Environment.Default);
+	it("preserves the runtime wrapper and exposes package checks as effects", async () => {
+		const layer = Layer.mergeAll(successfulProbeLayer, Environment.Default);
 
 		const runtime = Effect.runSync(
-			Environment.checkRuntime().pipe(Effect.provide(layer)),
+			Environment.checkRuntime().pipe(Effect.provide(Environment.Default)),
 		);
 
-		const packageManager = Effect.runSync(
+		const packageManager = await Effect.runPromise(
 			Environment.checkPackageManager("pnpm").pipe(Effect.provide(layer)),
+		);
+		const checked = await Effect.runPromise(
+			checkPackageManager("pnpm").pipe(Effect.provide(layer)),
 		);
 
 		expect(checkRuntime()).toEqual(runtime);
 		expect(checkRuntime().ok).toBe(true);
-		expect(checkPackageManager("pnpm")).toEqual(packageManager);
+		expect(checked).toEqual(packageManager);
 	});
 });

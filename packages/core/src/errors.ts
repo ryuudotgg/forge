@@ -166,6 +166,73 @@ export class CommandProbeError extends Schema.TaggedError<CommandProbeError>()(
 	}
 }
 
+const SubprocessErrorReason = Schema.Literal(
+	"spawn-error",
+	"timeout-error",
+	"output-limit-error",
+	"non-zero-exit",
+);
+
+const SubprocessErrorFields = Schema.Struct({
+	reason: SubprocessErrorReason,
+	command: Schema.String,
+	args: Schema.Array(Schema.String),
+	cwd: Schema.optional(Schema.String),
+	detail: Schema.optional(Schema.String),
+	timeoutMs: Schema.optional(Schema.Number),
+	elapsedMs: Schema.optional(Schema.Number),
+	maxOutputBytes: Schema.optional(Schema.Number),
+	exitCode: Schema.optional(Schema.Number),
+	cause: optionalCause,
+});
+
+type SubprocessErrorPayload = typeof SubprocessErrorFields.Type;
+
+const subprocessRequiredFields = {
+	"spawn-error": ["detail", "cause"],
+	"timeout-error": ["timeoutMs", "elapsedMs"],
+	"output-limit-error": ["maxOutputBytes"],
+	"non-zero-exit": ["exitCode"],
+} satisfies Record<
+	typeof SubprocessErrorReason.Type,
+	ReadonlyArray<keyof SubprocessErrorPayload>
+>;
+
+const ValidSubprocessErrorFields = SubprocessErrorFields.pipe(
+	Schema.filter((payload) =>
+		subprocessRequiredFields[payload.reason].every(
+			(key) => payload[key] !== undefined,
+		),
+	),
+);
+
+export class SubprocessError extends Schema.TaggedError<SubprocessError>()(
+	"SubprocessError",
+	ValidSubprocessErrorFields,
+) {
+	override get message() {
+		return subprocessMessages[this.reason](this);
+	}
+}
+
+function subprocessCommand(error: SubprocessError): string {
+	return [error.command, ...error.args].join(" ");
+}
+
+const subprocessMessages = {
+	"spawn-error": (error: SubprocessError) =>
+		`Subprocess Spawn Error: ${subprocessCommand(error)}. ${error.detail ?? ""}`,
+	"timeout-error": (error: SubprocessError) =>
+		`Subprocess Timeout Error: ${subprocessCommand(error)} exceeded ${error.elapsedMs ?? 0}ms.`,
+	"output-limit-error": (error: SubprocessError) =>
+		`Subprocess Output Limit Error: ${subprocessCommand(error)} exceeded ${error.maxOutputBytes ?? 0} bytes.`,
+	"non-zero-exit": (error: SubprocessError) =>
+		`Subprocess Non-Zero Exit: ${subprocessCommand(error)} exited with code ${error.exitCode ?? 0}.${error.detail === undefined ? "" : ` ${error.detail}`}`,
+} satisfies Record<
+	typeof SubprocessErrorReason.Type,
+	(error: SubprocessError) => string
+>;
+
 const ModuleConfigErrorReason = Schema.Literal(
 	"not-found",
 	"read-failed",

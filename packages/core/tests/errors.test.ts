@@ -8,6 +8,7 @@ import {
 	PlannerError,
 	RegistryError,
 	StateError,
+	SubprocessError,
 } from "../src/index";
 
 describe("structured error rendering", () => {
@@ -86,6 +87,27 @@ describe("structured error rendering", () => {
 				reason: "framework-not-supported",
 				generatorName: "Tailwind",
 			}),
+		).toBe(false);
+	});
+
+	it("rejects subprocess reasons missing their reason-specific payload", () => {
+		const base = {
+			_tag: "SubprocessError",
+			command: "pnpm",
+			args: ["install"],
+		};
+
+		expect(Schema.is(SubprocessError)({ ...base, reason: "spawn-error" })).toBe(
+			false,
+		);
+		expect(
+			Schema.is(SubprocessError)({ ...base, reason: "timeout-error" }),
+		).toBe(false);
+		expect(
+			Schema.is(SubprocessError)({ ...base, reason: "output-limit-error" }),
+		).toBe(false);
+		expect(
+			Schema.is(SubprocessError)({ ...base, reason: "non-zero-exit" }),
 		).toBe(false);
 	});
 

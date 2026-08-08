@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import catalogsStep from "../src/steps/project/catalogs";
 import linterStep from "../src/steps/project/linter";
@@ -51,7 +51,9 @@ interface TextPromptOptions {
 describe("project steps", () => {
 	beforeEach(() => {
 		coreMocks.checkPackageManager.mockReset();
-		coreMocks.checkPackageManager.mockReturnValue({ ok: true, message: "ok" });
+		coreMocks.checkPackageManager.mockReturnValue(
+			Effect.succeed({ ok: true, message: "ok" }),
+		);
 		promptMocks.logError.mockReset();
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
@@ -88,15 +90,17 @@ describe("project steps", () => {
 			}) as never);
 
 			try {
-				coreMocks.checkPackageManager.mockReturnValue({
-					ok: false,
-					message:
-						"You need Yarn v4 or later to forge a project, but you're running v1.22.22.",
-				});
-
-				expect(() => packageManagerStep.validate?.("Yarn", {})).toThrow(
-					"exit:1",
+				coreMocks.checkPackageManager.mockReturnValue(
+					Effect.succeed({
+						ok: false,
+						message:
+							"You need Yarn v4 or later to forge a project, but you're running v1.22.22.",
+					}),
 				);
+
+				await expect(
+					Promise.resolve(packageManagerStep.validate?.("Yarn", {})),
+				).rejects.toThrow("exit:1");
 
 				expect(promptMocks.logError).toHaveBeenCalledWith(
 					"You need Yarn v4 or later to forge a project, but you're running v1.22.22.",
@@ -123,11 +127,13 @@ describe("project steps", () => {
 			}) as never);
 
 			try {
-				coreMocks.checkPackageManager.mockReturnValue({
-					ok: false,
-					message:
-						"You don't have pnpm installed, please install it and try again.",
-				});
+				coreMocks.checkPackageManager.mockReturnValue(
+					Effect.succeed({
+						ok: false,
+						message:
+							"You don't have pnpm installed, please install it and try again.",
+					}),
+				);
 
 				await expect(packageManagerStep.execute({}, false)).rejects.toThrow(
 					"exit:1",
@@ -143,10 +149,12 @@ describe("project steps", () => {
 
 		it("marks the smart default as recommended and returns the selection", async () => {
 			promptMocks.select.mockResolvedValue("Bun");
-			coreMocks.checkPackageManager.mockReturnValue({
-				message: "Bun v1.2.19",
-				ok: true,
-			});
+			coreMocks.checkPackageManager.mockReturnValue(
+				Effect.succeed({
+					message: "Bun v1.2.19",
+					ok: true,
+				}),
+			);
 
 			await expect(
 				packageManagerStep.execute({ runtime: "Node.js" }, true),
@@ -174,11 +182,13 @@ describe("project steps", () => {
 
 			try {
 				promptMocks.select.mockResolvedValue("pnpm");
-				coreMocks.checkPackageManager.mockReturnValue({
-					message:
-						"You don't have pnpm installed, please install it and try again.",
-					ok: false,
-				});
+				coreMocks.checkPackageManager.mockReturnValue(
+					Effect.succeed({
+						message:
+							"You don't have pnpm installed, please install it and try again.",
+						ok: false,
+					}),
+				);
 
 				await expect(packageManagerStep.execute({}, true)).rejects.toThrow(
 					"exit:1",
