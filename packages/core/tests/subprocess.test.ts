@@ -138,6 +138,43 @@ describe("Subprocess", () => {
 		expect(error.message).toContain("exited with code 7");
 	});
 
+	it("retains exactly the last bytes of stderr across multiple writes", async () => {
+		const error = await failure({
+			command: process.execPath,
+			args: [
+				"-e",
+				[
+					'process.stderr.write("a".repeat(1_024));',
+					'setTimeout(() => { process.stderr.write("b".repeat(1_024));',
+					'setTimeout(() => { process.stderr.write("c".repeat(100)); process.exit(9); }, 25); }, 25);',
+				].join(" "),
+			],
+			timeoutMs: PROBE_TIMEOUT_MS,
+			outputMode: "capture",
+		});
+
+		expect(error.reason).toBe("non-zero-exit");
+		expect(error.detail).toBe(
+			`${"a".repeat(924)}${"b".repeat(1_024)}${"c".repeat(100)}`,
+		);
+	});
+
+	it("maps a platform BadArgument to a spawn error sentence", async () => {
+		const error = await failure({
+			command: process.execPath,
+			args: [],
+			cwd: "\u0000",
+			timeoutMs: PROBE_TIMEOUT_MS,
+			outputMode: "capture",
+		});
+
+		expect(error.reason).toBe("spawn-error");
+		expect(error.detail).toBe("FileSystem.access");
+		expect(error.message).toBe(
+			`Subprocess Spawn Error: ${process.execPath}. FileSystem.access`,
+		);
+	});
+
 	it.each<SubprocessInput["outputMode"]>(["capture", "pipe"])(
 		"adds a bounded stderr tail to %s-mode non-zero failures",
 		async (outputMode) => {
