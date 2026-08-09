@@ -1,12 +1,11 @@
 import { defineRegistry } from "@ryuujs/core";
 import trpc, { trpcMetadata } from "../api/trpc";
-import { trpcNextjsAdapter } from "../api/trpc/adapters/nextjs";
-import { trpcReactRouterAdapter } from "../api/trpc/adapters/react-router";
-import { trpcTanstackStartAdapter } from "../api/trpc/adapters/tanstack-start";
+import { trpcAdapters, trpcRecipe } from "../api/trpc/recipe";
 import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
-import { betterAuthNextjsAdapter } from "../auth/better-auth/adapters/nextjs";
-import { betterAuthReactRouterAdapter } from "../auth/better-auth/adapters/react-router";
-import { betterAuthTanstackStartAdapter } from "../auth/better-auth/adapters/tanstack-start";
+import {
+	betterAuthAdapters,
+	betterAuthRecipe,
+} from "../auth/better-auth/recipe";
 import {
 	authenticationProviders,
 	type ForgeConfig,
@@ -34,6 +33,7 @@ import drizzle, { drizzleMetadata } from "../orm/drizzle";
 import prisma, { prismaMetadata } from "../orm/prisma";
 import shared, { sharedMetadata } from "../shared";
 import tailwind, { tailwindMetadata } from "../style/tailwind";
+import { readTemplate } from "../template";
 import commitlint, { commitlintMetadata } from "../tooling/commitlint";
 import githubCi, { githubCiMetadata } from "../tooling/github-ci";
 import gitignore, { gitignoreMetadata } from "../tooling/gitignore";
@@ -42,9 +42,7 @@ import typescript, { typescriptMetadata } from "../tooling/typescript";
 import vitest, { vitestMetadata } from "../tooling/vitest";
 import vscode, { vscodeMetadata } from "../tooling/vscode";
 import ui, { uiMetadata } from "../ui";
-import { uiNextjsAdapter } from "../ui/adapters/nextjs";
-import { uiReactRouterAdapter } from "../ui/adapters/react-router";
-import { uiTanstackStartAdapter } from "../ui/adapters/tanstack-start";
+import { uiAdapters, uiRecipe } from "../ui/recipe";
 import bun, { bunMetadata } from "../workspace/bun";
 import pnpm, { pnpmMetadata } from "../workspace/pnpm";
 import root, { rootMetadata } from "../workspace/root";
@@ -58,17 +56,7 @@ import {
 } from "./types";
 
 export const firstPartyRegistry = defineRegistry<ForgeConfig>({
-	adapters: [
-		trpcNextjsAdapter,
-		trpcReactRouterAdapter,
-		trpcTanstackStartAdapter,
-		betterAuthNextjsAdapter,
-		betterAuthReactRouterAdapter,
-		betterAuthTanstackStartAdapter,
-		uiNextjsAdapter,
-		uiReactRouterAdapter,
-		uiTanstackStartAdapter,
-	],
+	adapters: [...trpcAdapters, ...betterAuthAdapters, ...uiAdapters],
 	frameworks: [nextjsFramework, reactRouterFramework, tanstackStartFramework],
 	templates: [
 		nextjsBaseTemplate,
@@ -96,6 +84,8 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		prisma,
 		betterAuth,
 	],
+	recipes: [trpcRecipe, betterAuthRecipe, uiRecipe],
+	readTemplate,
 });
 
 export const firstPartyCatalog = [
