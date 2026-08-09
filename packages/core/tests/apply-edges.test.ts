@@ -1,8 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FileSystem, Error as PlatformError } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
-import { Effect, Layer, Schema } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, FileSystem, Layer, PlatformError, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
 	Apply,
@@ -15,18 +14,18 @@ import {
 } from "../src/index";
 import { hashContent, withTempDir, writeText } from "./harness";
 
-const nodeLayer = NodeContext.layer;
+const nodeLayer = NodeServices.layer;
 const coreLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
 	Layer.provide(nodeLayer),
 );
 
 function systemFailure(method: string, path: string) {
 	return Effect.fail(
-		new PlatformError.SystemError({
+		PlatformError.systemError({
 			method,
 			module: "FileSystem",
 			pathOrDescriptor: path,
-			reason: "PermissionDenied",
+			_tag: "PermissionDenied",
 		}),
 	);
 }
@@ -930,11 +929,11 @@ describe("apply edge coverage", () => {
 		await withTempDir("apply-exists-failure", async (directory) => {
 			const relativePath = "existing.txt";
 			const path = join(directory, relativePath);
-			const cause = new PlatformError.SystemError({
+			const cause = PlatformError.systemError({
 				method: "exists",
 				module: "FileSystem",
 				pathOrDescriptor: path,
-				reason: "PermissionDenied",
+				_tag: "PermissionDenied",
 			});
 			const failingLayer = applyLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
@@ -958,10 +957,12 @@ describe("apply edge coverage", () => {
 			expect(error.reason).toBe("file-read-failed");
 			expect(error.message).toBe("File Read Failed");
 			expect(error.cause).toMatchObject({
-				_tag: "SystemError",
-				method: "exists",
-				pathOrDescriptor: path,
-				reason: "PermissionDenied",
+				_tag: "PlatformError",
+				reason: {
+					_tag: "PermissionDenied",
+					method: "exists",
+					pathOrDescriptor: path,
+				},
 			});
 		});
 	});

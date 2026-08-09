@@ -78,7 +78,7 @@ const summaryStep = defineStep({
 
 			if (moduleRoots.length > 0)
 				lines.push(formatLine("Modules", moduleRoots.join(", ")));
-		} else if (Option.isNone(Cause.failureOption(planExit.cause)))
+		} else if (Option.isNone(Cause.findErrorOption(planExit.cause)))
 			console.error(Cause.squash(planExit.cause));
 
 		note(lines.join("\n"), "Forge Plan");

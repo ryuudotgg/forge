@@ -43,7 +43,6 @@
 	"dependencies": {
 		"@clack/core": "catalog:node",
 		"@clack/prompts": "catalog:node",
-		"@effect/platform": "catalog:effect",
 		"@effect/platform-node": "catalog:effect",
 		"@ryuujs/core": "workspace:*",
 		"@ryuujs/generators": "workspace:*",
@@ -51,6 +50,7 @@
 		"picocolors": "catalog:node"
 	},
 	"devDependencies": {
+		"@effect/vitest": "catalog:effect",
 		"@ryuujs/temper": "workspace:*",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",

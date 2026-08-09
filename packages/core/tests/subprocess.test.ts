@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 import {
@@ -11,7 +11,7 @@ import {
 import { withTempDir } from "./harness";
 
 const subprocessLayer = Subprocess.Default.pipe(
-	Layer.provide(NodeContext.layer),
+	Layer.provide(NodeServices.layer),
 );
 
 function run(input: SubprocessInput) {
@@ -26,7 +26,7 @@ async function failure(input: SubprocessInput) {
 	);
 	if (!Exit.isFailure(exit)) throw new Error("Expected Subprocess Failure");
 
-	const error = Cause.failureOption(exit.cause);
+	const error = Cause.findErrorOption(exit.cause);
 	if (Option.isNone(error))
 		throw new Error("Expected Typed Subprocess Failure");
 
@@ -92,9 +92,24 @@ describe("Subprocess", () => {
 
 		expect(error.reason).toBe("spawn-error");
 		expect(error.cause).toBeDefined();
+		expect(error.detail).toContain("ENOENT");
 		expect(error.message).toContain(
 			"Subprocess Spawn Error: forge-test-missing-subprocess-4242 --version.",
 		);
+	});
+
+	it("retains the operating-system reason for a missing cwd", async () => {
+		const error = await failure({
+			command: process.execPath,
+			args: [],
+			cwd: "/forge-test-missing-cwd-4242",
+			timeoutMs: PROBE_TIMEOUT_MS,
+			outputMode: "capture",
+		});
+
+		expect(error.reason).toBe("spawn-error");
+		expect(error.detail).toContain("ENOENT");
+		expect(error.message).toContain("ENOENT");
 	});
 
 	it("fails a synthetic sleeping command through the typed timeout path", async () => {
@@ -169,9 +184,11 @@ describe("Subprocess", () => {
 		});
 
 		expect(error.reason).toBe("spawn-error");
-		expect(error.detail).toBe("FileSystem.access");
+		expect(error.detail).toBe(
+			"FileSystem.access: The argument 'path' must be a string, Uint8Array, or URL without null bytes. Received '\\x00'",
+		);
 		expect(error.message).toBe(
-			`Subprocess Spawn Error: ${process.execPath}. FileSystem.access`,
+			`Subprocess Spawn Error: ${process.execPath}. FileSystem.access: The argument 'path' must be a string, Uint8Array, or URL without null bytes. Received '\\x00'`,
 		);
 	});
 

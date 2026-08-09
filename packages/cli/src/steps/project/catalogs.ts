@@ -12,7 +12,7 @@ const filteredOptions = catalogOptions.filter(
 	(c): c is ValidCatalogs => c !== "none",
 );
 
-export const catalogsSchema = Schema.Literal(...filteredOptions);
+export const catalogsSchema = Schema.Literals(filteredOptions);
 
 type Catalogs = typeof catalogsSchema.Type;
 

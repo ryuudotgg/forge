@@ -1,6 +1,6 @@
 import { isCancel, log, select } from "@clack/prompts";
 import { authenticationProviders } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
@@ -9,9 +9,11 @@ import {
 } from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
-export const authenticationSchema = Schema.Literal(
-	...authenticationProviders.ids,
-).pipe(Schema.filter(availableChoice(authenticationProviders)));
+export const authenticationSchema = Schema.Literals(
+	authenticationProviders.ids,
+).pipe(
+	Schema.check(Schema.makeFilter(availableChoice(authenticationProviders))),
+);
 
 const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 	id: "authentication",
@@ -29,10 +31,8 @@ const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 			);
 
 			if (normalized) {
-				const result =
-					Schema.decodeUnknownEither(authenticationSchema)(normalized);
-
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeResult(authenticationSchema)(normalized);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;

@@ -1,5 +1,5 @@
 import { log } from "@clack/prompts";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { CoreLive } from "@ryuujs/core";
 import {
 	Cause,
@@ -12,10 +12,10 @@ import {
 import { AdoptionDetector } from "./commands/adoption";
 
 export const cliLayer = Layer.mergeAll(CoreLive, AdoptionDetector.Default).pipe(
-	Layer.provideMerge(NodeContext.layer),
+	Layer.provideMerge(NodeServices.layer),
 );
 
-export type CliServices = Layer.Layer.Success<typeof cliLayer>;
+export type CliServices = Layer.Success<typeof cliLayer>;
 type CliRuntime = ManagedRuntime.ManagedRuntime<CliServices, never>;
 
 let activeRuntime: CliRuntime | undefined;
@@ -59,7 +59,7 @@ export async function runCliEffectValue<A, E>(
 }
 
 export function failureFromCause<E>(cause: Cause.Cause<E>): E {
-	const failure = Cause.failureOption(cause);
+	const failure = Cause.findErrorOption(cause);
 	if (Option.isSome(failure)) return failure.value;
 
 	const defect = Cause.squash(cause);

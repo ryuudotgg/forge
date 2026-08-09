@@ -1,11 +1,11 @@
 import { isCancel, select } from "@clack/prompts";
 import { mobileFrameworks } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
 const mobileOptions = mobileFrameworks.ids;
-export const mobileSchema = Schema.Literal(...mobileOptions);
+export const mobileSchema = Schema.Literals(mobileOptions);
 
 const mobileStep = defineStep<typeof mobileSchema.Type>({
 	id: "mobile",
@@ -20,8 +20,8 @@ const mobileStep = defineStep<typeof mobileSchema.Type>({
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.mobile) {
-				const result = Schema.decodeUnknownEither(mobileSchema)(config.mobile);
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeResult(mobileSchema)(config.mobile);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return "expo";

@@ -1,11 +1,11 @@
 import { isCancel, select } from "@clack/prompts";
 import { desktopFrameworks } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";
 
 const desktopOptions = desktopFrameworks.ids;
-export const desktopSchema = Schema.Literal(...desktopOptions);
+export const desktopSchema = Schema.Literals(desktopOptions);
 
 const desktopStep = defineStep<typeof desktopSchema.Type>({
 	id: "desktop",
@@ -20,11 +20,8 @@ const desktopStep = defineStep<typeof desktopSchema.Type>({
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.desktop) {
-				const result = Schema.decodeUnknownEither(desktopSchema)(
-					config.desktop,
-				);
-
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeResult(desktopSchema)(config.desktop);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return "electron";

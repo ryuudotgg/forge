@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 import { log } from "@clack/prompts";
-import { FileSystem } from "@effect/platform";
 import {
 	Apply,
 	ApplyError,
@@ -28,7 +27,7 @@ import {
 	probeWorkspaceCommandVersions,
 	RegistryLoadError,
 } from "@ryuujs/generators";
-import { Effect, Either, Exit, Schema } from "effect";
+import { Effect, Exit, FileSystem, Result, Schema } from "effect";
 import {
 	type CliServices,
 	failureFromCause,
@@ -41,10 +40,10 @@ import {
 	promptForConflictResolutions,
 } from "./interactive-resolution";
 
-const ProjectPackageJsonSchema = Schema.parseJson(
+const ProjectPackageJsonSchema = Schema.fromJsonString(
 	Schema.Struct({
 		devDependencies: Schema.optional(
-			Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+			Schema.Record(Schema.String, Schema.Unknown),
 		),
 	}),
 );
@@ -192,7 +191,7 @@ export async function hasProjectDevDependency(
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const raw = yield* fs.readFileString(`${projectRoot}/package.json`);
-			const packageJson = yield* Schema.decodeUnknown(ProjectPackageJsonSchema)(
+			const packageJson = yield* Schema.decodeEffect(ProjectPackageJsonSchema)(
 				raw,
 			);
 
@@ -265,15 +264,15 @@ export async function loadDiscoveryRegistry(projectRoot: string) {
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),
-			Effect.either,
+			Effect.result,
 		),
 	);
 
-	if (Either.isLeft(manifestResult)) {
+	if (Result.isFailure(manifestResult)) {
 		log.warn(
 			discoveryWarning(
 				"read this project's Forge metadata",
-				manifestResult.left,
+				manifestResult.failure,
 			),
 			{ output: process.stderr },
 		);
@@ -281,7 +280,7 @@ export async function loadDiscoveryRegistry(projectRoot: string) {
 		return loadDefinitionRegistry();
 	}
 
-	const registryIds = manifestResult.right?.registries ?? [];
+	const registryIds = manifestResult.success?.registries ?? [];
 	if (registryIds.length === 0) return loadDefinitionRegistry();
 
 	try {

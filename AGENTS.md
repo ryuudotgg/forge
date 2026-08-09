@@ -32,8 +32,9 @@ Always finish with the full `pnpm test`, not just the package you touched.
 
 ## Conventions
 
-- Effect everywhere: services, typed errors (`Schema.TaggedError`),
-  `@effect/platform` for IO. No zod in repo code.
+- Effect everywhere: services (`Context.Service`), typed errors
+  (`Schema.TaggedErrorClass`), and `FileSystem` from `effect` for IO. No zod in
+  repo code.
 - Never use `as` casts; prove types instead. Never use `any`.
 - Tests live in each package's `tests/` directory, never in `src`.
 - User-facing CLI messages are natural sentences; format lists with

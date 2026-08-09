@@ -25,9 +25,9 @@ export type StepGroup =
 export interface Step {
 	id: string;
 	group: StepGroup;
-	schema: Schema.Schema.AnyNoContext | null;
+	schema: Schema.Codec<unknown, unknown, never, never> | null;
 	configKey?: string | null;
-	schemaShape?: Record<string, Schema.Schema.AnyNoContext>;
+	schemaShape?: Record<string, Schema.Codec<unknown, unknown, never, never>>;
 	schemaDefault?: () => unknown;
 	dependencies?: string[];
 	shouldRun: (config: PartialConfig) => boolean;
@@ -38,9 +38,9 @@ export interface Step {
 export function defineStep<TOutput>(step: {
 	id: string;
 	group: StepGroup;
-	schema: Schema.Schema<TOutput, TOutput> | null;
+	schema: Schema.Codec<TOutput, TOutput, never, never> | null;
 	configKey?: string | null;
-	schemaShape?: Record<string, Schema.Schema.AnyNoContext>;
+	schemaShape?: Record<string, Schema.Codec<unknown, unknown, never, never>>;
 	schemaDefault?: () => TOutput;
 	dependencies?: string[];
 	shouldRun: (config: PartialConfig) => boolean;

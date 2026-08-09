@@ -1,6 +1,13 @@
 import { dirname, join, relative } from "node:path";
-import { FileSystem, type Error as PlatformError } from "@effect/platform";
-import { Effect, Schema } from "effect";
+import {
+	Context,
+	Effect,
+	FileSystem,
+	Layer,
+	type PlatformError,
+	Schema,
+} from "effect";
+import type { Effect as EffectType } from "effect/Effect";
 import {
 	DiscoveryError,
 	DuplicateModuleIdError,
@@ -29,23 +36,22 @@ const MODULE_IGNORED_DIRS = new Set([
 	"node_modules",
 ]);
 
-export const ModuleIdSchema = Schema.String.pipe(
-	Schema.pattern(new RegExp(`^[a-z]{${String(MODULE_ID_LENGTH)}}$`)),
+export const ModuleIdSchema = Schema.String.check(
+	Schema.isPattern(new RegExp(`^[a-z]{${String(MODULE_ID_LENGTH)}}$`), {
+		expected: `a string matching the pattern ^[a-z]{${String(MODULE_ID_LENGTH)}}$`,
+	}),
 );
 
 export type ModuleId = typeof ModuleIdSchema.Type;
 
 export const TemplateSchema = Schema.Struct({
 	id: Schema.String,
-	version: Schema.Number.pipe(Schema.int(), Schema.positive()),
+	version: Schema.Int.check(Schema.isGreaterThan(0)),
 });
 
 export type Template = typeof TemplateSchema.Type;
 
-export const SlotsSchema = Schema.Record({
-	key: Schema.String,
-	value: Schema.String,
-});
+export const SlotsSchema = Schema.Record(Schema.String, Schema.String);
 
 export type Slots = typeof SlotsSchema.Type;
 
@@ -64,15 +70,18 @@ export const PackageConfigSchema = Schema.Struct({
 	type: Schema.Literal("package"),
 	packageType: Schema.String,
 	template: TemplateSchema,
-	capabilities: Schema.optionalWith(Schema.Array(Schema.String), {
-		default: () => [],
-	}),
+	capabilities: Schema.Array(Schema.String).pipe(
+		Schema.withDecodingDefault(Effect.succeed([])),
+	),
 	slots: SlotsSchema,
 });
 
 export type PackageConfig = typeof PackageConfigSchema.Type;
 
-export const ConfigSchema = Schema.Union(AppConfigSchema, PackageConfigSchema);
+export const ConfigSchema = Schema.Union([
+	AppConfigSchema,
+	PackageConfigSchema,
+]);
 export type Config = typeof ConfigSchema.Type;
 
 export type DiscoveredModule = Config & {
@@ -101,7 +110,7 @@ function normalizeRelativePath(projectRoot: string, path: string) {
 function maybeReadPackageName(
 	fs: FileSystem.FileSystem,
 	moduleRoot: string,
-): Effect.Effect<string | undefined> {
+): EffectType<string | undefined> {
 	return Effect.gen(function* () {
 		const packageJsonPath = join(moduleRoot, "package.json");
 		const exists = yield* fs
@@ -130,14 +139,15 @@ function scanModuleRoots(
 	fs: FileSystem.FileSystem,
 	projectRoot: string,
 	currentPath: string,
-): Effect.Effect<string[], PlatformError.BadArgument> {
+): EffectType<string[], PlatformError.PlatformError> {
 	return Effect.gen(function* () {
 		const entries = yield* fs
 			.readDirectory(currentPath)
 			.pipe(
-				Effect.catchTag(
-					"SystemError",
-					(): Effect.Effect<string[]> => Effect.succeed([]),
+				Effect.catchTag("PlatformError", (cause) =>
+					cause.reason._tag === "BadArgument"
+						? Effect.fail(cause)
+						: Effect.succeed<Array<string>>([]),
 				),
 			);
 
@@ -151,7 +161,13 @@ function scanModuleRoots(
 			const fullPath = join(currentPath, entry);
 			const stat = yield* fs
 				.stat(fullPath)
-				.pipe(Effect.catchTag("SystemError", () => Effect.succeed(null)));
+				.pipe(
+					Effect.catchTag("PlatformError", (cause) =>
+						cause.reason._tag === "BadArgument"
+							? Effect.fail(cause)
+							: Effect.succeed(null),
+					),
+				);
 
 			if (!stat?.type || stat.type !== "Directory") continue;
 			if (relative(projectRoot, fullPath).startsWith("..")) continue;
@@ -163,148 +179,164 @@ function scanModuleRoots(
 	});
 }
 
-export class ConfigStore extends Effect.Service<ConfigStore>()("ConfigStore", {
-	accessors: true,
-	effect: Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
+const makeConfigStore = Effect.gen(function* () {
+	const fs = yield* FileSystem.FileSystem;
 
-		const read = Effect.fn("ConfigStore.read")(function* (moduleRoot: string) {
-			const path = moduleConfigPath(moduleRoot);
-			const exists = yield* fs.exists(path).pipe(
+	const read = Effect.fn("ConfigStore.read")(function* (moduleRoot: string) {
+		const path = moduleConfigPath(moduleRoot);
+		const exists = yield* fs.exists(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new ModuleConfigError({
+						filePath: path,
+						reason: "read-failed",
+						cause,
+					}),
+			),
+		);
+
+		if (!exists)
+			return yield* new ModuleConfigError({
+				filePath: path,
+				reason: "not-found",
+			});
+
+		const raw = yield* fs.readFileString(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new ModuleConfigError({
+						filePath: path,
+						reason: "read-failed",
+						cause,
+					}),
+			),
+		);
+
+		return yield* decodeJsonString(raw, ConfigSchema, {
+			onParseError: (detail, cause) =>
+				new ModuleConfigError({
+					filePath: path,
+					reason: "parse-failed",
+					detail,
+					cause,
+				}),
+
+			onValidationError: (issues, cause) =>
+				new ModuleConfigError({
+					filePath: path,
+					reason: "invalid",
+					issues,
+					cause,
+				}),
+		});
+	});
+
+	const write = Effect.fn("ConfigStore.write")(function* (
+		moduleRoot: string,
+		config: Config,
+	) {
+		const path = moduleConfigPath(moduleRoot);
+		const dir = dirname(path);
+
+		yield* fs.makeDirectory(dir, { recursive: true }).pipe(
+			Effect.mapError(
+				(cause) =>
+					new ModuleConfigError({
+						filePath: path,
+						reason: "directory-failed",
+						cause,
+					}),
+			),
+		);
+
+		yield* fs
+			.writeFileString(path, formatJson(config, { compact: false }))
+			.pipe(
 				Effect.mapError(
 					(cause) =>
 						new ModuleConfigError({
 							filePath: path,
-							reason: "read-failed",
+							reason: "write-failed",
 							cause,
 						}),
 				),
 			);
+	});
 
-			if (!exists)
-				return yield* new ModuleConfigError({
-					filePath: path,
-					reason: "not-found",
+	const discover = Effect.fn("ConfigStore.discover")(function* (
+		projectRoot: string,
+	) {
+		const roots = yield* scanModuleRoots(fs, projectRoot, projectRoot).pipe(
+			Effect.mapError(
+				(cause) =>
+					new DiscoveryError({
+						path: projectRoot,
+						reason: "module-discovery-failed",
+						cause,
+					}),
+			),
+		);
+
+		roots.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+
+		const discovered = yield* Effect.forEach(roots, (moduleRoot) =>
+			Effect.gen(function* () {
+				const config = yield* read(moduleRoot);
+				const packageName = yield* maybeReadPackageName(fs, moduleRoot);
+
+				return {
+					...config,
+					root: normalizeRelativePath(projectRoot, moduleRoot),
+					...(packageName ? { packageName } : {}),
+				} satisfies DiscoveredModule;
+			}),
+		);
+
+		const seen = new Map<string, string>();
+		for (const module of discovered) {
+			const existing = seen.get(module.id);
+			if (existing)
+				return yield* new DuplicateModuleIdError({
+					moduleId: module.id,
+					firstPath: existing,
+					secondPath: module.root,
 				});
 
-			const raw = yield* fs.readFileString(path).pipe(
-				Effect.mapError(
-					(cause) =>
-						new ModuleConfigError({
-							filePath: path,
-							reason: "read-failed",
-							cause,
-						}),
-				),
-			);
+			seen.set(module.id, module.root);
+		}
 
-			return yield* decodeJsonString(raw, ConfigSchema, {
-				onParseError: (detail, cause) =>
-					new ModuleConfigError({
-						filePath: path,
-						reason: "parse-failed",
-						detail,
-						cause,
-					}),
+		return discovered;
+	});
 
-				onValidationError: (issues, cause) =>
-					new ModuleConfigError({
-						filePath: path,
-						reason: "invalid",
-						issues,
-						cause,
-					}),
-			});
-		});
+	const generateId = Effect.fn("ConfigStore.generateId")(function* (
+		usedIds: ReadonlySet<string>,
+	) {
+		for (let attempt = 0; attempt < MODULE_ID_ATTEMPTS; attempt++) {
+			const id = randomModuleId();
+			if (!usedIds.has(id)) return ModuleIdSchema.make(id);
+		}
 
-		const write = Effect.fn("ConfigStore.write")(function* (
-			moduleRoot: string,
-			config: Config,
-		) {
-			const path = moduleConfigPath(moduleRoot);
-			const dir = dirname(path);
+		return yield* new ModuleIdGenerationError({});
+	});
 
-			yield* fs.makeDirectory(dir, { recursive: true }).pipe(
-				Effect.mapError(
-					(cause) =>
-						new ModuleConfigError({
-							filePath: path,
-							reason: "directory-failed",
-							cause,
-						}),
-				),
-			);
+	return { discover, generateId, read, write };
+});
 
-			yield* fs
-				.writeFileString(path, formatJson(config, { compact: false }))
-				.pipe(
-					Effect.mapError(
-						(cause) =>
-							new ModuleConfigError({
-								filePath: path,
-								reason: "write-failed",
-								cause,
-							}),
-					),
-				);
-		});
+type ConfigStoreService = Effect.Success<typeof makeConfigStore>;
 
-		const discover = Effect.fn("ConfigStore.discover")(function* (
-			projectRoot: string,
-		) {
-			const roots = yield* scanModuleRoots(fs, projectRoot, projectRoot).pipe(
-				Effect.mapError(
-					(cause) =>
-						new DiscoveryError({
-							path: projectRoot,
-							reason: "module-discovery-failed",
-							cause,
-						}),
-				),
-			);
-
-			roots.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
-
-			const discovered = yield* Effect.forEach(roots, (moduleRoot) =>
-				Effect.gen(function* () {
-					const config = yield* read(moduleRoot);
-					const packageName = yield* maybeReadPackageName(fs, moduleRoot);
-
-					return {
-						...config,
-						root: normalizeRelativePath(projectRoot, moduleRoot),
-						...(packageName ? { packageName } : {}),
-					} satisfies DiscoveredModule;
-				}),
-			);
-
-			const seen = new Map<string, string>();
-			for (const module of discovered) {
-				const existing = seen.get(module.id);
-				if (existing)
-					return yield* new DuplicateModuleIdError({
-						moduleId: module.id,
-						firstPath: existing,
-						secondPath: module.root,
-					});
-
-				seen.set(module.id, module.root);
-			}
-
-			return discovered;
-		});
-
-		const generateId = Effect.fn("ConfigStore.generateId")(function* (
-			usedIds: ReadonlySet<string>,
-		) {
-			for (let attempt = 0; attempt < MODULE_ID_ATTEMPTS; attempt++) {
-				const id = randomModuleId();
-				if (!usedIds.has(id)) return id as ModuleId;
-			}
-
-			return yield* new ModuleIdGenerationError({});
-		});
-
-		return { discover, generateId, read, write };
-	}),
-}) {}
+export class ConfigStore extends Context.Service<
+	ConfigStore,
+	ConfigStoreService
+>()("ConfigStore") {
+	static readonly Default = Layer.effect(ConfigStore, makeConfigStore);
+	static readonly discover = (
+		...args: Parameters<ConfigStoreService["discover"]>
+	) => ConfigStore.use((service) => service.discover(...args));
+	static readonly generateId = (
+		...args: Parameters<ConfigStoreService["generateId"]>
+	) => ConfigStore.use((service) => service.generateId(...args));
+	static readonly read = (...args: Parameters<ConfigStoreService["read"]>) =>
+		ConfigStore.use((service) => service.read(...args));
+	static readonly write = (...args: Parameters<ConfigStoreService["write"]>) =>
+		ConfigStore.use((service) => service.write(...args));
+}

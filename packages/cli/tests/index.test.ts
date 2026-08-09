@@ -10,7 +10,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Context, Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import { isUnknownCommand, parseCliArgs } from "../src/cli";
+import {
+	isParsedValues,
+	isUnknownCommand,
+	parseCliArgs,
+	validateParsedArgs,
+} from "../src/cli";
 import {
 	getSubcommand,
 	type ParsedValues,
@@ -34,6 +39,15 @@ describe("CLI argument parsing", () => {
 
 	it("rejects unknown options under strict parsing", () => {
 		expect(() => parse(["--no-such-flag"])).toThrow();
+	});
+
+	it("rejects malformed parser output at the runtime boundary", () => {
+		expect(isParsedValues(null)).toBe(false);
+		expect(isParsedValues("not-an-object")).toBe(false);
+		expect(isParsedValues({ name: 42 })).toBe(false);
+		expect(() =>
+			validateParsedArgs({ positionals: [], values: { name: 42 } }),
+		).toThrow("CLI Args Invalid: option values must be strings or booleans.");
 	});
 
 	it("no longer accepts the removed accept-incoming flag", () => {
@@ -117,10 +131,12 @@ interface RuntimeProbeService {
 	readonly ready: true;
 }
 
-const RuntimeProbe = Context.GenericTag<RuntimeProbeService>("RuntimeProbe");
+class RuntimeProbe extends Context.Service<RuntimeProbe, RuntimeProbeService>()(
+	"RuntimeProbe",
+) {}
 
 function runtimeWithProbe(construct: () => void, dispose: () => void) {
-	const service = Layer.scoped(
+	const service = Layer.effect(
 		RuntimeProbe,
 		Effect.acquireRelease(
 			Effect.sync(() => {
@@ -130,7 +146,7 @@ function runtimeWithProbe(construct: () => void, dispose: () => void) {
 			() => Effect.sync(dispose),
 		),
 	);
-	const probe = Layer.effectDiscard(Effect.asVoid(RuntimeProbe)).pipe(
+	const probe = Layer.effectDiscard(RuntimeProbe.use(() => Effect.void)).pipe(
 		Layer.provide(service),
 	);
 

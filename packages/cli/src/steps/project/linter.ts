@@ -1,6 +1,6 @@
 import { isCancel, log, select } from "@clack/prompts";
 import { linters } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
@@ -9,8 +9,8 @@ import {
 } from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
-export const linterSchema = Schema.Literal(...linters.ids).pipe(
-	Schema.filter(availableChoice(linters)),
+export const linterSchema = Schema.Literals(linters.ids).pipe(
+	Schema.check(Schema.makeFilter(availableChoice(linters))),
 );
 
 const linterStep = defineStep<typeof linterSchema.Type>({
@@ -25,8 +25,8 @@ const linterStep = defineStep<typeof linterSchema.Type>({
 		if (!interactive) {
 			const normalized = linters.normalize(config.linter);
 			if (normalized) {
-				const result = Schema.decodeUnknownEither(linterSchema)(normalized);
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeResult(linterSchema)(normalized);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;

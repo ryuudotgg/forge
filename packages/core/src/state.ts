@@ -1,6 +1,5 @@
 import { join } from "node:path";
-import { FileSystem } from "@effect/platform";
-import { Effect, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Schema } from "effect";
 import { ModuleIdSchema } from "./config";
 import { StateError } from "./errors";
 import { formatJson } from "./format/json";
@@ -16,32 +15,31 @@ const STATE_BUNDLE_FILE = "state.json";
 
 export const SURFACE_MERGE_SEMANTICS_VERSION = 1;
 
-const StateSchemaVersion = Schema.Literal(1).annotations({
-	message: () =>
+const StateSchemaVersion = Schema.Literal(1).annotate({
+	message:
+		"We can't read this project's metadata because it was saved by a different version of Forge.",
+	messageMissingKey:
 		"We can't read this project's metadata because it was saved by a different version of Forge.",
 });
 
 const ModuleRecordSchema = Schema.Struct({
 	root: Schema.optional(Schema.String),
-	definitionIds: Schema.optionalWith(Schema.Array(Schema.String), {
-		default: () => [],
-	}),
+	definitionIds: Schema.Array(Schema.String).pipe(
+		Schema.withDecodingDefault(Effect.succeed([])),
+	),
 });
 
 export type ModuleRecord = typeof ModuleRecordSchema.Type;
 
-const ConfigSnapshotSchema = Schema.Record({
-	key: Schema.String,
-	value: Schema.Unknown,
-});
+const ConfigSnapshotSchema = Schema.Record(Schema.String, Schema.Unknown);
 
-const InstallTargetSchema = Schema.Union(
+const InstallTargetSchema = Schema.Union([
 	Schema.Struct({ kind: Schema.Literal("project") }),
 	Schema.Struct({
 		kind: Schema.Literal("module"),
 		moduleId: ModuleIdSchema,
 	}),
-);
+]);
 
 export type InstallTarget = typeof InstallTargetSchema.Type;
 
@@ -53,12 +51,12 @@ const InstallRecordSchema = Schema.Struct({
 			Schema.Struct({
 				name: Schema.String,
 				root: Schema.String,
-				section: Schema.Literal(
+				section: Schema.Literals([
 					"dependencies",
 					"devDependencies",
 					"optionalDependencies",
 					"peerDependencies",
-				),
+				]),
 				specifier: Schema.String,
 				version: Schema.optional(Schema.String),
 			}),
@@ -68,22 +66,23 @@ const InstallRecordSchema = Schema.Struct({
 
 export type InstallRecord = typeof InstallRecordSchema.Type;
 
-const LockfileArtifactKindSchema = Schema.Literal("file", "surface");
+const LockfileArtifactKindSchema = Schema.Literals(["file", "surface"]);
 export type LockfileArtifactKind = typeof LockfileArtifactKindSchema.Type;
 
-const SurfaceMergeKindSchema = Schema.Literal("json", "lines", "env");
+const SurfaceMergeKindSchema = Schema.Literals(["json", "lines", "env"]);
 export type SurfaceMergeKind = typeof SurfaceMergeKindSchema.Type;
 
-const ArtifactMergeKindSchema = Schema.Union(
+const ArtifactMergeKindSchema = Schema.Union([
 	SurfaceMergeKindSchema,
 	Schema.Literal("opaque"),
-);
+]);
 export type ArtifactMergeKind = typeof ArtifactMergeKindSchema.Type;
 
 const ArtifactBaseSchema = Schema.Struct({
 	hash: Schema.String,
 	mergeKind: ArtifactMergeKindSchema,
 	origin: Schema.optional(Schema.Literal("adopted")),
+	// @effect-diagnostics-next-line schemaNumber:off
 	semanticsVersion: Schema.Number,
 });
 
@@ -99,11 +98,13 @@ const LockfileArtifactSchema = Schema.Struct({
 
 export type LockfileArtifact = typeof LockfileArtifactSchema.Type;
 
-const RegistryPackageIdSchema = Schema.String.pipe(
-	Schema.pattern(/^@[^/\s]+\/[^/\s]+$/),
+const RegistryPackageIdSchema = Schema.String.check(
+	Schema.isPattern(/^@[^/\s]+\/[^/\s]+$/, {
+		expected: "a string matching the pattern ^@[^/\\s]+\\/[^/\\s]+$",
+	}),
 );
 
-const RegistryUnitSchema = Schema.Union(
+const RegistryUnitSchema = Schema.Union([
 	Schema.Struct({ id: Schema.String, kind: Schema.Literal("addon") }),
 	Schema.Struct({
 		addon: Schema.String,
@@ -112,7 +113,7 @@ const RegistryUnitSchema = Schema.Union(
 	}),
 	Schema.Struct({ id: Schema.String, kind: Schema.Literal("framework") }),
 	Schema.Struct({ id: Schema.String, kind: Schema.Literal("template") }),
-);
+]);
 
 export type RegistryUnit = typeof RegistryUnitSchema.Type;
 
@@ -128,20 +129,19 @@ export const RegistryDescriptorSchema = Schema.Struct({
 export type RegistryDescriptor = typeof RegistryDescriptorSchema.Type;
 
 export const ManifestSchema = Schema.Struct({
-	schemaVersion: Schema.propertySignature(StateSchemaVersion).annotations({
-		missingMessage: () =>
-			"We can't read this project's metadata because it was saved by a different version of Forge.",
-	}),
-	config: Schema.optionalWith(ConfigSnapshotSchema, {
-		default: () => ({}),
-	}),
-	modules: Schema.Record({
-		key: ModuleIdSchema,
-		value: ModuleRecordSchema,
-	}),
-	installs: Schema.optionalWith(Schema.Array(InstallRecordSchema), {
-		default: () => [],
-	}),
+	schemaVersion: StateSchemaVersion.pipe(
+		Schema.annotateKey({
+			messageMissingKey:
+				"We can't read this project's metadata because it was saved by a different version of Forge.",
+		}),
+	),
+	config: ConfigSnapshotSchema.pipe(
+		Schema.withDecodingDefault(Effect.succeed({})),
+	),
+	modules: Schema.Record(ModuleIdSchema, ModuleRecordSchema),
+	installs: Schema.Array(InstallRecordSchema).pipe(
+		Schema.withDecodingDefault(Effect.succeed([])),
+	),
 	registries: Schema.optional(Schema.Array(RegistryPackageIdSchema)),
 	registryDescriptors: Schema.optional(Schema.Array(RegistryDescriptorSchema)),
 });
@@ -152,13 +152,14 @@ export type ManifestInput = Omit<Manifest, "schemaVersion"> & {
 };
 
 export const LockfileSchema = Schema.Struct({
-	schemaVersion: Schema.propertySignature(StateSchemaVersion).annotations({
-		missingMessage: () =>
-			"We can't read this project's metadata because it was saved by a different version of Forge.",
-	}),
-	artifacts: Schema.optionalWith(
-		Schema.Record({ key: Schema.String, value: LockfileArtifactSchema }),
-		{ default: () => ({}) },
+	schemaVersion: StateSchemaVersion.pipe(
+		Schema.annotateKey({
+			messageMissingKey:
+				"We can't read this project's metadata because it was saved by a different version of Forge.",
+		}),
+	),
+	artifacts: Schema.Record(Schema.String, LockfileArtifactSchema).pipe(
+		Schema.withDecodingDefault(Effect.succeed({})),
 	),
 });
 
@@ -285,59 +286,95 @@ function decodeStateBundle(raw: string, path: string) {
 	});
 }
 
-export class State extends Effect.Service<State>()("State", {
-	accessors: true,
-	effect: Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
+const makeState = Effect.gen(function* () {
+	const fs = yield* FileSystem.FileSystem;
 
-		const hashBaseContent = Effect.fn("State.hashBaseContent")(function* (
-			content: string,
-			path: string,
-		) {
-			return yield* hashContentHex(
-				content,
+	const hashBaseContent = Effect.fn("State.hashBaseContent")(function* (
+		content: string,
+		path: string,
+	) {
+		return yield* hashContentHex(
+			content,
+			(cause) =>
+				new StateError({ filePath: path, reason: "base-hash-failed", cause }),
+		);
+	});
+
+	const readStateBundle = Effect.fn("State.readStateBundle")(function* (
+		projectRoot: string,
+	) {
+		const path = stateBundlePath(projectRoot);
+		const exists = yield* fs.exists(path).pipe(
+			Effect.mapError(
 				(cause) =>
-					new StateError({ filePath: path, reason: "base-hash-failed", cause }),
-			);
-		});
+					new StateError({
+						filePath: path,
+						reason: "state-bundle-read-failed",
+						cause,
+					}),
+			),
+		);
+		if (!exists) return undefined;
 
-		const readStateBundle = Effect.fn("State.readStateBundle")(function* (
-			projectRoot: string,
-		) {
-			const path = stateBundlePath(projectRoot);
-			const exists = yield* fs.exists(path).pipe(
-				Effect.mapError(
-					(cause) =>
-						new StateError({
-							filePath: path,
-							reason: "state-bundle-read-failed",
-							cause,
-						}),
-				),
-			);
-			if (!exists) return undefined;
+		const raw = yield* fs.readFileString(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "state-bundle-read-failed",
+						cause,
+					}),
+			),
+		);
 
-			const raw = yield* fs.readFileString(path).pipe(
-				Effect.mapError(
-					(cause) =>
-						new StateError({
-							filePath: path,
-							reason: "state-bundle-read-failed",
-							cause,
-						}),
-				),
-			);
+		return yield* decodeStateBundle(raw, path);
+	});
 
-			return yield* decodeStateBundle(raw, path);
-		});
+	const readManifest = Effect.fn("State.readManifest")(function* (
+		projectRoot: string,
+	) {
+		const bundle = yield* readStateBundle(projectRoot);
+		if (bundle !== undefined) return bundle.manifest;
 
-		const readManifest = Effect.fn("State.readManifest")(function* (
-			projectRoot: string,
-		) {
+		const path = manifestPath(projectRoot);
+		const exists = yield* fs.exists(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "manifest-read-failed",
+						cause,
+					}),
+			),
+		);
+
+		if (!exists)
+			return yield* new StateError({
+				filePath: path,
+				reason: "manifest-missing",
+			});
+
+		const raw = yield* fs.readFileString(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "manifest-read-failed",
+						cause,
+					}),
+			),
+		);
+
+		return yield* decodeManifest(raw, path);
+	});
+
+	const readManifestOrDefault = Effect.fn("State.readManifestOrDefault")(
+		function* (projectRoot: string) {
+			const path = manifestPath(projectRoot);
+
 			const bundle = yield* readStateBundle(projectRoot);
 			if (bundle !== undefined) return bundle.manifest;
 
-			const path = manifestPath(projectRoot);
 			const exists = yield* fs.exists(path).pipe(
 				Effect.mapError(
 					(cause) =>
@@ -348,352 +385,343 @@ export class State extends Effect.Service<State>()("State", {
 						}),
 				),
 			);
+			if (!exists) return defaultManifest();
 
-			if (!exists)
-				return yield* new StateError({
-					filePath: path,
-					reason: "manifest-missing",
-				});
+			return yield* readManifest(projectRoot);
+		},
+	);
 
-			const raw = yield* fs.readFileString(path).pipe(
+	const writeManifest = Effect.fn("State.writeManifest")(function* (
+		projectRoot: string,
+		manifest: ManifestInput,
+	) {
+		const path = manifestPath(projectRoot);
+		const versionedManifest: Manifest = { ...manifest, schemaVersion: 1 };
+
+		yield* fs
+			.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
+				recursive: true,
+			})
+			.pipe(
 				Effect.mapError(
 					(cause) =>
 						new StateError({
 							filePath: path,
-							reason: "manifest-read-failed",
+							reason: "manifest-directory-failed",
 							cause,
 						}),
 				),
 			);
 
-			return yield* decodeManifest(raw, path);
-		});
+		yield* fs
+			.writeFileString(path, formatJson(versionedManifest, { compact: false }))
+			.pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: path,
+							reason: "manifest-write-failed",
+							cause,
+						}),
+				),
+			);
+	});
 
-		const readManifestOrDefault = Effect.fn("State.readManifestOrDefault")(
-			function* (projectRoot: string) {
-				const path = manifestPath(projectRoot);
+	const readLockfile = Effect.fn("State.readLockfile")(function* (
+		projectRoot: string,
+	) {
+		const bundle = yield* readStateBundle(projectRoot);
+		if (bundle !== undefined) return bundle.lockfile;
 
-				const bundle = yield* readStateBundle(projectRoot);
-				if (bundle !== undefined) return bundle.manifest;
-
-				const exists = yield* fs.exists(path).pipe(
-					Effect.mapError(
-						(cause) =>
-							new StateError({
-								filePath: path,
-								reason: "manifest-read-failed",
-								cause,
-							}),
-					),
-				);
-				if (!exists) return defaultManifest();
-
-				return yield* readManifest(projectRoot);
-			},
+		const path = lockfilePath(projectRoot);
+		const exists = yield* fs.exists(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "lockfile-read-failed",
+						cause,
+					}),
+			),
 		);
 
-		const writeManifest = Effect.fn("State.writeManifest")(function* (
-			projectRoot: string,
-			manifest: ManifestInput,
-		) {
-			const path = manifestPath(projectRoot);
-			const versionedManifest: Manifest = { ...manifest, schemaVersion: 1 };
+		if (!exists) return defaultLockfile();
 
-			yield* fs
-				.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
-					recursive: true,
-				})
-				.pipe(
-					Effect.mapError(
-						(cause) =>
-							new StateError({
-								filePath: path,
-								reason: "manifest-directory-failed",
-								cause,
-							}),
-					),
-				);
-
-			yield* fs
-				.writeFileString(
-					path,
-					formatJson(versionedManifest, { compact: false }),
-				)
-				.pipe(
-					Effect.mapError(
-						(cause) =>
-							new StateError({
-								filePath: path,
-								reason: "manifest-write-failed",
-								cause,
-							}),
-					),
-				);
-		});
-
-		const readLockfile = Effect.fn("State.readLockfile")(function* (
-			projectRoot: string,
-		) {
-			const bundle = yield* readStateBundle(projectRoot);
-			if (bundle !== undefined) return bundle.lockfile;
-
-			const path = lockfilePath(projectRoot);
-			const exists = yield* fs.exists(path).pipe(
-				Effect.mapError(
-					(cause) =>
-						new StateError({
-							filePath: path,
-							reason: "lockfile-read-failed",
-							cause,
-						}),
-				),
-			);
-
-			if (!exists) return defaultLockfile();
-
-			const raw = yield* fs.readFileString(path).pipe(
-				Effect.mapError(
-					(cause) =>
-						new StateError({
-							filePath: path,
-							reason: "lockfile-read-failed",
-							cause,
-						}),
-				),
-			);
-
-			return yield* decodeLockfile(raw, path);
-		});
-
-		const writeLockfile = Effect.fn("State.writeLockfile")(function* (
-			projectRoot: string,
-			lockfile: LockfileInput,
-		) {
-			const path = lockfilePath(projectRoot);
-			const versionedLockfile: Lockfile = { ...lockfile, schemaVersion: 1 };
-
-			yield* fs
-				.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
-					recursive: true,
-				})
-				.pipe(
-					Effect.mapError(
-						(cause) =>
-							new StateError({
-								filePath: path,
-								reason: "lockfile-directory-failed",
-								cause,
-							}),
-					),
-				);
-
-			yield* fs
-				.writeFileString(
-					path,
-					formatJson(versionedLockfile, { compact: false }),
-				)
-				.pipe(
-					Effect.mapError(
-						(cause) =>
-							new StateError({
-								filePath: path,
-								reason: "lockfile-write-failed",
-								cause,
-							}),
-					),
-				);
-		});
-
-		const readBase = Effect.fn("State.readBase")(function* (
-			projectRoot: string,
-			hash: string,
-		) {
-			const path = basePath(projectRoot, hash);
-			if (!validBaseHash(hash))
-				return yield* new StateError({
-					filePath: path,
-					reason: "base-hash-invalid",
-				});
-
-			const content = yield* fs.readFileString(path).pipe(
-				Effect.mapError(
-					(cause) =>
-						new StateError({
-							filePath: path,
-							reason: "base-read-failed",
-							cause,
-						}),
-				),
-			);
-
-			if ((yield* hashBaseContent(content, path)) !== hash)
-				return yield* new StateError({
-					filePath: path,
-					reason: "base-hash-mismatch",
-				});
-
-			return content;
-		});
-
-		const writeBase = Effect.fn("State.writeBase")(function* (
-			projectRoot: string,
-			hash: string,
-			content: string,
-		) {
-			const path = basePath(projectRoot, hash);
-			if (!validBaseHash(hash))
-				return yield* new StateError({
-					filePath: path,
-					reason: "base-hash-invalid",
-				});
-
-			if ((yield* hashBaseContent(content, path)) !== hash)
-				return yield* new StateError({
-					filePath: path,
-					reason: "base-hash-mismatch",
-				});
-
-			yield* fs.makeDirectory(basesPath(projectRoot), { recursive: true }).pipe(
-				Effect.mapError(
-					(cause) =>
-						new StateError({
-							filePath: path,
-							reason: "base-directory-failed",
-							cause,
-						}),
-				),
-			);
-
-			const exists = yield* fs.exists(path).pipe(
-				Effect.mapError(
-					(cause) =>
-						new StateError({
-							filePath: path,
-							reason: "base-read-failed",
-							cause,
-						}),
-				),
-			);
-			if (exists) {
-				yield* readBase(projectRoot, hash);
-				return;
-			}
-
-			yield* fs.writeFileString(path, content).pipe(
-				Effect.mapError(
-					(cause) =>
-						new StateError({
-							filePath: path,
-							reason: "base-write-failed",
-							cause,
-						}),
-				),
-			);
-		});
-
-		const garbageCollectBases = Effect.fn("State.garbageCollectBases")(
-			function* (projectRoot: string, lockfile: LockfileInput) {
-				const directory = basesPath(projectRoot);
-				const exists = yield* fs.exists(directory).pipe(
-					Effect.mapError(
-						(cause) =>
-							new StateError({
-								filePath: directory,
-								reason: "base-directory-read-failed",
-								cause,
-							}),
-					),
-				);
-				if (!exists) return;
-
-				const referenced = new Set(
-					Object.values(lockfile.artifacts).flatMap((artifact) =>
-						artifact.base === undefined ? [] : [artifact.base.hash],
-					),
-				);
-
-				const entries = yield* fs.readDirectory(directory).pipe(
-					Effect.mapError(
-						(cause) =>
-							new StateError({
-								filePath: directory,
-								reason: "base-directory-read-failed",
-								cause,
-							}),
-					),
-				);
-
-				for (const entry of entries) {
-					if (referenced.has(entry)) continue;
-
-					const path = basePath(projectRoot, entry);
-					yield* fs.remove(path).pipe(
-						Effect.mapError(
-							(cause) =>
-								new StateError({
-									filePath: path,
-									reason: "base-remove-failed",
-									cause,
-								}),
-						),
-					);
-				}
-			},
+		const raw = yield* fs.readFileString(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "lockfile-read-failed",
+						cause,
+					}),
+			),
 		);
 
-		const isManagedProject = Effect.fn("State.isManagedProject")(function* (
-			projectRoot: string,
-		) {
-			const stateBundle = stateBundlePath(projectRoot);
-			const stateBundleExists = yield* fs.exists(stateBundle).pipe(
+		return yield* decodeLockfile(raw, path);
+	});
+
+	const writeLockfile = Effect.fn("State.writeLockfile")(function* (
+		projectRoot: string,
+		lockfile: LockfileInput,
+	) {
+		const path = lockfilePath(projectRoot);
+		const versionedLockfile: Lockfile = { ...lockfile, schemaVersion: 1 };
+
+		yield* fs
+			.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
+				recursive: true,
+			})
+			.pipe(
 				Effect.mapError(
 					(cause) =>
 						new StateError({
-							filePath: stateBundle,
-							reason: "state-bundle-read-failed",
+							filePath: path,
+							reason: "lockfile-directory-failed",
 							cause,
 						}),
 				),
 			);
-			if (stateBundleExists) return true;
 
-			const lockfile = lockfilePath(projectRoot);
-			const lockfileExists = yield* fs.exists(lockfile).pipe(
+		yield* fs
+			.writeFileString(path, formatJson(versionedLockfile, { compact: false }))
+			.pipe(
 				Effect.mapError(
 					(cause) =>
 						new StateError({
-							filePath: lockfile,
-							reason: "lockfile-read-failed",
+							filePath: path,
+							reason: "lockfile-write-failed",
 							cause,
 						}),
 				),
 			);
-			if (lockfileExists) return true;
+	});
 
-			const manifest = manifestPath(projectRoot);
-			return yield* fs.exists(manifest).pipe(
+	const readBase = Effect.fn("State.readBase")(function* (
+		projectRoot: string,
+		hash: string,
+	) {
+		const path = basePath(projectRoot, hash);
+		if (!validBaseHash(hash))
+			return yield* new StateError({
+				filePath: path,
+				reason: "base-hash-invalid",
+			});
+
+		const content = yield* fs.readFileString(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "base-read-failed",
+						cause,
+					}),
+			),
+		);
+
+		if ((yield* hashBaseContent(content, path)) !== hash)
+			return yield* new StateError({
+				filePath: path,
+				reason: "base-hash-mismatch",
+			});
+
+		return content;
+	});
+
+	const writeBase = Effect.fn("State.writeBase")(function* (
+		projectRoot: string,
+		hash: string,
+		content: string,
+	) {
+		const path = basePath(projectRoot, hash);
+		if (!validBaseHash(hash))
+			return yield* new StateError({
+				filePath: path,
+				reason: "base-hash-invalid",
+			});
+
+		if ((yield* hashBaseContent(content, path)) !== hash)
+			return yield* new StateError({
+				filePath: path,
+				reason: "base-hash-mismatch",
+			});
+
+		yield* fs.makeDirectory(basesPath(projectRoot), { recursive: true }).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "base-directory-failed",
+						cause,
+					}),
+			),
+		);
+
+		const exists = yield* fs.exists(path).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "base-read-failed",
+						cause,
+					}),
+			),
+		);
+		if (exists) {
+			yield* readBase(projectRoot, hash);
+			return;
+		}
+
+		yield* fs.writeFileString(path, content).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: path,
+						reason: "base-write-failed",
+						cause,
+					}),
+			),
+		);
+	});
+
+	const garbageCollectBases = Effect.fn("State.garbageCollectBases")(function* (
+		projectRoot: string,
+		lockfile: LockfileInput,
+	) {
+		const directory = basesPath(projectRoot);
+		const exists = yield* fs.exists(directory).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: directory,
+						reason: "base-directory-read-failed",
+						cause,
+					}),
+			),
+		);
+		if (!exists) return;
+
+		const referenced = new Set(
+			Object.values(lockfile.artifacts).flatMap((artifact) =>
+				artifact.base === undefined ? [] : [artifact.base.hash],
+			),
+		);
+
+		const entries = yield* fs.readDirectory(directory).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: directory,
+						reason: "base-directory-read-failed",
+						cause,
+					}),
+			),
+		);
+
+		for (const entry of entries) {
+			if (referenced.has(entry)) continue;
+
+			const path = basePath(projectRoot, entry);
+			yield* fs.remove(path).pipe(
 				Effect.mapError(
 					(cause) =>
 						new StateError({
-							filePath: manifest,
-							reason: "manifest-read-failed",
+							filePath: path,
+							reason: "base-remove-failed",
 							cause,
 						}),
 				),
 			);
-		});
+		}
+	});
 
-		return {
-			garbageCollectBases,
-			isManagedProject,
-			readBase,
-			readLockfile,
-			readManifest,
-			readManifestOrDefault,
-			readStateBundle,
-			writeLockfile,
-			writeManifest,
-			writeBase,
-		};
-	}),
-}) {}
+	const isManagedProject = Effect.fn("State.isManagedProject")(function* (
+		projectRoot: string,
+	) {
+		const stateBundle = stateBundlePath(projectRoot);
+		const stateBundleExists = yield* fs.exists(stateBundle).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: stateBundle,
+						reason: "state-bundle-read-failed",
+						cause,
+					}),
+			),
+		);
+		if (stateBundleExists) return true;
+
+		const lockfile = lockfilePath(projectRoot);
+		const lockfileExists = yield* fs.exists(lockfile).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: lockfile,
+						reason: "lockfile-read-failed",
+						cause,
+					}),
+			),
+		);
+		if (lockfileExists) return true;
+
+		const manifest = manifestPath(projectRoot);
+		return yield* fs.exists(manifest).pipe(
+			Effect.mapError(
+				(cause) =>
+					new StateError({
+						filePath: manifest,
+						reason: "manifest-read-failed",
+						cause,
+					}),
+			),
+		);
+	});
+
+	return {
+		garbageCollectBases,
+		isManagedProject,
+		readBase,
+		readLockfile,
+		readManifest,
+		readManifestOrDefault,
+		readStateBundle,
+		writeLockfile,
+		writeManifest,
+		writeBase,
+	};
+});
+
+type StateService = Effect.Success<typeof makeState>;
+
+export class State extends Context.Service<State, StateService>()("State") {
+	static readonly Default = Layer.effect(State, makeState);
+	static readonly garbageCollectBases = (
+		...args: Parameters<StateService["garbageCollectBases"]>
+	) => State.use((service) => service.garbageCollectBases(...args));
+	static readonly isManagedProject = (
+		...args: Parameters<StateService["isManagedProject"]>
+	) => State.use((service) => service.isManagedProject(...args));
+	static readonly readBase = (...args: Parameters<StateService["readBase"]>) =>
+		State.use((service) => service.readBase(...args));
+	static readonly readLockfile = (
+		...args: Parameters<StateService["readLockfile"]>
+	) => State.use((service) => service.readLockfile(...args));
+	static readonly readManifest = (
+		...args: Parameters<StateService["readManifest"]>
+	) => State.use((service) => service.readManifest(...args));
+	static readonly readManifestOrDefault = (
+		...args: Parameters<StateService["readManifestOrDefault"]>
+	) => State.use((service) => service.readManifestOrDefault(...args));
+	static readonly readStateBundle = (
+		...args: Parameters<StateService["readStateBundle"]>
+	) => State.use((service) => service.readStateBundle(...args));
+	static readonly writeBase = (
+		...args: Parameters<StateService["writeBase"]>
+	) => State.use((service) => service.writeBase(...args));
+	static readonly writeLockfile = (
+		...args: Parameters<StateService["writeLockfile"]>
+	) => State.use((service) => service.writeLockfile(...args));
+	static readonly writeManifest = (
+		...args: Parameters<StateService["writeManifest"]>
+	) => State.use((service) => service.writeManifest(...args));
+}

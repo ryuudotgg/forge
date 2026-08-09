@@ -30,7 +30,7 @@ async function runGitInit(dir: string, message: string) {
 	const exit = await runCliEffect(gitInit(dir, message));
 
 	if (Exit.isFailure(exit)) {
-		if (Option.isNone(Cause.failureOption(exit.cause)))
+		if (Option.isNone(Cause.findErrorOption(exit.cause)))
 			console.error(Cause.squash(exit.cause));
 
 		log.warn(

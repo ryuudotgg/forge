@@ -1,5 +1,5 @@
-import { Either, Schema } from "effect";
-import { ArrayFormatter } from "effect/ParseResult";
+import { formatSchemaError } from "@ryuujs/core";
+import { Result, Schema } from "effect";
 import { assembleSchema, type Config } from "./config/schema";
 import type { PartialConfig, Step } from "./steps/types";
 import { SKIP } from "./steps/types";
@@ -43,10 +43,10 @@ export async function orchestrate(
 
 	const decodeConfig = () => {
 		const schema = assembleSchema(steps);
-		const result = Schema.decodeUnknownEither(schema)(config);
+		const result = Schema.decodeResult(schema)(config);
 
-		if (Either.isLeft(result)) {
-			const issues = ArrayFormatter.formatErrorSync(result.left);
+		if (Result.isFailure(result)) {
+			const issues = formatSchemaError(result.failure, config);
 			const message = issues
 				.map((i) =>
 					i.path.length > 0
@@ -58,7 +58,7 @@ export async function orchestrate(
 			throw new Error(`Invalid Configuration:\n${message}`);
 		}
 
-		return result.right;
+		return result.success;
 	};
 
 	const sideEffectingStepIds = new Set([

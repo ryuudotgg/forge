@@ -98,7 +98,7 @@ const CatalogMetadataSchema = {
 	summary: Schema.String,
 };
 
-export const RegistryCatalogEntrySchema = Schema.Union(
+export const RegistryCatalogEntrySchema = Schema.Union([
 	Schema.Struct({
 		...CatalogMetadataSchema,
 		kind: Schema.Literal("framework"),
@@ -116,9 +116,9 @@ export const RegistryCatalogEntrySchema = Schema.Union(
 		frameworks: Schema.optional(Schema.Array(Schema.String)),
 		kind: Schema.Literal("addon"),
 		requiredSlots: Schema.optional(Schema.Array(Schema.String)),
-		targetMode: Schema.Literal("single", "multiple"),
+		targetMode: Schema.Literals(["single", "multiple"]),
 	}),
-);
+]);
 
 export interface RegistryPackageManifest<Config> {
 	readonly apiVersion: number;
@@ -138,7 +138,7 @@ export const RegistryPackageManifestSchema = Schema.Struct({
 	catalog: Schema.Array(RegistryCatalogEntrySchema),
 });
 
-export const decodeRegistryPackageManifest = Schema.decodeUnknown(
+export const decodeRegistryPackageManifest = Schema.decodeUnknownEffect(
 	RegistryPackageManifestSchema,
 );
 

@@ -4,7 +4,7 @@ import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
-export const rpcSchema = Schema.Literal(...rpcProviders.ids);
+export const rpcSchema = Schema.Literals(rpcProviders.ids);
 
 export default defineStep<typeof rpcSchema.Type>({
 	id: "rpc",

@@ -1,10 +1,10 @@
 import { isCancel, select } from "@clack/prompts";
 import { uiLibraries } from "@ryuujs/generators";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
 
-export const uiLibrarySchema = Schema.Literal(...uiLibraries.ids);
+export const uiLibrarySchema = Schema.Literals(uiLibraries.ids);
 
 const uiLibraryStep = defineStep<typeof uiLibrarySchema.Type>({
 	id: "uiLibrary",
@@ -20,8 +20,8 @@ const uiLibraryStep = defineStep<typeof uiLibrarySchema.Type>({
 		if (!interactive) {
 			const normalized = uiLibraries.normalize(config.uiLibrary);
 			if (normalized) {
-				const result = Schema.decodeUnknownEither(uiLibrarySchema)(normalized);
-				if (Either.isRight(result)) return result.right;
+				const result = Schema.decodeResult(uiLibrarySchema)(normalized);
+				if (Result.isSuccess(result)) return result.success;
 			}
 
 			return SKIP;

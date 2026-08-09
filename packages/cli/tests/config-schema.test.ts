@@ -1,5 +1,5 @@
-import { Either, Schema } from "effect";
-import { ArrayFormatter } from "effect/ParseResult";
+import { formatSchemaError } from "@ryuujs/core";
+import { Result, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { assembleSchema } from "../src/config/schema";
 import { steps } from "../src/steps";
@@ -8,12 +8,12 @@ import { defineStep } from "../src/steps/types";
 const configSchema = assembleSchema(steps);
 
 function decodeConfig(input: unknown) {
-	return Schema.decodeUnknownEither(configSchema)(input);
+	return Schema.decodeUnknownResult(configSchema)(input);
 }
 
 function decodeMessages(result: ReturnType<typeof decodeConfig>) {
-	return Either.isLeft(result)
-		? ArrayFormatter.formatErrorSync(result.left).map((issue) => issue.message)
+	return Result.isFailure(result)
+		? formatSchemaError(result.failure).map((issue) => issue.message)
 		: [];
 }
 
@@ -27,7 +27,7 @@ describe("assembleSchema", () => {
 			web: "nextjs",
 		});
 
-		expect(Either.getOrThrow(result)).toEqual({
+		expect(Result.getOrThrow(result)).toEqual({
 			name: "Acme",
 			slug: "acme",
 			path: "./acme",
@@ -59,7 +59,7 @@ describe("assembleSchema", () => {
 			authentication: "better-auth",
 		});
 
-		expect(Either.isRight(result)).toBe(true);
+		expect(Result.isSuccess(result)).toBe(true);
 	});
 
 	it("accepts React Router in a complete create config", () => {
@@ -71,7 +71,7 @@ describe("assembleSchema", () => {
 			web: "react-router",
 		});
 
-		expect(Either.getOrThrow(result)).toMatchObject({
+		expect(Result.getOrThrow(result)).toMatchObject({
 			platforms: ["web"],
 			web: "react-router",
 		});
@@ -100,7 +100,7 @@ describe("assembleSchema", () => {
 			web: "tanstack-start",
 		});
 
-		expect(Either.getOrThrow(result)).toMatchObject({
+		expect(Result.getOrThrow(result)).toMatchObject({
 			platforms: ["web"],
 			web: "tanstack-start",
 		});
@@ -157,6 +157,34 @@ describe("assembleSchema", () => {
 		]);
 	});
 
+	it.each([
+		["desktop", "A desktop framework wasn't selected."],
+		["mobile", "A mobile framework wasn't selected."],
+	] as const)(
+		"requires a framework when the %s platform is selected",
+		(platform, message) => {
+			const platformStep = defineStep<ReadonlyArray<string>>({
+				id: "platforms",
+				group: "platforms",
+				schema: Schema.Array(Schema.String),
+				shouldRun: () => true,
+				execute: async () => undefined,
+			});
+			const frameworkStep = defineStep<string>({
+				id: platform,
+				group: "platforms",
+				schema: Schema.String,
+				shouldRun: () => true,
+				execute: async () => undefined,
+			});
+			const result = Schema.decodeResult(
+				assembleSchema([platformStep, frameworkStep]),
+			)({ platforms: [platform] });
+
+			expect(decodeMessages(result)).toEqual([message]);
+		},
+	);
+
 	it("rejects the desktop platform while it isn't available", () => {
 		const result = decodeConfig({
 			name: "Acme",
@@ -193,7 +221,7 @@ describe("assembleSchema", () => {
 	it("spreads schema shape fields from null-key steps into the struct", () => {
 		const result = decodeConfig({ name: "Acme", slug: "acme" });
 
-		expect(Either.getOrThrow(result)).toEqual({ name: "Acme", slug: "acme" });
+		expect(Result.getOrThrow(result)).toEqual({ name: "Acme", slug: "acme" });
 	});
 
 	it("validates schema shape fields with their own schemas", () => {
@@ -223,8 +251,8 @@ describe("assembleSchema", () => {
 		});
 
 		const schema = assembleSchema([withDefault, withoutDefault]);
-		const result = Schema.decodeUnknownEither(schema)({});
+		const result = Schema.decodeResult(schema)({});
 
-		expect(Either.getOrThrow(result)).toEqual({ flavor: "vanilla" });
+		expect(Result.getOrThrow(result)).toEqual({ flavor: "vanilla" });
 	});
 });

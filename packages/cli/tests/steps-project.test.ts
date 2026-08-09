@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import catalogsStep from "../src/steps/project/catalogs";
 import linterStep from "../src/steps/project/linter";
@@ -257,15 +257,15 @@ describe("project steps", () => {
 	describe("path", () => {
 		it("rejects paths that escape the current directory", () => {
 			for (const value of ["./../escape", "./.."]) {
-				const result = Schema.decodeUnknownEither(pathSchema)(value);
-				expect(Either.isLeft(result)).toBe(true);
+				const result = Schema.decodeResult(pathSchema)(value);
+				expect(Result.isFailure(result)).toBe(true);
 			}
 		});
 
 		it("accepts nested paths and the current directory", () => {
 			for (const value of ["./apps/web", "./my-app", "."]) {
-				const result = Schema.decodeUnknownEither(pathSchema)(value);
-				expect(Either.isRight(result)).toBe(true);
+				const result = Schema.decodeResult(pathSchema)(value);
+				expect(Result.isSuccess(result)).toBe(true);
 			}
 		});
 

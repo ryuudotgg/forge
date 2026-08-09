@@ -13,7 +13,7 @@ import {
 	type TemplateDefinition,
 	type TemplateRef,
 } from "@ryuujs/core";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import type { ForgeConfig } from "../config";
 import { firstPartyCatalog, firstPartyRegistry } from "./first-party";
 import type {
@@ -32,7 +32,7 @@ import {
 	RegistryPackageManifestSchema,
 } from "./types";
 
-export class RegistryLoadError extends Schema.TaggedError<RegistryLoadError>()(
+export class RegistryLoadError extends Schema.TaggedErrorClass<RegistryLoadError>()(
 	"RegistryLoadError",
 	{
 		detail: Schema.optional(Schema.String),
@@ -41,12 +41,12 @@ export class RegistryLoadError extends Schema.TaggedError<RegistryLoadError>()(
 	},
 ) {}
 
-class RegistryPackageResolutionError extends Schema.TaggedError<RegistryPackageResolutionError>()(
+class RegistryPackageResolutionError extends Schema.TaggedErrorClass<RegistryPackageResolutionError>()(
 	"RegistryPackageResolutionError",
 	{ detail: Schema.String, message: Schema.String },
 ) {}
 
-class RegistryPackageExecutionError extends Schema.TaggedError<RegistryPackageExecutionError>()(
+class RegistryPackageExecutionError extends Schema.TaggedErrorClass<RegistryPackageExecutionError>()(
 	"RegistryPackageExecutionError",
 	{
 		detail: Schema.String,
@@ -78,7 +78,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 
 const DependencyRefSchema = Schema.Struct({
 	id: Schema.String,
-	type: Schema.Literal("addon", "template"),
+	type: Schema.Literals(["addon", "template"]),
 });
 
 const TemplateRefSchema = Schema.Struct({
@@ -111,7 +111,7 @@ const AddonDefinitionDataSchema = Schema.Struct({
 	exclusive: Schema.Boolean,
 	id: Schema.String,
 	name: Schema.String,
-	targetMode: Schema.Literal("single", "multiple"),
+	targetMode: Schema.Literals(["single", "multiple"]),
 	version: Schema.String,
 	when: Schema.Unknown,
 });
@@ -133,7 +133,7 @@ const FrameworkDefinitionDataSchema = Schema.Struct({
 	name: Schema.String,
 	slots: Schema.Array(Schema.String),
 	tsconfigPreset: Schema.Struct({
-		content: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+		content: Schema.Record(Schema.String, Schema.Unknown),
 		name: Schema.String,
 	}),
 });
@@ -590,7 +590,9 @@ function loadThirdPartyRegistries(
 				templates,
 			});
 
-			const descriptor = yield* Schema.decodeUnknown(RegistryDescriptorSchema)({
+			const descriptor = yield* Schema.decodeUnknownEffect(
+				RegistryDescriptorSchema,
+			)({
 				apiVersion: decoded.apiVersion,
 				id: registryId,
 				...(imported.integrity === undefined
@@ -663,11 +665,11 @@ export function loadDefinitionRegistry(
 	if (options !== undefined) {
 		const load = async () => {
 			const result = await Effect.runPromise(
-				Effect.either(loadThirdPartyRegistries(options)),
+				Effect.result(loadThirdPartyRegistries(options)),
 			);
 
-			if (Either.isRight(result)) return result.right;
-			throw result.left;
+			if (Result.isSuccess(result)) return result.success;
+			throw result.failure;
 		};
 
 		return load();

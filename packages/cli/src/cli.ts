@@ -303,11 +303,26 @@ export function getParseArgsOptions(): Record<
 	return result;
 }
 
-function isParsedValues(values: unknown): values is ParsedValues {
+export function isParsedValues(values: unknown): values is ParsedValues {
 	if (typeof values !== "object" || values === null) return false;
 	return Object.values(values).every(
 		(value) => typeof value === "string" || typeof value === "boolean",
 	);
+}
+
+export function validateParsedArgs(parsed: {
+	readonly positionals: string[];
+	readonly values: unknown;
+}): {
+	positionals: string[];
+	values: ParsedValues;
+} {
+	if (!isParsedValues(parsed.values))
+		throw new Error(
+			"CLI Args Invalid: option values must be strings or booleans.",
+		);
+
+	return { positionals: parsed.positionals, values: parsed.values };
 }
 
 export function parseCliArgs(args: readonly string[]): {
@@ -321,12 +336,7 @@ export function parseCliArgs(args: readonly string[]): {
 		strict: true,
 	});
 
-	if (!isParsedValues(parsed.values))
-		throw new Error(
-			"CLI Args Invalid: option values must be strings or booleans.",
-		);
-
-	return parsed;
+	return validateParsedArgs(parsed);
 }
 
 export function isUnknownCommand(

@@ -1,9 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FileSystem, Error as PlatformError } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { Apply, State } from "@ryuujs/core";
-import { Effect, Layer } from "effect";
+import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModuleMappingProposal } from "../src/commands/adoption";
 import {
@@ -81,7 +80,7 @@ describe("init wizard", () => {
 
 	it("explains how to recover an interrupted initial commit", async () => {
 		await withTempDir("init-stranded-state", async (directory) => {
-			const nodeLayer = NodeContext.layer;
+			const nodeLayer = NodeServices.layer;
 			const fileSystemLayer = Layer.effect(
 				FileSystem.FileSystem,
 				Effect.map(FileSystem.FileSystem, (fileSystem) => ({
@@ -89,11 +88,11 @@ describe("init wizard", () => {
 					rename: (oldPath, newPath) =>
 						newPath.endsWith("/.forge/lock.json")
 							? Effect.fail(
-									new PlatformError.SystemError({
+									PlatformError.systemError({
+										_tag: "PermissionDenied",
 										method: "rename",
 										module: "FileSystem",
 										pathOrDescriptor: newPath,
-										reason: "PermissionDenied",
 									}),
 								)
 							: fileSystem.rename(oldPath, newPath),

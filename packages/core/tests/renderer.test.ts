@@ -69,7 +69,7 @@ async function renderFailure(
 
 	if (!Exit.isFailure(exit)) throw new Error("Expected Render Failure");
 
-	const failure = Cause.failureOption(exit.cause);
+	const failure = Cause.findErrorOption(exit.cause);
 	if (Option.isNone(failure)) throw new Error("Expected Render Failure");
 
 	return failure.value;
