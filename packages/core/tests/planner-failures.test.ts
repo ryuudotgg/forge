@@ -53,6 +53,7 @@ function webRegistry(
 		configFile: "next.config.ts",
 		ignoreDirs: [],
 		name: "Next.js",
+		sourceRoot: "",
 		slots: ["layout"],
 		tsconfigPreset: { content: {}, name: "nextjs" },
 	});

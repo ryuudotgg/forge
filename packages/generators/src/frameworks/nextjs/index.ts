@@ -26,6 +26,7 @@ export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	buildOutputs: [".next/**", "!.next/cache/**"],
 	ignoreDirs: [".next/"],
 	name: "Next.js",
+	sourceRoot: "",
 	slots: ["layout", "page", "api", "trpc", "auth"],
 	tsconfigPreset: {
 		name: "nextjs",

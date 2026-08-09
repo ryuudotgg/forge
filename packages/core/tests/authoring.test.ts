@@ -34,6 +34,7 @@ const framework = defineFramework({
 	buildOutputs: [".next/**", "!.next/cache/**"],
 	ignoreDirs: [".next/"],
 	name: "Next.js",
+	sourceRoot: "",
 	slots: ["layout", "page"],
 	tsconfigPreset: { content: {}, name: "nextjs" },
 });
@@ -474,6 +475,7 @@ describe("authoring", () => {
 			buildOutputs: [],
 			ignoreDirs: [],
 			name: "Invalid",
+			sourceRoot: "",
 			slots: ["layout", "layout"],
 			tsconfigPreset: { content: {}, name: "invalid" },
 		});

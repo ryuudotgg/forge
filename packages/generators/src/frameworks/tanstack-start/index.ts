@@ -27,6 +27,7 @@ export const tanstackStartFramework: FrameworkDefinition<"tanstack-start"> =
 		buildOutputs: ["dist/**"],
 		ignoreDirs: [".tanstack/"],
 		name: "TanStack Start",
+		sourceRoot: "src",
 		slots: ["layout", "page", "api", "trpc", "auth"],
 		tsconfigPreset: {
 			name: "tanstack-start",

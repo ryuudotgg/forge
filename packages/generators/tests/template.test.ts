@@ -1,7 +1,19 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	defineTemplateRecipe,
+	inSourceRoot,
+	marker,
+	renderRecipeAsset,
+	sharedAsset,
+} from "@ryuujs/core";
 import { describe, expect, it } from "vitest";
+import {
+	nextjsFramework,
+	reactRouterFramework,
+	tanstackStartFramework,
+} from "../src/index";
 import { interpolate, readTemplate } from "../src/template";
 
 const TEMPLATE_DIR = join(
@@ -53,6 +65,54 @@ describe("interpolate", () => {
 				"/* __AUTH_ARG__ */ ": "auth, ",
 			}),
 		).toBe('import { auth } from "@acme/auth";\n{ auth, headers }\n');
+	});
+
+	it("matches recipe rendering byte-for-byte", () => {
+		const template =
+			"// __AUTH_IMPORT__\nexport const __SLUG__ = call(/* __AUTH_ARG__ */ input);\n";
+		const asset = sharedAsset("query-client", {
+			template: "api/trpc/web/query-client.ts",
+			destination: inSourceRoot("trpc/query-client.ts"),
+		});
+		const recipe = defineTemplateRecipe({
+			addon: "trpc",
+			markers: {
+				SLUG: marker.required,
+				AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
+				AUTH_ARG: marker.toggleInline("/* __AUTH_ARG__ */ "),
+			},
+			assets: [asset],
+		});
+		const legacyValues = {
+			SLUG: "acme",
+			"// __AUTH_IMPORT__\n": 'import { auth } from "@acme/auth";\n',
+			"/* __AUTH_ARG__ */ ": "auth, ",
+		};
+		const rendered = renderRecipeAsset(recipe, asset, nextjsFramework, {
+			markers: {
+				SLUG: legacyValues.SLUG,
+				AUTH_IMPORT: legacyValues["// __AUTH_IMPORT__\n"],
+				AUTH_ARG: legacyValues["/* __AUTH_ARG__ */ "],
+			},
+			readTemplate: () => template,
+			slots: {},
+		});
+
+		expect(rendered.content).toBe(interpolate(template, legacyValues));
+	});
+});
+
+describe("framework source roots", () => {
+	it("exposes the expected root for every web framework", () => {
+		expect({
+			nextjs: nextjsFramework.sourceRoot,
+			"tanstack-start": tanstackStartFramework.sourceRoot,
+			"react-router": reactRouterFramework.sourceRoot,
+		}).toEqual({
+			nextjs: "",
+			"tanstack-start": "src",
+			"react-router": "app",
+		});
 	});
 });
 

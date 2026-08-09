@@ -457,10 +457,544 @@ export interface FrameworkDefinition<
 	readonly id: Id;
 	readonly ignoreDirs: ReadonlyArray<string>;
 	readonly name: string;
+	readonly sourceRoot: string;
 	readonly slots: ReadonlyArray<Slot>;
 	readonly tsconfigPreset: {
 		readonly content: Record<string, unknown>;
 		readonly name: string;
+	};
+}
+
+export interface RequiredMarker {
+	readonly _tag: "RequiredMarker";
+}
+
+export interface ToggleLineMarker<Carrier extends string = string> {
+	readonly _tag: "ToggleLineMarker";
+	readonly carrier: Carrier;
+}
+
+export interface ToggleInlineMarker<Carrier extends string = string> {
+	readonly _tag: "ToggleInlineMarker";
+	readonly carrier: Carrier;
+}
+
+export type TemplateMarker =
+	| RequiredMarker
+	| ToggleLineMarker
+	| ToggleInlineMarker;
+
+const requiredMarker: RequiredMarker = { _tag: "RequiredMarker" };
+
+export const marker = {
+	required: requiredMarker,
+	toggleLine<const Carrier extends string>(
+		carrier: Carrier,
+	): ToggleLineMarker<Carrier> {
+		return { _tag: "ToggleLineMarker", carrier };
+	},
+	toggleInline<const Carrier extends string>(
+		carrier: Carrier,
+	): ToggleInlineMarker<Carrier> {
+		return { _tag: "ToggleInlineMarker", carrier };
+	},
+};
+
+export interface SourceRootDestination<Path extends string = string> {
+	readonly _tag: "SourceRootDestination";
+	readonly relativePath: Path;
+}
+
+export interface ModuleDestination<Path extends string = string> {
+	readonly _tag: "ModuleDestination";
+	readonly relativePath: Path;
+}
+
+export type TemplateAssetDestination =
+	| SourceRootDestination
+	| ModuleDestination;
+
+export function inSourceRoot<const Path extends string>(
+	relativePath: Path,
+): SourceRootDestination<Path> {
+	return { _tag: "SourceRootDestination", relativePath };
+}
+
+export function inModule<const Path extends string>(
+	relativePath: Path,
+): ModuleDestination<Path> {
+	return { _tag: "ModuleDestination", relativePath };
+}
+
+export interface SharedAssetDefinition<
+	Name extends string = string,
+	Template extends string = string,
+	Destination extends TemplateAssetDestination = TemplateAssetDestination,
+> {
+	readonly _tag: "SharedAssetDefinition";
+	readonly name: Name;
+	readonly template: Template;
+	readonly destination: Destination;
+}
+
+export interface VariantAssetDefinition<
+	Name extends string = string,
+	Destination extends TemplateAssetDestination = TemplateAssetDestination,
+	Variants extends Readonly<Record<string, string>> = Readonly<
+		Record<string, string>
+	>,
+> {
+	readonly _tag: "VariantAssetDefinition";
+	readonly name: Name;
+	readonly destination: Destination;
+	readonly variants: Variants;
+}
+
+export interface SlotAssetDefinition<
+	Slot extends string = string,
+	Variants extends Readonly<Record<string, string>> = Readonly<
+		Record<string, string>
+	>,
+> {
+	readonly _tag: "SlotAssetDefinition";
+	readonly name: Slot;
+	readonly slot: Slot;
+	readonly variants: Variants;
+}
+
+export type TemplateAssetDefinition =
+	| SharedAssetDefinition
+	| VariantAssetDefinition
+	| SlotAssetDefinition;
+
+export function sharedAsset<
+	const Name extends string,
+	const Template extends string,
+	const Destination extends TemplateAssetDestination,
+>(
+	name: Name,
+	asset: {
+		readonly template: Template;
+		readonly destination: Destination;
+	},
+): SharedAssetDefinition<Name, Template, Destination> {
+	return { _tag: "SharedAssetDefinition", name, ...asset };
+}
+
+export function variantAsset<
+	const Name extends string,
+	const Destination extends TemplateAssetDestination,
+	const Variants extends Readonly<Record<string, string>>,
+>(
+	name: Name,
+	asset: {
+		readonly destination: Destination;
+		readonly variants: Variants;
+	},
+): VariantAssetDefinition<Name, Destination, Variants> {
+	return { _tag: "VariantAssetDefinition", name, ...asset };
+}
+
+export function slotAsset<
+	const Slot extends string,
+	const Variants extends Readonly<Record<string, string>>,
+>(
+	slot: Slot,
+	asset: { readonly variants: Variants },
+): SlotAssetDefinition<Slot, Variants> {
+	return { _tag: "SlotAssetDefinition", name: slot, slot, ...asset };
+}
+
+export interface TemplateRecipeDefinition<
+	Addon extends AddonId = AddonId,
+	Markers extends Readonly<Record<string, TemplateMarker>> = Readonly<
+		Record<string, TemplateMarker>
+	>,
+	Assets extends
+		ReadonlyArray<TemplateAssetDefinition> = ReadonlyArray<TemplateAssetDefinition>,
+> {
+	readonly _tag: "TemplateRecipeDefinition";
+	readonly addon: Addon;
+	readonly markers: Markers;
+	readonly assets: Assets;
+}
+
+export function defineTemplateRecipe<
+	const Addon extends AddonId,
+	const Markers extends Readonly<Record<string, TemplateMarker>>,
+	const Assets extends ReadonlyArray<TemplateAssetDefinition>,
+>(recipe: {
+	readonly addon: Addon;
+	readonly markers: Markers;
+	readonly assets: Assets;
+}): TemplateRecipeDefinition<Addon, Markers, Assets> {
+	return { _tag: "TemplateRecipeDefinition", ...recipe };
+}
+
+export type ReadTemplate = (path: string) => string;
+
+export type RecipeMarkerValues<
+	Markers extends Readonly<Record<string, TemplateMarker>>,
+> = {
+	readonly [Name in keyof Markers]: string;
+};
+
+export interface RenderRecipeValues<
+	Markers extends Readonly<Record<string, TemplateMarker>> = Readonly<
+		Record<string, TemplateMarker>
+	>,
+> {
+	readonly markers: RecipeMarkerValues<Markers>;
+	readonly readTemplate: ReadTemplate;
+	readonly slots: Readonly<Record<string, string>>;
+}
+
+export interface RenderedRecipeAsset {
+	readonly destination: string;
+	readonly content: string;
+}
+
+const recipeMarkerPattern = /__[A-Z_]+?__/g;
+const recipeMarkerNamePattern = /^[A-Z]+(?:_[A-Z]+)*$/;
+
+function markerPattern(name: string): string {
+	return `__${name}__`;
+}
+
+function markerReplacementKey(
+	name: string,
+	declaration: TemplateMarker,
+): string {
+	return declaration._tag === "RequiredMarker"
+		? markerPattern(name)
+		: declaration.carrier;
+}
+
+export function interpolate(
+	template: string,
+	values: Record<string, string>,
+): string {
+	return Object.entries(values).reduce(
+		(result, [key, value]) =>
+			result.replaceAll(key.includes("__") ? key : `__${key}__`, value),
+		template,
+	);
+}
+
+function variantTemplate(
+	variants: Readonly<Record<string, string>>,
+	frameworkId: string,
+): string | undefined {
+	return Object.entries(variants).find(([id]) => id === frameworkId)?.[1];
+}
+
+function templatePathForAsset(
+	asset: TemplateAssetDefinition,
+	frameworkId: string,
+): string | undefined {
+	return asset._tag === "SharedAssetDefinition"
+		? asset.template
+		: variantTemplate(asset.variants, frameworkId);
+}
+
+function destinationForAsset(
+	asset: TemplateAssetDefinition,
+	framework: FrameworkDefinition,
+	slots?: Readonly<Record<string, string>>,
+): string | undefined {
+	if (asset._tag === "SlotAssetDefinition")
+		return slots === undefined ? `slot:${asset.slot}` : slots[asset.slot];
+
+	if (asset.destination._tag === "ModuleDestination")
+		return asset.destination.relativePath;
+
+	return framework.sourceRoot.length === 0
+		? asset.destination.relativePath
+		: `${framework.sourceRoot}/${asset.destination.relativePath}`;
+}
+
+function recipeReplacements(
+	markers: Readonly<Record<string, TemplateMarker>>,
+	values: Readonly<Record<string, string>>,
+): Record<string, string> {
+	const replacements: Record<string, string> = {};
+	for (const [name, declaration] of Object.entries(markers))
+		replacements[markerReplacementKey(name, declaration)] = values[name] ?? "";
+
+	return replacements;
+}
+
+function recipeProbeValues(
+	markers: Readonly<Record<string, TemplateMarker>>,
+	disabledToggle?: string,
+): Record<string, string> {
+	const values: Record<string, string> = {};
+	for (const [name, declaration] of Object.entries(markers)) {
+		if (declaration._tag === "RequiredMarker") {
+			values[name] = `probe-${name}`;
+			continue;
+		}
+
+		values[declaration.carrier] =
+			name === disabledToggle
+				? ""
+				: declaration._tag === "ToggleLineMarker"
+					? `probe-${name}\n`
+					: `probe-${name} `;
+	}
+
+	return values;
+}
+
+function throwRecipeMarkerError(
+	reason:
+		| "recipe-marker-missing"
+		| "recipe-marker-undeclared"
+		| "recipe-toggle-residue",
+	recipe: TemplateRecipeDefinition,
+	markerName: string,
+	template?: string,
+): never {
+	throw new RegistryError({
+		reason,
+		registryId: recipe.addon,
+		subject: `${markerName}:${template ?? ""}:${recipe.addon}`,
+		addon: recipe.addon,
+		marker: markerName,
+		template,
+	});
+}
+
+function throwRecipeMarkerInvalidError(
+	recipe: TemplateRecipeDefinition,
+	marker: string,
+	detail: string,
+): never {
+	throw new RegistryError({
+		reason: "recipe-marker-invalid",
+		registryId: recipe.addon,
+		subject: `${marker}:${recipe.addon}`,
+		addon: recipe.addon,
+		marker,
+		detail,
+	});
+}
+
+function validateRecipeMarkers(recipe: TemplateRecipeDefinition): void {
+	const replacementKeys = new Map<string, string>();
+
+	for (const [name, declaration] of Object.entries(recipe.markers)) {
+		if (!recipeMarkerNamePattern.test(name))
+			throwRecipeMarkerInvalidError(
+				recipe,
+				name,
+				"name does not match the marker-name format",
+			);
+
+		const pattern = markerPattern(name);
+		if (
+			declaration._tag !== "RequiredMarker" &&
+			!declaration.carrier.includes(pattern)
+		)
+			throwRecipeMarkerInvalidError(
+				recipe,
+				name,
+				`carrier does not contain ${pattern}`,
+			);
+
+		const replacementKey = markerReplacementKey(name, declaration);
+		const duplicate = replacementKeys.get(replacementKey);
+		if (duplicate !== undefined)
+			throwRecipeMarkerInvalidError(
+				recipe,
+				name,
+				`replacement key duplicates ${duplicate}`,
+			);
+
+		replacementKeys.set(replacementKey, name);
+	}
+}
+
+function validateAssetVariants(
+	recipe: TemplateRecipeDefinition,
+	asset: TemplateAssetDefinition,
+	frameworks: ReadonlyArray<FrameworkDefinition>,
+): void {
+	if (asset._tag === "SharedAssetDefinition") return;
+
+	for (const frameworkId of Object.keys(asset.variants)) {
+		const framework = frameworks.find(({ id }) => id === frameworkId);
+		if (framework === undefined)
+			throw new RegistryError({
+				reason: "recipe-framework-unknown",
+				registryId: recipe.addon,
+				subject: `${frameworkId}:${recipe.addon}`,
+				addon: recipe.addon,
+				framework: frameworkId,
+			});
+
+		if (
+			asset._tag === "SlotAssetDefinition" &&
+			!framework.slots.includes(asset.slot)
+		)
+			throw new RegistryError({
+				reason: "recipe-slot-unknown",
+				registryId: recipe.addon,
+				subject: `${asset.slot}:${frameworkId}:${recipe.addon}`,
+				addon: recipe.addon,
+				framework: frameworkId,
+				slot: asset.slot,
+			});
+	}
+}
+
+function destinationClaimKey(
+	asset: TemplateAssetDefinition,
+	framework: FrameworkDefinition,
+	destination: string,
+): string {
+	return asset._tag === "SlotAssetDefinition"
+		? `${framework.id}:\u0000${asset.slot}`
+		: `${framework.id}:${destination}`;
+}
+
+export function validateTemplateRecipes(
+	recipes: ReadonlyArray<TemplateRecipeDefinition>,
+	frameworks: ReadonlyArray<FrameworkDefinition>,
+	readTemplate: ReadTemplate,
+): void {
+	const destinations = new Set<string>();
+
+	for (const recipe of recipes) {
+		validateRecipeMarkers(recipe);
+		for (const asset of recipe.assets)
+			validateAssetVariants(recipe, asset, frameworks);
+	}
+
+	for (const recipe of recipes) {
+		const templatePaths = new Set<string>();
+		for (const asset of recipe.assets) {
+			if (asset._tag === "SharedAssetDefinition")
+				templatePaths.add(asset.template);
+			else
+				for (const templatePath of Object.values(asset.variants))
+					templatePaths.add(templatePath);
+
+			for (const framework of frameworks) {
+				const templatePath = templatePathForAsset(asset, framework.id);
+				if (templatePath === undefined) continue;
+
+				const destination = destinationForAsset(asset, framework);
+				if (destination === undefined) continue;
+
+				const destinationKey = destinationClaimKey(
+					asset,
+					framework,
+					destination,
+				);
+
+				if (destinations.has(destinationKey))
+					throw new RegistryError({
+						reason: "recipe-destination-collision",
+						registryId: recipe.addon,
+						subject: destinationKey,
+						addon: recipe.addon,
+						framework: framework.id,
+						destination,
+					});
+
+				destinations.add(destinationKey);
+			}
+		}
+
+		const templates = [...templatePaths].map((templatePath) => ({
+			templatePath,
+			template: readTemplate(templatePath),
+		}));
+
+		for (const [name, declaration] of Object.entries(recipe.markers)) {
+			const pattern =
+				declaration._tag === "RequiredMarker"
+					? markerPattern(name)
+					: declaration.carrier;
+
+			if (!templates.some(({ template }) => template.includes(pattern)))
+				throwRecipeMarkerError(
+					"recipe-marker-missing",
+					recipe,
+					markerPattern(name),
+				);
+		}
+
+		for (const { templatePath, template } of templates) {
+			const declaredMarkers = new Set(
+				Object.keys(recipe.markers).map(markerPattern),
+			);
+
+			for (const occurrence of template.matchAll(recipeMarkerPattern)) {
+				const found = occurrence[0];
+				if (!declaredMarkers.has(found))
+					throwRecipeMarkerError(
+						"recipe-marker-undeclared",
+						recipe,
+						found,
+						templatePath,
+					);
+			}
+
+			for (const [name, declaration] of Object.entries(recipe.markers)) {
+				if (declaration._tag === "RequiredMarker") continue;
+
+				for (const disabledToggle of [undefined, name]) {
+					const rendered = interpolate(
+						template,
+						recipeProbeValues(recipe.markers, disabledToggle),
+					);
+
+					const residue = rendered.match(recipeMarkerPattern)?.[0];
+					if (residue !== undefined)
+						throwRecipeMarkerError(
+							"recipe-toggle-residue",
+							recipe,
+							residue,
+							templatePath,
+						);
+				}
+			}
+		}
+	}
+}
+
+export function renderRecipeAsset<
+	const Addon extends AddonId,
+	const Markers extends Readonly<Record<string, TemplateMarker>>,
+	const Assets extends ReadonlyArray<TemplateAssetDefinition>,
+>(
+	recipe: TemplateRecipeDefinition<Addon, Markers, Assets>,
+	asset: Assets[number],
+	framework: FrameworkDefinition,
+	values: RenderRecipeValues<Markers>,
+): RenderedRecipeAsset {
+	const templatePath = templatePathForAsset(asset, framework.id);
+	if (templatePath === undefined)
+		throw new Error(
+			`Recipe Variant Missing: ${asset.name} for ${framework.id} (${recipe.addon})`,
+		);
+
+	const destination = destinationForAsset(asset, framework, values.slots);
+	if (destination === undefined) {
+		const slot = asset._tag === "SlotAssetDefinition" ? asset.slot : "unknown";
+		throw new Error(
+			`Recipe Slot Missing: ${slot} for ${asset.name} (${recipe.addon})`,
+		);
+	}
+
+	return {
+		destination,
+		content: interpolate(
+			values.readTemplate(templatePath),
+			recipeReplacements(recipe.markers, values.markers),
+		),
 	};
 }
 
@@ -521,6 +1055,7 @@ export interface DefinitionRegistry<Config> {
 	readonly frameworks: ReadonlyArray<FrameworkDefinition>;
 	readonly templates: ReadonlyArray<TemplateDefinition<Config>>;
 	readonly addons: ReadonlyArray<AddonDefinition<Config>>;
+	readonly recipes: ReadonlyArray<TemplateRecipeDefinition>;
 }
 
 export function defineFramework<
@@ -532,6 +1067,7 @@ export function defineFramework<
 	readonly id: Id;
 	readonly ignoreDirs: ReadonlyArray<string>;
 	readonly name: string;
+	readonly sourceRoot: string;
 	readonly slots: Slots;
 	readonly tsconfigPreset: {
 		readonly content: Record<string, unknown>;
@@ -608,13 +1144,28 @@ export function defineAddon<
 	};
 }
 
-export function defineRegistry<Config>(registry: {
+type RegistryDefinitionInput<Config> = {
 	readonly adapters?: ReadonlyArray<AdapterDefinition<Config>>;
 	readonly frameworks: ReadonlyArray<FrameworkDefinition>;
 	readonly templates: ReadonlyArray<TemplateDefinition<Config>>;
 	readonly addons: ReadonlyArray<AddonDefinition<Config>>;
-}): DefinitionRegistry<Config> {
+} & (
+	| {
+			readonly recipes?: undefined;
+			readonly readTemplate?: undefined;
+	  }
+	| {
+			readonly recipes: ReadonlyArray<TemplateRecipeDefinition>;
+			readonly readTemplate: ReadTemplate;
+	  }
+);
+
+export function defineRegistry<Config>(
+	registry: RegistryDefinitionInput<Config>,
+): DefinitionRegistry<Config> {
 	const adapters = registry.adapters ?? [];
+	const recipes = registry.recipes ?? [];
+
 	const validateUniqueIds = (
 		kind: "Addon" | "Framework" | "Template",
 		entries: ReadonlyArray<{ readonly id: string }>,
@@ -701,7 +1252,20 @@ export function defineRegistry<Config>(registry: {
 		adapterKeys.add(key);
 	}
 
-	return { ...registry, adapters };
+	if (registry.recipes !== undefined)
+		validateTemplateRecipes(
+			registry.recipes,
+			registry.frameworks,
+			registry.readTemplate,
+		);
+
+	return {
+		adapters,
+		frameworks: registry.frameworks,
+		templates: registry.templates,
+		addons: registry.addons,
+		recipes,
+	};
 }
 
 function templateMatches<Config>(

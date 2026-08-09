@@ -293,6 +293,7 @@ describe("generate step", () => {
 			buildOutputs: [],
 			ignoreDirs: [],
 			name: "Fake Framework",
+			sourceRoot: "",
 			slots: ["layout"],
 			tsconfigPreset: { content: {}, name: "fake" },
 		});

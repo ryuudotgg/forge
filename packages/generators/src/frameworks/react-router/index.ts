@@ -27,6 +27,7 @@ export const reactRouterFramework: FrameworkDefinition<"react-router"> =
 		buildOutputs: ["build/**"],
 		ignoreDirs: [".react-router/"],
 		name: "React Router",
+		sourceRoot: "app",
 		slots: ["layout", "page", "api", "trpc", "auth"],
 		tsconfigPreset: {
 			name: "react-router",
