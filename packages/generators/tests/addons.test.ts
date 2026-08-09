@@ -563,6 +563,7 @@ describe("typescript addon", () => {
 			id: "tanstack-start",
 			ignoreDirs: [".tanstack/"],
 			name: "TanStack Start",
+			sourceRoot: "",
 			slots: [],
 			tsconfigPreset: {
 				name: "tanstack-start",
@@ -650,6 +651,7 @@ describe("gitignore addon", () => {
 			id: "tanstack-start",
 			ignoreDirs: [".tanstack/", ".output/"],
 			name: "TanStack Start",
+			sourceRoot: "",
 			slots: [],
 			tsconfigPreset: { content: {}, name: "tanstack-start" },
 		});

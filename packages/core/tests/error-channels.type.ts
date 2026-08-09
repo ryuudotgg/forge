@@ -51,3 +51,15 @@ type _SubprocessErrorsAreComplete = Assert<
 type _RegistryErrorsAreComplete = Assert<
 	Equal<RegistryEffectErrors, RegistryErrors>
 >;
+type _RecipeRegistryReasonsAreComplete = Assert<
+	Equal<
+		Extract<RegistryError["reason"], `recipe-${string}`>,
+		| "recipe-marker-missing"
+		| "recipe-marker-invalid"
+		| "recipe-marker-undeclared"
+		| "recipe-toggle-residue"
+		| "recipe-destination-collision"
+		| "recipe-framework-unknown"
+		| "recipe-slot-unknown"
+	>
+>;

@@ -193,6 +193,7 @@ function testRegistry(
 		buildOutputs: [".next/**", "!.next/cache/**"],
 		ignoreDirs: [".next/"],
 		name: "Next.js",
+		sourceRoot: "",
 		slots: ["layout"],
 		tsconfigPreset: { content: {}, name: "nextjs" },
 	});
@@ -536,6 +537,7 @@ const adapterGuardNextjs = defineFramework({
 	buildOutputs: [],
 	ignoreDirs: [],
 	name: "Next.js",
+	sourceRoot: "",
 	slots: ["integration"],
 	tsconfigPreset: { content: {}, name: "nextjs" },
 });
@@ -546,6 +548,7 @@ const adapterGuardAstro = defineFramework({
 	buildOutputs: [],
 	ignoreDirs: [],
 	name: "Astro",
+	sourceRoot: "",
 	slots: ["integration"],
 	tsconfigPreset: { content: {}, name: "astro" },
 });
@@ -810,6 +813,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Next.js",
+				sourceRoot: "",
 				slots: ["layout"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
@@ -1878,6 +1882,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Next.js",
+				sourceRoot: "",
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
@@ -1964,6 +1969,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Solid",
+				sourceRoot: "",
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "solid" },
 			});
@@ -2027,6 +2033,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Solid",
+				sourceRoot: "",
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "solid" },
 			});
@@ -2096,6 +2103,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Next.js",
+				sourceRoot: "",
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
@@ -2105,6 +2113,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Solid",
+				sourceRoot: "",
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "solid" },
 			});
@@ -2232,6 +2241,7 @@ describe("planner", () => {
 					buildOutputs: [],
 					ignoreDirs: [],
 					name: "Solid",
+					sourceRoot: "",
 					slots: ["integration"],
 					tsconfigPreset: { content: {}, name: "solid" },
 				});
@@ -2311,6 +2321,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Next.js",
+				sourceRoot: "",
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
@@ -2320,6 +2331,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Solid",
+				sourceRoot: "",
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "solid" },
 			});
@@ -2398,6 +2410,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Next.js",
+				sourceRoot: "",
 				slots: ["layout"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
@@ -2495,6 +2508,7 @@ describe("planner", () => {
 					buildOutputs: [],
 					ignoreDirs: [],
 					name: "Next.js",
+					sourceRoot: "",
 					slots: ["layout"],
 					tsconfigPreset: { content: {}, name: "nextjs" },
 				});
@@ -2618,6 +2632,7 @@ describe("planner", () => {
 					buildOutputs: [],
 					ignoreDirs: [],
 					name: "First",
+					sourceRoot: "",
 					slots: ["integration"],
 					tsconfigPreset: { content: {}, name: "first" },
 				});
@@ -2627,6 +2642,7 @@ describe("planner", () => {
 					buildOutputs: [],
 					ignoreDirs: [],
 					name: "Second",
+					sourceRoot: "",
 					slots: ["integration"],
 					tsconfigPreset: { content: {}, name: "second" },
 				});
@@ -2723,6 +2739,7 @@ describe("planner", () => {
 			buildOutputs: [],
 			ignoreDirs: [],
 			name: "Next.js",
+			sourceRoot: "",
 			slots: ["integration"],
 			tsconfigPreset: { content: {}, name: "nextjs" },
 		});
@@ -2850,6 +2867,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Next.js",
+				sourceRoot: "",
 				slots: ["trpc"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
@@ -2859,6 +2877,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "TanStack Start",
+				sourceRoot: "",
 				slots: ["trpc"],
 				tsconfigPreset: { content: {}, name: "tanstack-start" },
 			});
@@ -3109,6 +3128,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Next.js",
+				sourceRoot: "",
 				slots: ["trpc"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
@@ -3169,6 +3189,7 @@ describe("planner", () => {
 				buildOutputs: [],
 				ignoreDirs: [],
 				name: "Fake Framework",
+				sourceRoot: "",
 				slots: ["layout"],
 				tsconfigPreset: { content: {}, name: "fake" },
 			});

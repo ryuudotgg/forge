@@ -101,6 +101,13 @@ const RegistryErrorReason = Schema.Literals([
 	"adapter-addon-missing",
 	"adapter-framework-missing",
 	"adapter-slot-missing",
+	"recipe-marker-invalid",
+	"recipe-marker-missing",
+	"recipe-marker-undeclared",
+	"recipe-toggle-residue",
+	"recipe-destination-collision",
+	"recipe-framework-unknown",
+	"recipe-slot-unknown",
 ]);
 
 const RegistryErrorFields = Schema.Struct({
@@ -108,6 +115,13 @@ const RegistryErrorFields = Schema.Struct({
 	registryId: Schema.String,
 	subject: Schema.String,
 	kind: Schema.optional(Schema.Literals(["Addon", "Framework", "Template"])),
+	addon: Schema.optional(Schema.String),
+	marker: Schema.optional(Schema.String),
+	template: Schema.optional(Schema.String),
+	framework: Schema.optional(Schema.String),
+	destination: Schema.optional(Schema.String),
+	detail: Schema.optional(Schema.String),
+	slot: Schema.optional(Schema.String),
 	cause: optionalCause,
 });
 
@@ -120,6 +134,13 @@ const registryRequiredFields = {
 	"adapter-addon-missing": [],
 	"adapter-framework-missing": [],
 	"adapter-slot-missing": [],
+	"recipe-marker-invalid": ["addon", "marker", "detail"],
+	"recipe-marker-missing": ["addon", "marker"],
+	"recipe-marker-undeclared": ["addon", "marker", "template"],
+	"recipe-toggle-residue": ["addon", "marker", "template"],
+	"recipe-destination-collision": ["addon", "framework", "destination"],
+	"recipe-framework-unknown": ["addon", "framework"],
+	"recipe-slot-unknown": ["addon", "framework", "slot"],
 } satisfies Record<
 	typeof RegistryErrorReason.Type,
 	ReadonlyArray<keyof RegistryErrorPayload>
@@ -157,6 +178,20 @@ const registryMessages = {
 		`Adapter Framework Missing: ${error.subject}`,
 	"adapter-slot-missing": (error: RegistryError) =>
 		`Adapter Slot Missing: ${error.subject}`,
+	"recipe-marker-invalid": (error: RegistryError) =>
+		`Recipe Marker Invalid: ${error.marker ?? ""} (${error.addon ?? ""}): ${error.detail ?? ""}`,
+	"recipe-marker-missing": (error: RegistryError) =>
+		`Recipe Marker Missing: ${error.marker ?? ""} declared but present in no referenced template (${error.addon ?? ""})`,
+	"recipe-marker-undeclared": (error: RegistryError) =>
+		`Recipe Marker Undeclared: ${error.marker ?? ""} in ${error.template ?? ""} (${error.addon ?? ""})`,
+	"recipe-toggle-residue": (error: RegistryError) =>
+		`Recipe Toggle Residue: ${error.marker ?? ""} in ${error.template ?? ""} (${error.addon ?? ""})`,
+	"recipe-destination-collision": (error: RegistryError) =>
+		`Recipe Destination Collision: ${error.destination ?? ""} for ${error.framework ?? ""} (${error.addon ?? ""})`,
+	"recipe-framework-unknown": (error: RegistryError) =>
+		`Recipe Framework Unknown: ${error.framework ?? ""} (${error.addon ?? ""})`,
+	"recipe-slot-unknown": (error: RegistryError) =>
+		`Recipe Slot Unknown: ${error.slot ?? ""} for ${error.framework ?? ""} (${error.addon ?? ""})`,
 } satisfies Record<
 	typeof RegistryErrorReason.Type,
 	(error: RegistryError) => string

@@ -454,6 +454,7 @@ describe("renderer", () => {
 			id: "forge-web",
 			ignoreDirs: [".forge-web/"],
 			name: "Forge Web",
+			sourceRoot: "",
 			slots: [],
 			tsconfigPreset: { content: {}, name: "forge-web" },
 		});

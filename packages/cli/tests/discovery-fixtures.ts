@@ -41,6 +41,7 @@ const solid = defineFramework({
 	id: "@solid/web",
 	ignoreDirs: ["dist/"],
 	name: "Solid",
+	sourceRoot: "",
 	slots: ["app"],
 	tsconfigPreset: { content: {}, name: "solid" },
 });

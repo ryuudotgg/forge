@@ -66,6 +66,7 @@ const framework = defineFramework({
 	configFile: "fixture.config.ts",
 	ignoreDirs: ["dist/"],
 	name: "Fixture Web",
+	sourceRoot: "",
 	slots: ["page"],
 	tsconfigPreset: { content: {}, name: "fixture" },
 });

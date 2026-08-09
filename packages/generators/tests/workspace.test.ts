@@ -263,6 +263,7 @@ describe("root workspace", () => {
 			id: "tanstack-start",
 			ignoreDirs: [".tanstack/"],
 			name: "TanStack Start",
+			sourceRoot: "",
 			slots: [],
 			tsconfigPreset: { content: {}, name: "tanstack-start" },
 		});

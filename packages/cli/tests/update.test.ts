@@ -27,7 +27,13 @@ function updateFixture(options: UpdateFixtureOptions) {
 	const registry = options.registry ?? {
 		catalog: [],
 		descriptors: [],
-		registry: { adapters: [], addons: [], frameworks: [], templates: [] },
+		registry: {
+			adapters: [],
+			addons: [],
+			frameworks: [],
+			templates: [],
+			recipes: [],
+		},
 	};
 	const applyInstalledPlan = vi.fn<ApplyInstalledPlanFunction>(async () => {});
 	const intro = vi.fn();
@@ -176,7 +182,13 @@ it.effect("reports registry package version changes", () => {
 					version: "1.5.0",
 				},
 			],
-			registry: { adapters: [], addons: [], frameworks: [], templates: [] },
+			registry: {
+				adapters: [],
+				addons: [],
+				frameworks: [],
+				templates: [],
+				recipes: [],
+			},
 		},
 	});
 
