@@ -195,6 +195,21 @@ describe("better-auth addon", () => {
 		).toThrow("You need to add an ORM before you can use Better Auth.");
 	});
 
+	it("requires an orm when contributing through an adapter", () => {
+		expect(() =>
+			adapterContributionsOf(
+				"better-auth",
+				{
+					authentication: "better-auth",
+					slug: "acme",
+					web: "nextjs",
+				},
+				nextjsFramework,
+				{ auth: "app/api/auth/[...all]/route.ts" },
+			),
+		).toThrow("Orm Required: better-auth adapter for nextjs");
+	});
+
 	it("renders the prisma index with the resolved datasource provider", () => {
 		const contributions = betterAuthContributions({
 			authentication: "better-auth",
@@ -359,6 +374,26 @@ describe("better-auth addon", () => {
 			expect(route.content, orm).toContain('createFileRoute("/api/auth/$")');
 			expect(route.content, orm).toContain("return auth.handler(request);");
 			expect(route.content, orm).not.toContain("toNextJsHandler");
+		}
+	});
+
+	it("renders Next.js cookie plugins for both ORMs", () => {
+		const authOrms: ReadonlyArray<"drizzle" | "prisma"> = ["drizzle", "prisma"];
+
+		for (const orm of authOrms) {
+			const contributions = betterAuthContributions({
+				authentication: "better-auth",
+				database: "postgresql",
+				orm,
+				slug: "acme",
+				web: "nextjs",
+			});
+			const index = leafFile(contributions, "src/index.ts");
+
+			expect(index.content, orm).toContain(
+				'import { nextCookies } from "better-auth/next-js";',
+			);
+			expect(index.content, orm).toContain("plugins: [nextCookies()],");
 		}
 	});
 

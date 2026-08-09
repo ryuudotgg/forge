@@ -1,3 +1,4 @@
+import type { FrameworkDefinition } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import {
 	drizzleAdapterProvider,
@@ -13,6 +14,29 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 		SLUG: slug,
 		DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 		DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
+	};
+}
+
+export function betterAuthRecipeVars(
+	config: ForgeConfig,
+	framework: FrameworkDefinition,
+) {
+	const values = betterAuthTemplateVars(config);
+	const isNextjs = framework.id === "nextjs";
+	const isTanstackStart = framework.id === "tanstack-start";
+
+	return {
+		...values,
+		COOKIE_IMPORT: isNextjs
+			? 'import { nextCookies } from "better-auth/next-js";\n'
+			: isTanstackStart
+				? 'import { tanstackStartCookies } from "better-auth/tanstack-start";\n'
+				: "",
+		COOKIE_PLUGIN: isNextjs
+			? "  plugins: [nextCookies()],\n\n"
+			: isTanstackStart
+				? "  plugins: [tanstackStartCookies()],\n\n"
+				: "",
 	};
 }
 

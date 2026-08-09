@@ -3,10 +3,7 @@ import { slotPath } from "@ryuujs/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
-import { trpc } from "../src";
-import { trpcNextjsAdapter } from "../src/api/trpc/adapters/nextjs";
-import { trpcReactRouterAdapter } from "../src/api/trpc/adapters/react-router";
-import { trpcTanstackStartAdapter } from "../src/api/trpc/adapters/tanstack-start";
+import { builtins, trpc } from "../src";
 import { nextjsFramework } from "../src/frameworks/nextjs";
 import { reactRouterFramework } from "../src/frameworks/react-router";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
@@ -24,6 +21,7 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 		config,
 		frameworks: [framework],
 	});
+
 	if (core instanceof Promise || Effect.isEffect(core))
 		throw new Error("Synchronous Contributions Expected: trpc");
 
@@ -46,12 +44,12 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 		root: "apps/web",
 	};
 
-	const adapter =
-		config.web === "tanstack-start"
-			? trpcTanstackStartAdapter
-			: config.web === "react-router"
-				? trpcReactRouterAdapter
-				: trpcNextjsAdapter;
+	const adapter = builtins.adapters.find(
+		(entry) => entry.addon === "trpc" && entry.framework === framework.id,
+	);
+
+	if (adapter === undefined)
+		throw new Error(`Missing Adapter: trpc:${framework.id}`);
 
 	const adapted = adapter.contribute({
 		config,
