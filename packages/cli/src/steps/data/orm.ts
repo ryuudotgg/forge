@@ -20,7 +20,7 @@ const ormStep = defineStep<typeof ormSchema.Type>({
 		if (!interactive) {
 			const normalized = orms.normalize(config.orm);
 			if (normalized) {
-				const result = Schema.decodeUnknownResult(ormSchema)(normalized);
+				const result = Schema.decodeResult(ormSchema)(normalized);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

@@ -133,7 +133,7 @@ const makeAdoptionDetector = Effect.gen(function* () {
 		function* (filePath: string) {
 			const raw = yield* readRequired(filePath);
 
-			const decoded = Schema.decodeUnknownResult(PackageJsonSchema)(raw);
+			const decoded = Schema.decodeResult(PackageJsonSchema)(raw);
 			if (Result.isFailure(decoded))
 				return yield* new AdoptionFileParseError({
 					detail: String(decoded.failure),
@@ -294,7 +294,7 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			const raw = yield* readOptional(filePath);
 			if (raw === undefined) return undefined;
 
-			const decoded = Schema.decodeUnknownResult(ComponentsJsonSchema)(raw);
+			const decoded = Schema.decodeResult(ComponentsJsonSchema)(raw);
 			if (Result.isFailure(decoded))
 				return yield* new AdoptionFileParseError({
 					detail: String(decoded.failure),

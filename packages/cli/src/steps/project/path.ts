@@ -47,7 +47,7 @@ const pathStep = defineStep<string>({
 		if (!interactive) {
 			const value = config.path ?? `./${slug}`;
 
-			const result = Schema.decodeUnknownResult(pathSchema)(value);
+			const result = Schema.decodeResult(pathSchema)(value);
 			if (Result.isFailure(result)) return SKIP;
 
 			return result.success;
@@ -60,10 +60,7 @@ const pathStep = defineStep<string>({
 			defaultValue,
 			placeholder: defaultValue,
 			validate: (value) => {
-				const result = Schema.decodeUnknownResult(pathSchema)(
-					value || defaultValue,
-				);
-
+				const result = Schema.decodeResult(pathSchema)(value || defaultValue);
 				if (Result.isFailure(result)) {
 					const issues = formatSchemaError(result.failure);
 					return issues[0]?.message;

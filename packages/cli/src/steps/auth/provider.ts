@@ -31,9 +31,7 @@ const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 			);
 
 			if (normalized) {
-				const result =
-					Schema.decodeUnknownResult(authenticationSchema)(normalized);
-
+				const result = Schema.decodeResult(authenticationSchema)(normalized);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

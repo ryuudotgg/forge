@@ -27,7 +27,7 @@ const webStep = defineStep<typeof webSchema.Type>({
 		if (!interactive) {
 			const normalized = webFrameworks.normalize(config.web);
 			if (normalized) {
-				const result = Schema.decodeUnknownResult(webSchema)(normalized);
+				const result = Schema.decodeResult(webSchema)(normalized);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

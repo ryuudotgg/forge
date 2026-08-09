@@ -146,9 +146,9 @@ function yamlScalar(value: string): string | undefined {
 	if (trimmed.length === 0) return undefined;
 	if (trimmed.startsWith('"')) {
 		if (!trimmed.endsWith('"')) return undefined;
-		const decoded = Schema.decodeUnknownResult(
-			Schema.fromJsonString(Schema.String),
-		)(trimmed);
+		const decoded = Schema.decodeResult(Schema.fromJsonString(Schema.String))(
+			trimmed,
+		);
 
 		return Result.isSuccess(decoded) ? decoded.success : undefined;
 	}
@@ -277,7 +277,7 @@ export function parsePnpmWorkspace(raw: string, filePath: string) {
 			invalidDetails.push(`Invalid package entry on line ${index + 1}.`);
 	}
 
-	const decoded = Schema.decodeUnknownResult(PnpmWorkspaceSchema)({
+	const decoded = Schema.decodeResult(PnpmWorkspaceSchema)({
 		catalogEntries,
 		...(packages.length === 0 ? {} : { packages }),
 	});

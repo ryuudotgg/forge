@@ -81,10 +81,7 @@ export function readPersistedCommandVersions(
 			.pipe(Effect.option);
 
 		const packageJson = Option.flatMap(packageJsonRaw, (raw) => {
-			const decoded = Schema.decodeUnknownResult(PersistedPackageJsonSchema)(
-				raw,
-			);
-
+			const decoded = Schema.decodeResult(PersistedPackageJsonSchema)(raw);
 			return Result.isSuccess(decoded)
 				? Option.some(decoded.success)
 				: Option.none();

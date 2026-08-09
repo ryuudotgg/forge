@@ -20,7 +20,7 @@ const uiLibraryStep = defineStep<typeof uiLibrarySchema.Type>({
 		if (!interactive) {
 			const normalized = uiLibraries.normalize(config.uiLibrary);
 			if (normalized) {
-				const result = Schema.decodeUnknownResult(uiLibrarySchema)(normalized);
+				const result = Schema.decodeResult(uiLibrarySchema)(normalized);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

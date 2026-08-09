@@ -30,9 +30,7 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 		if (!interactive) {
 			const normalized = styleFrameworks.normalize(config.style);
 			if (normalized) {
-				const result =
-					Schema.decodeUnknownResult(styleFrameworkSchema)(normalized);
-
+				const result = Schema.decodeResult(styleFrameworkSchema)(normalized);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

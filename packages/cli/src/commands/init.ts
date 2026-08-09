@@ -281,7 +281,7 @@ export function buildAdoptionPlan(
 		const prototypes = yield* Effect.forEach(
 			createPlan.writes.filter((write) => write.path.endsWith("/forge.json")),
 			(write) =>
-				Schema.decodeUnknownEffect(Schema.fromJsonString(ConfigSchema))(
+				Schema.decodeEffect(Schema.fromJsonString(ConfigSchema))(
 					write.content,
 				).pipe(
 					Effect.map((module) => ({

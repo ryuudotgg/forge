@@ -39,7 +39,7 @@ const addonsStep = defineStep<typeof addonsSchema.Type>({
 					.map((addon) => optionalAddons.normalize(addon))
 					.filter((addon): addon is OptionalAddon => addon !== undefined);
 
-				const result = Schema.decodeUnknownResult(addonsSchema)(normalized);
+				const result = Schema.decodeResult(addonsSchema)(normalized);
 				if (Result.isSuccess(result)) return result.success;
 			}
 
@@ -60,7 +60,7 @@ const addonsStep = defineStep<typeof addonsSchema.Type>({
 
 		if (isCancel(selectedAddons)) cancel();
 
-		const result = Schema.decodeUnknownResult(addonsSchema)(selectedAddons);
+		const result = Schema.decodeResult(addonsSchema)(selectedAddons);
 		if (Result.isFailure(result)) return SKIP;
 
 		return result.success;

@@ -19,10 +19,7 @@ const runtimeStep = defineStep<typeof runtimeSchema.Type>({
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.runtime) {
-				const result = Schema.decodeUnknownResult(runtimeSchema)(
-					config.runtime,
-				);
-
+				const result = Schema.decodeResult(runtimeSchema)(config.runtime);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

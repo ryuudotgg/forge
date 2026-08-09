@@ -257,14 +257,14 @@ describe("project steps", () => {
 	describe("path", () => {
 		it("rejects paths that escape the current directory", () => {
 			for (const value of ["./../escape", "./.."]) {
-				const result = Schema.decodeUnknownResult(pathSchema)(value);
+				const result = Schema.decodeResult(pathSchema)(value);
 				expect(Result.isFailure(result)).toBe(true);
 			}
 		});
 
 		it("accepts nested paths and the current directory", () => {
 			for (const value of ["./apps/web", "./my-app", "."]) {
-				const result = Schema.decodeUnknownResult(pathSchema)(value);
+				const result = Schema.decodeResult(pathSchema)(value);
 				expect(Result.isSuccess(result)).toBe(true);
 			}
 		});

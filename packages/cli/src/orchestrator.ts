@@ -43,7 +43,7 @@ export async function orchestrate(
 
 	const decodeConfig = () => {
 		const schema = assembleSchema(steps);
-		const result = Schema.decodeUnknownResult(schema)(config);
+		const result = Schema.decodeResult(schema)(config);
 
 		if (Result.isFailure(result)) {
 			const issues = formatSchemaError(result.failure, config);

@@ -177,7 +177,7 @@ describe("assembleSchema", () => {
 				shouldRun: () => true,
 				execute: async () => undefined,
 			});
-			const result = Schema.decodeUnknownResult(
+			const result = Schema.decodeResult(
 				assembleSchema([platformStep, frameworkStep]),
 			)({ platforms: [platform] });
 
@@ -251,7 +251,7 @@ describe("assembleSchema", () => {
 		});
 
 		const schema = assembleSchema([withDefault, withoutDefault]);
-		const result = Schema.decodeUnknownResult(schema)({});
+		const result = Schema.decodeResult(schema)({});
 
 		expect(Result.getOrThrow(result)).toEqual({ flavor: "vanilla" });
 	});

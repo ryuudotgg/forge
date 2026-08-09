@@ -20,10 +20,7 @@ const desktopStep = defineStep<typeof desktopSchema.Type>({
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.desktop) {
-				const result = Schema.decodeUnknownResult(desktopSchema)(
-					config.desktop,
-				);
-
+				const result = Schema.decodeResult(desktopSchema)(config.desktop);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

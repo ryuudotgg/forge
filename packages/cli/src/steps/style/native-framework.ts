@@ -35,7 +35,7 @@ const nativeStyleFrameworkStep = defineStep<
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.nativeStyleFramework) {
-				const result = Schema.decodeUnknownResult(nativeStyleFrameworkSchema)(
+				const result = Schema.decodeResult(nativeStyleFrameworkSchema)(
 					config.nativeStyleFramework,
 				);
 

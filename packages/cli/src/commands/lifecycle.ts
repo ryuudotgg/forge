@@ -191,9 +191,9 @@ export async function hasProjectDevDependency(
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const raw = yield* fs.readFileString(`${projectRoot}/package.json`);
-			const packageJson = yield* Schema.decodeUnknownEffect(
-				ProjectPackageJsonSchema,
-			)(raw);
+			const packageJson = yield* Schema.decodeEffect(ProjectPackageJsonSchema)(
+				raw,
+			);
 
 			return (
 				packageJson.devDependencies !== undefined &&

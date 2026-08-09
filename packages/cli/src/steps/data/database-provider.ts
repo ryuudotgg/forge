@@ -22,7 +22,7 @@ const databaseProviderStep = defineStep<DatabaseProvider>({
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.databaseProvider) {
-				const result = Schema.decodeUnknownResult(databaseProviderSchema)(
+				const result = Schema.decodeResult(databaseProviderSchema)(
 					config.databaseProvider,
 				);
 

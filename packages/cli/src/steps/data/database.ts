@@ -18,7 +18,7 @@ const databaseStep = defineStep<typeof databaseSchema.Type>({
 		if (!interactive) {
 			const normalized = databases.normalize(config.database);
 			if (normalized) {
-				const result = Schema.decodeUnknownResult(databaseSchema)(normalized);
+				const result = Schema.decodeResult(databaseSchema)(normalized);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

@@ -20,7 +20,7 @@ const mobileStep = defineStep<typeof mobileSchema.Type>({
 	async execute(config, interactive) {
 		if (!interactive) {
 			if (config.mobile) {
-				const result = Schema.decodeUnknownResult(mobileSchema)(config.mobile);
+				const result = Schema.decodeResult(mobileSchema)(config.mobile);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

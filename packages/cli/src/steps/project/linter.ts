@@ -25,7 +25,7 @@ const linterStep = defineStep<typeof linterSchema.Type>({
 		if (!interactive) {
 			const normalized = linters.normalize(config.linter);
 			if (normalized) {
-				const result = Schema.decodeUnknownResult(linterSchema)(normalized);
+				const result = Schema.decodeResult(linterSchema)(normalized);
 				if (Result.isSuccess(result)) return result.success;
 			}
 

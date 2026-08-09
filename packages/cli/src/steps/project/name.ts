@@ -41,17 +41,17 @@ const nameStep = defineStep<{ name: string; slug: string }>({
 
 	async execute(config, interactive) {
 		if (config.name && config.slug) {
-			const nameResult = Schema.decodeUnknownResult(nameSchema)(config.name);
-			const slugResult = Schema.decodeUnknownResult(slugSchema)(config.slug);
+			const nameResult = Schema.decodeResult(nameSchema)(config.name);
+			const slugResult = Schema.decodeResult(slugSchema)(config.slug);
 			if (Result.isSuccess(nameResult) && Result.isSuccess(slugResult))
 				return { name: nameResult.success, slug: slugResult.success };
 		}
 
 		if (config.name) {
-			const nameResult = Schema.decodeUnknownResult(nameSchema)(config.name);
+			const nameResult = Schema.decodeResult(nameSchema)(config.name);
 			if (Result.isSuccess(nameResult)) {
 				const slug = slugify(nameResult.success);
-				const slugResult = Schema.decodeUnknownResult(slugSchema)(slug);
+				const slugResult = Schema.decodeResult(slugSchema)(slug);
 				if (Result.isSuccess(slugResult))
 					return { name: nameResult.success, slug: slugResult.success };
 			}
@@ -69,7 +69,7 @@ const nameStep = defineStep<{ name: string; slug: string }>({
 					return issues[0]?.message;
 				}
 
-				const slugResult = Schema.decodeUnknownResult(slugSchema)(
+				const slugResult = Schema.decodeResult(slugSchema)(
 					slugify(nameResult.success),
 				);
 
