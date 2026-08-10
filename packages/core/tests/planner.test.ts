@@ -805,6 +805,79 @@ describe("planner", () => {
 		});
 	});
 
+	it("accepts resolved Promise definition contributions", async () => {
+		await withTempDir("planner-definition-promise", async (directory) => {
+			const addon = defineAddon<TestConfig>({
+				id: "promise-addon",
+				name: "Promise Addon",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "single",
+				when: () => true,
+				contribute: () =>
+					Promise.resolve([
+						leafTextFile(
+							projectTarget(),
+							"promise.ts",
+							"export const promised = true;\n",
+						),
+					]),
+			});
+			const registry = defineRegistry({
+				adapters: [],
+				frameworks: [],
+				templates: [],
+				addons: [addon],
+			});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, {}, registry),
+			);
+
+			expect(
+				plan.writes.find((write) => write.path === "promise.ts")?.content,
+			).toBe("export const promised = true;\n");
+		});
+	});
+
+	it("maps rejected Promise definition contributions to typed generator failures", async () => {
+		await withTempDir(
+			"planner-definition-promise-rejection",
+			async (directory) => {
+				const cause = new Error("definition rejected");
+				const addon = defineAddon<TestConfig>({
+					id: "rejecting-promise-addon",
+					name: "Rejecting Promise Addon",
+					version: "0.1.0",
+					category: "addon",
+					exclusive: false,
+					targetMode: "single",
+					when: () => true,
+					contribute: () => Promise.reject(cause),
+				});
+				const registry = defineRegistry({
+					adapters: [],
+					frameworks: [],
+					templates: [],
+					addons: [addon],
+				});
+
+				const exit = await Effect.runPromiseExit(
+					planCreateEffect(directory, {}, registry),
+				);
+				const error = generatorFailure(exit);
+
+				expect(error).toBeDefined();
+				expect(error?.generatorId).toBe("rejecting-promise-addon");
+				expect(error?.reason).toBe("definition-failed");
+				expect(error?.detail).toBe("definition rejected");
+				expect(error?.cause).toBe(cause);
+				expect(error?.message).toBe("Definition Failed: definition rejected");
+			},
+		);
+	});
+
 	it("maps synchronous adapter throws to typed generator failures", async () => {
 		await withTempDir("planner-adapter-throw", async (directory) => {
 			const framework = defineFramework({
