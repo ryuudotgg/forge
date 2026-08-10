@@ -13,5 +13,6 @@ export type {
 export {
 	AdoptionFileParseError,
 	AdoptionFileReadError,
+	AdoptionTraversalLimitError,
 	type CatalogEntry,
 } from "./workspace";

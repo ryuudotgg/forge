@@ -38,12 +38,14 @@ import {
 import {
 	AdoptionFileParseError,
 	AdoptionFileReadError,
+	AdoptionTraversalLimitError,
 	type CatalogEntry,
 	ComponentsJsonSchema,
 	matchesWorkspacePatterns,
 	type PackageJson,
 	PackageJsonSchema,
 	parsePnpmWorkspace,
+	workspaceFrontiers,
 	workspacePatterns,
 } from "./workspace";
 
@@ -73,6 +75,30 @@ const ignoredDirectories = new Set([
 	"node_modules",
 ]);
 
+const MAXIMUM_ADOPTION_SCAN_DEPTH = 64;
+const MAXIMUM_ADOPTION_VISITED_DIRECTORIES = 10_000;
+const adoptionTraversalLimitMessage =
+	"We stopped scanning because your workspace patterns cover too many directories. You can narrow your workspace patterns and try again.";
+
+interface AdoptionScanState {
+	visitedDirectories: number;
+}
+
+interface AdoptionScanBounds {
+	readonly depth: number;
+	readonly visitedDirectories: number;
+}
+
+type AdoptionScanBoundsOverride = Partial<AdoptionScanBounds>;
+
+const defaultAdoptionScanBounds = {
+	depth: MAXIMUM_ADOPTION_SCAN_DEPTH,
+	visitedDirectories: MAXIMUM_ADOPTION_VISITED_DIRECTORIES,
+} satisfies AdoptionScanBounds;
+
+const adoptionScanBounds =
+	Context.Service<AdoptionScanBounds>("AdoptionScanBounds");
+
 function normalizePath(path: string): string {
 	return path.split(sep).join("/");
 }
@@ -87,7 +113,13 @@ function isWithinProject(projectRoot: string, path: string): boolean {
 	);
 }
 
+function directoryDepth(projectRoot: string, path: string): number {
+	const pathFromRoot = relative(projectRoot, path);
+	return pathFromRoot.length === 0 ? 0 : pathFromRoot.split(sep).length;
+}
+
 const makeAdoptionDetector = Effect.gen(function* () {
+	const scanBounds = yield* adoptionScanBounds;
 	const fs = yield* FileSystem.FileSystem;
 
 	const exists = Effect.fn("AdoptionDetector.exists")(function* (
@@ -165,13 +197,33 @@ const makeAdoptionDetector = Effect.gen(function* () {
 		projectRoot: string,
 		currentPath: string,
 		canonicalProjectRoot: string,
-	) => Effect.Effect<ReadonlyArray<string>, AdoptionFileReadError> = Effect.fn(
-		"AdoptionDetector.scanPackageDirectories",
-	)(function* (
+		scanState: AdoptionScanState,
+		scanBounds: AdoptionScanBounds,
+	) => Effect.Effect<
+		ReadonlyArray<string>,
+		AdoptionFileReadError | AdoptionTraversalLimitError
+	> = Effect.fn("AdoptionDetector.scanPackageDirectories")(function* (
 		projectRoot: string,
 		currentPath: string,
 		canonicalProjectRoot: string,
+		scanState: AdoptionScanState,
+		scanBounds: AdoptionScanBounds,
 	) {
+		if (directoryDepth(projectRoot, currentPath) > scanBounds.depth)
+			return yield* new AdoptionTraversalLimitError({
+				detail: `Maximum directory depth of ${scanBounds.depth} exceeded.`,
+				filePath: currentPath,
+				message: adoptionTraversalLimitMessage,
+			});
+
+		scanState.visitedDirectories += 1;
+		if (scanState.visitedDirectories > scanBounds.visitedDirectories)
+			return yield* new AdoptionTraversalLimitError({
+				detail: `Maximum visited-directory count of ${scanBounds.visitedDirectories} exceeded.`,
+				filePath: currentPath,
+				message: adoptionTraversalLimitMessage,
+			});
+
 		const entries = yield* fs.readDirectory(currentPath).pipe(
 			Effect.catchTag("PlatformError", (error) =>
 				Effect.fail(
@@ -185,10 +237,14 @@ const makeAdoptionDetector = Effect.gen(function* () {
 		);
 
 		const roots: string[] = [];
-		if (entries.includes("package.json") && currentPath !== projectRoot)
+		const isPackageRoot =
+			entries.includes("package.json") && currentPath !== projectRoot;
+
+		if (isPackageRoot)
 			roots.push(normalizePath(relative(projectRoot, currentPath)));
 
 		for (const entry of entries) {
+			if (isPackageRoot && entry === "node_modules") continue;
 			if (ignoredDirectories.has(entry)) continue;
 
 			const fullPath = join(currentPath, entry);
@@ -217,11 +273,75 @@ const makeAdoptionDetector = Effect.gen(function* () {
 					projectRoot,
 					fullPath,
 					canonicalProjectRoot,
+					scanState,
+					scanBounds,
 				)),
 			);
 		}
 
 		return roots;
+	});
+
+	const scanWorkspaceFrontier = Effect.fn(
+		"AdoptionDetector.scanWorkspaceFrontier",
+	)(function* (
+		projectRoot: string,
+		frontier: string,
+		canonicalProjectRoot: string,
+		scanState: AdoptionScanState,
+		scanBounds: AdoptionScanBounds,
+	) {
+		let currentPath = projectRoot;
+
+		const segments = frontier.length === 0 ? [] : frontier.split("/");
+		for (const segment of segments) {
+			if (ignoredDirectories.has(segment)) return [];
+
+			const entries = yield* fs.readDirectory(currentPath).pipe(
+				Effect.catchTag("PlatformError", (error) =>
+					Effect.fail(
+						new AdoptionFileReadError({
+							detail: String(error),
+							filePath: currentPath,
+							message: `Adoption Directory Read Failed: ${currentPath}`,
+						}),
+					),
+				),
+			);
+
+			if (!entries.includes(segment)) return [];
+
+			const fullPath = join(currentPath, segment);
+			if (yield* isSymbolicLink(fullPath)) return [];
+
+			const info = yield* fs.stat(fullPath).pipe(
+				Effect.map(Option.some),
+				Effect.catchTag("PlatformError", () => Effect.succeed(Option.none())),
+			);
+
+			if (Option.isNone(info) || info.value.type !== "Directory") return [];
+
+			const canonicalPath = yield* fs.realPath(fullPath).pipe(
+				Effect.map(Option.some),
+				Effect.catchTag("PlatformError", () => Effect.succeed(Option.none())),
+			);
+
+			if (
+				Option.isNone(canonicalPath) ||
+				!isWithinProject(canonicalProjectRoot, canonicalPath.value)
+			)
+				return [];
+
+			currentPath = fullPath;
+		}
+
+		return yield* scanPackageDirectories(
+			projectRoot,
+			currentPath,
+			canonicalProjectRoot,
+			scanState,
+			scanBounds,
+		);
 	});
 
 	const readPnpmWorkspace = Effect.fn("AdoptionDetector.readPnpmWorkspace")(
@@ -263,11 +383,18 @@ const makeAdoptionDetector = Effect.gen(function* () {
 				),
 			);
 
-			const scannedRoots = yield* scanPackageDirectories(
-				projectRoot,
-				projectRoot,
-				canonicalProjectRoot,
-			);
+			const scanState: AdoptionScanState = { visitedDirectories: 1 };
+			const scannedRoots: string[] = [];
+			for (const frontier of workspaceFrontiers(patterns))
+				scannedRoots.push(
+					...(yield* scanWorkspaceFrontier(
+						projectRoot,
+						frontier,
+						canonicalProjectRoot,
+						scanState,
+						scanBounds,
+					)),
+				);
 
 			const roots = scannedRoots
 				.filter((root) => matchesWorkspacePatterns(root, patterns))
@@ -544,6 +671,8 @@ export class AdoptionDetector extends Context.Service<
 	static readonly Default = Layer.effect(
 		AdoptionDetector,
 		makeAdoptionDetector,
+	).pipe(
+		Layer.provide(Layer.succeed(adoptionScanBounds, defaultAdoptionScanBounds)),
 	);
 	static readonly detect = (
 		...args: Parameters<AdoptionDetectorService["detect"]>
@@ -555,3 +684,15 @@ export class AdoptionDetector extends Context.Service<
 		...args: Parameters<AdoptionDetectorService["rootPackageName"]>
 	) => AdoptionDetector.use((service) => service.rootPackageName(...args));
 }
+
+export const AdoptionDetectorTest = {
+	layer: (scanBoundsOverride: AdoptionScanBoundsOverride = {}) =>
+		Layer.effect(AdoptionDetector, makeAdoptionDetector).pipe(
+			Layer.provide(
+				Layer.succeed(adoptionScanBounds, {
+					...defaultAdoptionScanBounds,
+					...scanBoundsOverride,
+				} satisfies AdoptionScanBounds),
+			),
+		),
+};

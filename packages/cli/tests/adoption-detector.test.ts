@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+	chmod,
+	mkdir,
+	mkdtemp,
+	rm,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
@@ -16,7 +23,9 @@ import {
 	AdoptionDetector,
 	AdoptionFileParseError,
 	AdoptionFileReadError,
+	AdoptionTraversalLimitError,
 } from "../src/commands/adoption";
+import { AdoptionDetectorTest } from "../src/commands/adoption/detector";
 
 const detectorLayer = AdoptionDetector.Default.pipe(
 	Layer.provide(NodeServices.layer),
@@ -99,6 +108,14 @@ function detect(root: string) {
 function enumerate(root: string) {
 	return Effect.runPromise(
 		AdoptionDetector.enumerate(root).pipe(Effect.provide(detectorLayer)),
+	);
+}
+
+function detectorLayerWithScanBounds(
+	scanBounds: Parameters<typeof AdoptionDetectorTest.layer>[0],
+) {
+	return AdoptionDetectorTest.layer(scanBounds).pipe(
+		Layer.provide(NodeServices.layer),
 	);
 }
 
@@ -722,6 +739,80 @@ describe("AdoptionDetector", () => {
 			},
 			async (root) => {
 				expect(await enumerate(root)).toEqual(["apps/web"]);
+			},
+		);
+	});
+
+	it("detects packages under build with recursive workspace patterns", async () => {
+		await withFixture(
+			"recursive-build-package",
+			{
+				"apps/web/build/package.json": json({ dependencies: { next: "^16" } }),
+				"package.json": json({ workspaces: ["apps/**"] }),
+			},
+			async (root) => {
+				expect(await enumerate(root)).toEqual(["apps/web/build"]);
+			},
+		);
+	});
+
+	it("does not scan unreadable directories outside workspace frontiers", async () => {
+		await withFixture(
+			"unreadable-outside-frontier",
+			{
+				"packages/ui/package.json": json({}),
+				"package.json": json({ workspaces: ["packages/*"] }),
+			},
+			async (root) => {
+				const unreadable = join(root, "secrets");
+				await mkdir(unreadable);
+				await chmod(unreadable, 0o000);
+				try {
+					expect(await enumerate(root)).toEqual(["packages/ui"]);
+				} finally {
+					await chmod(unreadable, 0o755);
+				}
+			},
+		);
+	});
+
+	it("asks users to narrow workspace patterns when scan depth exceeds the limit", async () => {
+		const segments = Array.from({ length: 65 }, (_, index) => `level-${index}`);
+		const packagePath = `${segments.join("/")}/package.json`;
+
+		await withFixture(
+			"scan-depth-limit",
+			{
+				[packagePath]: json({}),
+				"package.json": json({ workspaces: ["**"] }),
+			},
+			async (root) => {
+				const failure = await parseFailure(AdoptionDetector.enumerate(root));
+				expect(failure).toBeInstanceOf(AdoptionTraversalLimitError);
+				expect(failure.message).toBe(
+					"We stopped scanning because your workspace patterns cover too many directories. You can narrow your workspace patterns and try again.",
+				);
+			},
+		);
+	});
+
+	it("asks users to narrow workspace patterns when visited-directory count exceeds the limit", async () => {
+		await withFixture(
+			"scan-visited-directory-limit",
+			{
+				"apps/admin/package.json": json({}),
+				"apps/web/package.json": json({}),
+				"package.json": json({ workspaces: ["apps/*"] }),
+			},
+			async (root) => {
+				const failure = await parseFailure(
+					AdoptionDetector.enumerate(root),
+					detectorLayerWithScanBounds({ visitedDirectories: 2 }),
+				);
+				expect(failure).toBeInstanceOf(AdoptionTraversalLimitError);
+				expect(failure.message).toBe(
+					"We stopped scanning because your workspace patterns cover too many directories. You can narrow your workspace patterns and try again.",
+				);
 			},
 		);
 	});
