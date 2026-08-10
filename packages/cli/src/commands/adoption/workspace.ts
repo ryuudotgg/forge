@@ -52,6 +52,11 @@ export class AdoptionFileParseError extends Schema.TaggedErrorClass<AdoptionFile
 	{ detail: Schema.String, filePath: Schema.String, message: Schema.String },
 ) {}
 
+export class AdoptionTraversalLimitError extends Schema.TaggedErrorClass<AdoptionTraversalLimitError>()(
+	"AdoptionTraversalLimitError",
+	{ detail: Schema.String, filePath: Schema.String, message: Schema.String },
+) {}
+
 export function workspacePatterns(
 	workspaces: NonNullable<PackageJson["workspaces"]>,
 ) {
@@ -105,7 +110,7 @@ function globSource(pattern: string): string {
 	return source;
 }
 
-function globPattern(pattern: string): RegExp | undefined {
+function globAlternatives(pattern: string): ReadonlyArray<string> | undefined {
 	const normalized = pattern.replace(/^\.\//, "").replace(/\/$/, "");
 	if (
 		normalized.length === 0 ||
@@ -114,10 +119,51 @@ function globPattern(pattern: string): RegExp | undefined {
 	)
 		return undefined;
 
-	const alternatives = braceAlternatives(normalized);
+	return braceAlternatives(normalized);
+}
+
+function globPattern(pattern: string): RegExp | undefined {
+	const alternatives = globAlternatives(pattern);
 	if (alternatives === undefined) return undefined;
 
 	return new RegExp(`^(?:${alternatives.map(globSource).join("|")})$`);
+}
+
+function literalPrefix(pattern: string): string {
+	const prefix: string[] = [];
+	for (const segment of pattern.split("/")) {
+		if (segment.includes("*") || segment.includes("?")) break;
+		prefix.push(segment);
+	}
+	return prefix.join("/");
+}
+
+function isCoveredBy(frontier: string, other: string): boolean {
+	return other.length === 0 || frontier.startsWith(`${other}/`);
+}
+
+export function workspaceFrontiers(
+	patterns: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+	const frontiers = new Set<string>();
+
+	for (const pattern of patterns) {
+		if (pattern.startsWith("!")) continue;
+
+		const alternatives = globAlternatives(pattern);
+		if (alternatives === undefined) continue;
+
+		for (const alternative of alternatives)
+			frontiers.add(literalPrefix(alternative));
+	}
+
+	const uniqueFrontiers = [...frontiers];
+	return uniqueFrontiers.filter(
+		(frontier) =>
+			!uniqueFrontiers.some(
+				(other) => other !== frontier && isCoveredBy(frontier, other),
+			),
+	);
 }
 
 export function matchesWorkspacePatterns(
