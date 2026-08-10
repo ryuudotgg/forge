@@ -8,7 +8,7 @@ import {
 	sep,
 } from "node:path";
 import { Context, Effect, FileSystem, Layer, Result } from "effect";
-import { ApplyError, type ApplyRefusalReason } from "./errors";
+import { ApplyError, type ApplyRefusalReason, type StateError } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
 import { envResidue, threeWayMergeEnv } from "./merge/env";
@@ -91,6 +91,96 @@ interface PreflightClassification {
 	readonly hasUnmanagedRemovals: boolean;
 	readonly refusals: ReadonlyArray<ApplyRefusal>;
 }
+
+type ApplyReasons<Reason extends ApplyError["reason"]> = ReadonlyArray<Reason>;
+
+interface PreflightPhaseResult {
+	readonly bases: Map<string, string>;
+	readonly committedLockfile: Lockfile;
+	readonly committedManifest: Manifest;
+	readonly policyReadHashes: Map<string, string>;
+	readonly previousStateBundle: StateBundle;
+	readonly removals: Array<string>;
+	readonly writes: Array<PlannedWrite>;
+}
+
+interface PreflightPhaseContract {
+	// Error union is raise-site-derived, not compiler-bound.
+	readonly error: PreflightPhaseError;
+	readonly applyReasons: ApplyReasons<
+		| "path-escapes-project-root"
+		| "content-hash-failed"
+		| "file-read-failed"
+		| "json-parse-failed"
+		| "managed-file-modified"
+		| "managed-base-read-failed"
+		| "resolution-label-unknown"
+		| "unmanaged-file-exists"
+		| "preflight-failed"
+		| "managed-base-forbidden"
+		| "managed-base-content-missing"
+		| "managed-base-hash-mismatch"
+	>;
+	readonly result: PreflightPhaseResult;
+}
+
+type PreflightPhaseError = ApplyError | StateError;
+
+interface StagedWrite {
+	readonly path: string;
+	readonly stagedPath: string;
+}
+
+interface StagedBase {
+	readonly hash: string;
+	readonly stagedPath: string;
+}
+
+interface StagingPhaseResult {
+	readonly bases: Array<StagedBase>;
+	readonly lockfilePath: string;
+	readonly manifestPath: string;
+	readonly previousStateBundlePath: string;
+	readonly writes: Array<StagedWrite>;
+}
+
+interface StagingPhaseContract {
+	// Error union is raise-site-derived, not compiler-bound.
+	readonly error: StagingPhaseError;
+	readonly applyReasons: ApplyReasons<
+		| "path-escapes-project-root"
+		| "staging-directory-failed"
+		| "staged-directory-write-failed"
+		| "staged-file-write-failed"
+	>;
+	readonly result: StagingPhaseResult;
+}
+
+type StagingPhaseError = ApplyError;
+
+interface PublicationPhaseContract {
+	// Error union is raise-site-derived, not compiler-bound.
+	readonly error: PublicationPhaseError;
+	readonly applyReasons: ApplyReasons<
+		| "path-escapes-project-root"
+		| "content-hash-failed"
+		| "file-read-failed"
+		| "managed-file-modified"
+		| "managed-base-hash-mismatch"
+		| "atomic-state-backup-failed"
+		| "file-remove-failed"
+		| "directory-write-failed"
+		| "atomic-file-write-failed"
+		| "base-directory-failed"
+		| "atomic-base-write-failed"
+		| "atomic-manifest-write-failed"
+		| "atomic-lockfile-write-failed"
+		| "atomic-state-publish-failed"
+	>;
+	readonly result: ReturnType<() => void>;
+}
+
+type PublicationPhaseError = ApplyError;
 
 function classifyPreflight(
 	refusals: ReadonlyArray<ApplyRefusal>,
@@ -610,8 +700,8 @@ const makeApply = Effect.gen(function* () {
 				]),
 			);
 
-		const writesToApply: PlannedWrite[] = [];
-		const removalsToApply: string[] = [];
+		const writesToApply: PreflightPhaseContract["result"]["writes"] = [];
+		const removalsToApply: PreflightPhaseContract["result"]["removals"] = [];
 
 		const conflicts: ApplyConflict[] = [];
 		const refusals: ApplyRefusal[] = [];
@@ -743,7 +833,8 @@ const makeApply = Effect.gen(function* () {
 				});
 		}
 
-		const policyReadHashes = new Map<string, string>();
+		const policyReadHashes: PreflightPhaseContract["result"]["policyReadHashes"] =
+			new Map();
 		for (const file of plan.writes) {
 			const fullPath = yield* ensureContained(projectRoot, file.path);
 			if (!(yield* pathExists(fullPath, file.path))) {
@@ -1072,18 +1163,18 @@ const makeApply = Effect.gen(function* () {
 		const committedManifest = {
 			...plan.manifest,
 			schemaVersion: 1,
-		} satisfies Manifest;
+		} satisfies PreflightPhaseContract["result"]["committedManifest"];
 
 		const committedLockfile = {
 			...plan.lockfile,
 			artifacts: committedArtifacts,
 			schemaVersion: 1,
-		} satisfies Lockfile;
+		} satisfies PreflightPhaseContract["result"]["committedLockfile"];
 
 		const previousStateBundle = {
 			lockfile: previousLockfile,
 			manifest: previousManifest,
-		} satisfies StateBundle;
+		} satisfies PreflightPhaseContract["result"]["previousStateBundle"];
 
 		const pureWritesById = new Map(
 			plan.writes.flatMap((write) =>
@@ -1096,7 +1187,7 @@ const makeApply = Effect.gen(function* () {
 		for (const [artifactId, content] of Object.entries(plan.baseContents ?? {}))
 			pureWritesById.set(artifactId, content);
 
-		const bases = new Map<string, string>();
+		const bases: PreflightPhaseContract["result"]["bases"] = new Map();
 		for (const [artifactId, artifact] of Object.entries(
 			committedLockfile.artifacts,
 		)) {
@@ -1235,11 +1326,12 @@ const makeApply = Effect.gen(function* () {
 			return stagedPath;
 		});
 
-		const commit = Effect.gen(function* () {
-			const stagedWrites: Array<{
-				readonly path: string;
-				readonly stagedPath: string;
-			}> = [];
+		const commit: Effect.Effect<
+			PublicationPhaseContract["result"],
+			ApplyError,
+			State
+		> = Effect.gen(function* () {
+			const stagedWrites: StagingPhaseContract["result"]["writes"] = [];
 
 			for (const write of writesToApply)
 				stagedWrites.push({
@@ -1247,10 +1339,7 @@ const makeApply = Effect.gen(function* () {
 					stagedPath: yield* stageWrite(`files/${write.path}`, write.content),
 				});
 
-			const stagedBases: Array<{
-				readonly hash: string;
-				readonly stagedPath: string;
-			}> = [];
+			const stagedBases: StagingPhaseContract["result"]["bases"] = [];
 
 			for (const [hash, content] of bases)
 				stagedBases.push({
@@ -1258,20 +1347,23 @@ const makeApply = Effect.gen(function* () {
 					stagedPath: yield* stageWrite(`bases/${hash}`, content),
 				});
 
-			const stagedManifest = yield* stageWrite(
-				"state/manifest.json",
-				formatJson(committedManifest, { compact: false }),
-			);
+			const stagedManifest: StagingPhaseContract["result"]["manifestPath"] =
+				yield* stageWrite(
+					"state/manifest.json",
+					formatJson(committedManifest, { compact: false }),
+				);
 
-			const stagedLockfile = yield* stageWrite(
-				"state/lock.json",
-				formatJson(committedLockfile, { compact: false }),
-			);
+			const stagedLockfile: StagingPhaseContract["result"]["lockfilePath"] =
+				yield* stageWrite(
+					"state/lock.json",
+					formatJson(committedLockfile, { compact: false }),
+				);
 
-			const stagedPreviousStateBundle = yield* stageWrite(
-				"state/previous-state.json",
-				formatJson(previousStateBundle, { compact: false }),
-			);
+			const stagedPreviousStateBundle: StagingPhaseContract["result"]["previousStateBundlePath"] =
+				yield* stageWrite(
+					"state/previous-state.json",
+					formatJson(previousStateBundle, { compact: false }),
+				);
 
 			yield* validateExistingBases();
 			yield* revalidatePolicyInputs();

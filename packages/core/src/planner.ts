@@ -1,7 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import type {
 	AdapterDefinition,
-	AdapterModule,
 	AddonDefinition,
 	Contribution,
 	DefinitionRegistry,
@@ -17,7 +16,6 @@ import {
 	addonDeclaresFramework,
 	isAddonCompatibleWithModule,
 	resolveSlotPath,
-	validateAdapterAgainstModule,
 	validateAddonAgainstSelection,
 } from "./authoring";
 import { CommandProbe } from "./command";
@@ -29,10 +27,23 @@ import {
 	type Slots,
 } from "./config";
 import { dependencyFormatFor } from "./environment";
-import { GeneratorError, PlannerError } from "./errors";
+import { PlannerError, type RendererError } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
 import { filePath } from "./operations";
+import {
+	type Definition,
+	definitionKey,
+	type EvaluatedDefinition,
+	type EvaluationPhaseContract,
+	evaluateAdapters,
+	evaluateDefinitions,
+	type ManagedModuleRecord,
+	type PlannerReasons,
+	type SelectionPhaseContract,
+	type TargetedLeafFile,
+	type TargetingPhaseContract,
+} from "./planner-evaluation";
 import {
 	type RenderBucket,
 	type RenderedArtifact,
@@ -50,17 +61,6 @@ import {
 	State,
 	SURFACE_MERGE_SEMANTICS_VERSION,
 } from "./state";
-
-type Definition<ConfigValue> =
-	| TemplateDefinition<ConfigValue>
-	| AddonDefinition<ConfigValue>;
-
-interface EvaluatedDefinition {
-	readonly contributions: ReadonlyArray<Contribution>;
-	readonly definitionId: string;
-	readonly excludedModuleIds?: ReadonlySet<ModuleId>;
-	readonly order: number;
-}
 
 function retargetAdoptedTarget(
 	target: TargetRef,
@@ -163,10 +163,10 @@ export function retargetAdoptedContribution(
 }
 
 function expandAdoptedTemplateEvaluations<ConfigValue>(
-	evaluated: ReadonlyArray<EvaluatedDefinition>,
+	evaluated: EvaluationPhaseContract["evaluated"],
 	registry: DefinitionRegistry<ConfigValue>,
 	modules: ReadonlyArray<DiscoveredModule>,
-): ReadonlyArray<EvaluatedDefinition> {
+): EvaluationPhaseContract["evaluated"] {
 	if (modules.length === 0) return evaluated;
 
 	const templateIds = new Set(
@@ -203,13 +203,6 @@ function expandAdoptedTemplateEvaluations<ConfigValue>(
 			),
 		}));
 	});
-}
-
-interface ManagedModuleRecord {
-	config: Config;
-	readonly definitionIds: ReadonlyArray<string>;
-	readonly id: ModuleId;
-	readonly root: string;
 }
 
 function withModuleId(
@@ -256,6 +249,26 @@ export interface ProjectPlan {
 	readonly removals: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedFile>;
 }
+
+interface RenderPlanningPhaseResult {
+	readonly dependencyNames: ProjectPlan["dependencyNames"];
+	readonly leafFiles: TargetingPhaseContract["result"]["leafFiles"];
+	readonly lockfile: Lockfile;
+	readonly manifest: Manifest;
+	readonly renderedSurfaces: ReadonlyArray<RenderedArtifact>;
+	readonly writes: ReadonlyArray<PlannedFile>;
+}
+
+interface RenderPlanningPhaseContract {
+	// Error union is raise-site-derived, not compiler-bound.
+	readonly error: RenderPlanningPhaseError;
+	readonly plannerReasons: PlannerReasons<
+		"content-hash-failed" | "write-path-collision"
+	>;
+	readonly result: RenderPlanningPhaseResult;
+}
+
+type RenderPlanningPhaseError = PlannerError | RendererError;
 
 function collectDependencyNames<ConfigValue>(
 	inputs: ReadonlyArray<SurfaceRenderContribution>,
@@ -313,10 +326,6 @@ function collectDependencyNames<ConfigValue>(
 export interface InstalledPlanningSeed {
 	readonly modules: ReadonlyArray<DiscoveredModule>;
 	readonly records: Manifest["modules"];
-}
-
-function definitionKey<ConfigValue>(definition: Definition<ConfigValue>) {
-	return `${definition._tag}:${definition.id}`;
 }
 
 function templateMatchesId(templateId: string, moduleTemplateId: string) {
@@ -502,46 +511,6 @@ function mergeEnsuredModule(
 	);
 }
 
-function normalizeContributionResult(
-	generatorId: string,
-	contribute: () =>
-		| ReadonlyArray<Contribution>
-		| Promise<ReadonlyArray<Contribution>>
-		| Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, CommandProbe>,
-): Effect.Effect<ReadonlyArray<Contribution>, GeneratorError, CommandProbe> {
-	return Effect.suspend(() => {
-		let result: ReturnType<typeof contribute>;
-		try {
-			result = contribute();
-		} catch (error) {
-			return Effect.fail(
-				new GeneratorError({
-					generatorId,
-					reason: "definition-failed",
-					detail: error instanceof Error ? error.message : String(error),
-					cause: error,
-				}),
-			);
-		}
-
-		if (Effect.isEffect(result)) return result;
-		if (result instanceof Promise) {
-			return Effect.tryPromise({
-				try: () => result,
-				catch: (cause) =>
-					new GeneratorError({
-						generatorId,
-						reason: "definition-failed",
-						detail: cause instanceof Error ? cause.message : String(cause),
-						cause,
-					}),
-			});
-		}
-
-		return Effect.succeed(result);
-	});
-}
-
 function isSlotPath(path: string | SlotPath): path is SlotPath {
 	return typeof path !== "string";
 }
@@ -634,7 +603,10 @@ const makePlanner = Effect.gen(function* () {
 	const resolveCreateSelection = <ConfigValue>(
 		config: ConfigValue,
 		registry: DefinitionRegistry<ConfigValue>,
-	) => {
+	): Effect.Effect<
+		SelectionPhaseContract<ConfigValue>["selection"],
+		PlannerError
+	> => {
 		const template = registry.templates.filter((entry) => entry.when(config));
 		if (template.length > 1)
 			return Effect.fail(
@@ -657,7 +629,10 @@ const makePlanner = Effect.gen(function* () {
 		registry: DefinitionRegistry<ConfigValue>,
 		templates: ReadonlyArray<TemplateDefinition<ConfigValue>>,
 		addons: ReadonlyArray<AddonDefinition<ConfigValue>>,
-	) =>
+	): Effect.Effect<
+		SelectionPhaseContract<ConfigValue>["definitions"],
+		PlannerError
+	> =>
 		Effect.gen(function* () {
 			const templateById = new Map(
 				registry.templates.map((template) => [template.id, template]),
@@ -722,183 +697,9 @@ const makePlanner = Effect.gen(function* () {
 			return [...resolved.values()];
 		});
 
-	const orderDefinitions = <ConfigValue>(
-		definitions: ReadonlyArray<Definition<ConfigValue>>,
-	) => {
-		const byId = new Map(
-			definitions.map((definition) => [definition.id, definition]),
-		);
-
-		const visited = new Set<string>();
-		const visiting = new Set<string>();
-
-		const ordered: Definition<ConfigValue>[] = [];
-
-		const visit = (
-			definition: Definition<ConfigValue>,
-		): Effect.Effect<void, PlannerError> =>
-			Effect.gen(function* () {
-				if (visited.has(definitionKey(definition))) return;
-				if (visiting.has(definitionKey(definition)))
-					return yield* new PlannerError({
-						path: definition.id,
-						reason: "definition-cycle-detected",
-					});
-
-				visiting.add(definitionKey(definition));
-
-				for (const dependency of definition.dependencies) {
-					const next = byId.get(dependency.id);
-					if (!next) continue;
-					yield* visit(next);
-				}
-
-				visiting.delete(definitionKey(definition));
-				visited.add(definitionKey(definition));
-
-				ordered.push(definition);
-			});
-
-		return Effect.gen(function* () {
-			for (const definition of definitions) yield* visit(definition);
-			return ordered;
-		});
-	};
-
-	const evaluateDefinitions = Effect.fn("Planner.evaluateDefinitions")(
-		function* <ConfigValue extends Record<string, unknown>>(
-			commandVersions: Readonly<Record<string, string>>,
-			config: ConfigValue,
-			definitions: ReadonlyArray<Definition<ConfigValue>>,
-			frameworks: DefinitionRegistry<ConfigValue>["frameworks"],
-		) {
-			const ordered = yield* orderDefinitions(definitions);
-
-			return yield* Effect.forEach(ordered, (definition, order) =>
-				normalizeContributionResult(definition.id, () =>
-					definition.contribute({
-						commandVersions,
-						config,
-						frameworks,
-					}),
-				).pipe(
-					Effect.provideService(CommandProbe, commandProbe),
-					Effect.map(
-						(contributions) =>
-							({
-								contributions,
-								definitionId: definition.id,
-								order,
-							}) satisfies EvaluatedDefinition,
-					),
-				),
-			);
-		},
-	);
-
-	const evaluateAdapters = Effect.fn("Planner.evaluateAdapters")(function* <
-		ConfigValue extends Record<string, unknown>,
-	>(
-		config: ConfigValue,
-		evaluated: ReadonlyArray<EvaluatedDefinition>,
-		registry: DefinitionRegistry<ConfigValue>,
-		modules: ReadonlyArray<ManagedModuleRecord>,
-		selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
-	) {
-		const modulesById = new Map(modules.map((module) => [module.id, module]));
-		const frameworksById = new Map(
-			registry.frameworks.map((framework) => [framework.id, framework]),
-		);
-
-		const orderByDefinitionId = new Map(
-			evaluated.map((entry) => [entry.definitionId, entry.order]),
-		);
-
-		const adapterEvaluations: EvaluatedDefinition[] = [];
-
-		for (const addon of registry.addons) {
-			const addonAdapters = registry.adapters.filter(
-				(adapter) => adapter.addon === addon.id,
-			);
-
-			if (addonAdapters.length === 0) continue;
-
-			const order = orderByDefinitionId.get(addon.id);
-			if (order === undefined) continue;
-
-			const targets = selectedTargets.get(addon.id) ?? [];
-			for (const target of targets) {
-				if (target.kind !== "module")
-					return yield* new PlannerError({
-						path: addon.id,
-						reason: "adapter-target-must-be-module",
-					});
-
-				const module = modulesById.get(target.moduleId);
-				if (!module)
-					return yield* new PlannerError({
-						path: addon.id,
-						reason: "adapter-target-app-missing",
-					});
-
-				if (module.config.type !== "app") continue;
-
-				const framework = frameworksById.get(module.config.framework);
-				if (!framework)
-					return yield* new PlannerError({
-						path: addon.id,
-						reason: "adapter-framework-missing",
-					});
-
-				const adapter = addonAdapters.find(
-					(entry) => entry.framework === framework.id,
-				);
-
-				if (!adapter && addonDeclaresFramework(addon, framework.id)) continue;
-				if (!adapter)
-					return yield* new GeneratorError({
-						generatorId: addon.id,
-						reason: "framework-not-supported-yet",
-						generatorName: addon.name,
-						frameworkName: framework.name,
-					});
-
-				const adapterModule: AdapterModule = {
-					config: module.config,
-					id: module.id,
-					root: module.root,
-				};
-
-				yield* validateAdapterAgainstModule(
-					addon,
-					adapter,
-					adapterModule,
-					framework,
-				);
-
-				const contributions = yield* normalizeContributionResult(addon.id, () =>
-					adapter.contribute({
-						config,
-						framework,
-						module: adapterModule,
-						slots: adapterModule.config.slots,
-					}),
-				).pipe(Effect.provideService(CommandProbe, commandProbe));
-
-				adapterEvaluations.push({
-					contributions,
-					definitionId: addon.id,
-					order,
-				});
-			}
-		}
-
-		return adapterEvaluations;
-	});
-
 	const mergeEnsures = Effect.fn("Planner.mergeEnsures")(function* (
 		initialModules: ReadonlyArray<ManagedModuleRecord>,
-		evaluated: ReadonlyArray<EvaluatedDefinition>,
+		evaluated: EvaluationPhaseContract["evaluated"],
 		initialModuleIdsByKey: ReadonlyMap<string, ModuleId>,
 		initialEnsuredIds: ReadonlySet<ModuleId>,
 		onDiskSlots: ReadonlyMap<ModuleId, Slots>,
@@ -974,13 +775,13 @@ const makePlanner = Effect.gen(function* () {
 			moduleIdsByKey: byKey,
 			modules: [...byRoot.values()],
 			onDiskSlots,
-		};
+		} satisfies TargetingPhaseContract["result"]["moduleState"];
 	});
 
 	const collectModules = Effect.fn("Planner.collectModules")(function* (
 		discovered: ReadonlyArray<DiscoveredModule>,
 		existingModules: Manifest["modules"],
-		evaluated: ReadonlyArray<EvaluatedDefinition>,
+		evaluated: EvaluationPhaseContract["evaluated"],
 	) {
 		const activeDefinitionIds = new Set(
 			evaluated.map((entry) => entry.definitionId),
@@ -1013,7 +814,7 @@ const makePlanner = Effect.gen(function* () {
 
 	const applyAdapterEnsures = Effect.fn("Planner.applyAdapterEnsures")(
 		function* (
-			evaluated: ReadonlyArray<EvaluatedDefinition>,
+			evaluated: EvaluationPhaseContract["evaluated"],
 			modules: ReadonlyArray<ManagedModuleRecord>,
 			moduleIdsByKey: ReadonlyMap<string, ModuleId>,
 			ensuredIds: ReadonlySet<ModuleId>,
@@ -1034,7 +835,7 @@ const makePlanner = Effect.gen(function* () {
 		evaluation: EvaluatedDefinition,
 		moduleIdsByKey: ReadonlyMap<string, ModuleId>,
 		modules: ReadonlyArray<ManagedModuleRecord>,
-		selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
+		selectedTargets: TargetingPhaseContract["result"]["selectedTargets"],
 	): Effect.Effect<ReadonlyArray<RenderBucket>, PlannerError> => {
 		switch (target._tag) {
 			case "ProjectTarget":
@@ -1113,10 +914,10 @@ const makePlanner = Effect.gen(function* () {
 
 	const applyModuleCapabilities = Effect.fn("Planner.applyModuleCapabilities")(
 		function* (
-			evaluated: ReadonlyArray<EvaluatedDefinition>,
+			evaluated: EvaluationPhaseContract["evaluated"],
 			modules: ReadonlyArray<ManagedModuleRecord>,
 			moduleIdsByKey: ReadonlyMap<string, ModuleId>,
-			selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
+			selectedTargets: TargetingPhaseContract["result"]["selectedTargets"],
 		) {
 			const byId = new Map(modules.map((module) => [module.id, module]));
 
@@ -1156,10 +957,10 @@ const makePlanner = Effect.gen(function* () {
 	const collectManagedSurfaceInputs = Effect.fn(
 		"Planner.collectManagedSurfaceInputs",
 	)(function* (
-		evaluated: ReadonlyArray<EvaluatedDefinition>,
+		evaluated: EvaluationPhaseContract["evaluated"],
 		modules: ReadonlyArray<ManagedModuleRecord>,
 		moduleIdsByKey: ReadonlyMap<string, ModuleId>,
-		selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
+		selectedTargets: TargetingPhaseContract["result"]["selectedTargets"],
 	) {
 		const collected: SurfaceRenderContribution[] = [];
 
@@ -1195,10 +996,10 @@ const makePlanner = Effect.gen(function* () {
 	});
 
 	const collectLeafFiles = Effect.fn("Planner.collectLeafFiles")(function* (
-		evaluated: ReadonlyArray<EvaluatedDefinition>,
+		evaluated: EvaluationPhaseContract["evaluated"],
 		modules: ReadonlyArray<ManagedModuleRecord>,
 		moduleIdsByKey: ReadonlyMap<string, ModuleId>,
-		selectedTargets: ReadonlyMap<string, ReadonlyArray<InstallTarget>>,
+		selectedTargets: TargetingPhaseContract["result"]["selectedTargets"],
 	) {
 		const byId = new Map(modules.map((module) => [module.id, module]));
 		const leafFiles = new Map<
@@ -1298,12 +1099,14 @@ const makePlanner = Effect.gen(function* () {
 				}
 			}
 
-		return [...leafFiles.entries()].map(([path, file]) => ({
-			bucket: file.bucket,
-			content: file.content,
-			generators: file.definitionIds,
-			path: filePath(path),
-		}));
+		return [...leafFiles.entries()].map(
+			([path, file]): TargetedLeafFile => ({
+				bucket: file.bucket,
+				content: file.content,
+				generators: file.definitionIds,
+				path: filePath(path),
+			}),
+		);
 	});
 
 	const buildManifest = Effect.fn("Planner.buildManifest")(function* (
@@ -1351,13 +1154,8 @@ const makePlanner = Effect.gen(function* () {
 
 	const buildLockfile = Effect.fn("Planner.buildLockfile")(function* (
 		managedModules: ReadonlyArray<ManagedModuleRecord>,
-		renderedSurfaces: ReadonlyArray<RenderedArtifact>,
-		leafFiles: ReadonlyArray<{
-			readonly bucket: RenderBucket;
-			readonly content: string;
-			readonly generators: ReadonlyArray<string>;
-			readonly path: ReturnType<typeof filePath>;
-		}>,
+		renderedSurfaces: RenderPlanningPhaseContract["result"]["renderedSurfaces"],
+		leafFiles: RenderPlanningPhaseContract["result"]["leafFiles"],
 	) {
 		const artifacts: Record<string, LockfileArtifact> = {};
 
@@ -1421,13 +1219,8 @@ const makePlanner = Effect.gen(function* () {
 
 	const buildWrites = (
 		modules: ReadonlyArray<ManagedModuleRecord>,
-		renderedSurfaces: ReadonlyArray<RenderedArtifact>,
-		leafFiles: ReadonlyArray<{
-			readonly bucket: RenderBucket;
-			readonly content: string;
-			readonly generators: ReadonlyArray<string>;
-			readonly path: ReturnType<typeof filePath>;
-		}>,
+		renderedSurfaces: RenderPlanningPhaseContract["result"]["renderedSurfaces"],
+		leafFiles: RenderPlanningPhaseContract["result"]["leafFiles"],
 	) =>
 		Effect.gen(function* () {
 			const writes: PlannedFile[] = [];
@@ -1509,7 +1302,7 @@ const makePlanner = Effect.gen(function* () {
 		const existingManifest = yield* state.readManifestOrDefault(projectRoot);
 		const existingLockfile = yield* state.readLockfile(projectRoot);
 
-		const selection =
+		const selection: SelectionPhaseContract<ConfigValue>["selection"] =
 			intent._tag === "Create"
 				? yield* resolveCreateSelection(intent.config, registry)
 				: {
@@ -1585,25 +1378,25 @@ const makePlanner = Effect.gen(function* () {
 				}
 			}
 
-		const definitions = yield* resolveDependencies(
-			intent.config,
-			registry,
-			selection.templates,
-			selection.directAddons,
-		);
+		const definitions: SelectionPhaseContract<ConfigValue>["definitions"] =
+			yield* resolveDependencies(
+				intent.config,
+				registry,
+				selection.templates,
+				selection.directAddons,
+			);
 
-		const baseEvaluated = yield* evaluateDefinitions(
-			intent.commandVersions,
-			intent.config,
-			definitions,
-			registry.frameworks,
-		);
+		const baseEvaluated: EvaluationPhaseContract["evaluated"] =
+			yield* evaluateDefinitions(
+				intent.commandVersions,
+				intent.config,
+				definitions,
+				registry.frameworks,
+				commandProbe,
+			);
 
-		const evaluated = expandAdoptedTemplateEvaluations(
-			baseEvaluated,
-			registry,
-			discovered,
-		);
+		const evaluated: EvaluationPhaseContract["evaluated"] =
+			expandAdoptedTemplateEvaluations(baseEvaluated, registry, discovered);
 
 		const {
 			ensuredIds,
@@ -1672,12 +1465,13 @@ const makePlanner = Effect.gen(function* () {
 				});
 		}
 
-		const selectedTargets = new Map(
-			defaultCreateInstalls.map((install) => [
-				install.definitionId,
-				install.targets,
-			]),
-		);
+		const selectedTargets: TargetingPhaseContract["result"]["selectedTargets"] =
+			new Map(
+				defaultCreateInstalls.map((install) => [
+					install.definitionId,
+					install.targets,
+				]),
+			);
 
 		const genericEvaluations = evaluated.flatMap((entry) => {
 			const addon = registry.addons.find(
@@ -1714,15 +1508,20 @@ const makePlanner = Effect.gen(function* () {
 			return [{ ...entry, excludedModuleIds: adapterModuleIds }];
 		});
 
-		const adapterEvaluations = yield* evaluateAdapters(
-			intent.config,
-			evaluated,
-			registry,
-			mergedModules,
-			selectedTargets,
-		);
+		const adapterEvaluations: EvaluationPhaseContract["evaluated"] =
+			yield* evaluateAdapters(
+				intent.config,
+				evaluated,
+				registry,
+				mergedModules,
+				selectedTargets,
+				commandProbe,
+			);
 
-		const allEvaluated = [...genericEvaluations, ...adapterEvaluations];
+		const allEvaluated: EvaluationPhaseContract["evaluated"] = [
+			...genericEvaluations,
+			...adapterEvaluations,
+		];
 		const { moduleIdsByKey: allModuleIdsByKey, modules: adapterMergedModules } =
 			yield* applyAdapterEnsures(
 				adapterEvaluations,
@@ -1732,50 +1531,58 @@ const makePlanner = Effect.gen(function* () {
 				onDiskSlots,
 			);
 
-		const modules = yield* applyModuleCapabilities(
-			allEvaluated,
-			adapterMergedModules,
-			allModuleIdsByKey,
-			selectedTargets,
-		);
+		const modules: TargetingPhaseContract["result"]["modules"] =
+			yield* applyModuleCapabilities(
+				allEvaluated,
+				adapterMergedModules,
+				allModuleIdsByKey,
+				selectedTargets,
+			);
 
-		const managedInputs = yield* collectManagedSurfaceInputs(
-			allEvaluated,
-			modules,
-			allModuleIdsByKey,
-			selectedTargets,
-		);
+		const managedInputs: TargetingPhaseContract["result"]["managedSurfaceInputs"] =
+			yield* collectManagedSurfaceInputs(
+				allEvaluated,
+				modules,
+				allModuleIdsByKey,
+				selectedTargets,
+			);
 
-		const dependencyNames = collectDependencyNames(managedInputs, definitions);
+		const dependencyNames: RenderPlanningPhaseContract["result"]["dependencyNames"] =
+			collectDependencyNames(managedInputs, definitions);
 
-		const renderedSurfaces = yield* renderer.render(
-			managedInputs,
-			modules.map((module) => ({ ...module.config, root: module.root })),
-			dependencyFormatFor(intent.config.packageManager),
-			registry.frameworks,
-		);
+		const renderedSurfaces: RenderPlanningPhaseContract["result"]["renderedSurfaces"] =
+			yield* renderer.render(
+				managedInputs,
+				modules.map((module) => ({ ...module.config, root: module.root })),
+				dependencyFormatFor(intent.config.packageManager),
+				registry.frameworks,
+			);
 
-		const leafFiles = yield* collectLeafFiles(
-			allEvaluated,
-			modules,
-			allModuleIdsByKey,
-			selectedTargets,
-		);
+		const leafFiles: RenderPlanningPhaseContract["result"]["leafFiles"] =
+			yield* collectLeafFiles(
+				allEvaluated,
+				modules,
+				allModuleIdsByKey,
+				selectedTargets,
+			);
 
-		const writes = yield* buildWrites(modules, renderedSurfaces, leafFiles);
-		const manifest = yield* buildManifest(
-			intent.config,
-			defaultCreateInstalls.filter((install) => install.targets.length > 0),
-			modules,
-			intent._tag === "Installed"
-				? (intent.registries ?? existingManifest.registries)
-				: existingManifest.registries,
-			intent._tag === "Installed"
-				? (intent.registryDescriptors ?? existingManifest.registryDescriptors)
-				: existingManifest.registryDescriptors,
-		);
+		const writes: RenderPlanningPhaseContract["result"]["writes"] =
+			yield* buildWrites(modules, renderedSurfaces, leafFiles);
+		const manifest: RenderPlanningPhaseContract["result"]["manifest"] =
+			yield* buildManifest(
+				intent.config,
+				defaultCreateInstalls.filter((install) => install.targets.length > 0),
+				modules,
+				intent._tag === "Installed"
+					? (intent.registries ?? existingManifest.registries)
+					: existingManifest.registries,
+				intent._tag === "Installed"
+					? (intent.registryDescriptors ?? existingManifest.registryDescriptors)
+					: existingManifest.registryDescriptors,
+			);
 
-		const lockfile = yield* buildLockfile(modules, renderedSurfaces, leafFiles);
+		const lockfile: RenderPlanningPhaseContract["result"]["lockfile"] =
+			yield* buildLockfile(modules, renderedSurfaces, leafFiles);
 
 		const previousPaths = new Set(
 			Object.values(existingLockfile.artifacts).map(

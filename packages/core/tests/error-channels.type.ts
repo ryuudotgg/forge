@@ -13,6 +13,11 @@ import type {
 	SubprocessError,
 } from "../src/errors";
 import type { Planner } from "../src/planner";
+import type {
+	EvaluationPhaseError,
+	evaluateAdapters,
+	evaluateDefinitions,
+} from "../src/planner-evaluation";
 import type { State } from "../src/state";
 import type { Subprocess } from "../src/subprocess";
 
@@ -50,6 +55,15 @@ type _SubprocessErrorsAreComplete = Assert<
 >;
 type _RegistryErrorsAreComplete = Assert<
 	Equal<RegistryEffectErrors, RegistryErrors>
+>;
+type _EvaluateDefinitionsErrorsMatchEvaluationPhase = Assert<
+	Equal<
+		Effect.Error<ReturnType<typeof evaluateDefinitions>>,
+		EvaluationPhaseError
+	>
+>;
+type _EvaluateAdaptersErrorsMatchEvaluationPhase = Assert<
+	Equal<Effect.Error<ReturnType<typeof evaluateAdapters>>, EvaluationPhaseError>
 >;
 type _RecipeRegistryReasonsAreComplete = Assert<
 	Equal<
