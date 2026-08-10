@@ -35,6 +35,10 @@
 			"matchPackageNames": ["@clack/**"]
 		},
 		{
+			"groupName": "effect",
+			"matchPackageNames": ["effect", "@effect/**", "!@effect/tsgo"]
+		},
+		{
 			"groupName": "scaffolded versions",
 			"matchFileNames": ["packages/generators/src/versions.ts"]
 		},
