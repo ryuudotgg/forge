@@ -27,8 +27,8 @@ catalogs:
       version: 4.1.10
   effect:
     '@effect/platform-node':
-      specifier: 4.0.0-beta.103
-      version: 4.0.0-beta.103
+      specifier: 4.0.0-beta.106
+      version: 4.0.0-beta.106
     '@effect/tsgo':
       specifier: ^0.36.0
       version: 0.36.0
@@ -111,7 +111,7 @@ importers:
         version: 1.7.0
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.103(effect@4.0.0-beta.103)(ioredis@5.11.1(supports-color@7.2.0))
+        version: 4.0.0-beta.106(effect@4.0.0-beta.103)(ioredis@5.11.1(supports-color@7.2.0))
       '@ryuujs/core':
         specifier: workspace:*
         version: link:../core
@@ -158,7 +158,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.103(effect@4.0.0-beta.103)(ioredis@5.11.1(supports-color@7.2.0))
+        version: 4.0.0-beta.106(effect@4.0.0-beta.103)(ioredis@5.11.1(supports-color@7.2.0))
       '@effect/tsgo':
         specifier: catalog:effect
         version: 0.36.0
@@ -198,7 +198,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-beta.103(effect@4.0.0-beta.103)(ioredis@5.11.1(supports-color@7.2.0))
+        version: 4.0.0-beta.106(effect@4.0.0-beta.103)(ioredis@5.11.1(supports-color@7.2.0))
       '@effect/tsgo':
         specifier: catalog:effect
         version: 0.36.0
@@ -441,12 +441,12 @@ packages:
     peerDependencies:
       effect: ^4.0.0-beta.103
 
-  '@effect/platform-node@4.0.0-beta.103':
-    resolution: {integrity: sha512-VD8fbpendwFokMwzC7/MxazjhEVDihPC5NZtomYEyZwGaA1LXMvwP1y8pfXwfshUkG56TN4EMQqzu72c0B9FhA==}
+  '@effect/platform-node@4.0.0-beta.106':
+    resolution: {integrity: sha512-Me7uorWWroWp4OuWHbFg7EqyIex45QzZ3EPwh2p8y/t3VCWVy4KSFtL9AKOKpd7QK1krUWxRK/26J/hTsqvwZg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-beta.103
-      ioredis: ^5.7.0
+      effect: ^4.0.0-beta.106
+      ioredis: '>=5.7.0 <6.0.0'
 
   '@effect/tsgo-darwin-arm64@0.36.0':
     resolution: {integrity: sha512-vHFx6zg8Ll5fWCIZLjX2kzhMULvzDAfiQ9cI0vF8FdlRGpBKOy2X01Ck4wO57hVHaJbl/l+9Rw/KfiTJBTa/BA==}
@@ -2001,7 +2001,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-beta.103(effect@4.0.0-beta.103)(ioredis@5.11.1(supports-color@7.2.0))':
+  '@effect/platform-node@4.0.0-beta.106(effect@4.0.0-beta.103)(ioredis@5.11.1(supports-color@7.2.0))':
     dependencies:
       '@effect/platform-node-shared': 4.0.0-beta.103(effect@4.0.0-beta.103)
       effect: 4.0.0-beta.103
