@@ -33,8 +33,8 @@ catalogs:
       specifier: ^0.35.0
       version: 0.35.0
     '@effect/vitest':
-      specifier: 4.0.0-beta.103
-      version: 4.0.0-beta.103
+      specifier: 4.0.0-beta.106
+      version: 4.0.0-beta.106
     effect:
       specifier: 4.0.0-beta.103
       version: 4.0.0-beta.103
@@ -127,7 +127,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.103(effect@4.0.0-beta.103)(vitest@4.1.10)
+        version: 4.0.0-beta.106(effect@4.0.0-beta.103)(vitest@4.1.10)
       '@ryuujs/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
@@ -164,7 +164,7 @@ importers:
         version: 0.35.0
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-beta.103(effect@4.0.0-beta.103)(vitest@4.1.10)
+        version: 4.0.0-beta.106(effect@4.0.0-beta.103)(vitest@4.1.10)
       '@ryuujs/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
@@ -487,11 +487,11 @@ packages:
     resolution: {integrity: sha512-10UWtAhbl/AlMSXKwo2xp9HkNtrzXpxgeWTH8vWKo7Ir6DAsOIYAJjTjDxud3sCb2vJtxi2zHg6Qq3/i/MKxzQ==}
     hasBin: true
 
-  '@effect/vitest@4.0.0-beta.103':
-    resolution: {integrity: sha512-Kz3gemVuJNAZ3e4V6A7BwAP87x2Av8LyHOlCjy9jbZzlncwJXO7Olk1Sje3hdKaet3wEl51A/0/89xJ2IYSgNg==}
+  '@effect/vitest@4.0.0-beta.106':
+    resolution: {integrity: sha512-0w799orFqjFNlKh9GrnzMIJLn2/uPaVu8qmT3hJKkYxS46tUS9ZbfjeYNsd1BddvY+3sdS/vXVpnTE64z6+QaQ==}
     peerDependencies:
-      effect: ^4.0.0-beta.103
-      vitest: ^4.1.0
+      effect: ^4.0.0-beta.106
+      vitest: '>=4.1.0 <5.0.0'
 
   '@ioredis/commands@1.10.0':
     resolution: {integrity: sha512-UmeW7z4LfctwoQ5wkhVzgq8tXkreED2xZGpX+Bg+zA+WJFZCT6c062AfCK/Dfk81xZnnwdhJCUMkitihRaoC2Q==}
@@ -2043,7 +2043,7 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.35.0
       '@effect/tsgo-win32-x64': 0.35.0
 
-  '@effect/vitest@4.0.0-beta.103(effect@4.0.0-beta.103)(vitest@4.1.10)':
+  '@effect/vitest@4.0.0-beta.106(effect@4.0.0-beta.103)(vitest@4.1.10)':
     dependencies:
       effect: 4.0.0-beta.103
       vitest: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.2.1(@types/node@24.13.3)(jiti@2.6.1)(yaml@2.9.0))
