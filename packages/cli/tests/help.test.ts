@@ -72,6 +72,7 @@ describe("printHelp", () => {
 				"  forge list/info options",
 				"        --kind <value>                   Filter the catalog by addon, framework, or template.",
 				"        --json                           Print stable version 1 JSON; fields are added only.",
+				"        --first-party                    Skip project registries and show only the first-party catalog.",
 				"",
 				"  forge init options",
 				"        --dry-run                        Preview adoption without writing files.",

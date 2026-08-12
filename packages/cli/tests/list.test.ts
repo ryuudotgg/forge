@@ -205,6 +205,17 @@ describe("forge list builders", () => {
 		`);
 	});
 
+	it("skips the injected registry loader when first-party is set", async () => {
+		const loader = vi.fn(() => Promise.reject(new Error("must not be called")));
+
+		await runList("drizzle", { "first-party": true }, loader);
+
+		expect(loader).not.toHaveBeenCalled();
+		expect(promptMocks.logMessage).toHaveBeenCalledWith(
+			buildListOutput(catalog, { query: "drizzle" }),
+		);
+	});
+
 	it("renders an exact third-party row through an injected registry", async () => {
 		const loaded = await loadDiscoveryFixture();
 
