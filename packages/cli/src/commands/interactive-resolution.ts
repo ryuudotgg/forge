@@ -16,6 +16,15 @@ interface ConflictDecision {
 	readonly request: ApplyResolution;
 }
 
+interface ConflictCell {
+	readonly expected?: { readonly forge: unknown; readonly user: unknown };
+	readonly header: string;
+	readonly label: string;
+	readonly message: string;
+}
+
+type ResolutionChoice = ConflictResolution | "forge-all" | "user-all";
+
 export interface InteractiveResolution {
 	readonly options: ApplyOptions;
 	readonly summary: string;
@@ -47,13 +56,33 @@ function conflictMessage(conflict: ApplyConflict, path: string): string {
 	].join("\n");
 }
 
-async function selectResolution(message: string): Promise<ConflictResolution> {
+function withProgress(message: string, step: number, total: number): string {
+	if (total < 2) return message;
+	const progress = color.dim(`(${step} of ${total})`);
+	const newline = message.indexOf("\n");
+	return newline === -1
+		? `${message} ${progress}`
+		: `${message.slice(0, newline)} ${progress}${message.slice(newline)}`;
+}
+
+async function selectResolution(
+	message: string,
+	step: number,
+	total: number,
+): Promise<ResolutionChoice> {
+	const options: Array<{ label: string; value: ResolutionChoice }> = [
+		{ label: "Keep my value", value: "user" },
+		{ label: "Take Forge's", value: "forge" },
+	];
+	if (step < total)
+		options.push(
+			{ label: "Keep my value for all remaining", value: "user-all" },
+			{ label: "Take Forge's for all remaining", value: "forge-all" },
+		);
+
 	const resolution = await select({
-		message,
-		options: [
-			{ label: "Keep my value", value: "user" },
-			{ label: "Take Forge's", value: "forge" },
-		],
+		message: withProgress(message, step, total),
+		options,
 	});
 
 	if (isCancel(resolution)) cancel();
@@ -105,25 +134,18 @@ export async function promptForConflictResolutions(
 			"Interactive Resolution Missing: preflight details are required.",
 		);
 
-	const decisions: ConflictDecision[] = [];
-	const managedWrites = (preflight.refusals ?? []).filter(
-		(refusal) =>
-			refusal.reason === "managed-file-modified" &&
-			refusal.operation === "write" &&
-			refusal.resolvable,
-	);
-
-	for (const refusal of managedWrites) {
-		log.info(color.bold(refusal.path));
-		decisions.push({
+	const cells: ConflictCell[] = (preflight.refusals ?? [])
+		.filter(
+			(refusal) =>
+				refusal.reason === "managed-file-modified" &&
+				refusal.operation === "write" &&
+				refusal.resolvable,
+		)
+		.map((refusal) => ({
+			header: refusal.path,
 			label: refusal.path,
-			request: {
-				resolution: await selectResolution(
-					color.dim("This managed file was modified."),
-				),
-			},
-		});
-	}
+			message: color.dim("This managed file was modified."),
+		}));
 
 	const grouped = new Map<string, ReadonlyArray<ApplyConflict>>();
 	for (const conflict of preflight.conflicts ?? []) {
@@ -132,16 +154,43 @@ export async function promptForConflictResolutions(
 		grouped.set(path, [...group, conflict]);
 	}
 
-	for (const [path, conflicts] of grouped) {
-		log.info(color.bold(path));
+	for (const [path, conflicts] of grouped)
 		for (const conflict of conflicts)
-			decisions.push({
+			cells.push({
+				expected: { forge: conflict.forge, user: conflict.user },
+				header: path,
 				label: conflict.label,
-				request: {
-					expected: { forge: conflict.forge, user: conflict.user },
-					resolution: await selectResolution(conflictMessage(conflict, path)),
-				},
+				message: conflictMessage(conflict, path),
 			});
+
+	const decisions: ConflictDecision[] = [];
+	let bulk: ConflictResolution | undefined;
+	let header: string | undefined;
+
+	for (const [index, cell] of cells.entries()) {
+		let resolution = bulk;
+		if (resolution === undefined) {
+			if (cell.header !== header) {
+				log.info(color.bold(cell.header));
+				header = cell.header;
+			}
+			const choice = await selectResolution(
+				cell.message,
+				index + 1,
+				cells.length,
+			);
+			if (choice === "user-all" || choice === "forge-all") {
+				bulk = choice === "user-all" ? "user" : "forge";
+				resolution = bulk;
+			} else resolution = choice;
+		}
+		decisions.push({
+			label: cell.label,
+			request:
+				cell.expected === undefined
+					? { resolution }
+					: { expected: cell.expected, resolution },
+		});
 	}
 
 	const conflictResolutions = Object.fromEntries(

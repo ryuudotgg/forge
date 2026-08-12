@@ -73,6 +73,17 @@ function setTTY(isTTY: boolean): () => void {
 	};
 }
 
+const perCellOptions = [
+	{ label: "Keep my value", value: "user" },
+	{ label: "Take Forge's", value: "forge" },
+];
+
+const bulkOptions = [
+	...perCellOptions,
+	{ label: "Keep my value for all remaining", value: "user-all" },
+	{ label: "Take Forge's for all remaining", value: "forge-all" },
+];
+
 function conflictError() {
 	return new ApplyError({
 		reason: "preflight-failed",
@@ -244,31 +255,22 @@ describe("interactive resolution", () => {
 		expect(promptMocks.select.mock.calls).toEqual([
 			[
 				{
-					message: "This managed file was modified.",
-					options: [
-						{ label: "Keep my value", value: "user" },
-						{ label: "Take Forge's", value: "forge" },
-					],
+					message: "This managed file was modified. (1 of 3)",
+					options: bulkOptions,
 				},
 			],
 			[
 				{
 					message:
-						'scripts.build\nBase:   "tsc"\nYours:  "tsc --watch"\nForge:  "tsc -b"',
-					options: [
-						{ label: "Keep my value", value: "user" },
-						{ label: "Take Forge's", value: "forge" },
-					],
+						'scripts.build (2 of 3)\nBase:   "tsc"\nYours:  "tsc --watch"\nForge:  "tsc -b"',
+					options: bulkOptions,
 				},
 			],
 			[
 				{
 					message:
-						'scripts.dev\nBase:   "vite"\nYours:  "vite --host"\nForge:  "vite --port 4000"',
-					options: [
-						{ label: "Keep my value", value: "user" },
-						{ label: "Take Forge's", value: "forge" },
-					],
+						'scripts.dev (3 of 3)\nBase:   "vite"\nYours:  "vite --host"\nForge:  "vite --port 4000"',
+					options: perCellOptions,
 				},
 			],
 		]);
@@ -288,6 +290,63 @@ describe("interactive resolution", () => {
 			},
 			summary:
 				"We resolved README.md with your value, package.json -> scripts.build with Forge's value, and package.json -> scripts.dev with your value.",
+		});
+	});
+
+	it("applies a bulk choice to every remaining cell", async () => {
+		promptMocks.select
+			.mockResolvedValueOnce("user")
+			.mockResolvedValueOnce("forge-all");
+
+		const resolution = await promptForConflictResolutions(conflictError());
+
+		expect(promptMocks.select).toHaveBeenCalledTimes(2);
+		expect(promptMocks.logInfo.mock.calls).toEqual([
+			["README.md"],
+			["package.json"],
+		]);
+		expect(resolution).toEqual({
+			options: {
+				conflictResolutions: {
+					"README.md": { resolution: "user" },
+					"package.json -> scripts.build": {
+						expected: { forge: "tsc -b", user: "tsc --watch" },
+						resolution: "forge",
+					},
+					"package.json -> scripts.dev": {
+						expected: { forge: "vite --port 4000", user: "vite --host" },
+						resolution: "forge",
+					},
+				},
+			},
+			summary:
+				"We resolved README.md with your value, package.json -> scripts.build with Forge's value, and package.json -> scripts.dev with Forge's value.",
+		});
+	});
+
+	it("covers every cell when bulk is chosen first", async () => {
+		promptMocks.select.mockResolvedValueOnce("user-all");
+
+		const resolution = await promptForConflictResolutions(conflictError());
+
+		expect(promptMocks.select).toHaveBeenCalledTimes(1);
+		expect(promptMocks.logInfo.mock.calls).toEqual([["README.md"]]);
+		expect(resolution).toEqual({
+			options: {
+				conflictResolutions: {
+					"README.md": { resolution: "user" },
+					"package.json -> scripts.build": {
+						expected: { forge: "tsc -b", user: "tsc --watch" },
+						resolution: "user",
+					},
+					"package.json -> scripts.dev": {
+						expected: { forge: "vite --port 4000", user: "vite --host" },
+						resolution: "user",
+					},
+				},
+			},
+			summary:
+				"We resolved README.md with your value, package.json -> scripts.build with your value, and package.json -> scripts.dev with your value.",
 		});
 	});
 
@@ -313,6 +372,34 @@ describe("interactive resolution", () => {
 				});
 				expect(promptMocks.logSuccess).toHaveBeenCalledWith(
 					"We resolved package.json -> scripts.build with your value and package.json -> scripts.dev with Forge's value.",
+				);
+			});
+		} finally {
+			restoreTTY();
+		}
+	});
+
+	it("retries the ordinary apply with a bulk choice", async () => {
+		const restoreTTY = setTTY(true);
+		vi.stubEnv("CI", "");
+		promptMocks.select.mockResolvedValueOnce("forge-all");
+
+		try {
+			await withTempDir("interactive-bulk", async (directory) => {
+				const { plan } = await semanticFixture(directory);
+				await applyLifecyclePlan(directory, plan, {});
+
+				expect(promptMocks.select).toHaveBeenCalledTimes(1);
+				expect(
+					JSON.parse(await readFile(join(directory, "package.json"), "utf-8")),
+				).toEqual({
+					scripts: {
+						build: "tsc -b",
+						dev: "vite --port 4000",
+					},
+				});
+				expect(promptMocks.logSuccess).toHaveBeenCalledWith(
+					"We resolved package.json -> scripts.build with Forge's value and package.json -> scripts.dev with Forge's value.",
 				);
 			});
 		} finally {
@@ -481,6 +568,48 @@ describe("interactive resolution", () => {
 
 				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
 					"exit:0",
+				);
+				expect(promptMocks.cancel).toHaveBeenCalledWith(
+					"You've extinguished the forge.",
+				);
+				expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
+					user,
+				);
+				expect(
+					await readFile(join(directory, ".forge/lock.json"), "utf-8"),
+				).toBe(lockBefore);
+				expect(promptMocks.logSuccess).not.toHaveBeenCalled();
+			});
+		} finally {
+			exit.mockRestore();
+			restoreTTY();
+		}
+	});
+
+	it("cancels on a prompt offering bulk choices without changing the project", async () => {
+		const restoreTTY = setTTY(true);
+		vi.stubEnv("CI", "");
+		const exit = vi
+			.spyOn(process, "exit")
+			.mockImplementation((code?: string | number | null): never => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+		promptMocks.select.mockResolvedValueOnce(promptMocks.cancelToken);
+
+		try {
+			await withTempDir("interactive-bulk-cancel", async (directory) => {
+				const { plan, user } = await semanticFixture(directory);
+				const lockBefore = await readFile(
+					join(directory, ".forge/lock.json"),
+					"utf-8",
+				);
+
+				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
+					"exit:0",
+				);
+				expect(promptMocks.select).toHaveBeenCalledTimes(1);
+				expect(promptMocks.select).toHaveBeenCalledWith(
+					expect.objectContaining({ options: bulkOptions }),
 				);
 				expect(promptMocks.cancel).toHaveBeenCalledWith(
 					"You've extinguished the forge.",
