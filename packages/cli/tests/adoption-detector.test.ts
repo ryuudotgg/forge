@@ -1105,11 +1105,18 @@ describe("AdoptionDetector", () => {
 		);
 	});
 
-	it("detects TanStack Router from a direct web dependency", async () => {
+	it.each([
+		"vite.config.js",
+		"vite.config.mjs",
+		"vite.config.cjs",
+		"vite.config.ts",
+		"vite.config.mts",
+		"vite.config.cts",
+	])("detects TanStack Router with $configFile", async (configFile) => {
 		await withFixture(
-			"tanstack-router",
+			`tanstack-router-${configFile.replaceAll(".", "-")}`,
 			{
-				"apps/web/vite.config.ts": "export default {};\n",
+				[`apps/web/${configFile}`]: "export default {};\n",
 				"apps/web/package.json": json({
 					dependencies: { "@tanstack/react-router": "1.170.25" },
 					devDependencies: { "@tanstack/router-plugin": "1.168.29" },

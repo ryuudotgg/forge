@@ -76,6 +76,15 @@ const ignoredDirectories = new Set([
 	"node_modules",
 ]);
 
+const viteConfigNames = [
+	"vite.config.js",
+	"vite.config.mjs",
+	"vite.config.cjs",
+	"vite.config.ts",
+	"vite.config.mts",
+	"vite.config.cts",
+];
+
 const MAXIMUM_ADOPTION_SCAN_DEPTH = 64;
 const MAXIMUM_ADOPTION_VISITED_DIRECTORIES = 10_000;
 const adoptionTraversalLimitMessage =
@@ -451,11 +460,12 @@ const makeAdoptionDetector = Effect.gen(function* () {
 
 			packageJsonByRoot.set(root, packageJson);
 
-			if (
-				hasTanstackRouterApplicationDependencies(packageJson) &&
-				(yield* exists(join(projectRoot, root, "vite.config.ts")))
-			)
-				tanstackRouterConfigRoots.add(root);
+			if (hasTanstackRouterApplicationDependencies(packageJson))
+				for (const configName of viteConfigNames)
+					if (yield* exists(join(projectRoot, root, configName))) {
+						tanstackRouterConfigRoots.add(root);
+						break;
+					}
 
 			const componentsStyle = yield* readComponentsStyle(
 				join(projectRoot, root, "components.json"),
