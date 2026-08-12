@@ -56,7 +56,7 @@ const ValidGeneratorErrorFields = GeneratorErrorFields.pipe(
 	),
 );
 
-export class GeneratorError extends Schema.TaggedErrorClass<GeneratorError>()(
+export class GeneratorError extends Schema.TaggedError<GeneratorError>()(
 	"GeneratorError",
 	ValidGeneratorErrorFields,
 ) {
@@ -156,7 +156,7 @@ const ValidRegistryErrorFields = RegistryErrorFields.pipe(
 	),
 );
 
-export class RegistryError extends Schema.TaggedErrorClass<RegistryError>()(
+export class RegistryError extends Schema.TaggedError<RegistryError>()(
 	"RegistryError",
 	ValidRegistryErrorFields,
 ) {
@@ -197,7 +197,7 @@ const registryMessages = {
 	(error: RegistryError) => string
 >;
 
-export class CommandProbeError extends Schema.TaggedErrorClass<CommandProbeError>()(
+export class CommandProbeError extends Schema.TaggedError<CommandProbeError>()(
 	"CommandProbeError",
 	{
 		command: Schema.String,
@@ -253,7 +253,7 @@ const ValidSubprocessErrorFields = SubprocessErrorFields.pipe(
 	),
 );
 
-export class SubprocessError extends Schema.TaggedErrorClass<SubprocessError>()(
+export class SubprocessError extends Schema.TaggedError<SubprocessError>()(
 	"SubprocessError",
 	ValidSubprocessErrorFields,
 ) {
@@ -321,7 +321,7 @@ const ValidModuleConfigErrorFields = ModuleConfigErrorFields.pipe(
 	),
 );
 
-export class ModuleConfigError extends Schema.TaggedErrorClass<ModuleConfigError>()(
+export class ModuleConfigError extends Schema.TaggedError<ModuleConfigError>()(
 	"ModuleConfigError",
 	ValidModuleConfigErrorFields,
 ) {
@@ -346,7 +346,7 @@ const moduleConfigMessages = {
 	(error: ModuleConfigError) => string
 >;
 
-export class DuplicateModuleIdError extends Schema.TaggedErrorClass<DuplicateModuleIdError>()(
+export class DuplicateModuleIdError extends Schema.TaggedError<DuplicateModuleIdError>()(
 	"DuplicateModuleIdError",
 	{
 		moduleId: Schema.String,
@@ -360,7 +360,7 @@ export class DuplicateModuleIdError extends Schema.TaggedErrorClass<DuplicateMod
 	}
 }
 
-export class ModuleIdGenerationError extends Schema.TaggedErrorClass<ModuleIdGenerationError>()(
+export class ModuleIdGenerationError extends Schema.TaggedError<ModuleIdGenerationError>()(
 	"ModuleIdGenerationError",
 	{ cause: optionalCause },
 ) {
@@ -442,7 +442,7 @@ const ValidStateErrorFields = StateErrorFields.pipe(
 	),
 );
 
-export class StateError extends Schema.TaggedErrorClass<StateError>()(
+export class StateError extends Schema.TaggedError<StateError>()(
 	"StateError",
 	ValidStateErrorFields,
 ) {
@@ -488,7 +488,7 @@ const stateMessages = {
 	"base-remove-failed": () => "Base Remove Failed",
 } satisfies Record<typeof StateErrorReason.Type, (error: StateError) => string>;
 
-export class DiscoveryError extends Schema.TaggedErrorClass<DiscoveryError>()(
+export class DiscoveryError extends Schema.TaggedError<DiscoveryError>()(
 	"DiscoveryError",
 	{
 		path: Schema.String,
@@ -579,7 +579,7 @@ const ValidPlannerErrorFields = PlannerErrorFields.pipe(
 	),
 );
 
-export class PlannerError extends Schema.TaggedErrorClass<PlannerError>()(
+export class PlannerError extends Schema.TaggedError<PlannerError>()(
 	"PlannerError",
 	ValidPlannerErrorFields,
 ) {
@@ -619,7 +619,7 @@ const plannerMessages = {
 	(error: PlannerError) => string
 >;
 
-export class RendererError extends Schema.TaggedErrorClass<RendererError>()(
+export class RendererError extends Schema.TaggedError<RendererError>()(
 	"RendererError",
 	{
 		path: Schema.String,
@@ -743,7 +743,7 @@ const ValidApplyErrorFields = ApplyErrorFields.pipe(
 	),
 );
 
-export class ApplyError extends Schema.TaggedErrorClass<ApplyError>()(
+export class ApplyError extends Schema.TaggedError<ApplyError>()(
 	"ApplyError",
 	ValidApplyErrorFields,
 ) {

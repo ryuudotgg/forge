@@ -42,17 +42,17 @@ export interface CatalogEntry {
 	readonly version: string;
 }
 
-export class AdoptionFileReadError extends Schema.TaggedErrorClass<AdoptionFileReadError>()(
+export class AdoptionFileReadError extends Schema.TaggedError<AdoptionFileReadError>()(
 	"AdoptionFileReadError",
 	{ detail: Schema.String, filePath: Schema.String, message: Schema.String },
 ) {}
 
-export class AdoptionFileParseError extends Schema.TaggedErrorClass<AdoptionFileParseError>()(
+export class AdoptionFileParseError extends Schema.TaggedError<AdoptionFileParseError>()(
 	"AdoptionFileParseError",
 	{ detail: Schema.String, filePath: Schema.String, message: Schema.String },
 ) {}
 
-export class AdoptionTraversalLimitError extends Schema.TaggedErrorClass<AdoptionTraversalLimitError>()(
+export class AdoptionTraversalLimitError extends Schema.TaggedError<AdoptionTraversalLimitError>()(
 	"AdoptionTraversalLimitError",
 	{ detail: Schema.String, filePath: Schema.String, message: Schema.String },
 ) {}

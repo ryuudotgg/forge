@@ -32,7 +32,7 @@ import {
 	RegistryPackageManifestSchema,
 } from "./types";
 
-export class RegistryLoadError extends Schema.TaggedErrorClass<RegistryLoadError>()(
+export class RegistryLoadError extends Schema.TaggedError<RegistryLoadError>()(
 	"RegistryLoadError",
 	{
 		detail: Schema.optional(Schema.String),
@@ -41,12 +41,12 @@ export class RegistryLoadError extends Schema.TaggedErrorClass<RegistryLoadError
 	},
 ) {}
 
-class RegistryPackageResolutionError extends Schema.TaggedErrorClass<RegistryPackageResolutionError>()(
+class RegistryPackageResolutionError extends Schema.TaggedError<RegistryPackageResolutionError>()(
 	"RegistryPackageResolutionError",
 	{ detail: Schema.String, message: Schema.String },
 ) {}
 
-class RegistryPackageExecutionError extends Schema.TaggedErrorClass<RegistryPackageExecutionError>()(
+class RegistryPackageExecutionError extends Schema.TaggedError<RegistryPackageExecutionError>()(
 	"RegistryPackageExecutionError",
 	{
 		detail: Schema.String,
