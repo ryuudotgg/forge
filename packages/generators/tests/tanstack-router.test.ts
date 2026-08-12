@@ -1,0 +1,300 @@
+import { type Contribution, ensuredModuleTarget } from "@ryuujs/core";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+import type { ForgeConfig } from "../src";
+import { loadDefinitionRegistry } from "../src";
+import { tanstackRouterFramework } from "../src/frameworks/tanstack-router";
+import { versions } from "../src/versions";
+
+const template = (() => {
+	const found = loadDefinitionRegistry().registry.templates.find(
+		(entry) => entry.id === "tanstack-router/base",
+	);
+	if (!found) throw new Error("Template Not Found: tanstack-router/base");
+	return found;
+})();
+
+function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
+	const result = template.contribute({
+		commandVersions: {},
+		config,
+		frameworks: [tanstackRouterFramework],
+	});
+	if (result instanceof Promise || Effect.isEffect(result))
+		throw new Error("Synchronous Contributions Expected: tanstack-router/base");
+
+	return result;
+}
+
+function byTag<Tag extends Contribution["_tag"]>(tag: Tag) {
+	return (
+		contribution: Contribution,
+	): contribution is Extract<Contribution, { _tag: Tag }> =>
+		contribution._tag === tag;
+}
+
+function must<T>(value: T | undefined, label: string): T {
+	if (value === undefined) throw new Error(`Missing Contribution: ${label}`);
+	return value;
+}
+
+function textSurface(
+	contributions: ReadonlyArray<Contribution>,
+	surface: string,
+) {
+	return must(
+		contributions
+			.filter(byTag("ManagedTextSurfaceContribution"))
+			.find((entry) => entry.surface === surface),
+		surface,
+	);
+}
+
+function jsonSurface(
+	contributions: ReadonlyArray<Contribution>,
+	surface: string,
+) {
+	return must(
+		contributions
+			.filter(byTag("ManagedJsonSurfaceContribution"))
+			.find((entry) => entry.surface === surface),
+		surface,
+	);
+}
+
+function leafFile(contributions: ReadonlyArray<Contribution>, path: string) {
+	return must(
+		contributions
+			.filter(byTag("LeafTextFileContribution"))
+			.find((entry) => entry.path === path),
+		path,
+	);
+}
+
+describe("tanstack-router/base template", () => {
+	it("activates only for the tanstack-router web framework", () => {
+		expect(template.when({ web: "tanstack-router" })).toBe(true);
+		expect(template.when({ web: "nextjs" })).toBe(false);
+		expect(template.when({ web: "tanstack-start" })).toBe(false);
+		expect(template.when({})).toBe(false);
+	});
+
+	it("declares the verified framework contract and two-slot map", () => {
+		expect(tanstackRouterFramework).toMatchObject({
+			buildOutputs: ["dist/**"],
+			configFile: "vite.config.ts",
+			ignoreDirs: [".tanstack/"],
+			slots: ["layout", "page"],
+			tsconfigPreset: {
+				name: "tanstack-router",
+				content: {
+					compilerOptions: {
+						allowImportingTsExtensions: true,
+						declaration: false,
+						declarationMap: false,
+						jsx: "react-jsx",
+						noEmit: true,
+						types: ["vite/client"],
+					},
+				},
+			},
+		});
+		expect(
+			tanstackRouterFramework.tsconfigPreset.content.compilerOptions,
+		).not.toHaveProperty("rootDirs");
+		expect(
+			tanstackRouterFramework.tsconfigPreset.content.compilerOptions,
+		).not.toHaveProperty("paths");
+
+		const contributions = contributionsFor({
+			name: "Acme App",
+			slug: "acme",
+			web: "tanstack-router",
+		});
+		const ensure = must(
+			contributions.find(byTag("EnsureModuleContribution")),
+			"web module",
+		);
+
+		expect(ensure.moduleKey).toBe("web");
+		expect(ensure.root).toBe("apps/web");
+		expect(ensure.module.template).toEqual({
+			id: "tanstack-router/base",
+			version: 1,
+		});
+		expect(ensure.module.slots).toEqual({
+			layout: "src/routes/__root.tsx",
+			page: "src/routes/index.tsx",
+		});
+	});
+
+	it("renders the SPA entry, routes, env, router, and route tree", () => {
+		const contributions = contributionsFor({
+			name: "Acme App",
+			slug: "acme",
+			web: "tanstack-router",
+		});
+
+		expect(textSurface(contributions, "layout").content).toContain(
+			'import "@acme/ui/globals.css";',
+		);
+		expect(textSurface(contributions, "layout").content).toContain(
+			"createRootRoute({ component: RootComponent })",
+		);
+		expect(textSurface(contributions, "page").content).toContain(
+			">Acme App</h1>",
+		);
+		expect(leafFile(contributions, "index.html").content).toContain(
+			"<title>Acme App</title>",
+		);
+		expect(leafFile(contributions, "index.html").content).toContain(
+			'<script type="module" src="/src/main.tsx"></script>',
+		);
+		expect(leafFile(contributions, "env.ts").content).toContain(
+			'clientPrefix: "VITE_"',
+		);
+		expect(leafFile(contributions, "env.ts").content).toContain(
+			'return lifecycleEvent === "check" || lifecycleEvent === "generate-routes";',
+		);
+		expect(leafFile(contributions, "src/main.tsx").content).toContain(
+			"RouterProvider",
+		);
+		expect(leafFile(contributions, "src/router.tsx").content).toContain(
+			"createTanStackRouter",
+		);
+		expect(leafFile(contributions, "src/routeTree.gen.ts").content).toContain(
+			"automatically generated by TanStack Router",
+		);
+		expect(
+			leafFile(contributions, "src/routeTree.gen.ts").content,
+		).not.toContain("@tanstack/react-start");
+	});
+
+	it("renders exact Vite configs with Tailwind cleanly switched on and off", () => {
+		const withoutTailwind = textSurface(
+			contributionsFor({ slug: "acme", web: "tanstack-router" }),
+			"frameworkConfig",
+		);
+		expect(withoutTailwind.content).toBe(`import "./env";
+
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+const config = defineConfig({
+  resolve: { tsconfigPaths: true },
+  plugins: [
+    tanstackRouter({
+      autoCodeSplitting: true,
+      target: "react",
+    }),
+    viteReact(),
+  ],
+});
+
+export default config;
+`);
+
+		const withTailwind = textSurface(
+			contributionsFor({
+				slug: "acme",
+				style: "tailwind",
+				web: "tanstack-router",
+			}),
+			"frameworkConfig",
+		);
+		expect(withTailwind.content).toBe(`import "./env";
+
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import tailwindcss from "@tailwindcss/vite";
+import viteReact from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+const config = defineConfig({
+  resolve: { tsconfigPaths: true },
+  plugins: [
+    tailwindcss(), tanstackRouter({
+      autoCodeSplitting: true,
+      target: "react",
+    }),
+    viteReact(),
+  ],
+});
+
+export default config;
+`);
+	});
+
+	it("never mounts tRPC or auth machinery", () => {
+		const providers = leafFile(
+			contributionsFor({ slug: "acme", web: "tanstack-router" }),
+			"src/providers.tsx",
+		);
+		expect(providers.target).toEqual(ensuredModuleTarget("web"));
+		expect(providers.content).toContain("ThemeProvider");
+		expect(providers.content).not.toContain("TRPCReactProvider");
+		expect(providers.content).not.toMatch(/__[A-Z_]+__/);
+	});
+
+	it("uses the verified package versions, scripts, and app tsconfig", () => {
+		const contributions = contributionsFor({
+			slug: "acme",
+			web: "tanstack-router",
+		});
+		const dependencySurface = must(
+			contributions.find(byTag("ManagedDependenciesSurfaceContribution")),
+			"packageJson dependencies",
+		);
+		const dependencyNames = dependencySurface.dependencies.map(
+			(entry) => entry.name,
+		);
+		const dependencyVersions = new Map(
+			dependencySurface.dependencies.map((entry) => [
+				entry.name,
+				entry.version,
+			]),
+		);
+
+		expect(dependencyVersions.get("@tanstack/react-router")).toBe(
+			versions.tanstackReactRouter.version,
+		);
+		expect(dependencyVersions.get("@tanstack/router-cli")).toBe(
+			versions.tanstackRouterCli.version,
+		);
+		expect(dependencyVersions.get("@tanstack/router-plugin")).toBe(
+			versions.tanstackRouterPlugin.version,
+		);
+		expect(dependencyVersions.get("vite")).toBe(versions.vite.version);
+		expect(dependencyVersions.get("@vitejs/plugin-react")).toBe(
+			versions.viteReact.version,
+		);
+		expect(dependencyNames).not.toContain("@tanstack/react-start");
+
+		const scripts = must(
+			contributions.find(byTag("ManagedScriptsSurfaceContribution")),
+			"packageJson scripts",
+		);
+		expect(scripts.scripts).toEqual({
+			build: "pnpm with-env vite build",
+			dev: "pnpm with-env vite dev --port 3000",
+			"generate-routes": "tsr generate",
+			postinstall: "pnpm generate-routes",
+			pretypecheck: "pnpm generate-routes",
+			preview: "pnpm with-env vite preview",
+			typecheck: "tsc --noEmit",
+			"with-env": "dotenv -e ../../.env --",
+		});
+
+		expect(jsonSurface(contributions, "tsconfig").value).toEqual({
+			extends: "@acme/tsconfig/tanstack-router.json",
+			compilerOptions: {
+				paths: {
+					"@/*": ["./src/*"],
+					"@acme/ui/*": ["../../packages/ui/src/*"],
+				},
+			},
+			include: ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
+			exclude: ["node_modules", "dist", ".tanstack"],
+		});
+	});
+});

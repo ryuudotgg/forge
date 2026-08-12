@@ -122,6 +122,12 @@ export function moduleProposal(
 			proposal: "web-app",
 		});
 
+	if (dependencies.has("@tanstack/react-router"))
+		signatures.push({
+			evidence: "found @tanstack/react-router in its dependencies",
+			proposal: "web-app",
+		});
+
 	if (dependencies.has("react-router"))
 		signatures.push({
 			evidence: "found react-router in its dependencies",

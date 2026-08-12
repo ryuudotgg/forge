@@ -164,6 +164,71 @@ describe("create", () => {
 		});
 	}, 240_000);
 
+	it("creates a TanStack Router SPA workspace at its two-slot paths", async () => {
+		await withScenarioWorkspace("create-tanstack-router", async (workspace) => {
+			await createProject(workspace, {
+				linter: "biome",
+				packageManager: "pnpm",
+				style: "tailwind",
+				web: "tanstack-router",
+			});
+
+			for (const path of [
+				"index.html",
+				"src/main.tsx",
+				"src/router.tsx",
+				"src/routeTree.gen.ts",
+				"src/routes/__root.tsx",
+				"src/routes/index.tsx",
+				"vite.config.ts",
+			])
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/web", path)),
+					path,
+				).toBe(true);
+
+			for (const path of [
+				"src/routes/api",
+				"src/routes/api/trpc/$.ts",
+				"src/routes/api/auth/$.ts",
+			])
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/web", path)),
+					path,
+				).toBe(false);
+
+			const appConfig = await readJson<{
+				framework: string;
+				slots: Record<string, string>;
+			}>(join(workspace.projectRoot, "apps/web/forge.json"));
+			expect(appConfig.framework).toBe("tanstack-router");
+			expect(appConfig.slots).toEqual({
+				layout: "src/routes/__root.tsx",
+				page: "src/routes/index.tsx",
+			});
+		});
+	}, 240_000);
+
+	it("rejects tRPC configs for TanStack Router before generating anything", async () => {
+		await withScenarioWorkspace(
+			"create-tanstack-router-trpc",
+			async (workspace) => {
+				await expect(
+					createProject(workspace, {
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "trpc",
+						style: "tailwind",
+						web: "tanstack-router",
+					}),
+				).rejects.toThrow("tRPC does not support TanStack Router yet.");
+
+				expect(await readdir(workspace.projectRoot)).toEqual([]);
+			},
+		);
+	}, 120_000);
+
 	it("rejects better auth configs without an orm before generating anything", async () => {
 		await withScenarioWorkspace("create-auth-no-orm", async (workspace) => {
 			await expect(

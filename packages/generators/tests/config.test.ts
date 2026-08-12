@@ -70,6 +70,7 @@ describe("generator config choices", () => {
 		expect(webFrameworks.availableIds).toEqual([
 			"nextjs",
 			"react-router",
+			"tanstack-router",
 			"tanstack-start",
 		]);
 		expect(authenticationProviders.availableIds).toEqual(["better-auth"]);

@@ -1105,6 +1105,62 @@ describe("AdoptionDetector", () => {
 		);
 	});
 
+	it("detects TanStack Router from a direct web dependency", async () => {
+		await withFixture(
+			"tanstack-router",
+			{
+				"apps/web/package.json": json({
+					dependencies: { "@tanstack/react-router": "1.170.25" },
+				}),
+				"package.json": json({ workspaces: ["apps/*"] }),
+			},
+			async (root) => {
+				const result = await detect(root);
+				expect(result.config).toMatchObject({
+					platforms: ["web"],
+					web: "tanstack-router",
+				});
+				expect(result.modules).toEqual([
+					{
+						evidence: "found @tanstack/react-router in its dependencies",
+						proposal: "web-app",
+						root: "apps/web",
+					},
+				]);
+			},
+		);
+	});
+
+	it("keeps detecting TanStack Start when the router dependency is present", async () => {
+		await withFixture(
+			"tanstack-start-with-router",
+			{
+				"apps/web/package.json": json({
+					dependencies: {
+						"@tanstack/react-router": "1.170.25",
+						"@tanstack/react-start": "1.168.42",
+					},
+				}),
+				"package.json": json({ workspaces: ["apps/*"] }),
+			},
+			async (root) => {
+				const result = await detect(root);
+				expect(result.config).toMatchObject({
+					platforms: ["web"],
+					web: "tanstack-start",
+				});
+				expect(result.modules).toEqual([
+					{
+						evidence:
+							"found @tanstack/react-start in its dependencies; also found @tanstack/react-router in its dependencies",
+						proposal: "web-app",
+						root: "apps/web",
+					},
+				]);
+			},
+		);
+	});
+
 	it("keeps the first module signature and reports the others", async () => {
 		await withFixture(
 			"multi-signature",

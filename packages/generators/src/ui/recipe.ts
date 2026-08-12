@@ -15,6 +15,7 @@ import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 import { nextjsFramework } from "../frameworks/nextjs";
 import { reactRouterFramework } from "../frameworks/react-router";
+import { tanstackRouterFramework } from "../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../registry/recipe-adapters";
 import { readTemplate } from "../template";
@@ -37,7 +38,12 @@ export const uiRecipe = defineTemplateRecipe({
 
 export const uiAdapters = deriveRecipeAdapters({
 	recipe: uiRecipe,
-	frameworks: [nextjsFramework, reactRouterFramework, tanstackStartFramework],
+	frameworks: [
+		nextjsFramework,
+		reactRouterFramework,
+		tanstackRouterFramework,
+		tanstackStartFramework,
+	],
 	readTemplate,
 	markers: ({ config, framework }: AdapterContext<ForgeConfig>) => ({
 		SHADCN_STYLE: uiStyle(config),

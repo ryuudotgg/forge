@@ -508,6 +508,10 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			directDependencies.has("@tanstack/react-start")
 				? webFrameworks.normalize("tanstack-start")
 				: undefined,
+			directDependencies.has("@tanstack/react-router") &&
+			!directDependencies.has("@tanstack/react-start")
+				? webFrameworks.normalize("tanstack-router")
+				: undefined,
 		]);
 
 		const orm = oneDetected([

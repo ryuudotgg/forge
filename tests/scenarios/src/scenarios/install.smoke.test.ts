@@ -117,6 +117,19 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		});
 	}, 600_000);
 
+	it("installs, builds, and typechecks a TanStack Router SPA project", async () => {
+		await withScenarioWorkspace("smoke-tanstack-router", async (workspace) => {
+			await createProject(workspace, {
+				linter: "biome",
+				packageManager: "pnpm",
+				style: "tailwind",
+				web: "tanstack-router",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+		});
+	}, 600_000);
+
 	it("installs, builds, and typechecks a full React Router project", async () => {
 		await withScenarioWorkspace("smoke-react-router", async (workspace) => {
 			await createProject(workspace, {

@@ -51,13 +51,16 @@ describe("forge list builders", () => {
 		);
 		expect(output).toContain("React Router");
 		expect(output).toContain(
-			"React Router       react-router         Managed React Router app host.",
+			"React Router       react-router          Managed React Router app host.",
 		);
 		expect(output).toContain(
-			"Base               react-router/base    Base React Router template.",
+			"TanStack Router    tanstack-router       Managed TanStack Router single-page app host.",
+		);
+		expect(output).toContain(
+			"Base               react-router/base     Base React Router template.",
 		);
 		expect(output).toContain("Auth.js");
-		expect(output).toContain("authjs               [addon]");
+		expect(output).toContain("authjs                [addon]");
 		expect(output).not.toContain("Root Workspace");
 		expect(output).not.toContain("support is coming soon.");
 	});

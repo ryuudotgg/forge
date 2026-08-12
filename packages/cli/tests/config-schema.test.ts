@@ -77,7 +77,7 @@ describe("assembleSchema", () => {
 		});
 	});
 
-	it("rejects unavailable web frameworks with a friendly sentence", () => {
+	it("accepts TanStack Router in a complete create config", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
@@ -86,9 +86,10 @@ describe("assembleSchema", () => {
 			web: "tanstack-router",
 		});
 
-		expect(decodeMessages(result)).toContain(
-			"We don't support TanStack Router yet.",
-		);
+		expect(Result.getOrThrow(result)).toMatchObject({
+			platforms: ["web"],
+			web: "tanstack-router",
+		});
 	});
 
 	it("accepts TanStack Start in a complete create config", () => {
