@@ -58,6 +58,22 @@ export function allDependencyNames(
 	);
 }
 
+export function hasTanstackRouterApplicationDependencies(
+	packageJson: PackageJson,
+): boolean {
+	const dependencies = dependencyNames(packageJson);
+	if (!dependencies.has("@tanstack/react-router")) return false;
+
+	if (
+		["next", "react-router", "@tanstack/react-start"].some((dependency) =>
+			dependencies.has(dependency),
+		)
+	)
+		return false;
+
+	return allDependencyNames(packageJson).has("@tanstack/router-plugin");
+}
+
 export function oneDetected<T>(
 	values: ReadonlyArray<T | undefined>,
 ): T | undefined {
@@ -103,6 +119,7 @@ export function moduleProposal(
 	root: string,
 	packageJson: PackageJson,
 	hasComponentsJson: boolean,
+	hasTanstackRouterConfig: boolean,
 ): ModuleMappingProposal {
 	const dependencies = dependencyNames(packageJson);
 	const signatures: Array<{
@@ -122,7 +139,10 @@ export function moduleProposal(
 			proposal: "web-app",
 		});
 
-	if (dependencies.has("@tanstack/react-router"))
+	if (
+		hasTanstackRouterConfig &&
+		hasTanstackRouterApplicationDependencies(packageJson)
+	)
 		signatures.push({
 			evidence: "found @tanstack/react-router in its dependencies",
 			proposal: "web-app",
