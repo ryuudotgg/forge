@@ -226,12 +226,18 @@ importers:
 
   tests/scenarios:
     devDependencies:
+      '@ryuujs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@ryuujs/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript
       '@types/node':
         specifier: catalog:dev
         version: 24.13.3
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-beta.103
       typescript:
         specifier: catalog:dev
         version: 7.0.2
