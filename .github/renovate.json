@@ -36,11 +36,26 @@
 		},
 		{
 			"groupName": "effect",
-			"matchPackageNames": ["effect", "@effect/**", "!@effect/tsgo"]
+			"matchPackageNames": ["effect", "@effect/**", "!@effect/tsgo"],
+			"matchUpdateTypes": ["minor", "patch"]
+		},
+		{
+			"addLabels": ["framework-major"],
+			"matchPackageNames": ["effect", "@effect/**", "!@effect/tsgo"],
+			"matchUpdateTypes": ["major"]
 		},
 		{
 			"groupName": "scaffolded versions",
-			"matchFileNames": ["packages/generators/src/versions.ts"]
+			"matchFileNames": ["packages/generators/src/versions.ts"],
+			"matchManagers": ["custom.regex"],
+			"matchPackageNames": ["!effect", "!@effect/**"],
+			"matchUpdateTypes": ["minor", "patch"]
+		},
+		{
+			"addLabels": ["framework-major"],
+			"matchFileNames": ["packages/generators/src/versions.ts"],
+			"matchManagers": ["custom.regex"],
+			"matchUpdateTypes": ["major"]
 		},
 		{
 			"groupName": "scaffolded actions",

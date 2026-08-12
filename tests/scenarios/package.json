@@ -9,8 +9,10 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@ryuujs/core": "workspace:*",
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
+		"effect": "catalog:effect",
 		"typescript": "catalog:dev",
 		"vitest": "catalog:dev"
 	}

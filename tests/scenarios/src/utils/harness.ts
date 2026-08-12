@@ -12,7 +12,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { expect } from "vitest";
 
-const forgeCliPath = resolve(
+export const forgeCliPath = resolve(
 	process.cwd(),
 	"..",
 	"..",
@@ -131,12 +131,13 @@ export async function tryRunForge(
 	cwd: string,
 	args: ReadonlyArray<string>,
 	options?: {
+		readonly cliPath?: string;
 		readonly env?: NodeJS.ProcessEnv;
 		readonly input?: string;
 		readonly workspaceRoot?: string;
 	},
 ) {
-	return await runCommand("node", [forgeCliPath, ...args], {
+	return await runCommand("node", [options?.cliPath ?? forgeCliPath, ...args], {
 		cwd,
 		env: {
 			CI: "true",
@@ -154,6 +155,7 @@ export async function runForge(
 	cwd: string,
 	args: ReadonlyArray<string>,
 	options?: {
+		readonly cliPath?: string;
 		readonly env?: NodeJS.ProcessEnv;
 		readonly input?: string;
 		readonly workspaceRoot?: string;
@@ -173,6 +175,7 @@ export async function createProject(
 	workspace: ScenarioProject,
 	config: Record<string, unknown>,
 	options?: {
+		readonly cliPath?: string;
 		readonly env?: NodeJS.ProcessEnv;
 		readonly install?: boolean;
 	},
@@ -197,7 +200,11 @@ export async function createProject(
 			...(options?.install ? [] : ["--no-install"]),
 			"--no-git",
 		],
-		{ env: options?.env, workspaceRoot: workspace.workspaceRoot },
+		{
+			cliPath: options?.cliPath,
+			env: options?.env,
+			workspaceRoot: workspace.workspaceRoot,
+		},
 	);
 }
 
@@ -205,10 +212,12 @@ export async function addAddon(
 	projectRoot: string,
 	addonId: string,
 	options?: {
+		readonly cliPath?: string;
 		readonly env?: NodeJS.ProcessEnv;
 	},
 ) {
 	await runForge(projectRoot, ["add", addonId], {
+		cliPath: options?.cliPath,
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
 	});
@@ -218,10 +227,12 @@ export async function removeAddon(
 	projectRoot: string,
 	addonId: string,
 	options?: {
+		readonly cliPath?: string;
 		readonly env?: NodeJS.ProcessEnv;
 	},
 ) {
 	await runForge(projectRoot, ["remove", addonId], {
+		cliPath: options?.cliPath,
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
 	});
@@ -230,10 +241,12 @@ export async function removeAddon(
 export async function updateProject(
 	projectRoot: string,
 	options?: {
+		readonly cliPath?: string;
 		readonly env?: NodeJS.ProcessEnv;
 	},
 ) {
 	await runForge(projectRoot, ["update"], {
+		cliPath: options?.cliPath,
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
 	});

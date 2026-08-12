@@ -1,0 +1,55 @@
+name: N-1 Evolution
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 5 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  FORCE_COLOR: 3
+  DO_NOT_TRACK: true
+  FORGE_N1_BASELINE: 2575b0695306334bd9d764f00c60c6e534ae82b3
+
+  # https://turborepo.org/docs/core-concepts/remote-caching
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+
+jobs:
+  evolution:
+    name: N-1 Evolution
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup current dependencies
+        uses: ./tooling/github/setup
+
+      - name: Build current CLI
+        run: pnpm build --filter=@ryuujs/forge
+
+      - uses: actions/checkout@v7
+        with:
+          path: baseline
+          ref: ${{ env.FORGE_N1_BASELINE }}
+
+      - name: Build Baseline CLI in Isolation
+        working-directory: baseline
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build --filter=@ryuujs/forge
+
+      - name: Run N-1 Evolution Harness
+        run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/n1-evolution.test.ts
+        env:
+          FORGE_N1: "1"
+          FORGE_N1_BASELINE_CLI: ${{ github.workspace }}/baseline/packages/cli/dist/index.mjs
+          FORGE_N1_SCRATCH_ROOT: ${{ runner.temp }}/forge-n1
