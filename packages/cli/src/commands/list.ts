@@ -3,6 +3,7 @@ import {
 	type CatalogEntry,
 	type CatalogKind,
 	type LoadedDefinitionRegistry,
+	loadDefinitionRegistry,
 	matchQuery,
 } from "@ryuujs/generators";
 import color from "picocolors";
@@ -162,7 +163,10 @@ export async function runList(
 	loadRegistry: () => Promise<LoadedDefinitionRegistry> = () =>
 		loadDiscoveryRegistry("."),
 ) {
-	const loadedRegistry = await loadRegistry();
+	const loadedRegistry = await (values["first-party"] === true
+		? loadDefinitionRegistry()
+		: loadRegistry());
+
 	const options = {
 		kind: parseCatalogKind(values.kind),
 		query: query ?? "",

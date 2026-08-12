@@ -79,6 +79,12 @@ export const options = {
 		description: "Print stable version 1 JSON; fields are added only.",
 	},
 
+	"first-party": {
+		type: "boolean",
+		description:
+			"Skip project registries and show only the first-party catalog.",
+	},
+
 	config: {
 		type: "string",
 		short: "c",
@@ -265,7 +271,7 @@ export const sections: CLISection[] = [
 	},
 	{
 		title: "forge list/info options",
-		keys: ["kind", "json"],
+		keys: ["kind", "json", "first-party"],
 	},
 	{
 		title: "forge init options",

@@ -3,6 +3,7 @@ import {
 	type AddonCatalogEntry,
 	type CatalogEntry,
 	type LoadedDefinitionRegistry,
+	loadDefinitionRegistry,
 	matchQuery,
 } from "@ryuujs/generators";
 import color from "picocolors";
@@ -184,7 +185,9 @@ export async function runInfo(
 	loadRegistry: () => Promise<LoadedDefinitionRegistry> = () =>
 		loadDiscoveryRegistry("."),
 ) {
-	const loadedRegistry = await loadRegistry();
+	const loadedRegistry = await (values["first-party"] === true
+		? loadDefinitionRegistry()
+		: loadRegistry());
 
 	const entry = loadedRegistry.catalog.find((candidate) => candidate.id === id);
 	if (!entry || entry.hidden) {
