@@ -28,6 +28,7 @@ import {
 	databaseFromDependencies,
 	dependencyNames,
 	envNames,
+	hasTanstackRouterApplicationDependencies,
 	type ModuleMappingProposal,
 	moduleProposal,
 	oneDetected,
@@ -441,6 +442,7 @@ const makeAdoptionDetector = Effect.gen(function* () {
 
 		const packageJsonByRoot = new Map<string, PackageJson>();
 		const componentsByRoot = new Map<string, string>();
+		const tanstackRouterConfigRoots = new Set<string>();
 
 		for (const root of roots) {
 			const packageJson = yield* decodePackageJson(
@@ -448,6 +450,12 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			);
 
 			packageJsonByRoot.set(root, packageJson);
+
+			if (
+				hasTanstackRouterApplicationDependencies(packageJson) &&
+				(yield* exists(join(projectRoot, root, "vite.config.ts")))
+			)
+				tanstackRouterConfigRoots.add(root);
 
 			const componentsStyle = yield* readComponentsStyle(
 				join(projectRoot, root, "components.json"),
@@ -508,8 +516,7 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			directDependencies.has("@tanstack/react-start")
 				? webFrameworks.normalize("tanstack-start")
 				: undefined,
-			directDependencies.has("@tanstack/react-router") &&
-			!directDependencies.has("@tanstack/react-start")
+			tanstackRouterConfigRoots.size > 0
 				? webFrameworks.normalize("tanstack-router")
 				: undefined,
 		]);
@@ -636,6 +643,7 @@ const makeAdoptionDetector = Effect.gen(function* () {
 				root,
 				packageJsonByRoot.get(root) ?? {},
 				componentsByRoot.has(root),
+				tanstackRouterConfigRoots.has(root),
 			),
 		);
 

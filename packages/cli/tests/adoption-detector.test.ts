@@ -1109,8 +1109,10 @@ describe("AdoptionDetector", () => {
 		await withFixture(
 			"tanstack-router",
 			{
+				"apps/web/vite.config.ts": "export default {};\n",
 				"apps/web/package.json": json({
 					dependencies: { "@tanstack/react-router": "1.170.25" },
+					devDependencies: { "@tanstack/router-plugin": "1.168.29" },
 				}),
 				"package.json": json({ workspaces: ["apps/*"] }),
 			},
@@ -1123,6 +1125,69 @@ describe("AdoptionDetector", () => {
 				expect(result.modules).toEqual([
 					{
 						evidence: "found @tanstack/react-router in its dependencies",
+						proposal: "web-app",
+						root: "apps/web",
+					},
+				]);
+			},
+		);
+	});
+
+	it("does not map a shared TanStack Router library as a web app", async () => {
+		await withFixture(
+			"tanstack-router-library",
+			{
+				"apps/web/package.json": json({ dependencies: { next: "^16" } }),
+				"package.json": json({ workspaces: ["apps/*", "packages/*"] }),
+				"packages/router-ui/package.json": json({
+					dependencies: { "@tanstack/react-router": "1.170.25" },
+				}),
+			},
+			async (root) => {
+				const result = await detect(root);
+				expect(result.config).toMatchObject({
+					platforms: ["web"],
+					web: "nextjs",
+				});
+				expect(result.modules).toEqual([
+					{
+						evidence: "found next in its dependencies",
+						proposal: "web-app",
+						root: "apps/web",
+					},
+					{
+						evidence: "found no known adoption signature",
+						proposal: "unadopted",
+						root: "packages/router-ui",
+					},
+				]);
+			},
+		);
+	});
+
+	it("prefers an application framework over its TanStack Router dependency", async () => {
+		await withFixture(
+			"next-with-tanstack-router",
+			{
+				"apps/web/vite.config.ts": "export default {};\n",
+				"apps/web/package.json": json({
+					dependencies: {
+						"@tanstack/react-router": "1.170.25",
+						next: "^16",
+					},
+					devDependencies: { "@tanstack/router-plugin": "1.168.29" },
+				}),
+				"package.json": json({ workspaces: ["apps/*"] }),
+			},
+			async (root) => {
+				const result = await detect(root);
+				expect(result.config).toMatchObject({
+					platforms: ["web"],
+					web: "nextjs",
+				});
+				expect(result.modules).toEqual([
+					{
+						evidence: "found next in its dependencies",
 						proposal: "web-app",
 						root: "apps/web",
 					},
@@ -1151,8 +1216,7 @@ describe("AdoptionDetector", () => {
 				});
 				expect(result.modules).toEqual([
 					{
-						evidence:
-							"found @tanstack/react-start in its dependencies; also found @tanstack/react-router in its dependencies",
+						evidence: "found @tanstack/react-start in its dependencies",
 						proposal: "web-app",
 						root: "apps/web",
 					},
