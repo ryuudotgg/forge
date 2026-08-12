@@ -80,7 +80,7 @@ interface InitConfigFile {
 	readonly modules: ReadonlyArray<ConfirmedModule>;
 }
 
-class InitPlanningError extends Schema.TaggedErrorClass<InitPlanningError>()(
+class InitPlanningError extends Schema.TaggedError<InitPlanningError>()(
 	"InitPlanningError",
 	{ message: Schema.String },
 ) {}

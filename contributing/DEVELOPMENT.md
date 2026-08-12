@@ -73,7 +73,7 @@ We use [Biome](https://biomejs.dev) for code formatting and linting, alongside s
 
 ### Effect
 
-Services (`Context.Service`), typed errors (`Schema.TaggedErrorClass`), schema
+Services (`Context.Service`), typed errors (`Schema.TaggedError`), schema
 validation, and IO (`FileSystem`) use the `effect` library. Do not introduce
 `any` or `as` casts; prove types through Effect's type machinery instead.
 User-facing CLI messages are natural sentences (lists via `Intl.ListFormat`).
