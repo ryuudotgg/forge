@@ -31,6 +31,7 @@ export const deps = {
 	tanstackReactRouter: dep("tanstackReactRouter"),
 	tanstackReactStart: dep("tanstackReactStart"),
 	tanstackRouterCli: dep("tanstackRouterCli"),
+	tanstackRouterPlugin: dep("tanstackRouterPlugin"),
 
 	vite: dep("vite"),
 	viteReact: dep("viteReact"),

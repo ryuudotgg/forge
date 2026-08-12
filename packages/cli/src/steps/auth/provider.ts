@@ -1,6 +1,7 @@
 import { isCancel, log, select } from "@clack/prompts";
 import { authenticationProviders } from "@ryuujs/generators";
 import { Result, Schema } from "effect";
+import { addonSupportsWebFramework } from "../../utils/addon-support";
 import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
@@ -22,7 +23,8 @@ const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 	configKey: "authentication",
 
 	dependencies: ["orm"],
-	shouldRun: (config) => !!config.orm,
+	shouldRun: (config) =>
+		!!config.orm && addonSupportsWebFramework("better-auth", config.web),
 
 	async execute(config, interactive) {
 		if (!interactive) {

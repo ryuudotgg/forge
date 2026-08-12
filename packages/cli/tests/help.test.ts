@@ -57,7 +57,7 @@ describe("printHelp", () => {
 				"        --package-manager <value>        pnpm · npm · Yarn · Bun",
 				"        --catalogs <value>               Flat · Scoped",
 				"        --linter <value>                 Biome · Oxc (soon) · ESLint + Prettier (soon)",
-				"        --web <value>                    Next.js · React Router · TanStack Router (soon) · TanStack Start",
+				"        --web <value>                    Next.js · React Router · TanStack Router · TanStack Start",
 				"        --desktop <value> (soon)         Electron · Tauri",
 				"        --mobile <value> (soon)          Expo · React Native",
 				"        --backend <value>                Next.js · Convex (soon) · Hono (soon) · Elysia (soon) · µWebSockets (soon) · Fastify (soon) · Express (soon)",

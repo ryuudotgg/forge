@@ -135,6 +135,19 @@ describe("rpc step", () => {
 		expect(rpcStep.shouldRun({ backend: "hono" })).toBe(true);
 	});
 
+	it("skips web frameworks without tRPC adapter support", () => {
+		expect(
+			rpcStep.shouldRun({ backend: "nextjs", web: "tanstack-router" }),
+		).toBe(false);
+		expect(rpcStep.shouldRun({ backend: "nextjs", web: "nextjs" })).toBe(true);
+		expect(rpcStep.shouldRun({ backend: "nextjs", web: "react-router" })).toBe(
+			true,
+		);
+		expect(
+			rpcStep.shouldRun({ backend: "nextjs", web: "tanstack-start" }),
+		).toBe(true);
+	});
+
 	it("accepts a canonical rpc id without prompting", async () => {
 		await expect(rpcStep.execute({ rpc: "trpc" }, false)).resolves.toBe("trpc");
 

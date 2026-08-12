@@ -47,6 +47,21 @@ describe("authentication step", () => {
 		expect(authenticationStep.shouldRun({ orm: "drizzle" })).toBe(true);
 	});
 
+	it("skips web frameworks without Better Auth adapter support", () => {
+		expect(
+			authenticationStep.shouldRun({ orm: "drizzle", web: "tanstack-router" }),
+		).toBe(false);
+		expect(
+			authenticationStep.shouldRun({ orm: "drizzle", web: "nextjs" }),
+		).toBe(true);
+		expect(
+			authenticationStep.shouldRun({ orm: "drizzle", web: "react-router" }),
+		).toBe(true);
+		expect(
+			authenticationStep.shouldRun({ orm: "drizzle", web: "tanstack-start" }),
+		).toBe(true);
+	});
+
 	it("accepts a canonical provider id without prompting", async () => {
 		await expect(
 			authenticationStep.execute({ authentication: "better-auth" }, false),

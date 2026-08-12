@@ -24,13 +24,22 @@ describe("first-party template recipes", () => {
 		).toThrow("Recipe Marker Undeclared: __BOGUS__");
 	});
 
-	it("resolves every recipe asset for every framework", () => {
+	it("resolves every recipe asset for every adapter-covered framework", () => {
 		for (const recipe of builtins.recipes) {
 			const markers = Object.fromEntries(
 				Object.keys(recipe.markers).map((name) => [name, "false"]),
 			);
 
-			for (const framework of builtins.frameworks) {
+			const coveredFrameworks = builtins.frameworks.filter((framework) =>
+				builtins.adapters.some(
+					(adapter) =>
+						adapter.addon === recipe.addon &&
+						adapter.framework === framework.id,
+				),
+			);
+			expect(coveredFrameworks.length, recipe.addon).toBeGreaterThan(0);
+
+			for (const framework of coveredFrameworks) {
 				const slots = Object.fromEntries(
 					framework.slots.map((slot) => [slot, `slot:${slot}`]),
 				);

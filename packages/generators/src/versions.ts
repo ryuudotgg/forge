@@ -85,6 +85,11 @@ export const versions = {
 		version: "1.167.27",
 		group: "Tooling",
 	},
+	tanstackRouterPlugin: {
+		name: "@tanstack/router-plugin",
+		version: "1.168.29",
+		group: "Tooling",
+	},
 
 	vite: { name: "vite", version: "8.2.1", group: "Tooling" },
 	viteReact: {

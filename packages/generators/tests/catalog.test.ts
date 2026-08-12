@@ -52,12 +52,13 @@ describe("catalog", () => {
 		expect(frameworks.map((entry) => entry.id)).toEqual([
 			"nextjs",
 			"react-router",
-			"tanstack-start",
 			"tanstack-router",
+			"tanstack-start",
 		]);
 		expect(templates.map((entry) => entry.id)).toEqual([
 			"nextjs/base",
 			"react-router/base",
+			"tanstack-router/base",
 			"tanstack-start/base",
 		]);
 		expect(addons.every((entry) => entry.kind === "addon")).toBe(true);
@@ -94,18 +95,23 @@ describe("catalog", () => {
 	});
 
 	it("derives adapter addon frameworks and slots from the registry", async () => {
-		const expectedFrameworks = ["nextjs", "react-router", "tanstack-start"];
+		const serverFrameworks = ["nextjs", "react-router", "tanstack-start"];
 
 		expect(await getCatalogEntry("trpc")).toMatchObject({
-			frameworks: expectedFrameworks,
+			frameworks: serverFrameworks,
 			requiredSlots: ["trpc"],
 		});
 		expect(await getCatalogEntry("better-auth")).toMatchObject({
-			frameworks: expectedFrameworks,
+			frameworks: serverFrameworks,
 			requiredSlots: ["auth"],
 		});
 		expect(await getCatalogEntry("ui")).toMatchObject({
-			frameworks: expectedFrameworks,
+			frameworks: [
+				"nextjs",
+				"react-router",
+				"tanstack-router",
+				"tanstack-start",
+			],
 		});
 	});
 

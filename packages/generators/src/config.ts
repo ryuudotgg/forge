@@ -53,15 +53,12 @@ export const platforms = defineChoices(
 
 export type Platform = keyof typeof platforms.definitions;
 
-export const webFrameworks = defineChoices(
-	{
-		nextjs: "Next.js",
-		"react-router": "React Router",
-		"tanstack-router": "TanStack Router",
-		"tanstack-start": "TanStack Start",
-	} as const,
-	{ unavailable: ["tanstack-router"] },
-);
+export const webFrameworks = defineChoices({
+	nextjs: "Next.js",
+	"react-router": "React Router",
+	"tanstack-router": "TanStack Router",
+	"tanstack-start": "TanStack Start",
+} as const);
 
 export type WebFramework = keyof typeof webFrameworks.definitions;
 

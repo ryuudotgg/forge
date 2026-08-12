@@ -151,6 +151,9 @@ describe("web step", () => {
 			"react-router",
 		);
 		await expect(
+			webStep.execute({ web: "tanstack-router" }, false),
+		).resolves.toBe("tanstack-router");
+		await expect(
 			webStep.execute({ web: "tanstack-start" }, false),
 		).resolves.toBe("tanstack-start");
 	});
@@ -165,12 +168,6 @@ describe("web step", () => {
 		).resolves.toBe("nextjs");
 	});
 
-	it("silently defaults to nextjs when web is unavailable", async () => {
-		await expect(
-			webStep.execute({ web: "tanstack-router" }, false),
-		).resolves.toBe("nextjs");
-	});
-
 	it("recommends the first option and returns the interactive choice", async () => {
 		promptMocks.select.mockResolvedValue("nextjs");
 
@@ -181,30 +178,13 @@ describe("web step", () => {
 			options: [
 				{ label: "Next.js (Recommended)", value: "nextjs" },
 				{ label: "React Router", value: "react-router" },
-				{
-					label: "TanStack Router",
-					value: "tanstack-router",
-					hint: "coming soon",
-				},
+				{ label: "TanStack Router", value: "tanstack-router" },
 				{
 					label: "TanStack Start",
 					value: "tanstack-start",
 				},
 			],
 		});
-	});
-
-	it("warns and re-prompts when an unavailable web framework is selected", async () => {
-		promptMocks.select
-			.mockResolvedValueOnce("tanstack-router")
-			.mockResolvedValueOnce("nextjs");
-
-		await expect(webStep.execute({}, true)).resolves.toBe("nextjs");
-
-		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"We don't support TanStack Router yet.",
-		);
-		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 });
 
