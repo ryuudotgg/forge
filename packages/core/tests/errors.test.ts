@@ -236,10 +236,15 @@ describe("structured error rendering", () => {
 				path: "apps/web",
 				reason,
 				cause,
+				...(reason === "multiple-templates-selected" && {
+					category: "web",
+				}),
 				...(reason === "slot-path-invalid" && { detail: message }),
 			});
 
 			expect(error.reason).toBe(reason);
+			if (reason === "multiple-templates-selected")
+				expect(error.category).toBe("web");
 			expect(error.message).toBe(message);
 			expect(error.cause).toBe(cause);
 		},

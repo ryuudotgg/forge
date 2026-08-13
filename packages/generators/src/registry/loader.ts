@@ -127,7 +127,7 @@ const AdapterDefinitionDataSchema = Schema.Struct({
 const FrameworkDefinitionDataSchema = Schema.Struct({
 	_tag: Schema.Literal("FrameworkDefinition"),
 	buildOutputs: Schema.Array(Schema.String),
-	configFile: Schema.String,
+	configFile: Schema.optional(Schema.String),
 	id: Schema.String,
 	ignoreDirs: Schema.Array(Schema.String),
 	name: Schema.String,
@@ -143,7 +143,6 @@ const TemplateDefinitionDataSchema = Schema.Struct({
 	category: Schema.String,
 	contribute: Schema.Unknown,
 	dependencies: Schema.Array(DependencyRefSchema),
-	exclusive: Schema.Boolean,
 	framework: Schema.String,
 	id: Schema.String,
 	name: Schema.String,

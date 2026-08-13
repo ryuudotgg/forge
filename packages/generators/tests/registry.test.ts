@@ -3,6 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type AppConfig,
+	authoringApiVersion,
+	defineFramework,
+	defineTemplate,
 	deriveAddonFrameworks,
 	isAddonCompatibleWithModule,
 	RegistryDescriptorSchema,
@@ -260,6 +263,87 @@ describe("registry loader", () => {
 				JSON.parse(JSON.stringify(loaded.descriptors)),
 			),
 		).toEqual(loaded.descriptors);
+	});
+
+	it("loads configless frameworks and templates without exclusive metadata", async () => {
+		const framework = defineFramework({
+			buildOutputs: ["dist/**"],
+			id: "@fixture/configless",
+			ignoreDirs: ["dist/"],
+			name: "Configless",
+			sourceRoot: "src",
+			slots: ["entry"],
+			tsconfigPreset: { content: {}, name: "configless" },
+		});
+		const template = defineTemplate<ForgeConfig>({
+			category: "backend",
+			contribute: () => [],
+			framework: framework.id,
+			id: "@fixture/configless-base",
+			name: "Configless Base",
+			version: 1,
+			when: () => false,
+		});
+		const loaded = await loadDefinitionRegistry({
+			importRegistry: async () => ({
+				module: {
+					default: {
+						apiVersion: authoringApiVersion,
+						catalog: [],
+						frameworks: [framework],
+						templates: [template],
+					},
+				},
+				version: "1.0.0",
+			}),
+			projectRoot: "/fixture-project",
+			registries: ["@fixture/configless-registry"],
+		});
+
+		expect(loaded.registry.frameworks).toContain(framework);
+		expect(loaded.registry.templates).toContain(template);
+	});
+
+	it("accepts legacy template definitions carrying exclusive metadata", async () => {
+		const framework = defineFramework({
+			buildOutputs: [],
+			configFile: "legacy.config.ts",
+			id: "@fixture/legacy",
+			ignoreDirs: [],
+			name: "Legacy",
+			sourceRoot: "src",
+			slots: ["entry"],
+			tsconfigPreset: { content: {}, name: "legacy" },
+		});
+		const template = {
+			...defineTemplate<ForgeConfig>({
+				category: "web",
+				contribute: () => [],
+				framework: framework.id,
+				id: "@fixture/legacy-base",
+				name: "Legacy Base",
+				version: 1,
+				when: () => false,
+			}),
+			exclusive: true,
+		};
+		const loaded = await loadDefinitionRegistry({
+			importRegistry: async () => ({
+				module: {
+					default: {
+						apiVersion: authoringApiVersion,
+						catalog: [],
+						frameworks: [framework],
+						templates: [template],
+					},
+				},
+				version: "1.0.0",
+			}),
+			projectRoot: "/fixture-project",
+			registries: ["@fixture/legacy-registry"],
+		});
+
+		expect(loaded.registry.templates).toContain(template);
 	});
 
 	it("matches derived frameworks to real compatibility membership", async () => {

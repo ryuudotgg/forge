@@ -69,7 +69,6 @@ const tanstackRouterBaseTemplate: TemplateDefinition<
 	name: "Base",
 	version: 1,
 	category: "web",
-	exclusive: true,
 	dependencies: [
 		{ id: "root", type: "addon" },
 		{ id: "typescript", type: "addon" },

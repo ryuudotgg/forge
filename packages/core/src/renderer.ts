@@ -172,7 +172,8 @@ function resolveAppSurfacePath(
 
 		case "frameworkConfig": {
 			const framework = frameworksById.get(module.framework);
-			if (framework) return filePath(`${module.root}/${framework.configFile}`);
+			if (framework?.configFile)
+				return filePath(`${module.root}/${framework.configFile}`);
 
 			throw new Error("Unsupported Framework Config Surface");
 		}

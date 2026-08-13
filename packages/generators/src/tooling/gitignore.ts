@@ -1,5 +1,9 @@
 import { defineAddon, projectTarget, surfaceLines } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
+import {
+	frameworkIgnoreDirs,
+	frameworksInPlay,
+} from "../registry/frameworks-in-play";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 
 const gitignore = defineAddon<ForgeConfig, "gitignore">({
@@ -13,11 +17,9 @@ const gitignore = defineAddon<ForgeConfig, "gitignore">({
 	contribute: ({ config, frameworks }) => {
 		const buildLines = ["dist/", "build/", "out/", ".turbo/", ".cache/"];
 
-		const framework = frameworks.find((entry) => entry.id === config.web);
-		if (config.web !== undefined && !framework)
-			throw new Error(`Framework Definition Missing: ${config.web}`);
-
-		if (framework) buildLines.push(...framework.ignoreDirs);
+		buildLines.push(
+			...frameworkIgnoreDirs(frameworksInPlay(config, frameworks)),
+		);
 		if (config.mobile) buildLines.push(".expo/");
 
 		return [

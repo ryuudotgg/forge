@@ -453,7 +453,7 @@ export interface FrameworkDefinition<
 > {
 	readonly _tag: "FrameworkDefinition";
 	readonly buildOutputs: ReadonlyArray<string>;
-	readonly configFile: string;
+	readonly configFile?: string;
 	readonly id: Id;
 	readonly ignoreDirs: ReadonlyArray<string>;
 	readonly name: string;
@@ -1021,7 +1021,6 @@ export interface TemplateDefinition<
 	readonly name: string;
 	readonly version: number;
 	readonly category: GeneratorCategory;
-	readonly exclusive: boolean;
 	readonly dependencies: ReadonlyArray<DependencyRef>;
 	readonly when: (config: Config) => boolean;
 	readonly contribute: (
@@ -1063,7 +1062,7 @@ export function defineFramework<
 	const Slots extends ReadonlyArray<string>,
 >(framework: {
 	readonly buildOutputs: ReadonlyArray<string>;
-	readonly configFile: string;
+	readonly configFile?: string;
 	readonly id: Id;
 	readonly ignoreDirs: ReadonlyArray<string>;
 	readonly name: string;
@@ -1104,7 +1103,6 @@ export function defineTemplate<
 	readonly name: string;
 	readonly version: number;
 	readonly category: GeneratorCategory;
-	readonly exclusive: boolean;
 	readonly dependencies?: ReadonlyArray<DependencyRef>;
 	readonly when: (config: Config) => boolean;
 	readonly contribute: (

@@ -532,6 +532,7 @@ const PlannerErrorReason = Schema.Literals([
 const PlannerErrorFields = Schema.Struct({
 	path: Schema.String,
 	reason: PlannerErrorReason,
+	category: Schema.optional(Schema.String),
 	detail: Schema.optional(Schema.String),
 	cause: optionalCause,
 });
@@ -543,7 +544,7 @@ const plannerRequiredFields = {
 	"ensured-app-module-conflict": [],
 	"ensured-package-module-conflict": [],
 	"ensured-module-conflict": [],
-	"multiple-templates-selected": [],
+	"multiple-templates-selected": ["category"],
 	"definition-dependency-missing": [],
 	"definition-dependency-inactive": [],
 	"definition-cycle-detected": [],

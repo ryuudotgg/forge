@@ -502,6 +502,38 @@ describe("renderer", () => {
 		);
 	});
 
+	it("fails the framework config surface when the framework has no config file", async () => {
+		const framework = defineFramework({
+			buildOutputs: [],
+			id: "configless",
+			ignoreDirs: [],
+			name: "Configless",
+			sourceRoot: "",
+			slots: [],
+			tsconfigPreset: { content: {}, name: "configless" },
+		});
+		const error = await renderFailure(
+			[
+				{
+					bucket: { kind: "module", moduleId: "abcde" },
+					contribution: surfaceText(
+						selectedModuleTarget(),
+						"frameworkConfig",
+						"export default {};\n",
+					),
+					definitionId: "configless/config",
+					order: 0,
+				},
+			],
+			[appModule("configless")],
+			[framework],
+		);
+
+		expect(error.message).toBe(
+			"Render Failed: Error: Unsupported Framework Config Surface",
+		);
+	});
+
 	it("fails when a module slot is missing", async () => {
 		const error = await renderFailure(
 			[

@@ -14,6 +14,10 @@ import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
 import { resolveDatabaseProvider } from "../data/providers";
 import { deps } from "../deps";
+import {
+	frameworkBuildOutputs,
+	frameworksInPlay,
+} from "../registry/frameworks-in-play";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 
 const root = defineAddon<ForgeConfig, "root">({
@@ -133,11 +137,8 @@ function buildContributions(
 
 	if (dbEnv.length > 0) buildTask.env = dbEnv;
 
-	const framework = frameworks.find((entry) => entry.id === config.web);
-	if (config.web !== undefined && !framework)
-		throw new Error(`Framework Definition Missing: ${config.web}`);
-
-	if (framework) buildTask.outputs = framework.buildOutputs;
+	const outputs = frameworkBuildOutputs(frameworksInPlay(config, frameworks));
+	if (outputs.length > 0) buildTask.outputs = outputs;
 
 	return [
 		surfaceJson(projectTarget(), "rootPackageJson", packageJson),

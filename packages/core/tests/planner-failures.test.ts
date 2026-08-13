@@ -12,6 +12,7 @@ import {
 	defineTemplate,
 	ensureAppModule,
 	ensuredModuleTarget,
+	GeneratorError,
 	leafTextFile,
 	moduleTarget,
 	Planner,
@@ -63,7 +64,6 @@ function webRegistry(
 		name: "Base",
 		version: 1,
 		category: "web",
-		exclusive: true,
 		when: () => true,
 		contribute: () => [
 			ensureAppModule("web", "apps/web", {
@@ -110,7 +110,6 @@ describe("planner defensive failures", () => {
 				name: "First",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: () => true,
 				contribute: () => [],
 			});
@@ -130,6 +129,122 @@ describe("planner defensive failures", () => {
 			);
 
 			expect(error.reason).toBe("multiple-templates-selected");
+			expect(error.category).toBe("web");
+		});
+	});
+
+	it("selects one template per category and preserves web addon validation", async () => {
+		await withTempDir("planner-template-categories", async (directory) => {
+			const webFramework = defineFramework({
+				id: "web",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Web",
+				sourceRoot: "",
+				slots: ["entry"],
+				tsconfigPreset: { content: {}, name: "web" },
+			});
+			const backendFramework = defineFramework({
+				id: "backend",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Backend",
+				sourceRoot: "",
+				slots: ["entry"],
+				tsconfigPreset: { content: {}, name: "backend" },
+			});
+			const web = defineTemplate<FailureConfig>({
+				id: "web/base",
+				framework: "web",
+				name: "Web",
+				version: 1,
+				category: "web",
+				when: () => true,
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "web",
+						template: { id: "web/base", version: 1 },
+						slots: {},
+					}),
+				],
+			});
+			const backend = defineTemplate<FailureConfig>({
+				id: "backend/base",
+				framework: "backend",
+				name: "Backend",
+				version: 1,
+				category: "backend",
+				when: () => true,
+				contribute: () => [
+					ensureAppModule("backend", "apps/backend", {
+						framework: "backend",
+						template: { id: "backend/base", version: 1 },
+						slots: {},
+					}),
+				],
+			});
+			const webOnly = defineAddon<FailureConfig>({
+				id: "web-only",
+				name: "Web Only",
+				version: "1.0.0",
+				category: "ui",
+				exclusive: false,
+				targetMode: "single",
+				compatibility: { app: { frameworks: ["web"] } },
+				when: () => true,
+				contribute: () => [],
+			});
+
+			const registryFor = (
+				addons: ReadonlyArray<AddonDefinition<FailureConfig>>,
+			) =>
+				defineRegistry({
+					addons,
+					frameworks: [webFramework, backendFramework],
+					templates: [web, backend],
+				});
+			const result = await Effect.runPromise(
+				plan(directory, registryFor([webOnly])),
+			);
+
+			expect(Object.values(result.manifest.modules)).toHaveLength(2);
+
+			const backendOnly = defineAddon<FailureConfig>({
+				id: "backend-only",
+				name: "Backend Only",
+				version: "1.0.0",
+				category: "backend",
+				exclusive: false,
+				targetMode: "single",
+				compatibility: { app: { frameworks: ["backend"] } },
+				when: () => true,
+				contribute: () => [],
+			});
+			const backendResult = await Effect.runPromise(
+				plan(directory, registryFor([backendOnly])),
+			);
+
+			expect(Object.values(backendResult.manifest.modules)).toHaveLength(2);
+
+			const unsupported = defineAddon<FailureConfig>({
+				id: "unsupported",
+				name: "Unsupported",
+				version: "1.0.0",
+				category: "ui",
+				exclusive: false,
+				targetMode: "single",
+				compatibility: { app: { frameworks: ["unsupported"] } },
+				when: () => true,
+				contribute: () => [],
+			});
+			const error = await Effect.runPromise(
+				Effect.flip(plan(directory, registryFor([unsupported]))),
+			);
+
+			expect(error).toBeInstanceOf(GeneratorError);
+			if (!(error instanceof GeneratorError))
+				throw new Error("Expected Generator Error");
+			expect(error.reason).toBe("framework-not-supported");
 		});
 	});
 
