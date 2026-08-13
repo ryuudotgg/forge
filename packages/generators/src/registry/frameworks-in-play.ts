@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { FrameworkDefinition } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 
@@ -38,10 +39,27 @@ export function frameworkIgnoreDirs(
 export function frameworkTsconfigPresets(
 	frameworks: ReadonlyArray<FrameworkDefinition>,
 ): ReadonlyArray<FrameworkDefinition["tsconfigPreset"]> {
-	const presets = new Map<string, FrameworkDefinition["tsconfigPreset"]>();
-	for (const framework of frameworks)
-		if (!presets.has(framework.tsconfigPreset.name))
-			presets.set(framework.tsconfigPreset.name, framework.tsconfigPreset);
+	const presets = new Map<
+		string,
+		{
+			readonly framework: FrameworkDefinition;
+			readonly preset: FrameworkDefinition["tsconfigPreset"];
+		}
+	>();
 
-	return [...presets.values()];
+	for (const framework of frameworks) {
+		const preset = framework.tsconfigPreset;
+		const existing = presets.get(preset.name);
+		if (!existing) {
+			presets.set(preset.name, { framework, preset });
+			continue;
+		}
+
+		if (!isDeepStrictEqual(existing.preset.content, preset.content))
+			throw new Error(
+				`TypeScript Preset Conflict: ${preset.name} is defined differently by ${existing.framework.id} and ${framework.id}`,
+			);
+	}
+
+	return [...presets.values()].map(({ preset }) => preset);
 }

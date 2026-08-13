@@ -40,6 +40,17 @@ const duplicatePreset = defineFramework({
 	tsconfigPreset: { content: { duplicate: true }, name: "web" },
 });
 
+const matchingPreset = defineFramework({
+	buildOutputs: [],
+	configFile: "matching.config.ts",
+	id: "matching",
+	ignoreDirs: [],
+	name: "Matching",
+	sourceRoot: "",
+	slots: [],
+	tsconfigPreset: { content: {}, name: "web" },
+});
+
 describe("frameworksInPlay", () => {
 	it("selects the configured web framework", () => {
 		expect(frameworksInPlay({ web: "nextjs" }, [web])).toEqual([web]);
@@ -72,10 +83,16 @@ describe("frameworksInPlay", () => {
 		]);
 	});
 
-	it("keeps the first preset for each preset name", () => {
-		expect(frameworkTsconfigPresets([web, backend, duplicatePreset])).toEqual([
+	it("deduplicates matching presets with the same name", () => {
+		expect(frameworkTsconfigPresets([web, backend, matchingPreset])).toEqual([
 			web.tsconfigPreset,
 			backend.tsconfigPreset,
 		]);
+	});
+
+	it("rejects conflicting presets with the same name", () => {
+		expect(() => frameworkTsconfigPresets([web, duplicatePreset])).toThrow(
+			"TypeScript Preset Conflict: web is defined differently by nextjs and duplicate",
+		);
 	});
 });
