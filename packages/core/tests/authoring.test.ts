@@ -45,7 +45,6 @@ const template = defineTemplate<TestConfig>({
 	name: "Base",
 	version: 1,
 	category: "web",
-	exclusive: true,
 	when: (config) => config.web === "nextjs",
 	contribute: () => [],
 });
@@ -487,6 +486,26 @@ describe("authoring", () => {
 				addons: [],
 			}),
 		).toThrow(RegistryError);
+	});
+
+	it("registers a framework without a config file", () => {
+		const configlessFramework = defineFramework({
+			id: "configless",
+			buildOutputs: [],
+			ignoreDirs: [],
+			name: "Configless",
+			sourceRoot: "",
+			slots: ["entry"],
+			tsconfigPreset: { content: {}, name: "configless" },
+		});
+
+		expect(() =>
+			defineRegistry({
+				frameworks: [configlessFramework],
+				templates: [],
+				addons: [],
+			}),
+		).not.toThrow();
 	});
 
 	it("rejects an adapter slot absent from its framework", () => {

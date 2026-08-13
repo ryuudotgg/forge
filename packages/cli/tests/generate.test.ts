@@ -303,7 +303,6 @@ describe("generate step", () => {
 			name: "Fake Base",
 			version: 1,
 			category: "web",
-			exclusive: true,
 			when: (config) => config.web === "nextjs",
 			contribute: () => [
 				ensureAppModule("web", "apps/web", {

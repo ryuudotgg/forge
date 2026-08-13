@@ -6,6 +6,10 @@ import {
 	surfaceJson,
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
+import {
+	frameworksInPlay,
+	frameworkTsconfigPresets,
+} from "../registry/frameworks-in-play";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 
 const typescript = defineAddon<ForgeConfig, "typescript">({
@@ -18,10 +22,9 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 	when: () => true,
 	contribute: ({ config, frameworks }) => {
 		const slug = config.slug ?? "my-app";
-
-		const framework = frameworks.find((entry) => entry.id === config.web);
-		if (config.web !== undefined && !framework)
-			throw new Error(`Framework Definition Missing: ${config.web}`);
+		const presets = frameworkTsconfigPresets(
+			frameworksInPlay(config, frameworks),
+		);
 
 		const baseTsconfig = {
 			$schema: "https://json.schemastore.org/tsconfig",
@@ -70,15 +73,13 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 				"tooling/tsconfig/base.json",
 				formatJson(baseTsconfig, { compact: true }),
 			),
-			...(framework
-				? [
-						leafTextFile(
-							projectTarget(),
-							`tooling/tsconfig/${framework.tsconfigPreset.name}.json`,
-							formatJson(framework.tsconfigPreset.content, { compact: true }),
-						),
-					]
-				: []),
+			...presets.map((preset) =>
+				leafTextFile(
+					projectTarget(),
+					`tooling/tsconfig/${preset.name}.json`,
+					formatJson(preset.content, { compact: true }),
+				),
+			),
 			leafTextFile(
 				projectTarget(),
 				"tooling/tsconfig/react-library.json",

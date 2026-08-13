@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 import type {
 	AdapterDefinition,
 	AddonDefinition,
@@ -27,7 +27,11 @@ import {
 	type Slots,
 } from "./config";
 import { dependencyFormatFor } from "./environment";
-import { PlannerError, type RendererError } from "./errors";
+import {
+	type GeneratorError,
+	PlannerError,
+	type RendererError,
+} from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
 import { filePath } from "./operations";
@@ -607,22 +611,70 @@ const makePlanner = Effect.gen(function* () {
 		SelectionPhaseContract<ConfigValue>["selection"],
 		PlannerError
 	> => {
-		const template = registry.templates.filter((entry) => entry.when(config));
-		if (template.length > 1)
-			return Effect.fail(
-				new PlannerError({
-					path: "registry",
-					reason: "multiple-templates-selected",
-				}),
-			);
+		const templates = registry.templates.filter((entry) => entry.when(config));
+		const templatesByCategory = new Map<
+			string,
+			TemplateDefinition<ConfigValue>[]
+		>();
+
+		for (const template of templates) {
+			const category = templatesByCategory.get(template.category) ?? [];
+			category.push(template);
+			templatesByCategory.set(template.category, category);
+		}
+
+		for (const [category, matchingTemplates] of templatesByCategory)
+			if (matchingTemplates.length > 1)
+				return Effect.fail(
+					new PlannerError({
+						path: "registry",
+						reason: "multiple-templates-selected",
+						category,
+					}),
+				);
 
 		const directAddons = registry.addons.filter((entry) => entry.when(config));
 
 		return Effect.succeed({
 			directAddons,
-			templates: template,
+			templates,
 		});
 	};
+
+	const validateAddonAgainstTemplates = <ConfigValue>(
+		addon: AddonDefinition<ConfigValue>,
+		templates: ReadonlyArray<TemplateDefinition<ConfigValue>>,
+		registry: DefinitionRegistry<ConfigValue>,
+	): Effect.Effect<void, GeneratorError> =>
+		Effect.gen(function* () {
+			let firstFailure: GeneratorError | undefined;
+
+			for (const template of templates) {
+				const framework = registry.frameworks.find(
+					(entry) => entry.id === template.framework,
+				);
+
+				const result = yield* Effect.result(
+					validateAddonAgainstSelection(
+						addon,
+						framework,
+						template,
+						registry.adapters,
+					),
+				);
+
+				if (Result.isSuccess(result)) return;
+				firstFailure ??= result.failure;
+			}
+
+			if (firstFailure) return yield* firstFailure;
+			return yield* validateAddonAgainstSelection(
+				addon,
+				undefined,
+				undefined,
+				registry.adapters,
+			);
+		});
 
 	const resolveDependencies = <ConfigValue>(
 		config: ConfigValue,
@@ -1322,22 +1374,14 @@ const makePlanner = Effect.gen(function* () {
 						),
 					};
 
-		if (intent._tag === "Create") {
-			const selectedTemplate = selection.templates[0];
-			const selectedFramework = selectedTemplate
-				? registry.frameworks.find(
-						(framework) => framework.id === selectedTemplate.framework,
-					)
-				: undefined;
-
+		if (intent._tag === "Create")
 			for (const addon of selection.directAddons)
-				yield* validateAddonAgainstSelection(
+				yield* validateAddonAgainstTemplates(
 					addon,
-					selectedFramework,
-					selectedTemplate,
-					registry.adapters,
+					selection.templates,
+					registry,
 				);
-		} else
+		else
 			for (const addon of selection.directAddons) {
 				const targets = intent.installs
 					.filter((install) => install.definitionId === addon.id)

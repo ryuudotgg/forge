@@ -204,7 +204,6 @@ function testRegistry(
 		name: "Base",
 		version: templateVersion,
 		category: "web",
-		exclusive: true,
 		when: (config) => config.web === "nextjs",
 		contribute: () => [
 			ensureAppModule("web", "apps/web", {
@@ -322,7 +321,6 @@ function templateDependencyRegistry(includeActiveAlternative: boolean) {
 		name: "Next.js Base",
 		version: 1,
 		category: "web",
-		exclusive: true,
 		when: (config) => config.web === "nextjs",
 		contribute: () => [],
 	});
@@ -332,7 +330,6 @@ function templateDependencyRegistry(includeActiveAlternative: boolean) {
 		name: "TanStack Base",
 		version: 1,
 		category: "web",
-		exclusive: true,
 		when: () => false,
 		contribute: () => [],
 	});
@@ -896,7 +893,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: () => true,
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
@@ -1965,7 +1961,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "nextjs",
 				contribute: () => [
 					ensureAppModule("first", "apps/first", {
@@ -2052,7 +2047,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "nextjs",
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
@@ -2116,7 +2110,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "nextjs",
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
@@ -2196,7 +2189,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "nextjs",
 				contribute: (context) => [
 					ensureAppModule("web", "apps/web", {
@@ -2324,7 +2316,6 @@ describe("planner", () => {
 					name: "Base",
 					version: 1,
 					category: "web",
-					exclusive: true,
 					when: (config) => config.web === "nextjs",
 					contribute: () => [
 						ensureAppModule("web", "apps/web", {
@@ -2414,7 +2405,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "nextjs",
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
@@ -2493,7 +2483,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "nextjs",
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
@@ -2591,7 +2580,6 @@ describe("planner", () => {
 					name: "Base",
 					version: 1,
 					category: "web",
-					exclusive: true,
 					when: (config) => config.web === "nextjs",
 					contribute: () => [
 						ensureAppModule("web", "apps/web", {
@@ -2725,7 +2713,6 @@ describe("planner", () => {
 					name: "First Base",
 					version: 1,
 					category: "web",
-					exclusive: true,
 					when: () => false,
 					contribute: () => [],
 				});
@@ -2735,7 +2722,6 @@ describe("planner", () => {
 					name: "Second Base",
 					version: 1,
 					category: "web",
-					exclusive: true,
 					when: () => false,
 					contribute: () => [],
 				});
@@ -2822,7 +2808,6 @@ describe("planner", () => {
 			name: "Base",
 			version: 1,
 			category: "web",
-			exclusive: true,
 			when: () => false,
 			contribute: () => [],
 		});
@@ -2960,7 +2945,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "tanstack-start",
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
@@ -3211,7 +3195,6 @@ describe("planner", () => {
 				name: "Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "nextjs",
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {
@@ -3272,7 +3255,6 @@ describe("planner", () => {
 				name: "Fake Base",
 				version: 1,
 				category: "web",
-				exclusive: true,
 				when: (config) => config.web === "nextjs",
 				contribute: () => [
 					ensureAppModule("web", "apps/web", {

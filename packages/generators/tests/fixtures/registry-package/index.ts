@@ -77,7 +77,6 @@ const template = defineTemplate<ForgeConfig>({
 	name: "Fixture Base",
 	version: 1,
 	category: "web",
-	exclusive: true,
 	when: () => false,
 	contribute: () => [],
 });
