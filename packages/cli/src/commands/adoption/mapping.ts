@@ -80,12 +80,15 @@ export function hasTanstackRouterApplicationDependencies(
 	return allDependencyNames(packageJson).has("@tanstack/router-plugin");
 }
 
+// A library can depend on hono to compose routes or middleware. Only a package
+// that also serves them is an app we can adopt as the standalone backend.
 export function isBackendPackage(
 	packageJson: PackageJson,
 	hasTanstackRouterConfig: boolean,
 ): boolean {
 	const dependencies = dependencyNames(packageJson);
-	if (!dependencies.has("hono")) return false;
+	if (!dependencies.has("hono") || !dependencies.has("@hono/node-server"))
+		return false;
 
 	if (
 		["next", "react-router", "@tanstack/react-start"].some((dependency) =>
@@ -180,9 +183,9 @@ export function moduleProposal(
 			proposal: "web-app",
 		});
 
-	if (dependencies.has("hono"))
+	if (isBackendPackage(packageJson, hasTanstackRouterConfig))
 		signatures.push({
-			evidence: "found hono in its dependencies",
+			evidence: "found hono and @hono/node-server in its dependencies",
 			proposal: "backend-app",
 		});
 

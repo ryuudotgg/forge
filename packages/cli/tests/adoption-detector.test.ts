@@ -546,7 +546,11 @@ describe("AdoptionDetector", () => {
 	it("captures scoped catalog pins in a Kingshot-like mixed workspace", async () => {
 		const files: Record<string, string> = {
 			"apps/api/package.json": json({
-				dependencies: { "@trpc/server": "^11", hono: "^4" },
+				dependencies: {
+					"@hono/node-server": "^2",
+					"@trpc/server": "^11",
+					hono: "^4",
+				},
 			}),
 			"apps/docs/package.json": json({ dependencies: { vite: "^7" } }),
 			"apps/mobile/package.json": json({ dependencies: { expo: "^54" } }),
@@ -629,6 +633,30 @@ describe("AdoptionDetector", () => {
 				version: "7.8.0",
 			});
 		});
+	});
+
+	it("leaves a hono library unadopted instead of adopting a backend app", async () => {
+		await withFixture(
+			"hono-library",
+			{
+				"apps/web/package.json": json({ dependencies: { next: "^16" } }),
+				"package.json": json({ private: true }),
+				"packages/middleware/package.json": json({
+					dependencies: { hono: "^4" },
+				}),
+				"pnpm-workspace.yaml": "packages:\n  - apps/*\n  - packages/*\n",
+			},
+			async (root) => {
+				const result = await detect(root);
+
+				expect(result.config.backend).toBe("self");
+				expect(
+					result.modules.find(
+						(module) => module.root === "packages/middleware",
+					),
+				).toMatchObject({ proposal: "unadopted" });
+			},
+		);
 	});
 
 	it.each([
