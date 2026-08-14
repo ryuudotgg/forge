@@ -635,14 +635,30 @@ describe("AdoptionDetector", () => {
 		});
 	});
 
-	it("leaves a hono library unadopted instead of adopting a backend app", async () => {
+	it.each([
+		{ dependencies: { hono: "^4" }, name: "composes routes" },
+		{
+			dependencies: { "@hono/node-server": "^2", hono: "^4" },
+			exports: { ".": "./src/index.ts" },
+			name: "re-exports the node server",
+		},
+		{
+			dependencies: { "@hono/node-server": "^2", hono: "^4" },
+			main: "./dist/index.js",
+			name: "ships a built entry point",
+		},
+	])("leaves a hono library that $name unadopted", async (library) => {
 		await withFixture(
-			"hono-library",
+			`hono-library-${library.name.replaceAll(" ", "-")}`,
 			{
 				"apps/web/package.json": json({ dependencies: { next: "^16" } }),
 				"package.json": json({ private: true }),
 				"packages/middleware/package.json": json({
-					dependencies: { hono: "^4" },
+					dependencies: library.dependencies,
+					...(library.exports === undefined
+						? {}
+						: { exports: library.exports }),
+					...(library.main === undefined ? {} : { main: library.main }),
 				}),
 				"pnpm-workspace.yaml": "packages:\n  - apps/*\n  - packages/*\n",
 			},
@@ -655,6 +671,28 @@ describe("AdoptionDetector", () => {
 						(module) => module.root === "packages/middleware",
 					),
 				).toMatchObject({ proposal: "unadopted" });
+			},
+		);
+	});
+
+	it("adopts a hono server that exposes no entry points", async () => {
+		await withFixture(
+			"hono-server",
+			{
+				"apps/api/package.json": json({
+					dependencies: { "@hono/node-server": "^2", hono: "^4" },
+					private: true,
+				}),
+				"package.json": json({ private: true }),
+				"pnpm-workspace.yaml": "packages:\n  - apps/*\n",
+			},
+			async (root) => {
+				const result = await detect(root);
+
+				expect(result.config.backend).toBe("hono");
+				expect(
+					result.modules.find((module) => module.root === "apps/api"),
+				).toMatchObject({ proposal: "backend-app" });
 			},
 		);
 	});

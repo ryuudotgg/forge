@@ -5,9 +5,13 @@ const DependencyRecordSchema = Schema.Record(Schema.String, Schema.String);
 export const PackageJsonSchema = Schema.fromJsonString(
 	Schema.Struct({
 		name: Schema.optional(Schema.String),
+		bin: Schema.optional(Schema.Unknown),
 		dependencies: Schema.optional(DependencyRecordSchema),
 		devDependencies: Schema.optional(DependencyRecordSchema),
 		engines: Schema.optional(DependencyRecordSchema),
+		exports: Schema.optional(Schema.Unknown),
+		main: Schema.optional(Schema.String),
+		module: Schema.optional(Schema.String),
 		optionalDependencies: Schema.optional(DependencyRecordSchema),
 		peerDependencies: Schema.optional(DependencyRecordSchema),
 		workspaces: Schema.optional(

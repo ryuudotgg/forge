@@ -40,14 +40,22 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 		`pnpm db:push failed with code ${push.exitCode}\n${push.stdout}\n${push.stderr}`,
 	).toBe(0);
 
+	// The generated app skips env validation under CI so builds pass without a
+	// populated .env, which also skips the schema defaults. Running the server
+	// is the production path, so it has to see the environment a user would.
+	const ambientEnv = { ...process.env };
+	delete ambientEnv.CI;
+
 	const server = spawn("node", ["dist/index.js"], {
 		cwd: join(projectRoot, "apps/server"),
-		env: { ...process.env, ...generatedEnv },
+		env: { ...ambientEnv, ...generatedEnv },
 	});
-	let stderr = "";
-	server.stderr.on("data", (chunk: Buffer) => {
-		stderr += chunk.toString();
-	});
+	let output = "";
+	const capture = (chunk: Buffer) => {
+		output += chunk.toString();
+	};
+	server.stdout.on("data", capture);
+	server.stderr.on("data", capture);
 	const exited = new Promise<void>((resolveExit) => {
 		server.once("exit", () => resolveExit());
 	});
@@ -65,7 +73,7 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 
 			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 		}
-		expect(ready, stderr).toBe(true);
+		expect(ready, output).toBe(true);
 
 		const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
 			method: "OPTIONS",
@@ -102,7 +110,7 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 			method: "POST",
 		});
 		const signupBody = await signup.text();
-		expect(signup.status, `${signupBody}\n${stderr}`).toBe(200);
+		expect(signup.status, `${signupBody}\n${output}`).toBe(200);
 		expect(signup.headers.get("access-control-allow-origin")).toBe(origin);
 		expect(signup.headers.get("access-control-allow-credentials")).toBe("true");
 		const setCookie = signup.headers.get("set-cookie");

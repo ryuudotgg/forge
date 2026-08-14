@@ -80,8 +80,20 @@ export function hasTanstackRouterApplicationDependencies(
 	return allDependencyNames(packageJson).has("@tanstack/router-plugin");
 }
 
-// A library can depend on hono to compose routes or middleware. Only a package
-// that also serves them is an app we can adopt as the standalone backend.
+// An app is consumed by running it, so it publishes no entry points. A library
+// that wraps hono or the Node server has to expose one to be importable.
+function exposesEntryPoints(packageJson: PackageJson): boolean {
+	return (
+		packageJson.bin !== undefined ||
+		packageJson.exports !== undefined ||
+		packageJson.main !== undefined ||
+		packageJson.module !== undefined
+	);
+}
+
+// A library can depend on hono to compose routes or middleware, and on the Node
+// server to wrap it. Only a package that serves them and exports nothing is an
+// app we can adopt as the standalone backend.
 export function isBackendPackage(
 	packageJson: PackageJson,
 	hasTanstackRouterConfig: boolean,
@@ -89,6 +101,8 @@ export function isBackendPackage(
 	const dependencies = dependencyNames(packageJson);
 	if (!dependencies.has("hono") || !dependencies.has("@hono/node-server"))
 		return false;
+
+	if (exposesEntryPoints(packageJson)) return false;
 
 	if (
 		["next", "react-router", "@tanstack/react-start"].some((dependency) =>
