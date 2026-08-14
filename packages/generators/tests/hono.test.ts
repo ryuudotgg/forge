@@ -111,6 +111,9 @@ describe("Hono backend", () => {
 				builtins.frameworks,
 			),
 		).toBeUndefined();
+		expect(
+			resolveApiHost({ backend: "convex", web: "nextjs" }, builtins.frameworks),
+		).toBeUndefined();
 	});
 
 	it("names the addon and framework when no host can serve it", () => {
@@ -134,6 +137,15 @@ describe("Hono backend", () => {
 		expect(
 			apiHostError({}, { id: "trpc", name: "tRPC" }, builtins.frameworks),
 		).toBeUndefined();
+		expect(
+			apiHostError(
+				{ backend: "convex" },
+				{ id: "trpc", name: "tRPC" },
+				builtins.frameworks,
+			)?.message,
+		).toBe(
+			"tRPC needs a backend. The selected web framework can't host it; add a backend framework.",
+		);
 	});
 
 	it("declares the standalone server contract without a config file", () => {

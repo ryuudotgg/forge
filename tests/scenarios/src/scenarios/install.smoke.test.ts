@@ -40,9 +40,6 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 		`pnpm db:push failed with code ${push.exitCode}\n${push.stdout}\n${push.stderr}`,
 	).toBe(0);
 
-	// The generated app skips env validation under CI so builds pass without a
-	// populated .env, which also skips the schema defaults. Running the server
-	// is the production path, so it has to see the environment a user would.
 	const ambientEnv = { ...process.env };
 	delete ambientEnv.CI;
 

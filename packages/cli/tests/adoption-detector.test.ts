@@ -675,6 +675,31 @@ describe("AdoptionDetector", () => {
 		);
 	});
 
+	it("keeps a web app that serves hono routes a web app", async () => {
+		await withFixture(
+			"hono-web-app",
+			{
+				"apps/web/package.json": json({
+					dependencies: {
+						"@hono/node-server": "^2",
+						hono: "^4",
+						next: "^16",
+					},
+				}),
+				"package.json": json({ private: true }),
+				"pnpm-workspace.yaml": "packages:\n  - apps/*\n",
+			},
+			async (root) => {
+				const result = await detect(root);
+
+				expect(result.config.backend).toBe("self");
+				expect(
+					result.modules.find((module) => module.root === "apps/web"),
+				).toMatchObject({ proposal: "web-app" });
+			},
+		);
+	});
+
 	it("adopts a hono server that exposes no entry points", async () => {
 		await withFixture(
 			"hono-server",

@@ -71,6 +71,27 @@ describe("structured error rendering", () => {
 		expect(error.cause).toBe(cause);
 	});
 
+	it("names the addon and the framework that cannot host it", () => {
+		const error = new GeneratorError({
+			generatorId: "better-auth",
+			reason: "api-host-required",
+			generatorName: "Better Auth",
+			frameworkName: "TanStack Router",
+		});
+
+		expect(error.message).toBe(
+			"Better Auth needs a backend. TanStack Router can't host it; add a backend framework.",
+		);
+		expect(
+			() =>
+				new GeneratorError({
+					generatorId: "better-auth",
+					reason: "api-host-required",
+					generatorName: "Better Auth",
+				}),
+		).toThrow();
+	});
+
 	it("rejects generator reasons missing their required payload", () => {
 		expect(
 			() =>

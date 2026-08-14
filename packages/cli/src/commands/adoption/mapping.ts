@@ -80,8 +80,6 @@ export function hasTanstackRouterApplicationDependencies(
 	return allDependencyNames(packageJson).has("@tanstack/router-plugin");
 }
 
-// An app is consumed by running it, so it publishes no entry points. A library
-// that wraps hono or the Node server has to expose one to be importable.
 function exposesEntryPoints(packageJson: PackageJson): boolean {
 	return (
 		packageJson.bin !== undefined ||
@@ -91,9 +89,6 @@ function exposesEntryPoints(packageJson: PackageJson): boolean {
 	);
 }
 
-// A library can depend on hono to compose routes or middleware, and on the Node
-// server to wrap it. Only a package that serves them and exports nothing is an
-// app we can adopt as the standalone backend.
 export function isBackendPackage(
 	packageJson: PackageJson,
 	hasTanstackRouterConfig: boolean,

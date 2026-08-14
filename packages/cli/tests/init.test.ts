@@ -399,6 +399,41 @@ describe("init command", () => {
 		});
 	});
 
+	it("maps a backend app onto the standalone hono prototype", async () => {
+		await withTempDir("init-backend", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "apps/api/package.json"), {
+				dependencies: { "@hono/node-server": "^2.1.0", hono: "^4.10.3" },
+				name: "@acme/api",
+				private: true,
+			});
+
+			const plan = await Effect.runPromise(
+				buildAdoptionPlanForTest(
+					directory,
+					{ ...config, backend: "hono" },
+					[
+						{ kind: "web-app", root: "apps/web" },
+						{ kind: "backend-app", root: "apps/api" },
+					],
+					[],
+				),
+			);
+
+			expect(
+				Object.values(plan.manifest.modules)
+					.map((module) => module.root)
+					.sort(),
+			).toEqual(["apps/api", "apps/web"]);
+
+			const marker = plan.applyPlan.writes.find(
+				(write) => write.path === "apps/api/forge.json",
+			);
+			expect(marker?.content).toContain('"framework": "hono"');
+			expect(marker?.content).toContain('"trpc": "src/routes/trpc.ts"');
+		});
+	});
+
 	it("reports invalid mappings and capture hashing failures", async () => {
 		await withTempDir("init-plan-failures", async (directory) => {
 			await fixture(directory);
