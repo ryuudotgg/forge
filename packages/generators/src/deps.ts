@@ -14,9 +14,14 @@ export const deps = {
 	turbo: dep("turbo"),
 	typescript: dep("typescript"),
 	vitest: dep("vitest"),
+	tsdown: dep("tsdown"),
+	tsx: dep("tsx"),
 
 	isbot: dep("isbot"),
 	serverOnly: dep("serverOnly"),
+	hono: dep("hono"),
+	honoNodeServer: dep("honoNodeServer"),
+	honoTrpcServer: dep("honoTrpcServer"),
 
 	next: dep("next"),
 

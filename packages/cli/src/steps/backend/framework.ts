@@ -1,5 +1,5 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { backends } from "@ryuujs/generators";
+import { backends, resolveApiHost } from "@ryuujs/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {
@@ -20,6 +20,10 @@ export default defineStep<typeof backendSchema.Type>({
 	configKey: "backend",
 
 	shouldRun: () => true,
+	validate: (value, config) => {
+		const normalized = backends.normalize(value);
+		if (normalized !== undefined) config.backend = normalized;
+	},
 
 	async execute(
 		config,
@@ -32,14 +36,17 @@ export default defineStep<typeof backendSchema.Type>({
 			return SKIP;
 		}
 
-		const web = config.web;
+		const recommended =
+			resolveApiHost({ ...config, backend: "self" }) === "web"
+				? "self"
+				: "hono";
 
 		for (;;) {
 			const backend = await select({
 				message: "What is your preferred backend framework?",
 				options: [
 					...choiceOptions(backends).map((option) =>
-						web === option.value
+						recommended === option.value
 							? { ...option, label: `${option.label} (Recommended)` }
 							: option,
 					),

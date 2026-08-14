@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { orchestrate } from "../src/orchestrator";
 import backendStep from "../src/steps/backend/framework";
 import rpcStep from "../src/steps/backend/rpc";
-import { type PartialConfig, SKIP } from "../src/steps/types";
+import { type PartialConfig, SKIP, type Step } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
 	cancel: vi.fn(),
@@ -32,9 +33,9 @@ describe("backend step", () => {
 	});
 
 	it("accepts a canonical backend id without prompting", async () => {
-		await expect(
-			backendStep.execute({ backend: "nextjs" }, false),
-		).resolves.toBe("nextjs");
+		await expect(backendStep.execute({ backend: "self" }, false)).resolves.toBe(
+			"self",
+		);
 
 		expect(promptMocks.select).not.toHaveBeenCalled();
 	});
@@ -42,13 +43,13 @@ describe("backend step", () => {
 	it("normalizes display-name aliases in non-interactive mode", async () => {
 		await expect(
 			backendStep.execute(rawConfig({ backend: "Next.js" }), false),
-		).resolves.toBe("nextjs");
+		).resolves.toBe("self");
 	});
 
 	it("skips unavailable backends in non-interactive mode", async () => {
-		await expect(backendStep.execute({ backend: "hono" }, false)).resolves.toBe(
-			SKIP,
-		);
+		await expect(
+			backendStep.execute({ backend: "convex" }, false),
+		).resolves.toBe(SKIP);
 	});
 
 	it("skips when the configured backend is unknown", async () => {
@@ -58,18 +59,18 @@ describe("backend step", () => {
 	});
 
 	it("marks the chosen web framework as recommended", async () => {
-		promptMocks.select.mockResolvedValue("nextjs");
+		promptMocks.select.mockResolvedValue("self");
 
 		await expect(backendStep.execute({ web: "nextjs" }, true)).resolves.toBe(
-			"nextjs",
+			"self",
 		);
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "What is your preferred backend framework?",
 			options: [
-				{ label: "Next.js (Recommended)", value: "nextjs" },
+				{ label: "Same app (Recommended)", value: "self" },
 				{ label: "Convex", value: "convex", hint: "coming soon" },
-				{ label: "Hono", value: "hono", hint: "coming soon" },
+				{ label: "Hono", value: "hono" },
 				{ label: "Elysia", value: "elysia", hint: "coming soon" },
 				{ label: "µWebSockets", value: "uwebsockets", hint: "coming soon" },
 				{ label: "Fastify", value: "fastify", hint: "coming soon" },
@@ -81,13 +82,13 @@ describe("backend step", () => {
 
 	it("warns and re-prompts when an unavailable backend is selected", async () => {
 		promptMocks.select
-			.mockResolvedValueOnce("hono")
-			.mockResolvedValueOnce("nextjs");
+			.mockResolvedValueOnce("convex")
+			.mockResolvedValueOnce("self");
 
-		await expect(backendStep.execute({}, true)).resolves.toBe("nextjs");
+		await expect(backendStep.execute({}, true)).resolves.toBe("self");
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"We don't support Hono yet.",
+			"We don't support Convex yet.",
 		);
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
@@ -136,16 +137,44 @@ describe("rpc step", () => {
 	});
 
 	it("skips web frameworks without tRPC adapter support", () => {
-		expect(
-			rpcStep.shouldRun({ backend: "nextjs", web: "tanstack-router" }),
-		).toBe(false);
-		expect(rpcStep.shouldRun({ backend: "nextjs", web: "nextjs" })).toBe(true);
-		expect(rpcStep.shouldRun({ backend: "nextjs", web: "react-router" })).toBe(
+		expect(rpcStep.shouldRun({ backend: "self", web: "tanstack-router" })).toBe(
+			false,
+		);
+		expect(rpcStep.shouldRun({ backend: "self", web: "nextjs" })).toBe(true);
+		expect(rpcStep.shouldRun({ backend: "self", web: "react-router" })).toBe(
 			true,
 		);
-		expect(
-			rpcStep.shouldRun({ backend: "nextjs", web: "tanstack-start" }),
-		).toBe(true);
+		expect(rpcStep.shouldRun({ backend: "self", web: "tanstack-start" })).toBe(
+			true,
+		);
+	});
+
+	it("validates a pre-supplied rpc before generation", async () => {
+		const generate = vi.fn(async () => undefined);
+		const generateStep: Step = {
+			configKey: null,
+			execute: generate,
+			group: "generate",
+			id: "generate",
+			schema: null,
+			shouldRun: () => true,
+		};
+		const initialConfig = {
+			backend: "self" as const,
+			rpc: "trpc" as const,
+			web: "tanstack-router" as const,
+		};
+
+		expect(rpcStep.shouldRun(initialConfig)).toBe(true);
+		await expect(
+			orchestrate([rpcStep, generateStep], {
+				initialConfig,
+				interactive: false,
+			}),
+		).rejects.toThrow(
+			"tRPC needs a backend. TanStack Router can't host it; add a backend framework.",
+		);
+		expect(generate).not.toHaveBeenCalled();
 	});
 
 	it("accepts a canonical rpc id without prompting", async () => {

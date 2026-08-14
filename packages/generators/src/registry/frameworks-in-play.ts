@@ -16,7 +16,7 @@ export function frameworksInPlay(
 	config: ForgeConfig,
 	frameworks: ReadonlyArray<FrameworkDefinition>,
 ): ReadonlyArray<FrameworkDefinition> {
-	const ids = [config.web];
+	const ids = [config.web, config.backend === "hono" ? "hono" : undefined];
 	return ids.flatMap((id) =>
 		id === undefined ? [] : [frameworkFor(frameworks, id)],
 	);

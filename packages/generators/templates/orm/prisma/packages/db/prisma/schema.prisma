@@ -59,6 +59,7 @@ model Account {
   refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")__TIMESTAMPTZ__
 
   scope                 String?__TEXT__
+  // __PASSWORD_FIELD__
 
   createdAt             DateTime  @default(now()) @map("created_at")__TIMESTAMPTZ__
   updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__

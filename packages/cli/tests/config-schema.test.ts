@@ -114,10 +114,10 @@ describe("assembleSchema", () => {
 			path: "./acme",
 			platforms: ["web"],
 			web: "nextjs",
-			backend: "hono",
+			backend: "convex",
 		});
 
-		expect(decodeMessages(result)).toContain("We don't support Hono yet.");
+		expect(decodeMessages(result)).toContain("We don't support Convex yet.");
 	});
 
 	it("rejects unavailable linters with a friendly sentence", () => {

@@ -369,7 +369,7 @@ describe("CLI entry dispatch", () => {
 		expect(runtimeCli.exit).toHaveBeenCalledWith(1);
 		expect(optionCli.setExitCode).toHaveBeenCalledWith(1);
 		expect(unknownCli.setExitCode).toHaveBeenCalledWith(1);
-		expect(failingCli.error).toHaveBeenCalledWith(failure);
+		expect(failingCli.error).toHaveBeenCalledWith("Command failed");
 		expect(failingCli.setExitCode).toHaveBeenCalledWith(1);
 	});
 });

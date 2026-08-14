@@ -2,7 +2,10 @@ import type { PackageManager, Runtime } from "@ryuujs/core";
 
 function defineChoices<const T extends Record<string, string>>(
 	definitions: T,
-	options?: { unavailable?: ReadonlyArray<keyof T & string> },
+	options?: {
+		aliases?: Readonly<Record<string, keyof T & string>>;
+		unavailable?: ReadonlyArray<keyof T & string>;
+	},
 ) {
 	type ChoiceId = keyof T & string;
 
@@ -14,12 +17,19 @@ function defineChoices<const T extends Record<string, string>>(
 	};
 	const byDisplayName = new Map(ids.map((id) => [read(id).toLowerCase(), id]));
 	const unavailable = new Set(options?.unavailable ?? []);
+	const aliases = new Map(Object.entries(options?.aliases ?? {}));
 
 	function normalize(value: unknown): ChoiceId | undefined {
 		if (typeof value !== "string") return undefined;
-		if (ids.includes(value as ChoiceId)) return value as ChoiceId;
 
-		return byDisplayName.get(value.toLowerCase());
+		const normalizedValue = value.toLowerCase();
+		const alias = aliases.get(normalizedValue);
+		if (alias !== undefined) return alias;
+
+		const id = ids.find((candidate) => candidate === value);
+		if (id !== undefined) return id;
+
+		return byDisplayName.get(normalizedValue);
 	}
 
 	function label(id: ChoiceId): T[ChoiceId] {
@@ -41,14 +51,8 @@ function defineChoices<const T extends Record<string, string>>(
 }
 
 export const platforms = defineChoices(
-	{
-		web: "Web",
-		desktop: "Desktop",
-		mobile: "Mobile",
-	} as const,
-	{
-		unavailable: ["desktop", "mobile"],
-	},
+	{ web: "Web", desktop: "Desktop", mobile: "Mobile" } as const,
+	{ unavailable: ["desktop", "mobile"] },
 );
 
 export type Platform = keyof typeof platforms.definitions;
@@ -64,7 +68,7 @@ export type WebFramework = keyof typeof webFrameworks.definitions;
 
 export const backends = defineChoices(
 	{
-		nextjs: "Next.js",
+		self: "Same app",
 		convex: "Convex",
 		hono: "Hono",
 		elysia: "Elysia",
@@ -73,14 +77,8 @@ export const backends = defineChoices(
 		express: "Express",
 	} as const,
 	{
-		unavailable: [
-			"convex",
-			"hono",
-			"elysia",
-			"uwebsockets",
-			"fastify",
-			"express",
-		],
+		aliases: { nextjs: "self", "next.js": "self" },
+		unavailable: ["convex", "elysia", "uwebsockets", "fastify", "express"],
 	},
 );
 
@@ -114,22 +112,15 @@ export const authenticationProviders = defineChoices(
 		workos: "WorkOS",
 		clerk: "Clerk",
 	} as const,
-	{
-		unavailable: ["authjs", "workos", "clerk"],
-	},
+	{ unavailable: ["authjs", "workos", "clerk"] },
 );
 
 export type AuthenticationProvider =
 	keyof typeof authenticationProviders.definitions;
 
 export const styleFrameworks = defineChoices(
-	{
-		tailwind: "Tailwind CSS",
-		unocss: "UnoCSS",
-	} as const,
-	{
-		unavailable: ["unocss"],
-	},
+	{ tailwind: "Tailwind CSS", unocss: "UnoCSS" } as const,
+	{ unavailable: ["unocss"] },
 );
 
 export type StyleFramework = keyof typeof styleFrameworks.definitions;
@@ -147,9 +138,7 @@ export const linters = defineChoices(
 		oxc: "Oxc",
 		"eslint-prettier": "ESLint + Prettier",
 	} as const,
-	{
-		unavailable: ["oxc", "eslint-prettier"],
-	},
+	{ unavailable: ["oxc", "eslint-prettier"] },
 );
 
 export type Linter = keyof typeof linters.definitions;

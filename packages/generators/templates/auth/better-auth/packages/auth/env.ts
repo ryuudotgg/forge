@@ -16,6 +16,7 @@ export const env = createEnv({
     AUTH_COOKIE_DOMAIN: z.string().trim().min(1).optional(),
 
     APP_ORIGIN: z.url(),
+    // __WEB_URL_SCHEMA__
 
     AUTH_GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
     AUTH_GOOGLE_CLIENT_SECRET: z.string().trim().min(1).optional(),
@@ -31,6 +32,7 @@ export const env = createEnv({
     AUTH_COOKIE_DOMAIN: process.env.AUTH_COOKIE_DOMAIN,
 
     APP_ORIGIN: process.env.APP_ORIGIN,
+    // __WEB_URL_RUNTIME__
 
     AUTH_GOOGLE_CLIENT_ID: process.env.AUTH_GOOGLE_CLIENT_ID,
     AUTH_GOOGLE_CLIENT_SECRET: process.env.AUTH_GOOGLE_CLIENT_SECRET,

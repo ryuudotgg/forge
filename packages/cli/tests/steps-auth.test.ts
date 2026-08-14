@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { orchestrate } from "../src/orchestrator";
 import authenticationCustomUIStep from "../src/steps/auth/custom-ui";
 import authenticationStep from "../src/steps/auth/provider";
-import { type PartialConfig, SKIP } from "../src/steps/types";
+import { type PartialConfig, SKIP, type Step } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
 	cancel: vi.fn(),
@@ -42,24 +43,70 @@ describe("authentication step", () => {
 		promptMocks.isCancel.mockReturnValue(false);
 	});
 
-	it("only runs when an orm is selected", () => {
+	it("only runs when an orm and API host are selected", () => {
 		expect(authenticationStep.shouldRun({})).toBe(false);
-		expect(authenticationStep.shouldRun({ orm: "drizzle" })).toBe(true);
+		expect(authenticationStep.shouldRun({ orm: "drizzle" })).toBe(false);
+		expect(
+			authenticationStep.shouldRun({
+				backend: "self",
+				orm: "drizzle",
+				web: "nextjs",
+			}),
+		).toBe(true);
 	});
 
-	it("skips web frameworks without Better Auth adapter support", () => {
+	it("requires a backend for web frameworks without self-host support", () => {
 		expect(
 			authenticationStep.shouldRun({ orm: "drizzle", web: "tanstack-router" }),
 		).toBe(false);
 		expect(
-			authenticationStep.shouldRun({ orm: "drizzle", web: "nextjs" }),
-		).toBe(true);
+			authenticationStep.shouldRun({
+				backend: "self",
+				orm: "drizzle",
+				web: "tanstack-router",
+			}),
+		).toBe(false);
 		expect(
-			authenticationStep.shouldRun({ orm: "drizzle", web: "react-router" }),
+			authenticationStep.shouldRun({
+				backend: "hono",
+				orm: "drizzle",
+				web: "tanstack-router",
+			}),
 		).toBe(true);
-		expect(
-			authenticationStep.shouldRun({ orm: "drizzle", web: "tanstack-start" }),
-		).toBe(true);
+	});
+
+	it("still runs when a self-hosting web framework has no backend", () => {
+		for (const web of ["nextjs", "react-router", "tanstack-start"] as const)
+			expect(authenticationStep.shouldRun({ orm: "drizzle", web })).toBe(true);
+	});
+
+	it("validates pre-supplied auth before generation", async () => {
+		const generate = vi.fn(async () => undefined);
+		const generateStep: Step = {
+			configKey: null,
+			execute: generate,
+			group: "generate",
+			id: "generate",
+			schema: null,
+			shouldRun: () => true,
+		};
+		const initialConfig = {
+			authentication: "better-auth" as const,
+			backend: "self" as const,
+			orm: "drizzle" as const,
+			web: "tanstack-router" as const,
+		};
+
+		expect(authenticationStep.shouldRun(initialConfig)).toBe(true);
+		await expect(
+			orchestrate([authenticationStep, generateStep], {
+				initialConfig,
+				interactive: false,
+			}),
+		).rejects.toThrow(
+			"Better Auth needs a backend. TanStack Router can't host it; add a backend framework.",
+		);
+		expect(generate).not.toHaveBeenCalled();
 	});
 
 	it("accepts a canonical provider id without prompting", async () => {

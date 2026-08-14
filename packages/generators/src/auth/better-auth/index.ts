@@ -8,11 +8,24 @@ import {
 	surfaceJson,
 	surfaceLines,
 } from "@ryuujs/core";
+import { Effect } from "effect";
+import {
+	type ApiHostConsumer,
+	apiHostError,
+	apiHostFramework,
+} from "../../api-host";
 import type { ForgeConfig } from "../../config";
+import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
+import { appOrigin } from "../../origins";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { renderBetterAuthTemplate } from "./shared";
+
+const betterAuthConsumer: ApiHostConsumer = {
+	id: "better-auth",
+	name: "Better Auth",
+};
 
 function generateAuthSecret() {
 	const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -28,22 +41,25 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 	category: "auth",
 	exclusive: true,
 	dependencies: [
-		{ id: "nextjs/base", type: "template" },
-		{ id: "react-router/base", type: "template" },
-		{ id: "tanstack-start/base", type: "template" },
 		{ id: "drizzle", type: "addon" },
 		{ id: "prisma", type: "addon" },
 	],
 	targetMode: "single",
+	target: (config, module) =>
+		module.type === "app" && module.framework === apiHostFramework(config),
 	when: (config) => config.authentication === "better-auth",
-	contribute: ({ config }) => {
+	contribute: ({ config, frameworks }) => {
 		const slug = config.slug ?? "my-app";
 
 		if (config.orm === undefined)
 			throw new Error("You need to add an ORM before you can use Better Auth.");
 
+		const failure = apiHostError(config, betterAuthConsumer, frameworks);
+		if (failure !== undefined) return Effect.fail(failure);
+
 		const pm = resolvePackageManager(config);
 		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
+		const origin = appOrigin(config);
 
 		return [
 			ensurePackageModule("auth", "packages/auth", {
@@ -109,7 +125,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					`AUTH_SECRET="${generateAuthSecret()}"`,
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
-					'APP_ORIGIN="http://localhost:3000"',
+					envFileLine("APP_ORIGIN", origin),
 					"",
 					'AUTH_GOOGLE_CLIENT_ID=""',
 					'AUTH_GOOGLE_CLIENT_SECRET=""',
@@ -127,7 +143,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					'AUTH_SECRET=""',
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
-					'APP_ORIGIN="http://localhost:3000"',
+					envFileLine("APP_ORIGIN", origin),
 					"",
 					'AUTH_GOOGLE_CLIENT_ID=""',
 					'AUTH_GOOGLE_CLIENT_SECRET=""',

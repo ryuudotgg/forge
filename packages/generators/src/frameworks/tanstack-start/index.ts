@@ -13,6 +13,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { viteServerEnvMarkers } from "../../origins";
 import { pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
@@ -225,7 +226,10 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("web"),
 			"env.ts",
-			readTemplate("frameworks/tanstack-start/env.ts"),
+			interpolate(
+				readTemplate("frameworks/tanstack-start/env.ts"),
+				viteServerEnvMarkers(config),
+			),
 		),
 		leafTextFile(ensuredModuleTarget("web"), "src/providers.tsx", providers),
 		leafTextFile(

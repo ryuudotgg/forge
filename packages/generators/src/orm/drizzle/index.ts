@@ -18,6 +18,7 @@ import {
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { deps } from "../../deps";
+import { standaloneApiOrigin } from "../../origins";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
@@ -39,6 +40,11 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 		const provider = resolveDatabaseProvider(config);
 
 		const usesAuth = config.authentication === "better-auth";
+		const usesCredentials = standaloneApiOrigin(config) !== undefined;
+		// Each schema template nests its columns differently, so the marker
+		// carries the indentation and the leading newline keys them apart.
+		const passwordField = (indent: string) =>
+			usesCredentials ? `\n${indent}password: text(),\n` : "\n";
 		const vars = {
 			SLUG: slug,
 			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
@@ -48,6 +54,8 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			ENV_SERVER: envServerLines(provider.envVars),
 			KIT_CREDENTIALS: drizzleKitCredentials(provider.drizzle),
 			KIT_DIALECT: provider.drizzle.kitDialect,
+			"\n    // __PASSWORD_FIELD__\n": passwordField("    "),
+			"\n  // __PASSWORD_FIELD__\n": passwordField("  "),
 		};
 
 		const render = (path: string) =>
@@ -172,13 +180,17 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 					]
 				: []),
 
-			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-				{
-					name: `@${slug}/db`,
-					version: "workspace:*",
-					type: "dependencies",
-				},
-			]),
+			...(config.web === undefined
+				? []
+				: [
+						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
+							{
+								name: `@${slug}/db`,
+								version: "workspace:*",
+								type: "dependencies",
+							},
+						]),
+					]),
 
 			surfaceLines(
 				projectTarget(),
@@ -200,12 +212,16 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 					]
 				: []),
 
-			surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-				"db:generate": pmRunIn(pm, dbPackage, "generate"),
-				"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
-				"db:push": pmRunIn(pm, dbPackage, "push"),
-				"db:studio": pmRunIn(pm, dbPackage, "studio"),
-			}),
+			...(config.web === undefined
+				? []
+				: [
+						surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+							"db:generate": pmRunIn(pm, dbPackage, "generate"),
+							"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
+							"db:push": pmRunIn(pm, dbPackage, "push"),
+							"db:studio": pmRunIn(pm, dbPackage, "studio"),
+						}),
+					]),
 		];
 	},
 });

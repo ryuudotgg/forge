@@ -37,6 +37,7 @@ export const accounts = snakeCase.table(
     refreshTokenExpiresAt: timestamp({ fsp: 3 }),
 
     scope: text(),
+    // __PASSWORD_FIELD__
 
     createdAt: timestamp({ fsp: 3 }).notNull().defaultNow(),
     updatedAt: timestamp({ fsp: 3 })

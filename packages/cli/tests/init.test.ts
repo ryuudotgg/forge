@@ -34,6 +34,7 @@ function buildAdoptionPlanForTest(
 
 const config: ForgeConfig = {
 	addons: [],
+	backend: "self",
 	catalogs: "flat",
 	database: "sqlite",
 	linter: "biome",
@@ -139,7 +140,7 @@ describe("init command", () => {
 
 				expect(() => readInitConfigFile(invalid)).toThrow("exit:1");
 				expect(logError).toHaveBeenLastCalledWith(
-					'Your config file is invalid.\n  modules: Expected ReadonlyArray<{ readonly kind: "web-app" | "db" | "auth" | "trpc" | "ui"; readonly root: string }>, actual "bad"',
+					'Your config file is invalid.\n  modules: Expected ReadonlyArray<{ readonly kind: "web-app" | "backend-app" | "db" | "auth" | "trpc" | "ui"; readonly root: string }>, actual "bad"',
 				);
 
 				const missing = join(directory, "missing-modules.json");
@@ -158,18 +159,17 @@ describe("init command", () => {
 
 	it("keeps package module kinds congruent with the first-party registry", () => {
 		const loaded = loadDefinitionRegistry();
-		const packageKinds: ReadonlyArray<Exclude<ModuleKind, "web-app">> = [
-			"db",
-			"auth",
-			"trpc",
-			"ui",
-		];
+		const packageKinds: ReadonlyArray<
+			Exclude<ModuleKind, "backend-app" | "web-app">
+		> = ["db", "auth", "trpc", "ui"];
 		const packageAddons = {
 			auth: "better-auth",
 			db: "drizzle",
 			trpc: "trpc",
 			ui: "ui",
-		} satisfies Readonly<Record<Exclude<ModuleKind, "web-app">, string>>;
+		} satisfies Readonly<
+			Record<Exclude<ModuleKind, "backend-app" | "web-app">, string>
+		>;
 
 		for (const kind of packageKinds) {
 			const addon = loaded.registry.addons.find(
@@ -183,7 +183,7 @@ describe("init command", () => {
 					kind === "auth"
 						? { ...config, authentication: "better-auth" }
 						: config,
-				frameworks: [],
+				frameworks: loaded.registry.frameworks,
 			});
 			if (result instanceof Promise || Effect.isEffect(result))
 				throw new Error(`Synchronous Contributions Expected: ${kind}`);

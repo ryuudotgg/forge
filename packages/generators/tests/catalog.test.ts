@@ -2,6 +2,7 @@ import { deriveAddonFrameworks } from "@ryuujs/core";
 import { describe, expect, it } from "vitest";
 import {
 	authenticationProviders,
+	backends,
 	builtins,
 	getCatalogEntry,
 	linters,
@@ -50,12 +51,19 @@ describe("catalog", () => {
 		const addons = await listCatalogEntries("addon");
 
 		expect(frameworks.map((entry) => entry.id)).toEqual([
+			"hono",
 			"nextjs",
 			"react-router",
 			"tanstack-router",
 			"tanstack-start",
+			"convex",
+			"elysia",
+			"uwebsockets",
+			"fastify",
+			"express",
 		]);
 		expect(templates.map((entry) => entry.id)).toEqual([
+			"hono/base",
 			"nextjs/base",
 			"react-router/base",
 			"tanstack-router/base",
@@ -68,6 +76,12 @@ describe("catalog", () => {
 	});
 
 	it("resolves catalog entries by id", async () => {
+		expect(await getCatalogEntry("hono")).toMatchObject({
+			category: "backend",
+			id: "hono",
+			kind: "framework",
+		});
+		expect(await getCatalogEntry("nextjs")).toMatchObject({ category: "web" });
 		expect(await getCatalogEntry("nextjs/base")).toMatchObject({
 			id: "nextjs/base",
 			kind: "template",
@@ -95,14 +109,19 @@ describe("catalog", () => {
 	});
 
 	it("derives adapter addon frameworks and slots from the registry", async () => {
-		const serverFrameworks = ["nextjs", "react-router", "tanstack-start"];
+		const serverFrameworks = [
+			"nextjs",
+			"react-router",
+			"tanstack-start",
+			"hono",
+		];
 
 		expect(await getCatalogEntry("trpc")).toMatchObject({
 			frameworks: serverFrameworks,
 			requiredSlots: ["trpc"],
 		});
 		expect(await getCatalogEntry("better-auth")).toMatchObject({
-			frameworks: serverFrameworks,
+			frameworks: ["nextjs", "react-router", "tanstack-start", "hono"],
 			requiredSlots: ["auth"],
 		});
 		expect(await getCatalogEntry("ui")).toMatchObject({
@@ -139,6 +158,11 @@ describe("catalog", () => {
 				expectedIds: webFrameworks.ids.filter(
 					(id) => !webFrameworks.available(id),
 				),
+				kind: "framework",
+			},
+			{
+				category: "backend",
+				expectedIds: backends.ids.filter((id) => !backends.available(id)),
 				kind: "framework",
 			},
 			{

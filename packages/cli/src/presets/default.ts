@@ -5,7 +5,7 @@ export const defaultPreset: PartialConfig = {
 	addons: [...recommendedAddons],
 	platforms: ["web"],
 	web: "nextjs",
-	backend: "nextjs",
+	backend: "self",
 	rpc: "trpc",
 	database: "postgresql",
 	orm: "drizzle",

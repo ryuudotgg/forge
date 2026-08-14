@@ -1,5 +1,5 @@
 import { ThemeProvider } from "next-themes";
-import { Fragment, type ElementType, type ReactNode } from "react";
+import { type ElementType, Fragment, type ReactNode } from "react";
 // __TRPC_IMPORT__
 
 const dataProviders: { default: ElementType; trpc?: ElementType } = {

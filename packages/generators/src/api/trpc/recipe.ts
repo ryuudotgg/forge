@@ -1,9 +1,12 @@
 import type { AdapterContext } from "@ryuujs/core";
 import {
 	defineTemplateRecipe,
+	ensuredModuleTarget,
 	inSourceRoot,
+	leafTextFile,
 	marker,
 	moduleTarget,
+	renderRecipeAsset,
 	sharedAsset,
 	slotAsset,
 	surfaceDependencies,
@@ -11,12 +14,18 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
+import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
-import { trpcTemplateVars } from "./shared";
+import {
+	trpcRecipeMarkers,
+	trpcTemplateVars,
+	trpcWebDependencies,
+} from "./shared";
 
 export const trpcRecipe = defineTemplateRecipe({
 	addon: "trpc",
@@ -24,6 +33,9 @@ export const trpcRecipe = defineTemplateRecipe({
 		SLUG: marker.required,
 		AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
 		AUTH_ARG: marker.toggleInline("/* __AUTH_ARG__ */ "),
+		ENV_IMPORT: marker.toggleLine("// __ENV_IMPORT__\n"),
+		API_URL: marker.required,
+		CREDENTIAL_FETCH: marker.toggleLine("          // __CREDENTIAL_FETCH__\n"),
 	},
 	assets: [
 		sharedAsset("query-client", {
@@ -35,6 +47,7 @@ export const trpcRecipe = defineTemplateRecipe({
 			variants: {
 				nextjs: "api/trpc/rsc/server.ts",
 				"react-router": "api/trpc/request/server.ts",
+				"tanstack-router": "api/trpc/request/server.ts",
 				"tanstack-start": "api/trpc/request/server.ts",
 			},
 		}),
@@ -43,6 +56,7 @@ export const trpcRecipe = defineTemplateRecipe({
 			variants: {
 				nextjs: "api/trpc/rsc/react.tsx",
 				"react-router": "api/trpc/vite/react.tsx",
+				"tanstack-router": "api/trpc/vite/react.tsx",
 				"tanstack-start": "api/trpc/vite/react.tsx",
 			},
 		}),
@@ -56,14 +70,57 @@ export const trpcRecipe = defineTemplateRecipe({
 	],
 });
 
+// The web frameworks that can render the tRPC client, whether they host the
+// API themselves or talk to a standalone backend.
+const trpcWebFrameworks = [
+	nextjsFramework,
+	reactRouterFramework,
+	tanstackRouterFramework,
+	tanstackStartFramework,
+];
+
+function trpcWebFramework(config: ForgeConfig) {
+	return trpcWebFrameworks.find((framework) => framework.id === config.web);
+}
+
 export const trpcAdapters = deriveRecipeAdapters({
 	recipe: trpcRecipe,
 	frameworks: [nextjsFramework, reactRouterFramework, tanstackStartFramework],
 	readTemplate,
 	requiredSlots: ["trpc"],
+	markers: (context: AdapterContext<ForgeConfig>) =>
+		trpcRecipeMarkers(context.config, context.framework.id, false),
+	target: (_asset, context) => moduleTarget(context.module),
+	after: ({ config, module }) => [
+		surfaceDependencies(
+			moduleTarget(module),
+			"packageJson",
+			trpcWebDependencies(config.slug ?? "my-app"),
+		),
+	],
+});
+
+export const trpcHonoRecipe = defineTemplateRecipe({
+	addon: "trpc",
+	markers: {
+		SLUG: marker.required,
+		AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
+		AUTH_ARG: marker.toggleInline("/* __AUTH_ARG__ */ "),
+	},
+	assets: [
+		slotAsset("trpc", {
+			variants: { hono: "api/trpc/routes/hono/trpc.ts" },
+		}),
+	],
+});
+
+export const trpcHonoAdapters = deriveRecipeAdapters({
+	recipe: trpcHonoRecipe,
+	frameworks: [honoFramework],
+	readTemplate,
+	requiredSlots: ["trpc"],
 	markers: ({ config }: AdapterContext<ForgeConfig>) => {
 		const values = trpcTemplateVars(config);
-
 		return {
 			SLUG: values.SLUG,
 			AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],
@@ -71,22 +128,48 @@ export const trpcAdapters = deriveRecipeAdapters({
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
+	before: ({ config }) => {
+		const webFramework = trpcWebFramework(config);
+		if (webFramework === undefined) return [];
+
+		const markers = trpcRecipeMarkers(config, webFramework.id, true);
+
+		return trpcRecipe.assets
+			.filter(
+				(asset) =>
+					asset._tag !== "SlotAssetDefinition" && asset.name !== "server",
+			)
+			.map((asset) => {
+				const rendered = renderRecipeAsset(trpcRecipe, asset, webFramework, {
+					markers,
+					readTemplate,
+					slots: {},
+				});
+				return leafTextFile(
+					ensuredModuleTarget("web"),
+					rendered.destination,
+					rendered.content,
+				);
+			});
+	},
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
 
 		return [
 			surfaceDependencies(moduleTarget(module), "packageJson", [
-				{
-					name: `@${slug}/trpc`,
-					version: "workspace:*",
-					type: "dependencies",
-				},
-				{ ...deps.trpcClient, type: "dependencies" },
-				{ ...deps.trpcReactQuery, type: "dependencies" },
+				{ name: `@${slug}/trpc`, version: "workspace:*", type: "dependencies" },
+				{ ...deps.honoTrpcServer, type: "dependencies" },
 				{ ...deps.trpcServer, type: "dependencies" },
-				{ ...deps.tanstackReactQuery, type: "dependencies" },
-				{ ...deps.superjson, type: "dependencies" },
 			]),
+			...(trpcWebFramework(config) === undefined
+				? []
+				: [
+						surfaceDependencies(
+							ensuredModuleTarget("web"),
+							"packageJson",
+							trpcWebDependencies(slug),
+						),
+					]),
 		];
 	},
 });

@@ -120,7 +120,7 @@ export async function runCli(
 		await withCliRuntime(() => command.run(commandArgs, values));
 		if (!machineOutput) cli.log();
 	} catch (error) {
-		cli.error(error);
+		cli.error(error instanceof Error ? error.message : error);
 		cli.setExitCode(1);
 	}
 }

@@ -7,9 +7,13 @@ export const env = createEnv({
       .enum(["development", "test", "production"])
       .default("development"),
   },
+
   clientPrefix: "VITE_",
+  // __SERVER_ENV__
   client: {},
+
   runtimeEnv: { ...import.meta.env, ...process.env },
+
   emptyStringAsUndefined: true,
   skipValidation: !!process.env.CI || shouldSkipValidation(),
 });

@@ -11,7 +11,13 @@ import {
 } from "@ryuujs/generators";
 import type { CatalogEntry, PackageJson } from "./workspace";
 
-export type ModuleKind = "auth" | "db" | "trpc" | "ui" | "web-app";
+export type ModuleKind =
+	| "auth"
+	| "backend-app"
+	| "db"
+	| "trpc"
+	| "ui"
+	| "web-app";
 
 export type DependencySection =
 	| "dependencies"
@@ -72,6 +78,43 @@ export function hasTanstackRouterApplicationDependencies(
 		return false;
 
 	return allDependencyNames(packageJson).has("@tanstack/router-plugin");
+}
+
+// An app is consumed by running it, so it publishes no entry points. A library
+// that wraps hono or the Node server has to expose one to be importable.
+function exposesEntryPoints(packageJson: PackageJson): boolean {
+	return (
+		packageJson.bin !== undefined ||
+		packageJson.exports !== undefined ||
+		packageJson.main !== undefined ||
+		packageJson.module !== undefined
+	);
+}
+
+// A library can depend on hono to compose routes or middleware, and on the Node
+// server to wrap it. Only a package that serves them and exports nothing is an
+// app we can adopt as the standalone backend.
+export function isBackendPackage(
+	packageJson: PackageJson,
+	hasTanstackRouterConfig: boolean,
+): boolean {
+	const dependencies = dependencyNames(packageJson);
+	if (!dependencies.has("hono") || !dependencies.has("@hono/node-server"))
+		return false;
+
+	if (exposesEntryPoints(packageJson)) return false;
+
+	if (
+		["next", "react-router", "@tanstack/react-start"].some((dependency) =>
+			dependencies.has(dependency),
+		)
+	)
+		return false;
+
+	return !(
+		hasTanstackRouterConfig &&
+		hasTanstackRouterApplicationDependencies(packageJson)
+	);
 }
 
 export function oneDetected<T>(
@@ -152,6 +195,12 @@ export function moduleProposal(
 		signatures.push({
 			evidence: "found react-router in its dependencies",
 			proposal: "web-app",
+		});
+
+	if (isBackendPackage(packageJson, hasTanstackRouterConfig))
+		signatures.push({
+			evidence: "found hono and @hono/node-server in its dependencies",
+			proposal: "backend-app",
 		});
 
 	if (dependencies.has("drizzle-orm"))

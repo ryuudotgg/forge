@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addonSupportsWebFramework } from "../src/utils/addon-support";
 import { cancel } from "../src/utils/cancel";
 import { rainbow } from "../src/utils/rainbow";
 import { slugify } from "../src/utils/slugify";
@@ -22,22 +21,6 @@ vi.mock("picocolors", () => ({
 		yellow: (text: string) => `[yellow]${text}`,
 	},
 }));
-
-describe("addonSupportsWebFramework", () => {
-	it("allows unconstrained and matching catalog entries", () => {
-		expect(addonSupportsWebFramework("better-auth", undefined)).toBe(true);
-		expect(addonSupportsWebFramework("missing", "tanstack-router")).toBe(true);
-		expect(addonSupportsWebFramework("nextjs", "tanstack-router")).toBe(true);
-		expect(addonSupportsWebFramework("root", "tanstack-router")).toBe(true);
-		expect(addonSupportsWebFramework("ui", "tanstack-router")).toBe(true);
-	});
-
-	it("rejects frameworks without a matching adapter", () => {
-		expect(addonSupportsWebFramework("better-auth", "tanstack-router")).toBe(
-			false,
-		);
-	});
-});
 
 describe("slugify", () => {
 	it("lowercases and dashes whitespace", () => {

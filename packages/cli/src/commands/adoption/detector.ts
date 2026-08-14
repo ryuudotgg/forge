@@ -1,6 +1,7 @@
 import { isAbsolute, join, relative, sep } from "node:path";
 import {
 	authenticationProviders,
+	backends,
 	catalogs,
 	type ForgeConfig,
 	linters,
@@ -29,6 +30,7 @@ import {
 	dependencyNames,
 	envNames,
 	hasTanstackRouterApplicationDependencies,
+	isBackendPackage,
 	type ModuleMappingProposal,
 	moduleProposal,
 	oneDetected,
@@ -548,6 +550,17 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			? rpcProviders.normalize("trpc")
 			: undefined;
 
+		const hasBackendPackage = [...packageJsonByRoot].some(
+			([root, packageJson]) =>
+				isBackendPackage(packageJson, tanstackRouterConfigRoots.has(root)),
+		);
+
+		const backend = hasBackendPackage
+			? backends.normalize("hono")
+			: web === undefined
+				? undefined
+				: backends.normalize("self");
+
 		const style = allDependencies.has("tailwindcss")
 			? styleFrameworks.normalize("tailwind")
 			: undefined;
@@ -633,6 +646,7 @@ const makeAdoptionDetector = Effect.gen(function* () {
 		const config: ForgeConfig = {
 			...(addons.length === 0 ? {} : { addons }),
 			...(authentication === undefined ? {} : { authentication }),
+			...(backend === undefined ? {} : { backend }),
 			...(catalogMode === undefined ? {} : { catalogs: catalogMode }),
 			...(database === undefined ? {} : { database }),
 			...(databaseProvider === undefined ? {} : { databaseProvider }),

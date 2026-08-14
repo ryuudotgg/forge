@@ -111,6 +111,7 @@ const AddonDefinitionDataSchema = Schema.Struct({
 	exclusive: Schema.Boolean,
 	id: Schema.String,
 	name: Schema.String,
+	target: Schema.optional(Schema.Unknown),
 	targetMode: Schema.Literals(["single", "multiple"]),
 	version: Schema.String,
 	when: Schema.Unknown,
@@ -155,6 +156,7 @@ function isAddonDefinition(
 ): value is AddonDefinition<ForgeConfig> {
 	return (
 		Schema.is(AddonDefinitionDataSchema)(value) &&
+		(value.target === undefined || typeof value.target === "function") &&
 		typeof value.when === "function" &&
 		typeof value.contribute === "function"
 	);

@@ -52,6 +52,7 @@ import { resolutionArguments } from "./resolution";
 
 const moduleKinds: ReadonlyArray<ModuleKind> = [
 	"web-app",
+	"backend-app",
 	"db",
 	"auth",
 	"trpc",
@@ -247,7 +248,14 @@ function modulePrototype(
 	modules: InstalledPlanningSeed["modules"],
 ) {
 	if (kind === "web-app")
-		return modules.find((module) => module.type === "app");
+		return modules.find(
+			(module) => module.type === "app" && module.framework !== "hono",
+		);
+
+	if (kind === "backend-app")
+		return modules.find(
+			(module) => module.type === "app" && module.framework === "hono",
+		);
 
 	return modules.find(
 		(module) => module.type === "package" && module.template.id === kind,

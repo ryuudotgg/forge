@@ -243,6 +243,7 @@ function announceAdapterSupport(
 
 function retargetAdapterInstalls(
 	installs: ReadonlyArray<InstallRecord>,
+	config: ForgeConfig,
 	before: LoadedDefinitionRegistry,
 	after: LoadedDefinitionRegistry,
 	registryId: string,
@@ -262,22 +263,26 @@ function retargetAdapterInstalls(
 		const addon = addonFromRegistry(after, install.definitionId);
 		if (addon === undefined) return install;
 
-		const compatibleBefore = modules.filter((module) =>
-			isAddonCompatibleWithModule(
-				addon,
-				module,
-				before.registry.frameworks,
-				before.registry.adapters,
-			),
+		const compatibleBefore = modules.filter(
+			(module) =>
+				(addon.target?.(config, module) ?? true) &&
+				isAddonCompatibleWithModule(
+					addon,
+					module,
+					before.registry.frameworks,
+					before.registry.adapters,
+				),
 		);
 
-		const compatibleAfter = modules.filter((module) =>
-			isAddonCompatibleWithModule(
-				addon,
-				module,
-				after.registry.frameworks,
-				after.registry.adapters,
-			),
+		const compatibleAfter = modules.filter(
+			(module) =>
+				(addon.target?.(config, module) ?? true) &&
+				isAddonCompatibleWithModule(
+					addon,
+					module,
+					after.registry.frameworks,
+					after.registry.adapters,
+				),
 		);
 
 		if (compatibleAfter.length === 0) return install;
@@ -477,6 +482,7 @@ export async function runAdd(
 		registeredRegistry = { id: registryId };
 		baseInstalls = retargetAdapterInstalls(
 			project.manifest.installs,
+			project.config satisfies ForgeConfig,
 			previousRegistry,
 			loadedRegistry,
 			registryId,
@@ -509,8 +515,19 @@ export async function runAdd(
 		resolvedAddonId = selectedAddonId;
 	}
 
-	let addon: AddonDefinition<ForgeConfig>;
+	const requestedCatalogEntry = loadedRegistry.catalog.find(
+		(entry) => entry.id === resolvedAddonId,
+	);
 
+	if (
+		requestedCatalogEntry?.kind === "framework" &&
+		requestedCatalogEntry.category === "backend"
+	) {
+		log.error("We can't add a backend framework to an existing project yet.");
+		process.exit(1);
+	}
+
+	let addon: AddonDefinition<ForgeConfig>;
 	try {
 		addon =
 			addonFromRegistry(loadedRegistry, resolvedAddonId) ??
@@ -563,13 +580,16 @@ export async function runAdd(
 	if (addon.compatibility === undefined && !hasAdapters)
 		record = buildProjectInstallRecord(addon);
 	else {
-		const targets = project.modules.filter((module) =>
-			isAddonCompatibleWithModule(
-				addon,
-				module,
-				registry.frameworks,
-				registry.adapters,
-			),
+		const targets = project.modules.filter(
+			(module) =>
+				(addon.target?.(project.config satisfies ForgeConfig, module) ??
+					true) &&
+				isAddonCompatibleWithModule(
+					addon,
+					module,
+					registry.frameworks,
+					registry.adapters,
+				),
 		);
 
 		if (targets.length === 0) {

@@ -3,6 +3,26 @@ import { describe, expect, it } from "vitest";
 import { builtins } from "../src";
 import { readTemplate } from "../src/template";
 
+// A recipe serves the frameworks its variants name, narrowed to the ones its
+// addon actually has adapters for: variants also exist for frameworks that
+// only receive a client rendered by another recipe's hooks.
+function recipeFrameworks(recipe: (typeof builtins.recipes)[number]) {
+	const declared = new Set(
+		recipe.assets.flatMap((asset) =>
+			asset._tag === "SharedAssetDefinition" ? [] : Object.keys(asset.variants),
+		),
+	);
+
+	return builtins.frameworks.filter(
+		(framework) =>
+			(declared.size === 0 || declared.has(framework.id)) &&
+			builtins.adapters.some(
+				(adapter) =>
+					adapter.addon === recipe.addon && adapter.framework === framework.id,
+			),
+	);
+}
+
 describe("first-party template recipes", () => {
 	it("validates every recipe against the on-disk templates", () => {
 		expect(() =>
@@ -30,16 +50,7 @@ describe("first-party template recipes", () => {
 				Object.keys(recipe.markers).map((name) => [name, "false"]),
 			);
 
-			const coveredFrameworks = builtins.frameworks.filter((framework) =>
-				builtins.adapters.some(
-					(adapter) =>
-						adapter.addon === recipe.addon &&
-						adapter.framework === framework.id,
-				),
-			);
-			expect(coveredFrameworks.length, recipe.addon).toBeGreaterThan(0);
-
-			for (const framework of coveredFrameworks) {
+			for (const framework of recipeFrameworks(recipe)) {
 				const slots = Object.fromEntries(
 					framework.slots.map((slot) => [slot, `slot:${slot}`]),
 				);
@@ -57,6 +68,20 @@ describe("first-party template recipes", () => {
 					).not.toBe("");
 				}
 			}
+		}
+	});
+
+	it("serves every adapter framework from one of its addon's recipes", () => {
+		for (const adapter of builtins.adapters) {
+			const served = builtins.recipes
+				.filter((recipe) => recipe.addon === adapter.addon)
+				.flatMap((recipe) =>
+					recipeFrameworks(recipe).map((framework) => framework.id),
+				);
+
+			expect(served, `${adapter.addon}:${adapter.framework}`).toContain(
+				adapter.framework,
+			);
 		}
 	});
 });

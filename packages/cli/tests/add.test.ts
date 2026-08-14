@@ -616,7 +616,7 @@ describe("add command", () => {
 		);
 	});
 
-	it("keeps narrowed multiple targets and adds only newly compatible modules", async () => {
+	it("applies target predicates while retargeting adapter installs", async () => {
 		const addon = defineAddon<ForgeConfig>({
 			id: "@acme/sentry",
 			name: "Sentry",
@@ -624,6 +624,7 @@ describe("add command", () => {
 			category: "tooling",
 			exclusive: false,
 			targetMode: "multiple",
+			target: (_config, module) => module.id !== reactRouterModule.id,
 			when: () => false,
 			contribute: () => [],
 		});
@@ -673,10 +674,7 @@ describe("add command", () => {
 			[
 				{
 					definitionId: addon.id,
-					targets: [
-						{ kind: "module", moduleId: adminModule.id },
-						{ kind: "module", moduleId: reactRouterModule.id },
-					],
+					targets: [{ kind: "module", moduleId: adminModule.id }],
 				},
 			],
 			undefined,
@@ -1608,9 +1606,69 @@ describe("add command", () => {
 		}
 	});
 
+	it("applies target predicates when adding directly", async () => {
+		const addon = defineAddon<ForgeConfig>({
+			id: "@acme/admin-only",
+			name: "Admin Only",
+			version: "1.0.0",
+			category: "tooling",
+			compatibility: { app: { frameworks: ["nextjs"] } },
+			exclusive: false,
+			targetMode: "multiple",
+			target: (_config, module) => module.id === adminModule.id,
+			when: () => false,
+			contribute: () => [],
+		});
+		const registry = registryFixture({
+			addons: [addon],
+			id: "@acme/forge-admin-only",
+			units: [{ id: addon.id, kind: "addon" }],
+		});
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ modules: [appModule, adminModule] }),
+		);
+		lifecycleMocks.loadProjectRegistry.mockResolvedValue(registry);
+
+		await runAdd(addon.id, {});
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", web: "nextjs" },
+			[
+				{
+					definitionId: addon.id,
+					targets: [{ kind: "module", moduleId: adminModule.id }],
+				},
+			],
+			undefined,
+			undefined,
+		);
+	});
+
+	it("refuses to add Hono to an existing project", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+			await expect(runAdd("hono", {})).rejects.toThrow("exit:1");
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't add a backend framework to an existing project yet.",
+			);
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
 	it("adds tRPC to a React Router module", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
-			managedProject({ modules: [packageModule, reactRouterModule] }),
+			managedProject({
+				config: { backend: "self", slug: "acme", web: "react-router" },
+				modules: [packageModule, reactRouterModule],
+			}),
 		);
 
 		await runAdd("trpc", {});
@@ -1618,7 +1676,7 @@ describe("add command", () => {
 		expect(promptMocks.logError).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
-			{ rpc: "trpc", slug: "acme", web: "nextjs" },
+			{ backend: "self", rpc: "trpc", slug: "acme", web: "react-router" },
 			[
 				{
 					definitionId: "trpc",

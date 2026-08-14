@@ -30,6 +30,7 @@ interface CatalogMetadataBase {
 }
 
 export interface FirstPartyFrameworkMetadata extends CatalogMetadataBase {
+	readonly category?: "backend" | "web";
 	readonly kind: "framework";
 }
 
@@ -165,7 +166,7 @@ export function frameworkCatalogEntry(
 ): FrameworkCatalogEntry {
 	return {
 		available: true,
-		category: "web",
+		category: metadata.category ?? "web",
 		description: metadata.description,
 		docsUrl: metadata.docsUrl,
 		experimental: metadata.experimental,
@@ -254,6 +255,7 @@ export function announcedCatalogEntry(
 	kind: "framework",
 	id: string,
 	name: string,
+	category?: string,
 ): FrameworkCatalogEntry;
 export function announcedCatalogEntry(
 	kind: "addon",
