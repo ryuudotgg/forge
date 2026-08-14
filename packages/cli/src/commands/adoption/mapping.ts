@@ -11,7 +11,13 @@ import {
 } from "@ryuujs/generators";
 import type { CatalogEntry, PackageJson } from "./workspace";
 
-export type ModuleKind = "auth" | "db" | "trpc" | "ui" | "web-app";
+export type ModuleKind =
+	| "auth"
+	| "backend-app"
+	| "db"
+	| "trpc"
+	| "ui"
+	| "web-app";
 
 export type DependencySection =
 	| "dependencies"
@@ -72,6 +78,26 @@ export function hasTanstackRouterApplicationDependencies(
 		return false;
 
 	return allDependencyNames(packageJson).has("@tanstack/router-plugin");
+}
+
+export function isBackendPackage(
+	packageJson: PackageJson,
+	hasTanstackRouterConfig: boolean,
+): boolean {
+	const dependencies = dependencyNames(packageJson);
+	if (!dependencies.has("hono")) return false;
+
+	if (
+		["next", "react-router", "@tanstack/react-start"].some((dependency) =>
+			dependencies.has(dependency),
+		)
+	)
+		return false;
+
+	return !(
+		hasTanstackRouterConfig &&
+		hasTanstackRouterApplicationDependencies(packageJson)
+	);
 }
 
 export function oneDetected<T>(
@@ -152,6 +178,12 @@ export function moduleProposal(
 		signatures.push({
 			evidence: "found react-router in its dependencies",
 			proposal: "web-app",
+		});
+
+	if (dependencies.has("hono"))
+		signatures.push({
+			evidence: "found hono in its dependencies",
+			proposal: "backend-app",
 		});
 
 	if (dependencies.has("drizzle-orm"))

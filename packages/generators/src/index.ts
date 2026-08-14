@@ -1,4 +1,12 @@
 export { default as trpc } from "./api/trpc";
+export {
+	type ApiHost,
+	type ApiHostConsumer,
+	apiHostError,
+	apiHostFramework,
+	apiHostFrameworks,
+	resolveApiHost,
+} from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
 export type {
 	AddonCatalogEntry,
@@ -73,11 +81,16 @@ export {
 	postgresProviderIdsFor,
 	resolveDatabaseProvider,
 } from "./data/providers";
+export { default as hono, honoFramework } from "./frameworks/hono";
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
 export {
 	default as reactRouter,
 	reactRouterFramework,
 } from "./frameworks/react-router";
+export {
+	default as tanstackRouter,
+	tanstackRouterFramework,
+} from "./frameworks/tanstack-router";
 export {
 	default as tanstackStart,
 	tanstackStartFramework,

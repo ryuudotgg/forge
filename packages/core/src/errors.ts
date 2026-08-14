@@ -10,6 +10,7 @@ const optionalCause = Schema.optional(Schema.Defect());
 
 const GeneratorErrorReason = Schema.Literals([
 	"definition-failed",
+	"api-host-required",
 	"framework-template-required",
 	"framework-not-supported",
 	"framework-not-supported-yet",
@@ -34,6 +35,7 @@ type GeneratorErrorPayload = typeof GeneratorErrorFields.Type;
 
 const generatorRequiredFields = {
 	"definition-failed": ["detail"],
+	"api-host-required": ["generatorName", "frameworkName"],
 	"framework-template-required": ["generatorName"],
 	"framework-not-supported": ["generatorName", "frameworkName"],
 	"framework-not-supported-yet": ["generatorName", "frameworkName"],
@@ -68,6 +70,8 @@ export class GeneratorError extends Schema.TaggedError<GeneratorError>()(
 const generatorMessages = {
 	"definition-failed": (error: GeneratorError) =>
 		`Definition Failed: ${error.detail ?? ""}`,
+	"api-host-required": (error: GeneratorError) =>
+		`${error.generatorName ?? ""} needs a backend. ${error.frameworkName ?? ""} can't host it; add a backend framework.`,
 	"framework-template-required": (error: GeneratorError) =>
 		`${error.generatorName ?? ""} requires a web framework template.`,
 	"framework-not-supported": (error: GeneratorError) =>

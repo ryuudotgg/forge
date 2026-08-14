@@ -100,6 +100,7 @@ Lifecycle commands support explicit conflict resolution:
 - 📦 **Your package manager** - Scaffold with pnpm, npm, Yarn, or Bun.
 - 🏗️ **Typed end to end** - Strict TypeScript across the whole monorepo.
 - ▲ **Next.js, React Router, TanStack Router, and TanStack Start** - Modern React apps wired up and ready to go.
+- 🔥 **Hono backend** - Run tRPC and Better Auth in a standalone Node.js API app.
 - 🗄️ **Database your way** - Drizzle or Prisma over PostgreSQL, MySQL, or SQLite, with providers like PlanetScale, Neon, Supabase, and Turso.
 - 🔌 **tRPC** - End-to-end typesafe APIs.
 - 🔐 **Better Auth** - Authentication ready out of the box.

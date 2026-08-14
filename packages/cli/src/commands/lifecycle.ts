@@ -21,6 +21,7 @@ import {
 	Subprocess,
 } from "@ryuujs/core";
 import {
+	backends,
 	type ForgeConfig,
 	importRegistryPackage,
 	loadDefinitionRegistry,
@@ -175,9 +176,15 @@ export async function loadManagedProject(
 		process.exit(1);
 	}
 
+	const backend = backends.normalize(manifest.config.backend);
+	const config =
+		backend === undefined ? manifest.config : { ...manifest.config, backend };
+
+	const normalizedManifest = { ...manifest, config };
+
 	return {
-		config: manifest.config,
-		manifest,
+		config,
+		manifest: normalizedManifest,
 		modules,
 		projectRoot: absoluteProjectRoot,
 	};

@@ -1,18 +1,31 @@
 import { defineRegistry } from "@ryuujs/core";
 import trpc, { trpcMetadata } from "../api/trpc";
-import { trpcAdapters, trpcRecipe } from "../api/trpc/recipe";
+import {
+	trpcAdapters,
+	trpcHonoAdapters,
+	trpcHonoRecipe,
+	trpcRecipe,
+} from "../api/trpc/recipe";
 import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
 import {
 	betterAuthAdapters,
+	betterAuthHonoAdapters,
+	betterAuthHonoRecipe,
 	betterAuthRecipe,
 } from "../auth/better-auth/recipe";
 import {
 	authenticationProviders,
+	backends,
 	type ForgeConfig,
 	linters,
 	styleFrameworks,
 	webFrameworks,
 } from "../config";
+import honoBaseTemplate, {
+	honoBaseTemplateMetadata,
+	honoFramework,
+	honoFrameworkMetadata,
+} from "../frameworks/hono";
 import nextjsBaseTemplate, {
 	nextjsBaseTemplateMetadata,
 	nextjsFramework,
@@ -61,14 +74,22 @@ import {
 } from "./types";
 
 export const firstPartyRegistry = defineRegistry<ForgeConfig>({
-	adapters: [...trpcAdapters, ...betterAuthAdapters, ...uiAdapters],
+	adapters: [
+		...trpcAdapters,
+		...trpcHonoAdapters,
+		...betterAuthAdapters,
+		...betterAuthHonoAdapters,
+		...uiAdapters,
+	],
 	frameworks: [
+		honoFramework,
 		nextjsFramework,
 		reactRouterFramework,
 		tanstackRouterFramework,
 		tanstackStartFramework,
 	],
 	templates: [
+		honoBaseTemplate,
 		nextjsBaseTemplate,
 		reactRouterBaseTemplate,
 		tanstackRouterBaseTemplate,
@@ -95,11 +116,19 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		prisma,
 		betterAuth,
 	],
-	recipes: [trpcRecipe, betterAuthRecipe, uiRecipe],
+	recipes: [
+		trpcRecipe,
+		trpcHonoRecipe,
+		betterAuthRecipe,
+		betterAuthHonoRecipe,
+		uiRecipe,
+	],
 	readTemplate,
 });
 
 export const firstPartyCatalog = [
+	frameworkCatalogEntry(honoFramework, honoFrameworkMetadata),
+	templateCatalogEntry(honoBaseTemplate, honoBaseTemplateMetadata),
 	frameworkCatalogEntry(nextjsFramework, nextjsFrameworkMetadata),
 	templateCatalogEntry(nextjsBaseTemplate, nextjsBaseTemplateMetadata),
 	frameworkCatalogEntry(reactRouterFramework, reactRouterFrameworkMetadata),
@@ -155,6 +184,11 @@ export const firstPartyCatalog = [
 		.filter((id) => !webFrameworks.available(id))
 		.map((id) =>
 			announcedCatalogEntry("framework", id, webFrameworks.label(id)),
+		),
+	...backends.ids
+		.filter((id) => !backends.available(id))
+		.map((id) =>
+			announcedCatalogEntry("framework", id, backends.label(id), "backend"),
 		),
 	...authenticationProviders.ids
 		.filter((id) => !authenticationProviders.available(id))

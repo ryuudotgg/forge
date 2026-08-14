@@ -13,6 +13,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { nextServerEnvMarkers } from "../../origins";
 import { pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
@@ -115,7 +116,10 @@ function buildContributions(config: ForgeConfig) {
 		{ TRANSPILE_PACKAGES: `[${transpileList}]` },
 	);
 
-	const webEnv = readTemplate("frameworks/nextjs/env.ts");
+	const webEnv = interpolate(
+		readTemplate("frameworks/nextjs/env.ts"),
+		nextServerEnvMarkers(config),
+	);
 
 	const webPackageJson: Record<string, unknown> = {
 		name: `@${slug}/web`,

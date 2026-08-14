@@ -59,6 +59,27 @@ describe("summary step", () => {
 		expect(body).toContain("apps/web");
 	});
 
+	it.each([
+		["nextjs", "Next.js"],
+		["tanstack-router", "TanStack Router"],
+	] as const)(
+		"keeps %s as the framework when Hono hosts the backend",
+		async (web, framework) => {
+			await expect(
+				summaryStep.execute(
+					{ backend: "hono", path: "./preview", slug: "acme", web },
+					true,
+				),
+			).resolves.toBe(SKIP);
+
+			const [body, title] = promptMocks.note.mock.calls[0] ?? [];
+			expect(title).toBe("Forge Plan");
+			expect(body).toContain(`Framework: ${framework}`);
+			expect(body).toContain("Backend: Hono");
+			expect(body).toContain("Template: Base");
+		},
+	);
+
 	it("falls back to none for an empty config", async () => {
 		await expect(summaryStep.execute({}, true)).resolves.toBe(SKIP);
 

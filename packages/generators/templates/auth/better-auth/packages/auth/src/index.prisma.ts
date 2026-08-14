@@ -16,8 +16,10 @@ const cookieDomain = normalizeCookieDomain(env.AUTH_COOKIE_DOMAIN);
 const config = {
   secret: authSecret,
   baseURL: normalizeOrigin(env.APP_ORIGIN),
+  // __TRUSTED_ORIGINS__
 
   database: prismaAdapter(db, { provider: "__DATASOURCE_PROVIDER__" }),
+  // __EMAIL_PASSWORD__
   // __COOKIE_PLUGIN__
 
   session: {

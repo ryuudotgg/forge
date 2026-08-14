@@ -6,10 +6,18 @@ import {
 	surfaceDependencies,
 	surfaceJson,
 } from "@ryuujs/core";
+import { Effect } from "effect";
+import {
+	type ApiHostConsumer,
+	apiHostError,
+	apiHostFramework,
+} from "../../api-host";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { renderTrpcTemplate } from "./shared";
+
+const trpcConsumer: ApiHostConsumer = { id: "trpc", name: "tRPC" };
 
 const trpc = defineAddon<ForgeConfig, "trpc">({
 	id: "trpc",
@@ -17,15 +25,15 @@ const trpc = defineAddon<ForgeConfig, "trpc">({
 	version: "0.1.0",
 	category: "addon",
 	exclusive: false,
-	dependencies: [
-		{ id: "nextjs/base", type: "template" },
-		{ id: "react-router/base", type: "template" },
-		{ id: "tanstack-start/base", type: "template" },
-		{ id: "typescript", type: "addon" },
-	],
+	dependencies: [{ id: "typescript", type: "addon" }],
 	targetMode: "single",
+	target: (config, module) =>
+		module.type === "app" && module.framework === apiHostFramework(config),
 	when: (config) => config.rpc === "trpc",
-	contribute: ({ config }) => {
+	contribute: ({ config, frameworks }) => {
+		const failure = apiHostError(config, trpcConsumer, frameworks);
+		if (failure !== undefined) return Effect.fail(failure);
+
 		const slug = config.slug ?? "my-app";
 		const usesDb = config.orm !== undefined;
 		const usesAuth = config.authentication === "better-auth";

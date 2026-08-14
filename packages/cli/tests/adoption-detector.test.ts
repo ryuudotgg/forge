@@ -397,6 +397,7 @@ describe("AdoptionDetector", () => {
 				expect(result.config).toEqual({
 					addons: ["commitlint", "lefthook", "vitest"],
 					authentication: "better-auth",
+					backend: "self",
 					catalogs: "flat",
 					database: "postgresql",
 					databaseProvider: "neon",
@@ -544,7 +545,9 @@ describe("AdoptionDetector", () => {
 
 	it("captures scoped catalog pins in a Kingshot-like mixed workspace", async () => {
 		const files: Record<string, string> = {
-			"apps/api/package.json": json({ dependencies: { hono: "^4" } }),
+			"apps/api/package.json": json({
+				dependencies: { "@trpc/server": "^11", hono: "^4" },
+			}),
 			"apps/docs/package.json": json({ dependencies: { vite: "^7" } }),
 			"apps/mobile/package.json": json({ dependencies: { expo: "^54" } }),
 			"apps/web/package.json": json({
@@ -596,10 +599,14 @@ describe("AdoptionDetector", () => {
 
 		await withFixture("kingshot", files, async (root) => {
 			const result = await detect(root);
+			expect(result.config.backend).toBe("hono");
+			expect(
+				result.modules.find((module) => module.root === "apps/api"),
+			).toMatchObject({ proposal: "backend-app" });
 			expect(result.modules).toHaveLength(15);
 			expect(
 				result.modules.filter((module) => module.proposal === "unadopted"),
-			).toHaveLength(10);
+			).toHaveLength(9);
 			expect(result.config).toMatchObject({
 				authentication: "better-auth",
 				catalogs: "scoped",

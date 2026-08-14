@@ -1943,7 +1943,7 @@ describe("planner", () => {
 		});
 	});
 
-	it("executes an adapter once per selected target module", async () => {
+	it("executes adapters for compatible modules and honors target predicates", async () => {
 		await withTempDir("planner-adapter-targets", async (directory) => {
 			const framework = defineFramework({
 				id: "nextjs",
@@ -1966,12 +1966,12 @@ describe("planner", () => {
 					ensureAppModule("first", "apps/first", {
 						framework: "nextjs",
 						template: { id: "nextjs/base", version: 1 },
-						slots: { integration: "src/integration.ts" },
+						slots: { integration: "src/first.ts" },
 					}),
 					ensureAppModule("second", "apps/second", {
 						framework: "nextjs",
 						template: { id: "nextjs/base", version: 1 },
-						slots: { integration: "src/integration.ts" },
+						slots: { integration: "src/second.ts" },
 					}),
 				],
 			});
@@ -1997,11 +1997,35 @@ describe("planner", () => {
 					),
 				],
 			});
+			const filteredAddon = defineAddon<TestConfig>({
+				id: "filtered-integration",
+				name: "Filtered Integration",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "multiple",
+				target: (_config, module) =>
+					module.type === "app" && module.slots.integration === "src/second.ts",
+				when: () => true,
+				contribute: () => [],
+			});
+			const filteredAdapter = defineAdapter<TestConfig>({
+				addon: "filtered-integration",
+				framework: "nextjs",
+				requiredSlots: ["integration"],
+				contribute: (context) => [
+					leafTextFile(
+						moduleTarget(context.module),
+						"filtered.txt",
+						context.module.root,
+					),
+				],
+			});
 			const registry = defineRegistry({
-				adapters: [adapter],
+				adapters: [adapter, filteredAdapter],
 				frameworks: [framework],
 				templates: [template],
-				addons: [addon],
+				addons: [addon, filteredAddon],
 			});
 
 			const plan = await Effect.runPromise(
@@ -2019,13 +2043,26 @@ describe("planner", () => {
 				"apps/second/adapter.txt",
 			]);
 			expect(adapterWrites.map((write) => write.content).sort()).toEqual([
-				"nextjs:apps/first:src/integration.ts\n",
-				"nextjs:apps/second:src/integration.ts\n",
+				"nextjs:apps/first:src/first.ts\n",
+				"nextjs:apps/second:src/second.ts\n",
 			]);
 			expect(install?.targets).toHaveLength(2);
 			expect(install?.targets.every((target) => target.kind === "module")).toBe(
 				true,
 			);
+			expect(
+				plan.writes.filter((write) => write.path.endsWith("/filtered.txt")),
+			).toEqual([
+				expect.objectContaining({
+					content: "apps/second",
+					path: "apps/second/filtered.txt",
+				}),
+			]);
+			expect(
+				plan.manifest.installs.find(
+					(entry) => entry.definitionId === "filtered-integration",
+				)?.targets,
+			).toHaveLength(1);
 		});
 	});
 

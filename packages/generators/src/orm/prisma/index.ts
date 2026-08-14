@@ -17,6 +17,7 @@ import {
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { deps } from "../../deps";
+import { standaloneApiOrigin } from "../../origins";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
@@ -48,6 +49,10 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			RELATION_MODE: emulatesRelations
 				? `\n  relationMode = "${provider.prisma.relationMode}"`
 				: "",
+			"  // __PASSWORD_FIELD__\n":
+				standaloneApiOrigin(config) === undefined
+					? ""
+					: "  password              String?__TEXT__\n",
 			TEXT: provider.prisma.datasourceProvider === "mysql" ? " @db.Text" : "",
 			TIMESTAMPTZ:
 				provider.prisma.datasourceProvider === "postgresql"
@@ -148,13 +153,17 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 				render("packages/db/src/index.ts"),
 			),
 
-			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-				{
-					name: `@${slug}/db`,
-					version: "workspace:*",
-					type: "dependencies",
-				},
-			]),
+			...(config.web === undefined
+				? []
+				: [
+						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
+							{
+								name: `@${slug}/db`,
+								version: "workspace:*",
+								type: "dependencies",
+							},
+						]),
+					]),
 
 			surfaceLines(
 				projectTarget(),
@@ -183,12 +192,16 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 				{ section: "Prisma" },
 			),
 
-			surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-				"db:generate": pmRunIn(pm, dbPackage, "generate"),
-				"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
-				"db:push": pmRunIn(pm, dbPackage, "push"),
-				"db:studio": pmRunIn(pm, dbPackage, "studio"),
-			}),
+			...(config.web === undefined
+				? []
+				: [
+						surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+							"db:generate": pmRunIn(pm, dbPackage, "generate"),
+							"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
+							"db:push": pmRunIn(pm, dbPackage, "push"),
+							"db:studio": pmRunIn(pm, dbPackage, "studio"),
+						}),
+					]),
 
 			// The generated client lives in the db package's source tree and is
 			// gitignored, so a fresh checkout has to regenerate it on install.

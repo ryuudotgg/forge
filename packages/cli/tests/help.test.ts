@@ -60,7 +60,7 @@ describe("printHelp", () => {
 				"        --web <value>                    Next.js · React Router · TanStack Router · TanStack Start",
 				"        --desktop <value> (soon)         Electron · Tauri",
 				"        --mobile <value> (soon)          Expo · React Native",
-				"        --backend <value>                Next.js · Convex (soon) · Hono (soon) · Elysia (soon) · µWebSockets (soon) · Fastify (soon) · Express (soon)",
+				"        --backend <value>                Same app · Convex (soon) · Hono · Elysia (soon) · µWebSockets (soon) · Fastify (soon) · Express (soon)",
 				"        --rpc <value>                    tRPC",
 				"        --database <value>               MySQL · PostgreSQL · SQLite",
 				"        --orm <value>                    Drizzle ORM · Prisma",
@@ -128,7 +128,7 @@ describe("printHelp", () => {
 		const output = captureHelp().join("\n");
 
 		expect(output).toContain("Node.js · Bun · Deno");
-		expect(output).toContain("Next.js · Convex (soon) · Hono (soon)");
+		expect(output).toContain("Same app · Convex (soon) · Hono");
 		expect(output).toContain("PlanetScale · Neon · Nile · Supabase");
 	});
 });

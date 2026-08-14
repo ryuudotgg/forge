@@ -1,7 +1,10 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { authenticationProviders } from "@ryuujs/generators";
+import {
+	apiHostError,
+	authenticationProviders,
+	resolveApiHost,
+} from "@ryuujs/generators";
 import { Result, Schema } from "effect";
-import { addonSupportsWebFramework } from "../../utils/addon-support";
 import { cancel } from "../../utils/cancel";
 import {
 	availableChoice,
@@ -24,7 +27,19 @@ const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 
 	dependencies: ["orm"],
 	shouldRun: (config) =>
-		!!config.orm && addonSupportsWebFramework("better-auth", config.web),
+		!!config.orm &&
+		config.backend !== "convex" &&
+		(config.authentication !== undefined ||
+			resolveApiHost(config) !== undefined),
+
+	validate: (_value, config) => {
+		const failure = apiHostError(config, {
+			id: "better-auth",
+			name: "Better Auth",
+		});
+
+		if (failure !== undefined) throw failure;
+	},
 
 	async execute(config, interactive) {
 		if (!interactive) {

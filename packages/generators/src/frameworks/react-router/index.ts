@@ -13,6 +13,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { viteServerEnvMarkers } from "../../origins";
 import { pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
@@ -250,7 +251,10 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("web"),
 			"env.ts",
-			readTemplate("frameworks/react-router/env.ts"),
+			interpolate(
+				readTemplate("frameworks/react-router/env.ts"),
+				viteServerEnvMarkers(config),
+			),
 		),
 		leafTextFile(ensuredModuleTarget("web"), "app/providers.tsx", providers),
 		leafTextFile(ensuredModuleTarget("web"), "app/routes.ts", routes),

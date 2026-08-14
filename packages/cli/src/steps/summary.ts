@@ -1,6 +1,7 @@
 import { note } from "@clack/prompts";
 import { Planner, packageManagerCommand, runtimeCommand } from "@ryuujs/core";
 import {
+	backends,
 	type ForgeConfig,
 	listVisibleAddons,
 	loadDefinitionRegistry,
@@ -33,8 +34,8 @@ const summaryStep = defineStep({
 
 		const forgeConfig: ForgeConfig = config;
 		const loadedRegistry = await loadDefinitionRegistry();
-		const template = loadedRegistry.registry.templates.find((entry) =>
-			entry.when(forgeConfig),
+		const template = loadedRegistry.registry.templates.find(
+			(entry) => entry.category === "web" && entry.when(forgeConfig),
 		);
 
 		const framework = template
@@ -54,6 +55,10 @@ const summaryStep = defineStep({
 
 		const lines = [
 			formatLine("Framework", framework?.name ?? "None"),
+			formatLine(
+				"Backend",
+				forgeConfig.backend ? backends.label(forgeConfig.backend) : "None",
+			),
 			formatLine("Template", template?.name ?? "None"),
 			formatLine("Addons", addons.length > 0 ? addons.join(", ") : "None"),
 		];

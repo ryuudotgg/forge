@@ -13,6 +13,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { viteServerEnvMarkers } from "../../origins";
 import { pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
@@ -103,6 +104,17 @@ function buildContributions(config: ForgeConfig) {
 			: "",
 		"/* __TAILWIND_PLUGIN__ */ ": useTailwind ? "tailwindcss(), " : "",
 	};
+	const usesTrpc = config.rpc === "trpc";
+
+	const providers = interpolate(
+		readTemplate("frameworks/tanstack-router/src/providers.tsx"),
+		{
+			"// __TRPC_IMPORT__\n": usesTrpc
+				? 'import { TRPCReactProvider } from "@/trpc/react";\n'
+				: "",
+			"  // __TRPC_ENTRY__\n": usesTrpc ? "  trpc: TRPCReactProvider,\n" : "",
+		},
+	);
 
 	const webPackageJson: Record<string, unknown> = {
 		name: `@${slug}/web`,
@@ -210,7 +222,10 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("web"),
 			"env.ts",
-			readTemplate("frameworks/tanstack-router/env.ts"),
+			interpolate(
+				readTemplate("frameworks/tanstack-router/env.ts"),
+				viteServerEnvMarkers(config),
+			),
 		),
 		leafTextFile(
 			ensuredModuleTarget("web"),
@@ -222,11 +237,7 @@ function buildContributions(config: ForgeConfig) {
 			"src/main.tsx",
 			readTemplate("frameworks/tanstack-router/src/main.tsx"),
 		),
-		leafTextFile(
-			ensuredModuleTarget("web"),
-			"src/providers.tsx",
-			readTemplate("frameworks/tanstack-router/src/providers.tsx"),
-		),
+		leafTextFile(ensuredModuleTarget("web"), "src/providers.tsx", providers),
 		leafTextFile(
 			ensuredModuleTarget("web"),
 			"src/router.tsx",

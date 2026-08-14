@@ -529,6 +529,7 @@ function installTargetKey(target: InstallTarget) {
 
 function buildTargetCandidates<ConfigValue>(
 	addon: AddonDefinition<ConfigValue>,
+	config: ConfigValue,
 	modules: ReadonlyArray<ManagedModuleRecord>,
 	frameworks: DefinitionRegistry<ConfigValue>["frameworks"],
 	adapters: ReadonlyArray<AdapterDefinition<ConfigValue>>,
@@ -537,8 +538,10 @@ function buildTargetCandidates<ConfigValue>(
 	if (!addon.compatibility && !hasAdapters) return [{ kind: "project" }];
 
 	const compatibleModules = modules
-		.filter((module) =>
-			isAddonCompatibleWithModule(addon, module.config, frameworks, adapters),
+		.filter(
+			(module) =>
+				(addon.target?.(config, module.config) ?? true) &&
+				isAddonCompatibleWithModule(addon, module.config, frameworks, adapters),
 		)
 		.map(
 			(module): InstallTarget => ({
@@ -1459,6 +1462,7 @@ const makePlanner = Effect.gen(function* () {
 						definitionId: addon.id,
 						targets: buildTargetCandidates(
 							addon,
+							intent.config,
 							mergedModules,
 							registry.frameworks,
 							registry.adapters,
@@ -1481,6 +1485,7 @@ const makePlanner = Effect.gen(function* () {
 				definitionId: addon.id,
 				targets: buildTargetCandidates(
 					addon,
+					intent.config,
 					mergedModules,
 					registry.frameworks,
 					registry.adapters,

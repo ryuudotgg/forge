@@ -29,6 +29,16 @@ const backend = defineFramework({
 	tsconfigPreset: { content: { backend: true }, name: "backend" },
 });
 
+const hono = defineFramework({
+	buildOutputs: [".backend/**"],
+	id: "hono",
+	ignoreDirs: [],
+	name: "Hono",
+	sourceRoot: "",
+	slots: [],
+	tsconfigPreset: { content: {}, name: "hono" },
+});
+
 const duplicatePreset = defineFramework({
 	buildOutputs: [],
 	configFile: "duplicate.config.ts",
@@ -56,8 +66,8 @@ describe("frameworksInPlay", () => {
 		expect(frameworksInPlay({ web: "nextjs" }, [web])).toEqual([web]);
 	});
 
-	it("does not select backend frameworks before backend machinery exists", () => {
-		expect(frameworksInPlay({ backend: "hono" }, [web])).toEqual([]);
+	it("selects the configured standalone backend framework", () => {
+		expect(frameworksInPlay({ backend: "hono" }, [web, hono])).toEqual([hono]);
 	});
 
 	it("reports a missing configured framework from one shared location", () => {

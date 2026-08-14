@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -5,10 +7,165 @@ import {
 	expectInstallAndTypecheck,
 	expectInstallBuildAndTypecheck,
 	pathExists,
+	runCommand,
 	withScenarioWorkspace,
 } from "../utils/harness";
 
+async function readGeneratedEnv(projectRoot: string) {
+	const content = await readFile(join(projectRoot, ".env"), "utf-8");
+	const env: NodeJS.ProcessEnv = {};
+	for (const line of content.split("\n")) {
+		const match = /^([A-Z_]+)="([^"]*)"\s*(?:#.*)?$/.exec(line);
+		const name = match?.[1];
+		const value = match?.[2];
+		if (name !== undefined && value !== undefined) env[name] = value;
+	}
+	return env;
+}
+
+async function expectCredentialedGeneratedServer(projectRoot: string) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const origin = generatedEnv.WEB_URL;
+	const serverOrigin = generatedEnv.APP_ORIGIN;
+	if (origin === undefined || serverOrigin === undefined)
+		throw new Error(`Missing Generated Origins: ${projectRoot}`);
+	expect(origin).toBe("http://localhost:3000");
+	expect(serverOrigin).toBe("http://localhost:3001");
+
+	const push = await runCommand("pnpm", ["db:push"], {
+		cwd: join(projectRoot, "apps/web"),
+	});
+	expect(
+		push.exitCode,
+		`pnpm db:push failed with code ${push.exitCode}\n${push.stdout}\n${push.stderr}`,
+	).toBe(0);
+
+	const server = spawn("node", ["dist/index.js"], {
+		cwd: join(projectRoot, "apps/server"),
+		env: { ...process.env, ...generatedEnv },
+	});
+	let stderr = "";
+	server.stderr.on("data", (chunk: Buffer) => {
+		stderr += chunk.toString();
+	});
+	const exited = new Promise<void>((resolveExit) => {
+		server.once("exit", () => resolveExit());
+	});
+
+	try {
+		let ready = false;
+		for (let attempt = 0; attempt < 50; attempt += 1) {
+			try {
+				const response = await fetch(`${serverOrigin}/`);
+				if (response.ok) {
+					ready = true;
+					break;
+				}
+			} catch {}
+
+			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+		}
+		expect(ready, stderr).toBe(true);
+
+		const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
+			method: "OPTIONS",
+			headers: {
+				Origin: origin,
+				"Access-Control-Request-Headers": "x-trpc-source",
+				"Access-Control-Request-Method": "GET",
+			},
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
+		expect(preflight.headers.get("access-control-allow-credentials")).toBe(
+			"true",
+		);
+		expect(preflight.headers.get("access-control-allow-headers")).toContain(
+			"x-trpc-source",
+		);
+
+		const actual = await fetch(`${serverOrigin}/api/trpc/health?input=%7B%7D`, {
+			headers: { Origin: origin, "x-trpc-source": "smoke" },
+		});
+		expect(actual.status).toBe(200);
+		expect(actual.headers.get("access-control-allow-origin")).toBe(origin);
+		expect(actual.headers.get("access-control-allow-credentials")).toBe("true");
+
+		const email = "hono-smoke@example.com";
+		const signup = await fetch(`${serverOrigin}/api/auth/sign-up/email`, {
+			body: JSON.stringify({
+				email,
+				name: "Hono Smoke",
+				password: "forge-smoke-password",
+			}),
+			headers: { "Content-Type": "application/json", Origin: origin },
+			method: "POST",
+		});
+		const signupBody = await signup.text();
+		expect(signup.status, `${signupBody}\n${stderr}`).toBe(200);
+		expect(signup.headers.get("access-control-allow-origin")).toBe(origin);
+		expect(signup.headers.get("access-control-allow-credentials")).toBe("true");
+		const setCookie = signup.headers.get("set-cookie");
+		expect(setCookie).toBeTruthy();
+		if (setCookie === null)
+			throw new Error("Missing Session Cookie: Better Auth sign-up");
+		const cookie = setCookie.split(";", 1)[0];
+		if (cookie === undefined)
+			throw new Error("Missing Cookie Value: Better Auth sign-up");
+
+		const authSession = await fetch(`${serverOrigin}/api/auth/get-session`, {
+			headers: { Cookie: cookie, Origin: origin },
+		});
+		expect(authSession.status).toBe(200);
+		expect(authSession.headers.get("access-control-allow-origin")).toBe(origin);
+		expect(authSession.headers.get("access-control-allow-credentials")).toBe(
+			"true",
+		);
+		expect(await authSession.json()).toMatchObject({ user: { email } });
+	} finally {
+		if (server.exitCode === null) server.kill("SIGTERM");
+		await exited;
+	}
+}
+
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
+	it("installs, builds, and typechecks Next.js with a Hono API host", async () => {
+		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "hono",
+				database: "sqlite",
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "nextjs",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectCredentialedGeneratedServer(workspace.projectRoot);
+		});
+	}, 600_000);
+
+	it("installs, builds, and typechecks TanStack Router with Hono", async () => {
+		await withScenarioWorkspace("smoke-hono-spa", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "hono",
+				database: "postgresql",
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "tanstack-router",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+		});
+	}, 600_000);
+
 	it("installs a prisma project, generates the client, and typechecks", async () => {
 		await withScenarioWorkspace("smoke-prisma", async (workspace) => {
 			await createProject(

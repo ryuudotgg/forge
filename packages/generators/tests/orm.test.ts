@@ -247,6 +247,7 @@ describe("prisma addon", () => {
 		const contributions = contributionsFor(prisma, {
 			slug: "acme",
 			orm: "prisma",
+			web: "nextjs",
 		});
 
 		expect(moduleJson(contributions, "db", "packageJson")).toMatchObject({
@@ -269,6 +270,7 @@ describe("prisma addon", () => {
 			slug: "acme",
 			orm: "prisma",
 			packageManager: "npm",
+			web: "nextjs",
 		});
 
 		expect(moduleJson(contributions, "db", "packageJson")).toMatchObject({
@@ -444,7 +446,11 @@ describe("drizzle addon", () => {
 	});
 
 	it("runs the db scripts through the selected package manager", () => {
-		const pnpm = contributionsFor(drizzle, { slug: "acme", orm: "drizzle" });
+		const pnpm = contributionsFor(drizzle, {
+			slug: "acme",
+			orm: "drizzle",
+			web: "nextjs",
+		});
 		expect(moduleJson(pnpm, "db", "packageJson")).toMatchObject({
 			scripts: { push: "pnpm with-env drizzle-kit push" },
 		});
@@ -456,6 +462,7 @@ describe("drizzle addon", () => {
 			slug: "acme",
 			orm: "drizzle",
 			packageManager: "npm",
+			web: "nextjs",
 		});
 		expect(moduleJson(npm, "db", "packageJson")).toMatchObject({
 			scripts: { push: "npm run with-env -- drizzle-kit push" },

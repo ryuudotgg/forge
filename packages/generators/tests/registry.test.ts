@@ -388,6 +388,7 @@ describe("registry loader", () => {
 	});
 
 	it("accepts self-contained structural registry definitions", async () => {
+		const target = (_config: ForgeConfig) => true;
 		const loaded = await loadDefinitionRegistry({
 			importRegistry: async () => ({
 				module: {
@@ -403,6 +404,7 @@ describe("registry loader", () => {
 								id: "@fixture/structural",
 								name: "Structural Fixture",
 								targetMode: "multiple",
+								target,
 								version: "1.0.0",
 								when: () => false,
 							},
@@ -434,10 +436,45 @@ describe("registry loader", () => {
 			loaded.registry.addons.find(
 				(entry) => entry.id === "@fixture/structural",
 			),
-		).toMatchObject({ _tag: "AddonDefinition" });
+		).toMatchObject({ _tag: "AddonDefinition", target });
 		expect(loaded.descriptors[0]?.units).toEqual([
 			{ id: "@fixture/structural", kind: "addon" },
 		]);
+	});
+
+	it("rejects a structural addon with a non-function target", async () => {
+		const error = await loadFailure({
+			importRegistry: async () => ({
+				module: {
+					default: {
+						apiVersion: 1,
+						addons: [
+							{
+								_tag: "AddonDefinition",
+								category: "tooling",
+								contribute: () => [],
+								dependencies: [],
+								exclusive: false,
+								id: "@fixture/invalid-target",
+								name: "Invalid Target",
+								target: "web",
+								targetMode: "multiple",
+								version: "1.0.0",
+								when: () => false,
+							},
+						],
+						catalog: [],
+					},
+				},
+				version: "1.0.0",
+			}),
+			projectRoot: "/fixture-project",
+			registries: ["@fixture/invalid-target-registry"],
+		});
+
+		expect(error.message).toBe(
+			"Registry Package Invalid: @fixture/invalid-target-registry",
+		);
 	});
 
 	it("accepts nested default interop and preserves package integrity", async () => {

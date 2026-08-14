@@ -1042,6 +1042,10 @@ export interface AddonDefinition<
 	readonly exclusive: boolean;
 	readonly dependencies: ReadonlyArray<DependencyRef>;
 	readonly targetMode: TargetMode;
+	readonly target?: (
+		config: Config,
+		module: AppConfig | PackageConfig,
+	) => boolean;
 	readonly compatibility?: Compatibility<Framework, Capability>;
 	readonly when: (config: Config) => boolean;
 	readonly contribute: (
@@ -1129,6 +1133,10 @@ export function defineAddon<
 	readonly exclusive: boolean;
 	readonly dependencies?: ReadonlyArray<DependencyRef>;
 	readonly targetMode: TargetMode;
+	readonly target?: (
+		config: Config,
+		module: AppConfig | PackageConfig,
+	) => boolean;
 	readonly compatibility?: Compatibility<Framework, Capability>;
 	readonly when: (config: Config) => boolean;
 	readonly contribute: (

@@ -1,4 +1,5 @@
 import type { ForgeConfig } from "../../config";
+import { deps } from "../../deps";
 import { interpolate, readTemplate } from "../../template";
 
 export function trpcTemplateVars(config: ForgeConfig) {
@@ -26,6 +27,55 @@ export function trpcTemplateVars(config: ForgeConfig) {
 			: "const session = null;",
 		"/* __AUTH_ARG__ */ ": usesAuth ? "auth, " : "",
 	};
+}
+
+export function trpcClientMarkers(frameworkId: string, standalone: boolean) {
+	const serverUrl =
+		frameworkId === "nextjs"
+			? "env.NEXT_PUBLIC_SERVER_URL"
+			: "env.VITE_SERVER_URL";
+
+	return {
+		ENV_IMPORT: standalone
+			? frameworkId === "nextjs"
+				? 'import { env } from "../env";\n'
+				: 'import { env } from "../../env";\n'
+			: "",
+		API_URL: standalone ? `\`\${${serverUrl}}/api/trpc\`` : '"/api/trpc"',
+		CREDENTIAL_FETCH: standalone
+			? '          fetch(url, options) {\n            return globalThis.fetch(url, {\n              ...options,\n              credentials: "include",\n            });\n          },\n'
+			: "",
+	};
+}
+
+export function trpcRecipeMarkers(
+	config: ForgeConfig,
+	frameworkId: string,
+	standalone: boolean,
+) {
+	const values = trpcTemplateVars(config);
+
+	return {
+		SLUG: values.SLUG,
+		AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],
+		AUTH_ARG: values["/* __AUTH_ARG__ */ "],
+		...trpcClientMarkers(frameworkId, standalone),
+	};
+}
+
+export function trpcWebDependencies(slug: string) {
+	return [
+		{
+			name: `@${slug}/trpc`,
+			version: "workspace:*",
+			type: "dependencies" as const,
+		},
+		{ ...deps.trpcClient, type: "dependencies" as const },
+		{ ...deps.trpcReactQuery, type: "dependencies" as const },
+		{ ...deps.trpcServer, type: "dependencies" as const },
+		{ ...deps.tanstackReactQuery, type: "dependencies" as const },
+		{ ...deps.superjson, type: "dependencies" as const },
+	];
 }
 
 export function renderTrpcTemplate(config: ForgeConfig, path: string): string {

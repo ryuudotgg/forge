@@ -27,6 +27,44 @@ async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 }
 
 describe("create", () => {
+	it("creates a standalone Hono backend at its API slot paths", async () => {
+		await withScenarioWorkspace("create-hono", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "hono",
+				database: "sqlite",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				web: "tanstack-router",
+			});
+
+			for (const path of [
+				"src/app.ts",
+				"src/index.ts",
+				"src/routes/auth.ts",
+				"src/routes/trpc.ts",
+				"tsdown.config.ts",
+			])
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/server", path)),
+					path,
+				).toBe(true);
+
+			const serverConfig = await readJson<{
+				framework: string;
+				slots: Record<string, string>;
+			}>(join(workspace.projectRoot, "apps/server/forge.json"));
+			expect(serverConfig).toMatchObject({
+				framework: "hono",
+				slots: {
+					auth: "src/routes/auth.ts",
+					trpc: "src/routes/trpc.ts",
+				},
+			});
+		});
+	}, 240_000);
+
 	it("creates a recommended first-party workspace with manifest, lockfile, and module metadata", async () => {
 		await withScenarioWorkspace("create", async (workspace) => {
 			await createProject(workspace, {
@@ -222,7 +260,9 @@ describe("create", () => {
 						style: "tailwind",
 						web: "tanstack-router",
 					}),
-				).rejects.toThrow("tRPC does not support TanStack Router yet.");
+				).rejects.toThrow(
+					"tRPC needs a backend. TanStack Router can't host it; add a backend framework.",
+				);
 
 				expect(await readdir(workspace.projectRoot)).toEqual([]);
 			},

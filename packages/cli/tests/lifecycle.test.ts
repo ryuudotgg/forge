@@ -261,6 +261,36 @@ describe("lifecycle", () => {
 		});
 	});
 
+	it("normalizes a legacy backend in loaded config and subsequent updates", async () => {
+		await withTempDir("lifecycle-legacy-backend", async (directory) => {
+			await scaffoldWebModule(directory);
+			await applyInstalledPlan(
+				directory,
+				{ backend: "self", slug: "acme", web: "nextjs" },
+				[tailwindInstall],
+				commandVersions,
+			);
+			const path = join(directory, ".forge/manifest.json");
+			const manifest = decodeManifest(await readJson(path));
+			await writeJson(path, {
+				...manifest,
+				config: { ...manifest.config, backend: "nextjs" },
+			});
+
+			const project = await loadManagedProject(directory, "update");
+			expect(project.config.backend).toBe("self");
+			expect(project.manifest.config.backend).toBe("self");
+
+			await applyInstalledPlan(
+				directory,
+				project.config,
+				project.manifest.installs,
+				commandVersions,
+			);
+			expect(decodeManifest(await readJson(path)).config.backend).toBe("self");
+		});
+	});
+
 	it("normalizes a relative project root before loading the project", async () => {
 		await withTempDir("lifecycle-relative-root", async (directory) => {
 			await writeJson(join(directory, ".forge/manifest.json"), {

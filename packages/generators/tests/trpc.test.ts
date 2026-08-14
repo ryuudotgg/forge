@@ -466,14 +466,14 @@ describe("trpc tanstack-start variant", () => {
 		expect(provider).not.toContain("process.env.NODE_ENV");
 	});
 
-	it("declares all framework base templates as dependency alternatives", () => {
-		expect(trpc.dependencies).toEqual(
-			expect.arrayContaining([
-				{ id: "nextjs/base", type: "template" },
-				{ id: "react-router/base", type: "template" },
-				{ id: "tanstack-start/base", type: "template" },
-			]),
-		);
+	it("leaves API host selection to resolution and target predicates", () => {
+		expect(
+			trpc.dependencies.some((dependency) => dependency.type === "template"),
+		).toBe(false);
+		expect(trpc.dependencies).toContainEqual({
+			id: "typescript",
+			type: "addon",
+		});
 	});
 });
 

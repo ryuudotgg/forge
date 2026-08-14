@@ -25,6 +25,7 @@ import {
 	trpc,
 	typescript,
 } from "../src";
+import { honoFramework } from "../src/frameworks/hono";
 import { nextjsFramework } from "../src/frameworks/nextjs";
 import { reactRouterFramework } from "../src/frameworks/react-router";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
@@ -185,6 +186,30 @@ function betterAuthContributions(
 }
 
 describe("better-auth addon", () => {
+	it.each([
+		["nextjs", "process.env.NEXT_PUBLIC_SERVER_URL"],
+		["tanstack-router", "import.meta.env.VITE_SERVER_URL"],
+	] as const)(
+		"renders a credentialed standalone client for %s",
+		(web, serverUrl) => {
+			const contributions = contributionsOf(
+				betterAuth,
+				{
+					authentication: "better-auth",
+					backend: "hono",
+					orm: "drizzle",
+					slug: "acme",
+					web,
+				},
+				[honoFramework],
+			);
+			const client = leafFile(contributions, "src/client.ts");
+			expect(client.content).toContain(serverUrl);
+			expect(client.content).toContain('credentials: "include"');
+			expect(client.content).not.toMatch(placeholderPattern);
+		},
+	);
+
 	it("refuses to contribute without an orm", () => {
 		expect(() =>
 			contributionsOf(betterAuth, {
@@ -431,14 +456,15 @@ describe("better-auth addon", () => {
 		}
 	});
 
-	it("declares all framework base templates as dependency alternatives", () => {
-		expect(betterAuth.dependencies).toEqual(
-			expect.arrayContaining([
-				{ id: "nextjs/base", type: "template" },
-				{ id: "react-router/base", type: "template" },
-				{ id: "tanstack-start/base", type: "template" },
-			]),
-		);
+	it("leaves API host selection to resolution and target predicates", () => {
+		expect(
+			betterAuth.dependencies.some(
+				(dependency) => dependency.type === "template",
+			),
+		).toBe(false);
+		expect(
+			trpc.dependencies.some((dependency) => dependency.type === "template"),
+		).toBe(false);
 	});
 });
 
@@ -825,7 +851,7 @@ describe("vitest addon", () => {
 	it("does not contribute when selected without a web app", () => {
 		const config: ForgeConfig = {
 			addons: ["vitest"],
-			backend: "nextjs",
+			backend: "self",
 			platforms: [],
 		};
 

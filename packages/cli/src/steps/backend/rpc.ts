@@ -1,7 +1,11 @@
 import { isCancel, select } from "@clack/prompts";
-import { rpcProviders, webFrameworks } from "@ryuujs/generators";
+import {
+	apiHostError,
+	resolveApiHost,
+	rpcProviders,
+	webFrameworks,
+} from "@ryuujs/generators";
 import { Schema } from "effect";
-import { addonSupportsWebFramework } from "../../utils/addon-support";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";
 
@@ -16,9 +20,14 @@ export default defineStep<typeof rpcSchema.Type>({
 	dependencies: ["backend"],
 
 	shouldRun: (config) =>
-		!!config.backend &&
 		config.backend !== "convex" &&
-		addonSupportsWebFramework("trpc", config.web),
+		(config.rpc !== undefined ||
+			(!!config.backend && resolveApiHost(config) !== undefined)),
+
+	validate: (_value, config) => {
+		const failure = apiHostError(config, { id: "trpc", name: "tRPC" });
+		if (failure !== undefined) throw failure;
+	},
 
 	async execute(config, interactive): Promise<typeof rpcSchema.Type | Skip> {
 		if (!interactive) {

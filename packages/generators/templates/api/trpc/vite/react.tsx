@@ -5,6 +5,7 @@ import { httpBatchStreamLink, loggerLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 import { type ReactNode, useState } from "react";
 import SuperJSON from "superjson";
+// __ENV_IMPORT__
 
 import { createQueryClient } from "./query-client";
 
@@ -29,8 +30,9 @@ export function TRPCReactProvider(props: { children: ReactNode }) {
             (op.direction === "down" && op.result instanceof Error),
         }),
         httpBatchStreamLink({
+          // __CREDENTIAL_FETCH__
           transformer: SuperJSON,
-          url: "/api/trpc",
+          url: __API_URL__,
           headers: () => {
             const headers = new Headers();
             headers.set("x-trpc-source", "react");

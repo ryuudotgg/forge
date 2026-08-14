@@ -141,6 +141,7 @@ function retargetAfterDeregistration(
 	installs: ReadonlyArray<InstallRecord>,
 	loaded: LoadedDefinitionRegistry,
 	modules: ReadonlyArray<Parameters<typeof isAddonCompatibleWithModule>[1]>,
+	config: ForgeConfig,
 ): ReadonlyArray<InstallRecord> {
 	return installs.map((install) => {
 		if (install.targets.some((target) => target.kind === "project"))
@@ -162,13 +163,15 @@ function retargetAfterDeregistration(
 				targets: [{ kind: "project" }],
 			};
 
-		const compatibleModules = modules.filter((module) =>
-			isAddonCompatibleWithModule(
-				addon,
-				module,
-				loaded.registry.frameworks,
-				loaded.registry.adapters,
-			),
+		const compatibleModules = modules.filter(
+			(module) =>
+				(addon.target?.(config, module) ?? true) &&
+				isAddonCompatibleWithModule(
+					addon,
+					module,
+					loaded.registry.frameworks,
+					loaded.registry.adapters,
+				),
 		);
 
 		const compatibleIds = new Set(compatibleModules.map((module) => module.id));
@@ -226,6 +229,7 @@ async function deregisterPackage(
 		nextInstalls,
 		nextRegistry,
 		project.modules,
+		nextConfig,
 	);
 
 	await applyInstalledPlan(

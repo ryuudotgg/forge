@@ -40,9 +40,22 @@ export const versions = {
 	turbo: { name: "turbo", version: "^2.9.18", group: "Tooling" },
 	typescript: { name: "typescript", version: "^7.0.2", group: "Tooling" },
 	vitest: { name: "vitest", version: "^4.1.10", group: "Tooling" },
+	tsdown: { name: "tsdown", version: "^0.22.14", group: "Tooling" },
+	tsx: { name: "tsx", version: "^4.23.12", group: "Tooling" },
 
 	isbot: { name: "isbot", version: "5.2.1", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
+	hono: { name: "hono", version: "4.13.2", group: "Framework" },
+	honoNodeServer: {
+		name: "@hono/node-server",
+		version: "2.1.0",
+		group: "Framework",
+	},
+	honoTrpcServer: {
+		name: "@hono/trpc-server",
+		version: "0.4.2",
+		group: "Framework",
+	},
 
 	next: { name: "next", version: "16.3.0", group: "Framework" },
 
