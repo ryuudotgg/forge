@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { FrameworkDefinition } from "@ryuujs/core";
-import type { ForgeConfig } from "../config";
+import { type ForgeConfig, hasAddon } from "../config";
 
 function frameworkFor(
 	frameworks: ReadonlyArray<FrameworkDefinition>,
@@ -16,10 +16,15 @@ export function frameworksInPlay(
 	config: ForgeConfig,
 	frameworks: ReadonlyArray<FrameworkDefinition>,
 ): ReadonlyArray<FrameworkDefinition> {
-	const ids = [config.web, config.backend === "hono" ? "hono" : undefined];
-	return ids.flatMap((id) =>
-		id === undefined ? [] : [frameworkFor(frameworks, id)],
+	const ids = new Set(
+		[
+			config.web,
+			config.backend === "hono" ? "hono" : undefined,
+			hasAddon(config, "worker") ? "hono" : undefined,
+		].filter((id) => id !== undefined),
 	);
+
+	return [...ids].map((id) => frameworkFor(frameworks, id));
 }
 
 export function frameworkBuildOutputs(

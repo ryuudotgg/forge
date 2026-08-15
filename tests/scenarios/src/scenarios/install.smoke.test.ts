@@ -133,6 +133,62 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 	}
 }
 
+async function expectDrainingWorker(projectRoot: string) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const secret = generatedEnv.WORKER_SECRET;
+	if (secret === undefined)
+		throw new Error(`Missing Worker Secret: ${projectRoot}`);
+
+	const ambientEnv = { ...process.env };
+	delete ambientEnv.CI;
+
+	const worker = spawn("node", ["dist/index.js"], {
+		cwd: join(projectRoot, "apps/worker"),
+		env: { ...ambientEnv, ...generatedEnv },
+	});
+	let output = "";
+	const capture = (chunk: Buffer) => {
+		output += chunk.toString();
+	};
+	worker.stdout.on("data", capture);
+	worker.stderr.on("data", capture);
+	const exited = new Promise<number | null>((resolveExit) => {
+		worker.once("exit", (code) => resolveExit(code));
+	});
+
+	const origin = "http://localhost:8080";
+
+	try {
+		let ready = false;
+		for (let attempt = 0; attempt < 50; attempt += 1) {
+			try {
+				const response = await fetch(`${origin}/health`);
+				if (response.ok) {
+					ready = true;
+					break;
+				}
+			} catch {}
+
+			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+		}
+		expect(ready, output).toBe(true);
+
+		const unauthorized = await fetch(`${origin}/run`, { method: "POST" });
+		expect(unauthorized.status).toBe(401);
+
+		const triggered = await fetch(`${origin}/run`, {
+			headers: { Authorization: `Bearer ${secret}` },
+			method: "POST",
+		});
+		expect(triggered.status, output).toBe(200);
+		expect(await triggered.json()).toEqual({ ok: true });
+	} finally {
+		if (worker.exitCode === null) worker.kill("SIGTERM");
+	}
+
+	expect(await exited, output).toBe(0);
+}
+
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it("installs, builds, and typechecks Next.js with a Hono API host", async () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
@@ -279,9 +335,10 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		});
 	}, 600_000);
 
-	it("installs, builds, and typechecks a TanStack Router SPA project", async () => {
+	it("installs, builds, and typechecks a TanStack Router SPA with a worker", async () => {
 		await withScenarioWorkspace("smoke-tanstack-router", async (workspace) => {
 			await createProject(workspace, {
+				addons: ["worker"],
 				linter: "biome",
 				packageManager: "pnpm",
 				style: "tailwind",
@@ -289,6 +346,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			});
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectDrainingWorker(workspace.projectRoot);
 		});
 	}, 600_000);
 

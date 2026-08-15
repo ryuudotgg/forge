@@ -82,7 +82,11 @@ export const reactRouterModule: DiscoveredModule = {
 	id: "klmno",
 	packageName: "@acme/legacy",
 	root: "apps/legacy",
-	slots: { layout: "app/layout.tsx" },
+	slots: {
+		auth: "app/routes/api.auth.$.ts",
+		layout: "app/layout.tsx",
+		trpc: "app/routes/api.trpc.$.ts",
+	},
 	template: { id: "react-router/base", version: 1 },
 	type: "app",
 };

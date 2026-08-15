@@ -107,6 +107,11 @@ describe("addons step", () => {
 					label: "VS Code",
 					value: "vscode",
 				},
+				{
+					hint: "Add a background worker service.",
+					label: "Worker",
+					value: "worker",
+				},
 			],
 			required: false,
 		});
@@ -132,6 +137,7 @@ describe("addons step", () => {
 					expect.objectContaining({ value: "shared" }),
 					expect.objectContaining({ value: "vitest" }),
 					expect.objectContaining({ value: "vscode" }),
+					expect.objectContaining({ value: "worker" }),
 				],
 			}),
 		);

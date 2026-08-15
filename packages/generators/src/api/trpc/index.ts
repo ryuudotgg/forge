@@ -28,7 +28,9 @@ const trpc = defineAddon<ForgeConfig, "trpc">({
 	dependencies: [{ id: "typescript", type: "addon" }],
 	targetMode: "single",
 	target: (config, module) =>
-		module.type === "app" && module.framework === apiHostFramework(config),
+		module.type === "app" &&
+		module.framework === apiHostFramework(config) &&
+		module.slots.trpc !== undefined,
 	when: (config) => config.rpc === "trpc",
 	contribute: ({ config, frameworks }) => {
 		const failure = apiHostError(config, trpcConsumer, frameworks);

@@ -33,6 +33,7 @@ const visibleAddonIds = [
 	"ui",
 	"vitest",
 	"vscode",
+	"worker",
 	"yarn",
 ];
 

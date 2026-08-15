@@ -61,6 +61,7 @@ import vitest, { vitestMetadata } from "../tooling/vitest";
 import vscode, { vscodeMetadata } from "../tooling/vscode";
 import ui, { uiMetadata } from "../ui";
 import { uiAdapters, uiRecipe } from "../ui/recipe";
+import worker, { workerMetadata } from "../worker";
 import bun, { bunMetadata } from "../workspace/bun";
 import pnpm, { pnpmMetadata } from "../workspace/pnpm";
 import root, { rootMetadata } from "../workspace/root";
@@ -115,6 +116,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		drizzle,
 		prisma,
 		betterAuth,
+		worker,
 	],
 	recipes: [
 		trpcRecipe,
@@ -180,6 +182,7 @@ export const firstPartyCatalog = [
 		betterAuthMetadata,
 		firstPartyRegistry.adapters,
 	),
+	addonCatalogEntry(worker, workerMetadata, firstPartyRegistry.adapters),
 	...webFrameworks.ids
 		.filter((id) => !webFrameworks.available(id))
 		.map((id) =>
