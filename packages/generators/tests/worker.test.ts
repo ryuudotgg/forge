@@ -42,10 +42,16 @@ describe("worker addon", () => {
 		const app = writeContent(plan, "apps/worker/src/app.ts");
 		expect(app).toContain('app.get("/health"');
 		expect(app).toContain("bearerAuth({ token: deps.secret })");
+		expect(app).toContain("deps.staleAfterMs !== undefined");
+		expect(app).not.toMatch(/staleAfterMs\s*\?\?/);
 
 		const entry = writeContent(plan, "apps/worker/src/index.ts");
 		expect(entry).toContain("inFlightCount() === 0");
 		expect(entry).toContain('process.on("SIGTERM", shutdown)');
+		expect(entry).toContain("server.closeIdleConnections()");
+		expect(entry).toContain(
+			"setTimeout(() => process.exit(1), shutdownTimeoutMs)",
+		);
 
 		expect(writeContent(plan, "apps/worker/tsdown.config.ts")).toContain(
 			"noExternal: [/^@acme\\//]",

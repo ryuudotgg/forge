@@ -9,14 +9,16 @@ export interface WorkerDeps {
 
 export function createApp(deps: WorkerDeps) {
   const app = new Hono();
-  const staleAfterMs = deps.staleAfterMs ?? 5 * 60 * 1000;
 
   let inFlight = 0;
   let lastFinishedAt = Date.now();
 
   app.get("/health", (c) => {
     const idleMs = Date.now() - lastFinishedAt;
-    const stale = inFlight === 0 && idleMs > staleAfterMs;
+    const stale =
+      deps.staleAfterMs !== undefined &&
+      inFlight === 0 &&
+      idleMs > deps.staleAfterMs;
 
     return c.json({ inFlight, idleMs, ok: !stale }, stale ? 503 : 200);
   });

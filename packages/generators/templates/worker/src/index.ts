@@ -9,7 +9,12 @@ const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`Worker is running on http://localhost:${info.port}!`);
 });
 
+const shutdownTimeoutMs = 10_000;
+
 function shutdown() {
+  const force = setTimeout(() => process.exit(1), shutdownTimeoutMs);
+  force.unref();
+
   server.close(() => {
     if (inFlightCount() === 0) {
       process.exit(0);
@@ -23,6 +28,8 @@ function shutdown() {
       process.exit(0);
     }, 100);
   });
+
+  server.closeIdleConnections();
 }
 
 process.on("SIGINT", shutdown);

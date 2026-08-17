@@ -182,6 +182,10 @@ async function expectDrainingWorker(projectRoot: string) {
 		});
 		expect(triggered.status, output).toBe(200);
 		expect(await triggered.json()).toEqual({ ok: true });
+
+		const idle = await fetch(`${origin}/health`);
+		expect(idle.status, output).toBe(200);
+		expect(await idle.json()).toMatchObject({ inFlight: 0, ok: true });
 	} finally {
 		if (worker.exitCode === null) worker.kill("SIGTERM");
 	}
