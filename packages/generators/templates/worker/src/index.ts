@@ -29,7 +29,7 @@ function shutdown() {
     }, 100);
   });
 
-  server.closeIdleConnections();
+  if ("closeIdleConnections" in server) server.closeIdleConnections();
 }
 
 process.on("SIGINT", shutdown);

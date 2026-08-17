@@ -48,7 +48,9 @@ describe("worker addon", () => {
 		const entry = writeContent(plan, "apps/worker/src/index.ts");
 		expect(entry).toContain("inFlightCount() === 0");
 		expect(entry).toContain('process.on("SIGTERM", shutdown)');
-		expect(entry).toContain("server.closeIdleConnections()");
+		expect(entry).toContain(
+			'if ("closeIdleConnections" in server) server.closeIdleConnections()',
+		);
 		expect(entry).toContain(
 			"setTimeout(() => process.exit(1), shutdownTimeoutMs)",
 		);
