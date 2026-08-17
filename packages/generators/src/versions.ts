@@ -48,7 +48,7 @@ export const versions = {
 	hono: { name: "hono", version: "4.13.2", group: "Framework" },
 	honoNodeServer: {
 		name: "@hono/node-server",
-		version: "2.1.0",
+		version: "2.1.1",
 		group: "Framework",
 	},
 	honoTrpcServer: {
@@ -57,7 +57,7 @@ export const versions = {
 		group: "Framework",
 	},
 
-	next: { name: "next", version: "16.3.0", group: "Framework" },
+	next: { name: "next", version: "16.3.1", group: "Framework" },
 
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
@@ -85,22 +85,22 @@ export const versions = {
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
-		version: "1.170.27",
+		version: "1.170.29",
 		group: "Framework",
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.44",
+		version: "1.168.46",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.28",
+		version: "1.167.30",
 		group: "Tooling",
 	},
 	tanstackRouterPlugin: {
 		name: "@tanstack/router-plugin",
-		version: "1.168.30",
+		version: "1.168.32",
 		group: "Tooling",
 	},
 
