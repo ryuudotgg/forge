@@ -65,6 +65,42 @@ describe("create", () => {
 		});
 	}, 240_000);
 
+	it("creates a worker service alongside the web app", async () => {
+		await withScenarioWorkspace("create-worker", async (workspace) => {
+			await createProject(workspace, {
+				addons: ["worker"],
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			for (const path of [
+				"env.ts",
+				"src/app.ts",
+				"src/index.ts",
+				"src/run.ts",
+				"tsdown.config.ts",
+			])
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/worker", path)),
+					path,
+				).toBe(true);
+
+			const workerConfig = await readJson<{
+				framework: string;
+				slots: Record<string, string>;
+				type: string;
+			}>(join(workspace.projectRoot, "apps/worker/forge.json"));
+			expect(workerConfig).toMatchObject({
+				framework: "hono",
+				slots: {},
+				type: "app",
+			});
+
+			const env = await readFile(join(workspace.projectRoot, ".env"), "utf-8");
+			expect(env).toMatch(/WORKER_SECRET="[0-9a-f]{64}"/);
+		});
+	}, 240_000);
+
 	it("creates a recommended first-party workspace with manifest, lockfile, and module metadata", async () => {
 		await withScenarioWorkspace("create", async (workspace) => {
 			await createProject(workspace, {

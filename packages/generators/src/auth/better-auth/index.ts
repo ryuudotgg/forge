@@ -46,7 +46,9 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 	],
 	targetMode: "single",
 	target: (config, module) =>
-		module.type === "app" && module.framework === apiHostFramework(config),
+		module.type === "app" &&
+		module.framework === apiHostFramework(config) &&
+		module.slots.auth !== undefined,
 	when: (config) => config.authentication === "better-auth",
 	contribute: ({ config, frameworks }) => {
 		const slug = config.slug ?? "my-app";

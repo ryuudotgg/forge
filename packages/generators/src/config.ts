@@ -191,6 +191,7 @@ export const optionalAddons = defineChoices({
 	shared: "Shared Package",
 	vitest: "Vitest",
 	vscode: "VS Code",
+	worker: "Worker",
 } as const);
 
 export type OptionalAddon = keyof typeof optionalAddons.definitions;
