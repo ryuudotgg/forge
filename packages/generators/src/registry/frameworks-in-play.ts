@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { FrameworkDefinition } from "@ryuujs/core";
 import { type ForgeConfig, hasAddon } from "../config";
+import { standaloneBackendInPlay } from "./backends";
 
 function frameworkFor(
 	frameworks: ReadonlyArray<FrameworkDefinition>,
@@ -19,7 +20,7 @@ export function frameworksInPlay(
 	const ids = new Set(
 		[
 			config.web,
-			config.backend === "hono" ? "hono" : undefined,
+			standaloneBackendInPlay(config),
 			hasAddon(config, "worker") ? "hono" : undefined,
 		].filter((id) => id !== undefined),
 	);

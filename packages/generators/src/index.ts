@@ -108,6 +108,11 @@ export {
 	RegistryLoadError,
 	RegistryPackageManifestSchema,
 } from "./registry";
+export {
+	standaloneBackendFrameworks,
+	standaloneBackendIds,
+	standaloneBackendInPlay,
+} from "./registry/backends";
 export type {
 	LoadDefinitionRegistryOptions,
 	RegistryPackageImport,
