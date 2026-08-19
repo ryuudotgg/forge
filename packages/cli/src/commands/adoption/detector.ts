@@ -28,9 +28,9 @@ import {
 	captureVersions,
 	databaseFromDependencies,
 	dependencyNames,
+	detectBackendPackage,
 	envNames,
 	hasTanstackRouterApplicationDependencies,
-	isBackendPackage,
 	type ModuleMappingProposal,
 	moduleProposal,
 	oneDetected,
@@ -550,13 +550,14 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			? rpcProviders.normalize("trpc")
 			: undefined;
 
-		const hasBackendPackage = [...packageJsonByRoot].some(
-			([root, packageJson]) =>
-				isBackendPackage(packageJson, tanstackRouterConfigRoots.has(root)),
-		);
+		const backendPackage = [...packageJsonByRoot]
+			.map(([root, packageJson]) =>
+				detectBackendPackage(packageJson, tanstackRouterConfigRoots.has(root)),
+			)
+			.find((result) => result !== undefined);
 
-		const backend = hasBackendPackage
-			? backends.normalize("hono")
+		const backend = backendPackage
+			? backends.normalize(backendPackage.id)
 			: web === undefined
 				? undefined
 				: backends.normalize("self");

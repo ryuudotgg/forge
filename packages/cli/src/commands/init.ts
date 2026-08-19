@@ -32,6 +32,7 @@ import {
 	type ForgeConfig,
 	loadDefinitionRegistry,
 	probeWorkspaceCommandVersions,
+	standaloneBackendIds,
 } from "@ryuujs/generators";
 import { Effect, Exit, FileSystem, Option, Result, Schema } from "effect";
 import { orchestrate } from "../orchestrator";
@@ -249,12 +250,14 @@ function modulePrototype(
 ) {
 	if (kind === "web-app")
 		return modules.find(
-			(module) => module.type === "app" && module.framework !== "hono",
+			(module) =>
+				module.type === "app" && !standaloneBackendIds.has(module.framework),
 		);
 
 	if (kind === "backend-app")
 		return modules.find(
-			(module) => module.type === "app" && module.framework === "hono",
+			(module) =>
+				module.type === "app" && standaloneBackendIds.has(module.framework),
 		);
 
 	return modules.find(

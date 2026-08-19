@@ -9,6 +9,7 @@ import {
 	databases,
 	type ForgeConfig,
 } from "@ryuujs/generators";
+import { listAnd } from "../../utils/list";
 import type { CatalogEntry, PackageJson } from "./workspace";
 
 export type ModuleKind =
@@ -50,6 +51,11 @@ const dependencySections: ReadonlyArray<DependencySection> = [
 	"peerDependencies",
 ];
 
+export const backendSignatures: ReadonlyArray<{
+	readonly id: string;
+	readonly packages: ReadonlyArray<string>;
+}> = [{ id: "hono", packages: ["hono", "@hono/node-server"] }];
+
 export function dependencyNames(packageJson: PackageJson): ReadonlySet<string> {
 	return new Set(Object.keys(packageJson.dependencies ?? {}));
 }
@@ -89,27 +95,32 @@ function exposesEntryPoints(packageJson: PackageJson): boolean {
 	);
 }
 
-export function isBackendPackage(
+export function detectBackendPackage(
 	packageJson: PackageJson,
 	hasTanstackRouterConfig: boolean,
-): boolean {
+): (typeof backendSignatures)[number] | undefined {
 	const dependencies = dependencyNames(packageJson);
-	if (!dependencies.has("hono") || !dependencies.has("@hono/node-server"))
-		return false;
+	const signature = backendSignatures.find(({ packages }) =>
+		packages.every((packageName) => dependencies.has(packageName)),
+	);
 
-	if (exposesEntryPoints(packageJson)) return false;
+	if (signature === undefined) return undefined;
+	if (exposesEntryPoints(packageJson)) return undefined;
 
 	if (
 		["next", "react-router", "@tanstack/react-start"].some((dependency) =>
 			dependencies.has(dependency),
 		)
 	)
-		return false;
+		return undefined;
 
-	return !(
+	if (
 		hasTanstackRouterConfig &&
 		hasTanstackRouterApplicationDependencies(packageJson)
-	);
+	)
+		return undefined;
+
+	return signature;
 }
 
 export function oneDetected<T>(
@@ -192,9 +203,14 @@ export function moduleProposal(
 			proposal: "web-app",
 		});
 
-	if (isBackendPackage(packageJson, hasTanstackRouterConfig))
+	const backendSignature = detectBackendPackage(
+		packageJson,
+		hasTanstackRouterConfig,
+	);
+
+	if (backendSignature !== undefined)
 		signatures.push({
-			evidence: "found hono and @hono/node-server in its dependencies",
+			evidence: `found ${listAnd.format(backendSignature.packages)} in its dependencies`,
 			proposal: "backend-app",
 		});
 
