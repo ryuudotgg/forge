@@ -30,7 +30,7 @@ catalogs:
       specifier: 4.0.0-rc.110
       version: 4.0.0-rc.110
     '@effect/tsgo':
-      specifier: ^0.36.4
+      specifier: ^0.36.5
       version: 0.36.5
     '@effect/vitest':
       specifier: 4.0.0-rc.110
