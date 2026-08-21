@@ -27,17 +27,17 @@ catalogs:
       version: 4.1.10
   effect:
     '@effect/platform-node':
-      specifier: 4.0.0-rc.110
-      version: 4.0.0-rc.110
+      specifier: 4.0.0-rc.111
+      version: 4.0.0-rc.111
     '@effect/tsgo':
       specifier: ^0.36.4
       version: 0.36.5
     '@effect/vitest':
-      specifier: 4.0.0-rc.110
-      version: 4.0.0-rc.110
+      specifier: 4.0.0-rc.111
+      version: 4.0.0-rc.111
     effect:
-      specifier: 4.0.0-rc.110
-      version: 4.0.0-rc.110
+      specifier: 4.0.0-rc.111
+      version: 4.0.0-rc.111
   lint:
     '@biomejs/biome':
       specifier: 2.5.8
@@ -70,7 +70,7 @@ catalogs:
       version: 1.1.1
 
 overrides:
-  '@effect/platform-node-shared': 4.0.0-rc.110
+  '@effect/platform-node-shared': 4.0.0-rc.111
 
 importers:
 
@@ -111,7 +111,7 @@ importers:
         version: 1.7.0
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.110(effect@4.0.0-rc.110)(redis@6.2.1)
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
       '@ryuujs/core':
         specifier: workspace:*
         version: link:../core
@@ -120,14 +120,14 @@ importers:
         version: link:../generators
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.110
+        version: 4.0.0-rc.111
       picocolors:
         specifier: catalog:node
         version: 1.1.1
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.110(effect@4.0.0-rc.110)(vitest@4.1.10)
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(vitest@4.1.10)
       '@ryuujs/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
@@ -154,17 +154,17 @@ importers:
     dependencies:
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.110
+        version: 4.0.0-rc.111
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.110(effect@4.0.0-rc.110)(redis@6.2.1)
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
       '@effect/tsgo':
         specifier: catalog:effect
         version: 0.36.5
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.110(effect@4.0.0-rc.110)(vitest@4.1.10)
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(vitest@4.1.10)
       '@ryuujs/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
@@ -194,11 +194,11 @@ importers:
         version: link:../core
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.110
+        version: 4.0.0-rc.111
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.110(effect@4.0.0-rc.110)(redis@6.2.1)
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
       '@effect/tsgo':
         specifier: catalog:effect
         version: 0.36.5
@@ -237,7 +237,7 @@ importers:
         version: 24.13.3
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.110
+        version: 4.0.0-rc.111
       typescript:
         specifier: catalog:dev
         version: 7.0.2
@@ -441,17 +441,17 @@ packages:
     resolution: {integrity: sha512-GsCw/qu92GI0EX6s7fxUi/SG1lmFjG9XZivxxEDZXqztuQKCn5o5wKdz4v005zci0Md7EZzgAwmQLoIEDZoaow==}
     engines: {node: '>=22'}
 
-  '@effect/platform-node-shared@4.0.0-rc.110':
-    resolution: {integrity: sha512-P8EZloxS7RtCOSL3VSBPyqSenUm93xLbXf9jkWoy67cibZ2wgZ9nAou9iN8f1i4vzgxUsWtDuy6BEmg67np6Zw==}
+  '@effect/platform-node-shared@4.0.0-rc.111':
+    resolution: {integrity: sha512-iES0Q9vmjhaUKqeW9ceonuD45MUg/Ouk08LzRSptZ+B5qB0w9WlRjDmUz5TJmY2betNop5FRI5k4AD4mtQt3Bw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.110
+      effect: ^4.0.0-rc.111
 
-  '@effect/platform-node@4.0.0-rc.110':
-    resolution: {integrity: sha512-poj6VxTc2kRDowUHgjGXAZL2nWHTyGi/18607jK+pV9A9CH/wqZ4NeYj38rij95j5SiZ3U7Y1iOsk2Vfnr4GEw==}
+  '@effect/platform-node@4.0.0-rc.111':
+    resolution: {integrity: sha512-oy1i7HsOGg/5r+DuBe5+ddmnUhnXmyZFPFPXZCBdO/RQpHK3PIFe1/2UMGxZE+ngDymrSksuQTSgQLF6P+MLqw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.0-rc.110
+      effect: ^4.0.0-rc.111
       redis: '>=5.0.0 <7.0.0'
 
   '@effect/tsgo-darwin-arm64@0.36.5':
@@ -493,10 +493,10 @@ packages:
     resolution: {integrity: sha512-BHxVjeRK1/XlqYHWXkbT4W9JpOrT3sNA2wrfwQPBTojD5OSyxI2TUIltobYhWudyfuCrn770qP6uOpDjdrmghA==}
     hasBin: true
 
-  '@effect/vitest@4.0.0-rc.110':
-    resolution: {integrity: sha512-ZvceBAWOPDnLgQgoObxPZOBuRTaRhBUR0K8sT4vfwwnf6Sv92GvCFp+WmfFV31j58Inf2p+wU1C3o9TNC1MZrQ==}
+  '@effect/vitest@4.0.0-rc.111':
+    resolution: {integrity: sha512-YDaEVT+grREBVMzykRNFtJwGxy02achzT0WXZYwMJA4ukzuB9krkgQ5roc3N6zhC3NQq/j4IyM32/Pcov7AhHw==}
     peerDependencies:
-      effect: ^4.0.0-rc.110
+      effect: ^4.0.0-rc.111
       vitest: '>=4.1.0 <5.0.0'
 
   '@jridgewell/resolve-uri@3.1.2':
@@ -1121,8 +1121,8 @@ packages:
       oxc-resolver:
         optional: true
 
-  effect@4.0.0-rc.110:
-    resolution: {integrity: sha512-ega6FTJ8CS2of7tHZiADvgyJyV999Q6tZ9juE56V81O0jw6flRwydaPNtyfvP2a5LL9PZrse8A1jnNUD5sWVHg==}
+  effect@4.0.0-rc.111:
+    resolution: {integrity: sha512-ASd5L58EIR0CUNueZNKKjSsyOCd+2alxOAIaTcHaqkJkPsaYSsw5Cg/cfANk5K4Jr2YsX756xvX11shzqsreWA==}
 
   emoji-regex@10.6.0:
     resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
@@ -1978,19 +1978,19 @@ snapshots:
 
   '@conventional-changelog/template@1.3.0': {}
 
-  '@effect/platform-node-shared@4.0.0-rc.110(effect@4.0.0-rc.110)':
+  '@effect/platform-node-shared@4.0.0-rc.111(effect@4.0.0-rc.111)':
     dependencies:
       '@types/ws': 8.18.1
-      effect: 4.0.0-rc.110
+      effect: 4.0.0-rc.111
       ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-rc.110(effect@4.0.0-rc.110)(redis@6.2.1)':
+  '@effect/platform-node@4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-rc.110(effect@4.0.0-rc.110)
-      effect: 4.0.0-rc.110
+      '@effect/platform-node-shared': 4.0.0-rc.111(effect@4.0.0-rc.111)
+      effect: 4.0.0-rc.111
       mime: 4.1.0
       redis: 6.2.1
       undici: 8.10.0
@@ -2029,9 +2029,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.36.5
       '@effect/tsgo-win32-x64': 0.36.5
 
-  '@effect/vitest@4.0.0-rc.110(effect@4.0.0-rc.110)(vitest@4.1.10)':
+  '@effect/vitest@4.0.0-rc.111(effect@4.0.0-rc.111)(vitest@4.1.10)':
     dependencies:
-      effect: 4.0.0-rc.110
+      effect: 4.0.0-rc.111
       vitest: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(vite@8.2.1(@types/node@24.13.3)(jiti@2.6.1))
 
   '@jridgewell/resolve-uri@3.1.2': {}
@@ -2439,7 +2439,7 @@ snapshots:
 
   dts-resolver@3.0.0: {}
 
-  effect@4.0.0-rc.110:
+  effect@4.0.0-rc.111:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 4.9.0
