@@ -45,7 +45,7 @@ export const versions = {
 
 	isbot: { name: "isbot", version: "5.2.1", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
-	hono: { name: "hono", version: "4.13.2", group: "Framework" },
+	hono: { name: "hono", version: "4.13.3", group: "Framework" },
 	honoNodeServer: {
 		name: "@hono/node-server",
 		version: "2.1.1",
@@ -57,7 +57,7 @@ export const versions = {
 		group: "Framework",
 	},
 
-	next: { name: "next", version: "16.3.1", group: "Framework" },
+	next: { name: "next", version: "16.3.2", group: "Framework" },
 
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
@@ -85,29 +85,29 @@ export const versions = {
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
-		version: "1.170.29",
+		version: "1.170.31",
 		group: "Framework",
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.46",
+		version: "1.168.48",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.30",
+		version: "1.167.32",
 		group: "Tooling",
 	},
 	tanstackRouterPlugin: {
 		name: "@tanstack/router-plugin",
-		version: "1.168.32",
+		version: "1.168.34",
 		group: "Tooling",
 	},
 
-	vite: { name: "vite", version: "8.2.1", group: "Tooling" },
+	vite: { name: "vite", version: "8.2.2", group: "Tooling" },
 	viteReact: {
 		name: "@vitejs/plugin-react",
-		version: "6.0.5",
+		version: "6.1.0",
 		group: "Tooling",
 	},
 
