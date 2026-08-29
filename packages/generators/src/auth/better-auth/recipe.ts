@@ -3,8 +3,11 @@ import {
 	defineTemplateRecipe,
 	ensuredModuleTarget,
 	inModule,
+	inSourceRoot,
+	leafTextFile,
 	marker,
 	moduleTarget,
+	renderRecipeAsset,
 	sharedAsset,
 	slotAsset,
 	slotPath,
@@ -12,6 +15,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { expoFramework, expoScheme } from "../../frameworks/expo";
 import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
@@ -93,6 +97,7 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 			"packageJson",
 			betterAuthModuleDependencies(config.slug ?? "my-app"),
 		),
+		...expoAuthClientContributions(config),
 	],
 });
 
@@ -140,5 +145,42 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 			"packageJson",
 			betterAuthModuleDependencies(config.slug ?? "my-app"),
 		),
+		...expoAuthClientContributions(config),
 	],
 });
+
+export const betterAuthExpoRecipe = defineTemplateRecipe({
+	addon: "better-auth",
+	markers: { SCHEME: marker.required, SLUG: marker.required },
+	assets: [
+		sharedAsset("expo-client", {
+			template: "auth/better-auth/expo/auth-client.ts",
+			destination: inSourceRoot("lib/auth-client.ts"),
+		}),
+	],
+});
+
+export function expoAuthClientContributions(config: ForgeConfig) {
+	if (config.mobile !== "expo") return [];
+
+	const slug = config.slug ?? "my-app";
+	const markers = { SCHEME: expoScheme(slug), SLUG: slug };
+	const asset = betterAuthExpoRecipe.assets[0];
+	const rendered = renderRecipeAsset(
+		betterAuthExpoRecipe,
+		asset,
+		expoFramework,
+		{ markers, readTemplate, slots: {} },
+	);
+
+	const target = ensuredModuleTarget("mobile");
+
+	return [
+		leafTextFile(target, rendered.destination, rendered.content),
+		surfaceDependencies(target, "packageJson", [
+			{ ...deps.betterAuth, type: "dependencies" },
+			{ ...deps.betterAuthExpo, type: "dependencies" },
+			{ ...deps.expoSecureStore, type: "dependencies" },
+		]),
+	];
+}

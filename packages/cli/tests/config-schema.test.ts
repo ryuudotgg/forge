@@ -196,27 +196,55 @@ describe("assembleSchema", () => {
 		expect(decodeMessages(result)).toContain("We don't support Desktop yet.");
 	});
 
-	it("rejects the mobile platform while it isn't available", () => {
+	it("requires a mobile framework when mobile is selected", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
 			platforms: ["mobile"],
 		});
 
-		expect(decodeMessages(result)).toContain("We don't support Mobile yet.");
+		expect(decodeMessages(result)).toContain(
+			"A mobile framework wasn't selected.",
+		);
 	});
 
-	it("lists every unsupported platform in one sentence", () => {
+	it("rejects unavailable mobile frameworks", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			platforms: ["mobile"],
+			mobile: "react-native",
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"We don't support React Native yet.",
+		);
+	});
+
+	it("rejects unavailable native style frameworks", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			platforms: ["mobile"],
+			mobile: "expo",
+			nativeStyleFramework: "nativewind",
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"We don't support NativeWind yet.",
+		);
+	});
+
+	it("lists unsupported platforms in one sentence", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
 			platforms: ["web", "desktop", "mobile"],
 			web: "nextjs",
+			mobile: "expo",
 		});
 
-		expect(decodeMessages(result)).toContain(
-			"We don't support Desktop and Mobile yet.",
-		);
+		expect(decodeMessages(result)).toContain("We don't support Desktop yet.");
 	});
 
 	it("spreads schema shape fields from null-key steps into the struct", () => {

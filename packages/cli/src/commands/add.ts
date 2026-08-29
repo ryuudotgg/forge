@@ -521,9 +521,15 @@ export async function runAdd(
 
 	if (
 		requestedCatalogEntry?.kind === "framework" &&
-		requestedCatalogEntry.category === "backend"
+		(requestedCatalogEntry.category === "backend" ||
+			requestedCatalogEntry.category === "mobile")
 	) {
-		log.error("We can't add a backend framework to an existing project yet.");
+		log.error(
+			requestedCatalogEntry.category === "backend"
+				? "We can't add a backend framework to an existing project yet."
+				: "We can't add a mobile framework to an existing project yet.",
+		);
+
 		process.exit(1);
 	}
 

@@ -65,8 +65,14 @@ describe("generator config choices", () => {
 	});
 
 	it("marks roadmap-gated choices as unavailable", () => {
-		expect(platforms.availableIds).toEqual(["web"]);
+		expect(platforms.availableIds).toEqual(["web", "mobile"]);
 		expect(platforms.available("desktop")).toBe(false);
+		expect(mobileFrameworks.availableIds).toEqual(["expo"]);
+		expect(mobileFrameworks.available("react-native")).toBe(false);
+		expect(nativeStyleFrameworks.availableIds).toEqual([]);
+		expect(nativeStyleFrameworks.available("nativewind")).toBe(false);
+		expect(nativeStyleFrameworks.available("tamagui")).toBe(false);
+		expect(nativeStyleFrameworks.available("unistyles")).toBe(false);
 		expect(webFrameworks.availableIds).toEqual([
 			"nextjs",
 			"react-router",

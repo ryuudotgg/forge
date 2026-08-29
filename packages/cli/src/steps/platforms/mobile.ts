@@ -1,11 +1,17 @@
-import { isCancel, select } from "@clack/prompts";
+import { isCancel, log, select } from "@clack/prompts";
 import { mobileFrameworks } from "@ryuujs/generators";
-import { Result, Schema } from "effect";
+import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
-import { defineStep } from "../types";
+import {
+	availableChoice,
+	choiceOptions,
+	unsupportedMessage,
+} from "../../utils/choices";
+import { defineStep, SKIP } from "../types";
 
-const mobileOptions = mobileFrameworks.ids;
-export const mobileSchema = Schema.Literals(mobileOptions);
+export const mobileSchema = Schema.Literals(mobileFrameworks.ids).pipe(
+	Schema.check(Schema.makeFilter(availableChoice(mobileFrameworks))),
+);
 
 const mobileStep = defineStep<typeof mobileSchema.Type>({
 	id: "mobile",
@@ -19,28 +25,26 @@ const mobileStep = defineStep<typeof mobileSchema.Type>({
 
 	async execute(config, interactive) {
 		if (!interactive) {
-			if (config.mobile) {
-				const result = Schema.decodeResult(mobileSchema)(config.mobile);
-				if (Result.isSuccess(result)) return result.success;
-			}
-
-			return "expo";
+			const normalized = mobileFrameworks.normalize(config.mobile);
+			if (normalized === undefined) return "expo";
+			return mobileFrameworks.available(normalized) ? normalized : SKIP;
 		}
 
-		const mobile = await select({
-			message: "What is your preferred mobile framework?",
-			options: mobileOptions.map((option, index) => ({
-				label:
+		for (;;) {
+			const mobile = await select({
+				message: "What is your preferred mobile framework?",
+				options: choiceOptions(mobileFrameworks).map((option, index) =>
 					index === 0
-						? `${mobileFrameworks.label(option)} (Recommended)`
-						: mobileFrameworks.label(option),
-				value: option,
-			})),
-		});
+						? { ...option, label: `${option.label} (Recommended)` }
+						: option,
+				),
+			});
 
-		if (isCancel(mobile)) cancel();
+			if (isCancel(mobile)) cancel();
+			if (mobileFrameworks.available(mobile)) return mobile;
 
-		return mobile;
+			log.warn(unsupportedMessage(mobileFrameworks, [mobile]));
+		}
 	},
 });
 

@@ -1,7 +1,12 @@
-import { isCancel, select } from "@clack/prompts";
+import { isCancel, log, select } from "@clack/prompts";
 import { mobileFrameworks, nativeStyleFrameworks } from "@ryuujs/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
+import {
+	availableChoice,
+	choiceOptions,
+	unsupportedMessage,
+} from "../../utils/choices";
 import { defineStep, SKIP } from "../types";
 
 const nativeStyleFrameworkOptions = [
@@ -20,7 +25,7 @@ const validNativeStyleFrameworks = nativeStyleFrameworkOptions.filter(
 
 export const nativeStyleFrameworkSchema = Schema.Literals(
 	validNativeStyleFrameworks,
-);
+).pipe(Schema.check(Schema.makeFilter(availableChoice(nativeStyleFrameworks))));
 
 const nativeStyleFrameworkStep = defineStep<
 	typeof nativeStyleFrameworkSchema.Type
@@ -45,18 +50,24 @@ const nativeStyleFrameworkStep = defineStep<
 			return SKIP;
 		}
 
-		const nativeStyleFramework = await select({
-			message: `Which styling framework do you want to use for ${config.mobile ? mobileFrameworks.label(config.mobile) : "mobile"}?`,
-			options: nativeStyleFrameworkOptions.map((option) => ({
-				label: option === "none" ? "None" : nativeStyleFrameworks.label(option),
-				value: option,
-			})),
-		});
+		for (;;) {
+			const nativeStyleFramework = await select({
+				message: `Which styling framework do you want to use for ${config.mobile ? mobileFrameworks.label(config.mobile) : "mobile"}?`,
+				options: [
+					...choiceOptions(nativeStyleFrameworks),
+					{ label: "None", value: "none" as const },
+				],
+			});
 
-		if (isCancel(nativeStyleFramework)) cancel();
-		if (nativeStyleFramework === "none") return SKIP;
+			if (isCancel(nativeStyleFramework)) cancel();
+			if (nativeStyleFramework === "none") return SKIP;
+			if (nativeStyleFrameworks.available(nativeStyleFramework))
+				return nativeStyleFramework;
 
-		return nativeStyleFramework;
+			log.warn(
+				unsupportedMessage(nativeStyleFrameworks, [nativeStyleFramework]),
+			);
+		}
 	},
 });
 

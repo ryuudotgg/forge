@@ -123,13 +123,13 @@ describe("native style framework step", () => {
 		expect(nativeStyleFrameworkStep.shouldRun({ mobile: "expo" })).toBe(true);
 	});
 
-	it("keeps a valid native style framework when non-interactive", async () => {
+	it("skips unavailable native style frameworks when non-interactive", async () => {
 		await expect(
 			nativeStyleFrameworkStep.execute(
 				{ nativeStyleFramework: "nativewind" },
 				false,
 			),
-		).resolves.toBe("nativewind");
+		).resolves.toBe(SKIP);
 	});
 
 	it("skips when none is passed non-interactively", async () => {
@@ -153,22 +153,37 @@ describe("native style framework step", () => {
 		).resolves.toBe(SKIP);
 	});
 
-	it("names the mobile framework in the interactive message", async () => {
-		promptMocks.select.mockResolvedValue("tamagui");
+	it("names the mobile framework and marks unavailable choices", async () => {
+		promptMocks.select.mockResolvedValue("none");
 
 		await expect(
 			nativeStyleFrameworkStep.execute({ mobile: "expo" }, true),
-		).resolves.toBe("tamagui");
+		).resolves.toBe(SKIP);
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which styling framework do you want to use for Expo?",
 			options: [
-				{ label: "NativeWind", value: "nativewind" },
-				{ label: "Tamagui", value: "tamagui" },
-				{ label: "Unistyles", value: "unistyles" },
+				{ label: "NativeWind", value: "nativewind", hint: "coming soon" },
+				{ label: "Tamagui", value: "tamagui", hint: "coming soon" },
+				{ label: "Unistyles", value: "unistyles", hint: "coming soon" },
 				{ label: "None", value: "none" },
 			],
 		});
+	});
+
+	it("warns and re-prompts when an unavailable native style is selected", async () => {
+		promptMocks.select
+			.mockResolvedValueOnce("nativewind")
+			.mockResolvedValueOnce("none");
+
+		await expect(
+			nativeStyleFrameworkStep.execute({ mobile: "expo" }, true),
+		).resolves.toBe(SKIP);
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"We don't support NativeWind yet.",
+		);
+		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
 	it("skips when none is selected interactively", async () => {

@@ -1,5 +1,6 @@
 import { defineFramework } from "@ryuujs/core";
 import { describe, expect, it } from "vitest";
+import { expoFramework } from "../src/frameworks/expo";
 import {
 	frameworkBuildOutputs,
 	frameworkIgnoreDirs,
@@ -68,6 +69,12 @@ describe("frameworksInPlay", () => {
 
 	it("selects the configured standalone backend framework", () => {
 		expect(frameworksInPlay({ backend: "hono" }, [web, hono])).toEqual([hono]);
+	});
+
+	it("selects the configured mobile framework", () => {
+		expect(frameworksInPlay({ mobile: "expo" }, [expoFramework])).toEqual([
+			expoFramework,
+		]);
 	});
 
 	it("reports a missing configured framework from one shared location", () => {

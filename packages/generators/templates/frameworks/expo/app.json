@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "__SLUG__",
+    "slug": "__SLUG__",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "__SCHEME__",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router"],
+    "experiments": { "typedRoutes": true }
+  }
+}

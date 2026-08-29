@@ -43,6 +43,32 @@ export const versions = {
 	tsdown: { name: "tsdown", version: "^0.22.14", group: "Tooling" },
 	tsx: { name: "tsx", version: "^4.23.12", group: "Tooling" },
 
+	betterAuthExpo: {
+		name: "@better-auth/expo",
+		version: "^1.7.0",
+		group: "Framework",
+	},
+	expo: { name: "expo", version: "~57.0.14", group: "Framework" },
+	expoConstants: {
+		name: "expo-constants",
+		version: "~57.0.12",
+		group: "Framework",
+	},
+	expoLinking: {
+		name: "expo-linking",
+		version: "~57.0.6",
+		group: "Framework",
+	},
+	expoRouter: {
+		name: "expo-router",
+		version: "~57.0.14",
+		group: "Framework",
+	},
+	expoSecureStore: {
+		name: "expo-secure-store",
+		version: "~57.0.1",
+		group: "Framework",
+	},
 	isbot: { name: "isbot", version: "5.2.1", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
 	hono: { name: "hono", version: "4.13.2", group: "Framework" },
@@ -61,6 +87,21 @@ export const versions = {
 
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
+	reactNative: {
+		name: "react-native",
+		version: "0.86.2",
+		group: "Framework",
+	},
+	reactNativeSafeAreaContext: {
+		name: "react-native-safe-area-context",
+		version: "~5.7.0",
+		group: "Framework",
+	},
+	reactNativeScreens: {
+		name: "react-native-screens",
+		version: "~4.26.0",
+		group: "Framework",
+	},
 
 	reactRouter: {
 		name: "react-router",

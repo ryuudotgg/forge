@@ -25,6 +25,7 @@ export const tanstackStartFramework: FrameworkDefinition<"tanstack-start"> =
 	defineFramework({
 		id: "tanstack-start",
 		configFile: "vite.config.ts",
+		clientEnvPrefix: "VITE_",
 		buildOutputs: ["dist/**"],
 		ignoreDirs: [".tanstack/"],
 		name: "TanStack Start",

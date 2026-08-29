@@ -1,3 +1,4 @@
+import { GeneratorError } from "@ryuujs/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { orchestrate } from "../src/orchestrator";
 import backendStep from "../src/steps/backend/framework";
@@ -175,6 +176,30 @@ describe("rpc step", () => {
 			"tRPC needs a backend. TanStack Router can't host it; add a backend framework.",
 		);
 		expect(generate).not.toHaveBeenCalled();
+	});
+
+	it("refuses a mobile-only rpc without an API host", () => {
+		let error: unknown;
+
+		try {
+			rpcStep.validate?.("trpc", {
+				mobile: "expo",
+				platforms: ["mobile"],
+				rpc: "trpc",
+			});
+		} catch (cause: unknown) {
+			error = cause;
+		}
+
+		expect(error).toBeInstanceOf(GeneratorError);
+		expect(error).toMatchObject({
+			generatorId: "trpc",
+			reason: "api-host-required",
+		});
+		expect(error).toHaveProperty(
+			"message",
+			"tRPC needs a backend. The selected web framework can't host it; add a backend framework.",
+		);
 	});
 
 	it("accepts a canonical rpc id without prompting", async () => {

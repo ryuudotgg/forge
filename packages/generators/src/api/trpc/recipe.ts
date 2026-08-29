@@ -14,6 +14,7 @@ import {
 } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { expoFramework } from "../../frameworks/expo";
 import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
@@ -89,7 +90,7 @@ export const trpcAdapters = deriveRecipeAdapters({
 	readTemplate,
 	requiredSlots: ["trpc"],
 	markers: (context: AdapterContext<ForgeConfig>) =>
-		trpcRecipeMarkers(context.config, context.framework.id, false),
+		trpcRecipeMarkers(context.config, context.framework, false),
 	target: (_asset, context) => moduleTarget(context.module),
 	after: ({ config, module }) => [
 		surfaceDependencies(
@@ -97,6 +98,7 @@ export const trpcAdapters = deriveRecipeAdapters({
 			"packageJson",
 			trpcWebDependencies(config.slug ?? "my-app"),
 		),
+		...expoTrpcClientContributions(config),
 	],
 });
 
@@ -130,27 +132,30 @@ export const trpcHonoAdapters = deriveRecipeAdapters({
 	target: (_asset, context) => moduleTarget(context.module),
 	before: ({ config }) => {
 		const webFramework = trpcWebFramework(config);
-		if (webFramework === undefined) return [];
+		if (webFramework === undefined) return expoTrpcClientContributions(config);
 
-		const markers = trpcRecipeMarkers(config, webFramework.id, true);
+		const markers = trpcRecipeMarkers(config, webFramework, true);
 
-		return trpcRecipe.assets
-			.filter(
-				(asset) =>
-					asset._tag !== "SlotAssetDefinition" && asset.name !== "server",
-			)
-			.map((asset) => {
-				const rendered = renderRecipeAsset(trpcRecipe, asset, webFramework, {
-					markers,
-					readTemplate,
-					slots: {},
-				});
-				return leafTextFile(
-					ensuredModuleTarget("web"),
-					rendered.destination,
-					rendered.content,
-				);
-			});
+		return [
+			...trpcRecipe.assets
+				.filter(
+					(asset) =>
+						asset._tag !== "SlotAssetDefinition" && asset.name !== "server",
+				)
+				.map((asset) => {
+					const rendered = renderRecipeAsset(trpcRecipe, asset, webFramework, {
+						markers,
+						readTemplate,
+						slots: {},
+					});
+					return leafTextFile(
+						ensuredModuleTarget("web"),
+						rendered.destination,
+						rendered.content,
+					);
+				}),
+			...expoTrpcClientContributions(config),
+		];
 	},
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
@@ -173,3 +178,58 @@ export const trpcHonoAdapters = deriveRecipeAdapters({
 		];
 	},
 });
+
+export const trpcExpoRecipe = defineTemplateRecipe({
+	addon: "trpc",
+	markers: {
+		SLUG: marker.required,
+		AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
+		AUTH_HEADERS: marker.toggleLine("      // __AUTH_HEADERS__\n"),
+	},
+	assets: [
+		sharedAsset("expo-client", {
+			template: "api/trpc/expo/client.ts",
+			destination: inSourceRoot("lib/trpc.ts"),
+		}),
+	],
+});
+
+export function expoTrpcClientContributions(config: ForgeConfig) {
+	if (config.mobile !== "expo") return [];
+
+	const markers = {
+		SLUG: config.slug ?? "my-app",
+		AUTH_IMPORT:
+			config.authentication === "better-auth"
+				? 'import { authClient } from "./auth-client";\n'
+				: "",
+		AUTH_HEADERS:
+			config.authentication === "better-auth"
+				? "      async headers() {\n        const cookies = await authClient.getCookie();\n        return cookies ? { Cookie: cookies } : {};\n      },\n"
+				: "",
+	};
+
+	const asset = trpcExpoRecipe.assets[0];
+	const rendered = renderRecipeAsset(trpcExpoRecipe, asset, expoFramework, {
+		markers,
+		readTemplate,
+		slots: {},
+	});
+
+	const target = ensuredModuleTarget("mobile");
+
+	return [
+		leafTextFile(target, rendered.destination, rendered.content),
+		surfaceDependencies(target, "packageJson", [
+			{
+				name: `@${markers.SLUG}/trpc`,
+				version: "workspace:*",
+				type: "dependencies",
+			},
+			{ ...deps.trpcClient, type: "dependencies" },
+			{ ...deps.trpcServer, type: "dependencies" },
+			{ ...deps.tanstackReactQuery, type: "dependencies" },
+			{ ...deps.superjson, type: "dependencies" },
+		]),
+	];
+}

@@ -81,6 +81,7 @@ export {
 	postgresProviderIdsFor,
 	resolveDatabaseProvider,
 } from "./data/providers";
+export { default as expo, expoFramework } from "./frameworks/expo";
 export { default as hono, honoFramework } from "./frameworks/hono";
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
 export {
@@ -119,6 +120,11 @@ export type {
 	RegistryPackageImporter,
 	RemovalBlockers,
 } from "./registry/loader";
+export {
+	mobileAppFrameworkIds,
+	mobileAppFrameworkInPlay,
+	mobileAppFrameworks,
+} from "./registry/mobiles";
 export { matchQuery } from "./registry/search";
 export type {
 	LoadedAddonDefinition,

@@ -18,6 +18,7 @@ import {
 	betterAuth,
 	biome,
 	builtins,
+	expoFramework,
 	gitignore,
 	loadAddonDefinition,
 	shared,
@@ -44,7 +45,10 @@ const placeholderPattern = /__[A-Z_]+__/;
 function contributionsOf(
 	addon: AddonDefinition<ForgeConfig>,
 	config: ForgeConfig,
-	frameworks: ReadonlyArray<FrameworkDefinition> = [nextjsFramework],
+	frameworks: ReadonlyArray<FrameworkDefinition> = [
+		nextjsFramework,
+		expoFramework,
+	],
 ): ReadonlyArray<Contribution> {
 	const result = addon.contribute({ commandVersions: {}, config, frameworks });
 	if (Effect.isEffect(result) || result instanceof Promise)

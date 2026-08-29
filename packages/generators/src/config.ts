@@ -52,7 +52,7 @@ function defineChoices<const T extends Record<string, string>>(
 
 export const platforms = defineChoices(
 	{ web: "Web", desktop: "Desktop", mobile: "Mobile" } as const,
-	{ unavailable: ["desktop", "mobile"] },
+	{ unavailable: ["desktop"] },
 );
 
 export type Platform = keyof typeof platforms.definitions;
@@ -168,18 +168,24 @@ export const desktopFrameworks = defineChoices({
 
 export type DesktopFramework = keyof typeof desktopFrameworks.definitions;
 
-export const mobileFrameworks = defineChoices({
-	expo: "Expo",
-	"react-native": "React Native",
-} as const);
+export const mobileFrameworks = defineChoices(
+	{
+		expo: "Expo",
+		"react-native": "React Native",
+	} as const,
+	{ unavailable: ["react-native"] },
+);
 
 export type MobileFramework = keyof typeof mobileFrameworks.definitions;
 
-export const nativeStyleFrameworks = defineChoices({
-	nativewind: "NativeWind",
-	tamagui: "Tamagui",
-	unistyles: "Unistyles",
-} as const);
+export const nativeStyleFrameworks = defineChoices(
+	{
+		nativewind: "NativeWind",
+		tamagui: "Tamagui",
+		unistyles: "Unistyles",
+	} as const,
+	{ unavailable: ["nativewind", "tamagui", "unistyles"] },
+);
 
 export type NativeStyleFramework =
 	keyof typeof nativeStyleFrameworks.definitions;

@@ -1,3 +1,4 @@
+import type { FrameworkDefinition } from "@ryuujs/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { interpolate, readTemplate } from "../../template";
@@ -29,15 +30,15 @@ export function trpcTemplateVars(config: ForgeConfig) {
 	};
 }
 
-export function trpcClientMarkers(frameworkId: string, standalone: boolean) {
-	const serverUrl =
-		frameworkId === "nextjs"
-			? "env.NEXT_PUBLIC_SERVER_URL"
-			: "env.VITE_SERVER_URL";
+export function trpcClientMarkers(
+	framework: FrameworkDefinition,
+	standalone: boolean,
+) {
+	const serverUrl = `env.${framework.clientEnvPrefix ?? "VITE_"}SERVER_URL`;
 
 	return {
 		ENV_IMPORT: standalone
-			? frameworkId === "nextjs"
+			? framework.id === "nextjs"
 				? 'import { env } from "../env";\n'
 				: 'import { env } from "../../env";\n'
 			: "",
@@ -50,7 +51,7 @@ export function trpcClientMarkers(frameworkId: string, standalone: boolean) {
 
 export function trpcRecipeMarkers(
 	config: ForgeConfig,
-	frameworkId: string,
+	framework: FrameworkDefinition,
 	standalone: boolean,
 ) {
 	const values = trpcTemplateVars(config);
@@ -59,7 +60,7 @@ export function trpcRecipeMarkers(
 		SLUG: values.SLUG,
 		AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],
 		AUTH_ARG: values["/* __AUTH_ARG__ */ "],
-		...trpcClientMarkers(frameworkId, standalone),
+		...trpcClientMarkers(framework, standalone),
 	};
 }
 

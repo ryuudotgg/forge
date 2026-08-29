@@ -101,6 +101,54 @@ describe("create", () => {
 		});
 	}, 240_000);
 
+	it("creates an Expo app with tRPC and Better Auth clients", async () => {
+		await withScenarioWorkspace("create-expo", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "hono",
+				database: "sqlite",
+				mobile: "expo",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				platforms: ["web", "mobile"],
+				rpc: "trpc",
+				style: "tailwind",
+				web: "nextjs",
+			});
+
+			const mobileConfig = await readJson<{
+				framework: string;
+				slots: Record<string, string>;
+				template: { id: string; version: number };
+				type: string;
+			}>(join(workspace.projectRoot, "apps/mobile/forge.json"));
+
+			expect(mobileConfig).toMatchObject({
+				framework: "expo",
+				slots: {
+					layout: "src/app/_layout.tsx",
+					page: "src/app/index.tsx",
+				},
+				template: { id: "expo/base", version: 1 },
+				type: "app",
+			});
+
+			for (const path of [
+				"apps/mobile/app.json",
+				"apps/mobile/src/app/_layout.tsx",
+				"apps/mobile/src/lib/auth-client.ts",
+				"apps/mobile/src/lib/trpc.ts",
+				"tooling/tsconfig/expo.json",
+			])
+				expect(await pathExists(join(workspace.projectRoot, path)), path).toBe(
+					true,
+				);
+
+			const env = await readFile(join(workspace.projectRoot, ".env"), "utf-8");
+			expect(env).toContain('EXPO_PUBLIC_SERVER_URL="http://localhost:3001"');
+		});
+	}, 240_000);
+
 	it("creates a recommended first-party workspace with manifest, lockfile, and module metadata", async () => {
 		await withScenarioWorkspace("create", async (workspace) => {
 			await createProject(workspace, {

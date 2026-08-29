@@ -1663,6 +1663,24 @@ describe("add command", () => {
 		}
 	});
 
+	it("refuses to add Expo to an existing project", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation(((
+			code?: string | number | null,
+		) => {
+			throw new Error(`exit:${code ?? 0}`);
+		}) as never);
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+			await expect(runAdd("expo", {})).rejects.toThrow("exit:1");
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't add a mobile framework to an existing project yet.",
+			);
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
 	it("adds tRPC to a React Router module", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({

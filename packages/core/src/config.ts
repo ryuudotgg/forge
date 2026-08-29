@@ -25,6 +25,7 @@ const MODULE_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz";
 
 const MODULE_IGNORED_DIRS = new Set([
 	".cache",
+	".expo",
 	".forge",
 	".git",
 	".next",

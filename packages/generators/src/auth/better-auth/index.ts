@@ -98,6 +98,9 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				},
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
 				{ ...deps.betterAuth, type: "dependencies" },
+				...(config.mobile === "expo"
+					? [{ ...deps.betterAuthExpo, type: "dependencies" as const }]
+					: []),
 				{ ...deps.zod, type: "dependencies" },
 				{
 					name: `@${slug}/tsconfig`,

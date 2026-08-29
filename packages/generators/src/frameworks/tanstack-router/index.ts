@@ -25,6 +25,7 @@ export const tanstackRouterFramework: FrameworkDefinition<"tanstack-router"> =
 	defineFramework({
 		id: "tanstack-router",
 		configFile: "vite.config.ts",
+		clientEnvPrefix: "VITE_",
 		buildOutputs: ["dist/**"],
 		ignoreDirs: [".tanstack/"],
 		name: "TanStack Router",
