@@ -82,6 +82,12 @@ export const versions = {
 		version: "0.4.2",
 		group: "Framework",
 	},
+	fastify: { name: "fastify", version: "5.12.1", group: "Framework" },
+	fastifyCors: {
+		name: "@fastify/cors",
+		version: "11.3.0",
+		group: "Framework",
+	},
 
 	next: { name: "next", version: "16.3.3", group: "Framework" },
 

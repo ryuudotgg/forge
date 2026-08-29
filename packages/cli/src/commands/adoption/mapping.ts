@@ -54,7 +54,10 @@ const dependencySections: ReadonlyArray<DependencySection> = [
 export const backendSignatures: ReadonlyArray<{
 	readonly id: string;
 	readonly packages: ReadonlyArray<string>;
-}> = [{ id: "hono", packages: ["hono", "@hono/node-server"] }];
+}> = [
+	{ id: "fastify", packages: ["fastify"] },
+	{ id: "hono", packages: ["hono", "@hono/node-server"] },
+];
 
 export function dependencyNames(packageJson: PackageJson): ReadonlySet<string> {
 	return new Set(Object.keys(packageJson.dependencies ?? {}));

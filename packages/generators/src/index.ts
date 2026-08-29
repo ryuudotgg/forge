@@ -82,6 +82,10 @@ export {
 	resolveDatabaseProvider,
 } from "./data/providers";
 export { default as expo, expoFramework } from "./frameworks/expo";
+export {
+	default as fastify,
+	fastifyFramework,
+} from "./frameworks/fastify";
 export { default as hono, honoFramework } from "./frameworks/hono";
 export { default as nextjs, nextjsFramework } from "./frameworks/nextjs";
 export {
