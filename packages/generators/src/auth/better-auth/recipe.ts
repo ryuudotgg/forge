@@ -16,6 +16,7 @@ import {
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { expoFramework, expoScheme } from "../../frameworks/expo";
+import { fastifyFramework } from "../../frameworks/fastify";
 import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
@@ -131,6 +132,52 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 	include: (asset, { config }) =>
 		asset._tag === "SlotAssetDefinition" ||
 		asset.name === `index-${config.orm}`,
+	target: (asset, context) =>
+		asset._tag === "SlotAssetDefinition"
+			? moduleTarget(context.module)
+			: ensuredModuleTarget("auth"),
+	path: (asset, _rendered, context) =>
+		asset._tag === "SlotAssetDefinition"
+			? slotPath(moduleTarget(context.module), asset.slot)
+			: "src/index.ts",
+	after: ({ config, module }) => [
+		surfaceDependencies(
+			moduleTarget(module),
+			"packageJson",
+			betterAuthModuleDependencies(config.slug ?? "my-app"),
+		),
+		...expoAuthClientContributions(config),
+	],
+});
+
+export const betterAuthFastifyRecipe = defineTemplateRecipe({
+	addon: "better-auth",
+	markers: betterAuthMarkers,
+	assets: [
+		sharedAsset("fastify-index-drizzle", {
+			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
+			destination: inModule("src/fastify-index.drizzle.ts"),
+		}),
+		sharedAsset("fastify-index-prisma", {
+			template: "auth/better-auth/packages/auth/src/index.prisma.ts",
+			destination: inModule("src/fastify-index.prisma.ts"),
+		}),
+		slotAsset("auth", {
+			variants: { fastify: "auth/better-auth/routes/fastify/auth.ts" },
+		}),
+	],
+});
+
+export const betterAuthFastifyAdapters = deriveRecipeAdapters({
+	recipe: betterAuthFastifyRecipe,
+	frameworks: [fastifyFramework],
+	readTemplate,
+	requiredSlots: ["auth"],
+	markers: ({ config }: AdapterContext<ForgeConfig>) =>
+		betterAuthRecipeVars(config, fastifyFramework),
+	include: (asset, { config }) =>
+		asset._tag === "SlotAssetDefinition" ||
+		asset.name === `fastify-index-${config.orm}`,
 	target: (asset, context) =>
 		asset._tag === "SlotAssetDefinition"
 			? moduleTarget(context.module)

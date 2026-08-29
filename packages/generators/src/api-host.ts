@@ -1,5 +1,6 @@
 import { type FrameworkDefinition, GeneratorError } from "@ryuujs/core";
 import type { ForgeConfig } from "./config";
+import { fastifyFramework } from "./frameworks/fastify";
 import { honoFramework } from "./frameworks/hono";
 import { nextjsFramework } from "./frameworks/nextjs";
 import { reactRouterFramework } from "./frameworks/react-router";
@@ -7,6 +8,7 @@ import { tanstackRouterFramework } from "./frameworks/tanstack-router";
 import { tanstackStartFramework } from "./frameworks/tanstack-start";
 
 export const apiHostFrameworks: ReadonlyArray<FrameworkDefinition> = [
+	fastifyFramework,
 	honoFramework,
 	nextjsFramework,
 	reactRouterFramework,

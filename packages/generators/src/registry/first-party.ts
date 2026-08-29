@@ -3,6 +3,8 @@ import trpc, { trpcMetadata } from "../api/trpc";
 import {
 	trpcAdapters,
 	trpcExpoRecipe,
+	trpcFastifyAdapters,
+	trpcFastifyRecipe,
 	trpcHonoAdapters,
 	trpcHonoRecipe,
 	trpcRecipe,
@@ -11,6 +13,8 @@ import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
 import {
 	betterAuthAdapters,
 	betterAuthExpoRecipe,
+	betterAuthFastifyAdapters,
+	betterAuthFastifyRecipe,
 	betterAuthHonoAdapters,
 	betterAuthHonoRecipe,
 	betterAuthRecipe,
@@ -28,6 +32,11 @@ import expoBaseTemplate, {
 	expoFramework,
 	expoFrameworkMetadata,
 } from "../frameworks/expo";
+import fastifyBaseTemplate, {
+	fastifyBaseTemplateMetadata,
+	fastifyFramework,
+	fastifyFrameworkMetadata,
+} from "../frameworks/fastify";
 import honoBaseTemplate, {
 	honoBaseTemplateMetadata,
 	honoFramework,
@@ -85,12 +94,15 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 	adapters: [
 		...trpcAdapters,
 		...trpcHonoAdapters,
+		...trpcFastifyAdapters,
 		...betterAuthAdapters,
 		...betterAuthHonoAdapters,
+		...betterAuthFastifyAdapters,
 		...uiAdapters,
 	],
 	frameworks: [
 		expoFramework,
+		fastifyFramework,
 		honoFramework,
 		nextjsFramework,
 		reactRouterFramework,
@@ -99,6 +111,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 	],
 	templates: [
 		expoBaseTemplate,
+		fastifyBaseTemplate,
 		honoBaseTemplate,
 		nextjsBaseTemplate,
 		reactRouterBaseTemplate,
@@ -131,9 +144,11 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		trpcRecipe,
 		trpcExpoRecipe,
 		trpcHonoRecipe,
+		trpcFastifyRecipe,
 		betterAuthRecipe,
 		betterAuthExpoRecipe,
 		betterAuthHonoRecipe,
+		betterAuthFastifyRecipe,
 		uiRecipe,
 	],
 	readTemplate,
@@ -142,6 +157,8 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 export const firstPartyCatalog = [
 	frameworkCatalogEntry(expoFramework, expoFrameworkMetadata),
 	templateCatalogEntry(expoBaseTemplate, expoBaseTemplateMetadata),
+	frameworkCatalogEntry(fastifyFramework, fastifyFrameworkMetadata),
+	templateCatalogEntry(fastifyBaseTemplate, fastifyBaseTemplateMetadata),
 	frameworkCatalogEntry(honoFramework, honoFrameworkMetadata),
 	templateCatalogEntry(honoBaseTemplate, honoBaseTemplateMetadata),
 	frameworkCatalogEntry(nextjsFramework, nextjsFrameworkMetadata),

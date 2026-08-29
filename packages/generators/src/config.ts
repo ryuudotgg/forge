@@ -78,7 +78,7 @@ export const backends = defineChoices(
 	} as const,
 	{
 		aliases: { nextjs: "self", "next.js": "self" },
-		unavailable: ["convex", "elysia", "uwebsockets", "fastify", "express"],
+		unavailable: ["convex", "elysia", "uwebsockets", "express"],
 	},
 );
 

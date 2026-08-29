@@ -28,6 +28,8 @@ export const deps = {
 	hono: dep("hono"),
 	honoNodeServer: dep("honoNodeServer"),
 	honoTrpcServer: dep("honoTrpcServer"),
+	fastify: dep("fastify"),
+	fastifyCors: dep("fastifyCors"),
 
 	next: dep("next"),
 
