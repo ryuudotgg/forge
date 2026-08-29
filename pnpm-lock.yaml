@@ -56,7 +56,7 @@ catalogs:
       version: 1.13.0
   monorepo:
     turbo:
-      specifier: ^2.10.10
+      specifier: ^2.10.12
       version: 2.10.12
   node:
     '@clack/core':
