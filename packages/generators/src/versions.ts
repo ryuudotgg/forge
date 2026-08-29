@@ -266,7 +266,7 @@ export const versions = {
 
 	betterAuth: {
 		name: "better-auth",
-		version: "^1.6.3",
+		version: "^1.7.2",
 		group: "Framework",
 	},
 

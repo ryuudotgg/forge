@@ -49,6 +49,8 @@ model Account {
   id                    String    @id
   userId                String    @map("user_id")
 
+  issuer                String__TEXT__
+
   accountId             String    @map("account_id")__TEXT__
   providerId            String    @map("provider_id")__TEXT__
 
