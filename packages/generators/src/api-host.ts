@@ -1,5 +1,6 @@
 import { type FrameworkDefinition, GeneratorError } from "@ryuujs/core";
 import type { ForgeConfig } from "./config";
+import { expressFramework } from "./frameworks/express";
 import { fastifyFramework } from "./frameworks/fastify";
 import { honoFramework } from "./frameworks/hono";
 import { nextjsFramework } from "./frameworks/nextjs";
@@ -8,6 +9,7 @@ import { tanstackRouterFramework } from "./frameworks/tanstack-router";
 import { tanstackStartFramework } from "./frameworks/tanstack-start";
 
 export const apiHostFrameworks: ReadonlyArray<FrameworkDefinition> = [
+	expressFramework,
 	fastifyFramework,
 	honoFramework,
 	nextjsFramework,

@@ -16,6 +16,7 @@ import {
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { expoFramework, expoScheme } from "../../frameworks/expo";
+import { expressFramework } from "../../frameworks/express";
 import { fastifyFramework } from "../../frameworks/fastify";
 import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
@@ -178,6 +179,52 @@ export const betterAuthFastifyAdapters = deriveRecipeAdapters({
 	include: (asset, { config }) =>
 		asset._tag === "SlotAssetDefinition" ||
 		asset.name === `fastify-index-${config.orm}`,
+	target: (asset, context) =>
+		asset._tag === "SlotAssetDefinition"
+			? moduleTarget(context.module)
+			: ensuredModuleTarget("auth"),
+	path: (asset, _rendered, context) =>
+		asset._tag === "SlotAssetDefinition"
+			? slotPath(moduleTarget(context.module), asset.slot)
+			: "src/index.ts",
+	after: ({ config, module }) => [
+		surfaceDependencies(
+			moduleTarget(module),
+			"packageJson",
+			betterAuthModuleDependencies(config.slug ?? "my-app"),
+		),
+		...expoAuthClientContributions(config),
+	],
+});
+
+export const betterAuthExpressRecipe = defineTemplateRecipe({
+	addon: "better-auth",
+	markers: betterAuthMarkers,
+	assets: [
+		sharedAsset("express-index-drizzle", {
+			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
+			destination: inModule("src/express-index.drizzle.ts"),
+		}),
+		sharedAsset("express-index-prisma", {
+			template: "auth/better-auth/packages/auth/src/index.prisma.ts",
+			destination: inModule("src/express-index.prisma.ts"),
+		}),
+		slotAsset("auth", {
+			variants: { express: "auth/better-auth/routes/express/auth.ts" },
+		}),
+	],
+});
+
+export const betterAuthExpressAdapters = deriveRecipeAdapters({
+	recipe: betterAuthExpressRecipe,
+	frameworks: [expressFramework],
+	readTemplate,
+	requiredSlots: ["auth"],
+	markers: ({ config }: AdapterContext<ForgeConfig>) =>
+		betterAuthRecipeVars(config, expressFramework),
+	include: (asset, { config }) =>
+		asset._tag === "SlotAssetDefinition" ||
+		asset.name === `express-index-${config.orm}`,
 	target: (asset, context) =>
 		asset._tag === "SlotAssetDefinition"
 			? moduleTarget(context.module)

@@ -8,6 +8,7 @@ describe("standaloneBackendInPlay", () => {
 	it("returns the configured standalone backend id", () => {
 		expect(standaloneBackendInPlay({ backend: "hono" })).toBe("hono");
 		expect(standaloneBackendInPlay({ backend: "fastify" })).toBe("fastify");
+		expect(standaloneBackendInPlay({ backend: "express" })).toBe("express");
 	});
 
 	it("returns undefined for non-built backend ids", () => {
@@ -18,6 +19,8 @@ describe("standaloneBackendInPlay", () => {
 
 describe("standaloneBackendIds", () => {
 	it("contains every registered standalone backend id", () => {
-		expect(standaloneBackendIds).toEqual(new Set(["fastify", "hono"]));
+		expect(standaloneBackendIds).toEqual(
+			new Set(["express", "fastify", "hono"]),
+		);
 	});
 });

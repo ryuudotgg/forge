@@ -1,9 +1,11 @@
 import type { FrameworkDefinition } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
+import { expressFramework } from "../frameworks/express";
 import { fastifyFramework } from "../frameworks/fastify";
 import { honoFramework } from "../frameworks/hono";
 
 export const standaloneBackendFrameworks: ReadonlyArray<FrameworkDefinition> = [
+	expressFramework,
 	fastifyFramework,
 	honoFramework,
 ];

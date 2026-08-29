@@ -744,6 +744,28 @@ describe("AdoptionDetector", () => {
 		);
 	});
 
+	it("adopts an Express server that exposes no entry points", async () => {
+		await withFixture(
+			"express-server",
+			{
+				"apps/api/package.json": json({
+					dependencies: { express: "^5" },
+					private: true,
+				}),
+				"package.json": json({ private: true }),
+				"pnpm-workspace.yaml": "packages:\n  - apps/*\n",
+			},
+			async (root) => {
+				const result = await detect(root);
+
+				expect(result.config.backend).toBe("express");
+				expect(
+					result.modules.find((module) => module.root === "apps/api"),
+				).toMatchObject({ proposal: "backend-app" });
+			},
+		);
+	});
+
 	it.each([
 		{
 			lockfile: "package-lock.json",

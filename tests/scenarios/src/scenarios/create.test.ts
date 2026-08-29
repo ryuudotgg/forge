@@ -103,6 +103,44 @@ describe("create", () => {
 		});
 	}, 240_000);
 
+	it("creates a standalone Express backend at its API slot paths", async () => {
+		await withScenarioWorkspace("create-express", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "express",
+				database: "sqlite",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				web: "tanstack-router",
+			});
+
+			for (const path of [
+				"src/app.ts",
+				"src/index.ts",
+				"src/routes/auth.ts",
+				"src/routes/trpc.ts",
+				"tsdown.config.ts",
+			])
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/server", path)),
+					path,
+				).toBe(true);
+
+			const serverConfig = await readJson<{
+				framework: string;
+				slots: Record<string, string>;
+			}>(join(workspace.projectRoot, "apps/server/forge.json"));
+			expect(serverConfig).toMatchObject({
+				framework: "express",
+				slots: {
+					auth: "src/routes/auth.ts",
+					trpc: "src/routes/trpc.ts",
+				},
+			});
+		});
+	}, 240_000);
+
 	it("creates a worker service alongside the web app", async () => {
 		await withScenarioWorkspace("create-worker", async (workspace) => {
 			await createProject(workspace, {

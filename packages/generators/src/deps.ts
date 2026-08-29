@@ -30,6 +30,8 @@ export const deps = {
 	honoTrpcServer: dep("honoTrpcServer"),
 	fastify: dep("fastify"),
 	fastifyCors: dep("fastifyCors"),
+	express: dep("express"),
+	expressCors: dep("expressCors"),
 
 	next: dep("next"),
 
@@ -53,6 +55,8 @@ export const deps = {
 	viteReact: dep("viteReact"),
 
 	typesNode: dep("typesNode"),
+	typesCors: dep("typesCors"),
+	typesExpress: dep("typesExpress"),
 	typesReact: dep("typesReact"),
 	typesReactDom: dep("typesReactDom"),
 
