@@ -12,12 +12,35 @@ const promptMocks = vi.hoisted(() => ({
 	select: vi.fn(),
 }));
 
+const choiceMocks = vi.hoisted(() => ({
+	nativeStyleAvailable: vi.fn(),
+}));
+
 vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
 	isCancel: promptMocks.isCancel,
 	log: { warn: promptMocks.logWarn },
 	select: promptMocks.select,
 }));
+
+// Every native style framework is gated until M3 ships NativeWind, so the
+// "selection is available" branch is only reachable behind this mock.
+vi.mock("@ryuujs/generators", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuujs/generators")>();
+
+	return {
+		...original,
+		nativeStyleFrameworks: {
+			...original.nativeStyleFrameworks,
+			available: choiceMocks.nativeStyleAvailable,
+		},
+	};
+});
+
+const generators =
+	await vi.importActual<typeof import("@ryuujs/generators")>(
+		"@ryuujs/generators",
+	);
 
 function rawConfig(entries: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
@@ -33,6 +56,10 @@ beforeEach(() => {
 	promptMocks.isCancel.mockReturnValue(false);
 	promptMocks.logWarn.mockReset();
 	promptMocks.select.mockReset();
+	choiceMocks.nativeStyleAvailable.mockReset();
+	choiceMocks.nativeStyleAvailable.mockImplementation(
+		generators.nativeStyleFrameworks.available,
+	);
 });
 
 describe("style framework step", () => {
@@ -192,6 +219,16 @@ describe("native style framework step", () => {
 		await expect(
 			nativeStyleFrameworkStep.execute({ mobile: "expo" }, true),
 		).resolves.toBe(SKIP);
+	});
+
+	it("returns the selection once a native style framework ships", async () => {
+		choiceMocks.nativeStyleAvailable.mockReturnValue(true);
+		promptMocks.select.mockResolvedValue("nativewind");
+
+		await expect(
+			nativeStyleFrameworkStep.execute({ mobile: "expo" }, true),
+		).resolves.toBe("nativewind");
+		expect(promptMocks.logWarn).not.toHaveBeenCalled();
 	});
 });
 
