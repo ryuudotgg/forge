@@ -111,22 +111,22 @@ export const versions = {
 
 	reactRouter: {
 		name: "react-router",
-		version: "8.3.0",
+		version: "8.3.1",
 		group: "Framework",
 	},
 	reactRouterDev: {
 		name: "@react-router/dev",
-		version: "8.3.0",
+		version: "8.3.1",
 		group: "Tooling",
 	},
 	reactRouterNode: {
 		name: "@react-router/node",
-		version: "8.3.0",
+		version: "8.3.1",
 		group: "Framework",
 	},
 	reactRouterServe: {
 		name: "@react-router/serve",
-		version: "8.3.0",
+		version: "8.3.1",
 		group: "Framework",
 	},
 
