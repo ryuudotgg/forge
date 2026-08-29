@@ -2,6 +2,7 @@ import { defineRegistry } from "@ryuujs/core";
 import trpc, { trpcMetadata } from "../api/trpc";
 import {
 	trpcAdapters,
+	trpcExpoRecipe,
 	trpcHonoAdapters,
 	trpcHonoRecipe,
 	trpcRecipe,
@@ -9,6 +10,7 @@ import {
 import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
 import {
 	betterAuthAdapters,
+	betterAuthExpoRecipe,
 	betterAuthHonoAdapters,
 	betterAuthHonoRecipe,
 	betterAuthRecipe,
@@ -21,6 +23,11 @@ import {
 	styleFrameworks,
 	webFrameworks,
 } from "../config";
+import expoBaseTemplate, {
+	expoBaseTemplateMetadata,
+	expoFramework,
+	expoFrameworkMetadata,
+} from "../frameworks/expo";
 import honoBaseTemplate, {
 	honoBaseTemplateMetadata,
 	honoFramework,
@@ -83,6 +90,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		...uiAdapters,
 	],
 	frameworks: [
+		expoFramework,
 		honoFramework,
 		nextjsFramework,
 		reactRouterFramework,
@@ -90,6 +98,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		tanstackStartFramework,
 	],
 	templates: [
+		expoBaseTemplate,
 		honoBaseTemplate,
 		nextjsBaseTemplate,
 		reactRouterBaseTemplate,
@@ -120,8 +129,10 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 	],
 	recipes: [
 		trpcRecipe,
+		trpcExpoRecipe,
 		trpcHonoRecipe,
 		betterAuthRecipe,
+		betterAuthExpoRecipe,
 		betterAuthHonoRecipe,
 		uiRecipe,
 	],
@@ -129,6 +140,8 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 });
 
 export const firstPartyCatalog = [
+	frameworkCatalogEntry(expoFramework, expoFrameworkMetadata),
+	templateCatalogEntry(expoBaseTemplate, expoBaseTemplateMetadata),
 	frameworkCatalogEntry(honoFramework, honoFrameworkMetadata),
 	templateCatalogEntry(honoBaseTemplate, honoBaseTemplateMetadata),
 	frameworkCatalogEntry(nextjsFramework, nextjsFrameworkMetadata),

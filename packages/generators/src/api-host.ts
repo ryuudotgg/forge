@@ -46,7 +46,11 @@ export function apiHostError(
 	frameworks: ReadonlyArray<FrameworkDefinition> = apiHostFrameworks,
 ): GeneratorError | undefined {
 	if (resolveApiHost(config, frameworks) !== undefined) return undefined;
-	if (config.backend === undefined && config.web === undefined)
+	if (
+		config.backend === undefined &&
+		config.web === undefined &&
+		config.mobile === undefined
+	)
 		return undefined;
 
 	const web = frameworks.find((entry) => entry.id === config.web);

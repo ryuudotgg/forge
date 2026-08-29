@@ -24,6 +24,7 @@ import { interpolate, readTemplate } from "../../template";
 export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	id: "nextjs",
 	configFile: "next.config.ts",
+	clientEnvPrefix: "NEXT_PUBLIC_",
 	buildOutputs: [".next/**", "!.next/cache/**"],
 	ignoreDirs: [".next/"],
 	name: "Next.js",

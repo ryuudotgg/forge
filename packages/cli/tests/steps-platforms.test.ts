@@ -53,9 +53,6 @@ describe("platforms step", () => {
 
 	it("skips when the list contains an unavailable platform", async () => {
 		await expect(
-			platformsStep.execute({ platforms: ["web", "mobile"] }, false),
-		).resolves.toBe(SKIP);
-		await expect(
 			platformsStep.execute({ platforms: ["desktop"] }, false),
 		).resolves.toBe(SKIP);
 	});
@@ -88,7 +85,7 @@ describe("platforms step", () => {
 			options: [
 				{ label: "Web", value: "web" },
 				{ label: "Desktop", value: "desktop", hint: "coming soon" },
-				{ label: "Mobile", value: "mobile", hint: "coming soon" },
+				{ label: "Mobile", value: "mobile" },
 			],
 			required: true,
 		});
@@ -110,13 +107,16 @@ describe("platforms step", () => {
 	it("lists every unsupported platform in one warning", async () => {
 		promptMocks.multiselect
 			.mockResolvedValueOnce(["web", "desktop", "mobile"])
-			.mockResolvedValueOnce(["web"]);
+			.mockResolvedValueOnce(["web", "mobile"]);
 
-		await expect(platformsStep.execute({}, true)).resolves.toEqual(["web"]);
+		await expect(platformsStep.execute({}, true)).resolves.toEqual([
+			"web",
+			"mobile",
+		]);
 
 		expect(promptMocks.logWarn).toHaveBeenCalledTimes(1);
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"We don't support Desktop and Mobile yet.",
+			"We don't support Desktop yet.",
 		);
 	});
 
@@ -242,10 +242,16 @@ describe("mobile step", () => {
 		expect(mobileStep.shouldRun({ platforms: ["mobile"] })).toBe(true);
 	});
 
-	it("keeps a valid mobile framework when non-interactive", async () => {
+	it("keeps Expo when non-interactive", async () => {
+		await expect(mobileStep.execute({ mobile: "expo" }, false)).resolves.toBe(
+			"expo",
+		);
+	});
+
+	it("skips unavailable mobile frameworks when non-interactive", async () => {
 		await expect(
 			mobileStep.execute({ mobile: "react-native" }, false),
-		).resolves.toBe("react-native");
+		).resolves.toBe(SKIP);
 	});
 
 	it("defaults to expo when mobile is missing", async () => {
@@ -259,17 +265,30 @@ describe("mobile step", () => {
 	});
 
 	it("recommends the first option and returns the interactive choice", async () => {
-		promptMocks.select.mockResolvedValue("react-native");
+		promptMocks.select.mockResolvedValue("expo");
 
-		await expect(mobileStep.execute({}, true)).resolves.toBe("react-native");
+		await expect(mobileStep.execute({}, true)).resolves.toBe("expo");
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "What is your preferred mobile framework?",
 			options: [
 				{ label: "Expo (Recommended)", value: "expo" },
-				{ label: "React Native", value: "react-native" },
+				{ label: "React Native", value: "react-native", hint: "coming soon" },
 			],
 		});
+	});
+
+	it("warns and re-prompts when React Native is selected", async () => {
+		promptMocks.select
+			.mockResolvedValueOnce("react-native")
+			.mockResolvedValueOnce("expo");
+
+		await expect(mobileStep.execute({}, true)).resolves.toBe("expo");
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"We don't support React Native yet.",
+		);
+		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
 	it("cancels the mobile prompt when interrupted", async () => {

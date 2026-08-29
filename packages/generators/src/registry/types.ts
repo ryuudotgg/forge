@@ -30,7 +30,7 @@ interface CatalogMetadataBase {
 }
 
 export interface FirstPartyFrameworkMetadata extends CatalogMetadataBase {
-	readonly category?: "backend" | "web";
+	readonly category?: "backend" | "mobile" | "web";
 	readonly kind: "framework";
 }
 

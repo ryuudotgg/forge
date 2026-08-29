@@ -20,8 +20,6 @@ const gitignore = defineAddon<ForgeConfig, "gitignore">({
 		buildLines.push(
 			...frameworkIgnoreDirs(frameworksInPlay(config, frameworks)),
 		);
-		if (config.mobile) buildLines.push(".expo/");
-
 		return [
 			surfaceLines(projectTarget(), "gitignore", ["node_modules/"], {
 				section: "Dependencies",

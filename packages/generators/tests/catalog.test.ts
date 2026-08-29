@@ -52,6 +52,7 @@ describe("catalog", () => {
 		const addons = await listCatalogEntries("addon");
 
 		expect(frameworks.map((entry) => entry.id)).toEqual([
+			"expo",
 			"hono",
 			"nextjs",
 			"react-router",
@@ -64,6 +65,7 @@ describe("catalog", () => {
 			"express",
 		]);
 		expect(templates.map((entry) => entry.id)).toEqual([
+			"expo/base",
 			"hono/base",
 			"nextjs/base",
 			"react-router/base",

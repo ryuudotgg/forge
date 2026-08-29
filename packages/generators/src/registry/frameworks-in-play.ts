@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { FrameworkDefinition } from "@ryuujs/core";
 import { type ForgeConfig, hasAddon } from "../config";
 import { standaloneBackendInPlay } from "./backends";
+import { mobileAppFrameworkInPlay } from "./mobiles";
 
 function frameworkFor(
 	frameworks: ReadonlyArray<FrameworkDefinition>,
@@ -22,6 +23,7 @@ export function frameworksInPlay(
 			config.web,
 			standaloneBackendInPlay(config),
 			hasAddon(config, "worker") ? "hono" : undefined,
+			mobileAppFrameworkInPlay(config),
 		].filter((id) => id !== undefined),
 	);
 

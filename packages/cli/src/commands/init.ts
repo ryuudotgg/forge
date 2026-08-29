@@ -31,6 +31,7 @@ import {
 import {
 	type ForgeConfig,
 	loadDefinitionRegistry,
+	mobileAppFrameworkIds,
 	probeWorkspaceCommandVersions,
 	standaloneBackendIds,
 } from "@ryuujs/generators";
@@ -251,7 +252,9 @@ function modulePrototype(
 	if (kind === "web-app")
 		return modules.find(
 			(module) =>
-				module.type === "app" && !standaloneBackendIds.has(module.framework),
+				module.type === "app" &&
+				!standaloneBackendIds.has(module.framework) &&
+				!mobileAppFrameworkIds.has(module.framework),
 		);
 
 	if (kind === "backend-app")

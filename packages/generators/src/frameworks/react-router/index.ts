@@ -25,6 +25,7 @@ export const reactRouterFramework: FrameworkDefinition<"react-router"> =
 	defineFramework({
 		id: "react-router",
 		configFile: "react-router.config.ts",
+		clientEnvPrefix: "VITE_",
 		buildOutputs: ["build/**"],
 		ignoreDirs: [".react-router/"],
 		name: "React Router",

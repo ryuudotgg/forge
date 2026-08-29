@@ -17,6 +17,12 @@ export const deps = {
 	tsdown: dep("tsdown"),
 	tsx: dep("tsx"),
 
+	betterAuthExpo: dep("betterAuthExpo"),
+	expo: dep("expo"),
+	expoConstants: dep("expoConstants"),
+	expoLinking: dep("expoLinking"),
+	expoRouter: dep("expoRouter"),
+	expoSecureStore: dep("expoSecureStore"),
 	isbot: dep("isbot"),
 	serverOnly: dep("serverOnly"),
 	hono: dep("hono"),
@@ -27,6 +33,9 @@ export const deps = {
 
 	react: dep("react"),
 	reactDom: dep("reactDom"),
+	reactNative: dep("reactNative"),
+	reactNativeSafeAreaContext: dep("reactNativeSafeAreaContext"),
+	reactNativeScreens: dep("reactNativeScreens"),
 
 	reactRouter: dep("reactRouter"),
 	reactRouterDev: dep("reactRouterDev"),

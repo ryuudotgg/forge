@@ -322,6 +322,28 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 
 	// Each framework addition gets one pnpm-only acceptance case; the
 	// package-manager matrix remains Next.js-only to keep smoke cost bounded.
+	it("installs, builds, and typechecks an Expo project", async () => {
+		await withScenarioWorkspace("smoke-expo", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "hono",
+				database: "sqlite",
+				mobile: "expo",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				platforms: ["web", "mobile"],
+				rpc: "trpc",
+				style: "tailwind",
+				web: "nextjs",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			expect(
+				await pathExists(join(workspace.projectRoot, "apps/mobile/forge.json")),
+			).toBe(true);
+		});
+	}, 600_000);
+
 	it("installs, builds, and typechecks a full TanStack Start project", async () => {
 		await withScenarioWorkspace("smoke-tanstack-start", async (workspace) => {
 			await createProject(workspace, {

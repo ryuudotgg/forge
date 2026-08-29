@@ -37,6 +37,7 @@ export type GeneratorCategory =
 	| "tooling"
 	| "linter"
 	| "web"
+	| "mobile"
 	| "backend"
 	| "orm"
 	| "database"
@@ -453,6 +454,7 @@ export interface FrameworkDefinition<
 > {
 	readonly _tag: "FrameworkDefinition";
 	readonly buildOutputs: ReadonlyArray<string>;
+	readonly clientEnvPrefix?: string;
 	readonly configFile?: string;
 	readonly id: Id;
 	readonly ignoreDirs: ReadonlyArray<string>;
@@ -1066,6 +1068,7 @@ export function defineFramework<
 	const Slots extends ReadonlyArray<string>,
 >(framework: {
 	readonly buildOutputs: ReadonlyArray<string>;
+	readonly clientEnvPrefix?: string;
 	readonly configFile?: string;
 	readonly id: Id;
 	readonly ignoreDirs: ReadonlyArray<string>;
