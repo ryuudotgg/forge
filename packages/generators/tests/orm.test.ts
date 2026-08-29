@@ -212,6 +212,18 @@ describe("prisma addon", () => {
 		expect(schema).not.toContain("__");
 	});
 
+	it("declares the better-auth account issuer", () => {
+		const withAuth = contributionsFor(prisma, {
+			slug: "acme",
+			orm: "prisma",
+			authentication: "better-auth",
+		});
+
+		expect(leafFile(withAuth, "prisma/schema.prisma")).toContain(
+			"issuer                String",
+		);
+	});
+
 	it("gitignores the generated client and sqlite files per provider", () => {
 		const postgres = contributionsFor(prisma, { slug: "acme", orm: "prisma" });
 		expect(projectLines(postgres, "gitignore")?.lines).toEqual([
@@ -353,6 +365,53 @@ describe("drizzle addon", () => {
 		expect(leafFile(contributions, "src/schema/index.ts")).toBe(
 			'export * from "./auth";\nexport * from "./users";\n',
 		);
+	});
+
+	it("declares the better-auth account issuer on every dialect", () => {
+		// The marker proves each config really resolved its own dialect template,
+		// so the issuer assertion cannot pass by testing postgres four times.
+		const dialects: ReadonlyArray<{ config: ForgeConfig; marker: string }> = [
+			{
+				config: { slug: "acme", orm: "drizzle", authentication: "better-auth" },
+				marker: "timestamp({ withTimezone: true })",
+			},
+			{
+				config: {
+					slug: "acme",
+					orm: "drizzle",
+					database: "mysql",
+					authentication: "better-auth",
+				},
+				marker: "id: varchar({ length: 36 }).primaryKey(),",
+			},
+			{
+				config: {
+					slug: "acme",
+					orm: "drizzle",
+					databaseProvider: "planetscale",
+					authentication: "better-auth",
+				},
+				marker: 'index("accounts_user_id_idx").on(table.userId)',
+			},
+			{
+				config: {
+					slug: "acme",
+					orm: "drizzle",
+					database: "sqlite",
+					authentication: "better-auth",
+				},
+				marker: 'integer({ mode: "timestamp_ms" })',
+			},
+		];
+
+		for (const { config, marker } of dialects) {
+			const authSchema = leafFile(
+				contributionsFor(drizzle, config),
+				"src/schema/auth.ts",
+			);
+			expect(authSchema).toContain(marker);
+			expect(authSchema).toContain("issuer: text().notNull(),");
+		}
 	});
 
 	it("points drizzle-kit at the turso credentials", () => {
