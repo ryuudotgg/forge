@@ -1,6 +1,7 @@
 import type { ForgeConfig } from "./config";
 
 const standaloneBackendOrigins = new Map<string, string>([
+	["express", "http://localhost:3001"],
 	["fastify", "http://localhost:3001"],
 	["hono", "http://localhost:3001"],
 ]);

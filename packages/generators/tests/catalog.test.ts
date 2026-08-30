@@ -53,6 +53,7 @@ describe("catalog", () => {
 
 		expect(frameworks.map((entry) => entry.id)).toEqual([
 			"expo",
+			"express",
 			"fastify",
 			"hono",
 			"nextjs",
@@ -62,10 +63,10 @@ describe("catalog", () => {
 			"convex",
 			"elysia",
 			"uwebsockets",
-			"express",
 		]);
 		expect(templates.map((entry) => entry.id)).toEqual([
 			"expo/base",
+			"express/base",
 			"fastify/base",
 			"hono/base",
 			"nextjs/base",
@@ -119,6 +120,7 @@ describe("catalog", () => {
 			"tanstack-start",
 			"hono",
 			"fastify",
+			"express",
 		];
 
 		expect(await getCatalogEntry("trpc")).toMatchObject({
@@ -132,6 +134,7 @@ describe("catalog", () => {
 				"tanstack-start",
 				"hono",
 				"fastify",
+				"express",
 			],
 			requiredSlots: ["auth"],
 		});

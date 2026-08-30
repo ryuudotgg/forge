@@ -3,6 +3,8 @@ import trpc, { trpcMetadata } from "../api/trpc";
 import {
 	trpcAdapters,
 	trpcExpoRecipe,
+	trpcExpressAdapters,
+	trpcExpressRecipe,
 	trpcFastifyAdapters,
 	trpcFastifyRecipe,
 	trpcHonoAdapters,
@@ -13,6 +15,8 @@ import betterAuth, { betterAuthMetadata } from "../auth/better-auth";
 import {
 	betterAuthAdapters,
 	betterAuthExpoRecipe,
+	betterAuthExpressAdapters,
+	betterAuthExpressRecipe,
 	betterAuthFastifyAdapters,
 	betterAuthFastifyRecipe,
 	betterAuthHonoAdapters,
@@ -32,6 +36,11 @@ import expoBaseTemplate, {
 	expoFramework,
 	expoFrameworkMetadata,
 } from "../frameworks/expo";
+import expressBaseTemplate, {
+	expressBaseTemplateMetadata,
+	expressFramework,
+	expressFrameworkMetadata,
+} from "../frameworks/express";
 import fastifyBaseTemplate, {
 	fastifyBaseTemplateMetadata,
 	fastifyFramework,
@@ -95,13 +104,16 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		...trpcAdapters,
 		...trpcHonoAdapters,
 		...trpcFastifyAdapters,
+		...trpcExpressAdapters,
 		...betterAuthAdapters,
 		...betterAuthHonoAdapters,
 		...betterAuthFastifyAdapters,
+		...betterAuthExpressAdapters,
 		...uiAdapters,
 	],
 	frameworks: [
 		expoFramework,
+		expressFramework,
 		fastifyFramework,
 		honoFramework,
 		nextjsFramework,
@@ -111,6 +123,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 	],
 	templates: [
 		expoBaseTemplate,
+		expressBaseTemplate,
 		fastifyBaseTemplate,
 		honoBaseTemplate,
 		nextjsBaseTemplate,
@@ -145,10 +158,12 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		trpcExpoRecipe,
 		trpcHonoRecipe,
 		trpcFastifyRecipe,
+		trpcExpressRecipe,
 		betterAuthRecipe,
 		betterAuthExpoRecipe,
 		betterAuthHonoRecipe,
 		betterAuthFastifyRecipe,
+		betterAuthExpressRecipe,
 		uiRecipe,
 	],
 	readTemplate,
@@ -157,6 +172,8 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 export const firstPartyCatalog = [
 	frameworkCatalogEntry(expoFramework, expoFrameworkMetadata),
 	templateCatalogEntry(expoBaseTemplate, expoBaseTemplateMetadata),
+	frameworkCatalogEntry(expressFramework, expressFrameworkMetadata),
+	templateCatalogEntry(expressBaseTemplate, expressBaseTemplateMetadata),
 	frameworkCatalogEntry(fastifyFramework, fastifyFrameworkMetadata),
 	templateCatalogEntry(fastifyBaseTemplate, fastifyBaseTemplateMetadata),
 	frameworkCatalogEntry(honoFramework, honoFrameworkMetadata),

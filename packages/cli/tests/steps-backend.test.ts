@@ -75,7 +75,7 @@ describe("backend step", () => {
 				{ label: "Elysia", value: "elysia", hint: "coming soon" },
 				{ label: "µWebSockets", value: "uwebsockets", hint: "coming soon" },
 				{ label: "Fastify", value: "fastify" },
-				{ label: "Express", value: "express", hint: "coming soon" },
+				{ label: "Express", value: "express" },
 				{ label: "None", value: "none" },
 			],
 		});

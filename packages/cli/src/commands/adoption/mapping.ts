@@ -55,6 +55,7 @@ export const backendSignatures: ReadonlyArray<{
 	readonly id: string;
 	readonly packages: ReadonlyArray<string>;
 }> = [
+	{ id: "express", packages: ["express", "cors"] },
 	{ id: "fastify", packages: ["fastify"] },
 	{ id: "hono", packages: ["hono", "@hono/node-server"] },
 ];

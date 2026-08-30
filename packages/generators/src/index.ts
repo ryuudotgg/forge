@@ -82,6 +82,7 @@ export {
 	resolveDatabaseProvider,
 } from "./data/providers";
 export { default as expo, expoFramework } from "./frameworks/expo";
+export { default as express, expressFramework } from "./frameworks/express";
 export {
 	default as fastify,
 	fastifyFramework,

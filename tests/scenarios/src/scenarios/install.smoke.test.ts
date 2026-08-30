@@ -269,6 +269,44 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		});
 	}, 600_000);
 
+	it("installs, builds, and typechecks Next.js with an Express API host", async () => {
+		await withScenarioWorkspace("smoke-express-nextjs", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "express",
+				database: "sqlite",
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "nextjs",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectCredentialedGeneratedServer(workspace.projectRoot);
+		});
+	}, 600_000);
+
+	it("installs, builds, and typechecks TanStack Router with Express", async () => {
+		await withScenarioWorkspace("smoke-express-spa", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "express",
+				database: "sqlite",
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "tanstack-router",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectCredentialedGeneratedServer(workspace.projectRoot);
+		});
+	}, 600_000);
+
 	it("installs a prisma project, generates the client, and typechecks", async () => {
 		await withScenarioWorkspace("smoke-prisma", async (workspace) => {
 			await createProject(

@@ -88,6 +88,8 @@ export const versions = {
 		version: "11.3.0",
 		group: "Framework",
 	},
+	express: { name: "express", version: "5.2.1", group: "Framework" },
+	expressCors: { name: "cors", version: "2.8.6", group: "Framework" },
 
 	next: { name: "next", version: "16.3.3", group: "Framework" },
 
@@ -320,6 +322,12 @@ export const versions = {
 	typesBetterSqlite3: {
 		name: "@types/better-sqlite3",
 		version: "^9.0.0",
+		group: "Types",
+	},
+	typesCors: { name: "@types/cors", version: "^2.8.19", group: "Types" },
+	typesExpress: {
+		name: "@types/express",
+		version: "^5.0.6",
 		group: "Types",
 	},
 	typesNode: {

@@ -60,7 +60,7 @@ describe("printHelp", () => {
 				"        --web <value>                  Next.js · React Router · TanStack Router · TanStack Start",
 				"        --desktop <value> (soon)       Electron · Tauri",
 				"        --mobile <value>               Expo · React Native (soon)",
-				"        --backend <value>              Same app · Convex (soon) · Hono · Elysia (soon) · µWebSockets (soon) · Fastify · Express (soon)",
+				"        --backend <value>              Same app · Convex (soon) · Hono · Elysia (soon) · µWebSockets (soon) · Fastify · Express",
 				"        --rpc <value>                  tRPC",
 				"        --database <value>             MySQL · PostgreSQL · SQLite",
 				"        --orm <value>                  Drizzle ORM · Prisma",

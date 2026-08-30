@@ -744,6 +744,52 @@ describe("AdoptionDetector", () => {
 		);
 	});
 
+	it("adopts an Express server that exposes no entry points", async () => {
+		await withFixture(
+			"express-server",
+			{
+				"apps/api/package.json": json({
+					dependencies: { cors: "^2", express: "^5" },
+					private: true,
+				}),
+				"package.json": json({ private: true }),
+				"pnpm-workspace.yaml": "packages:\n  - apps/*\n",
+			},
+			async (root) => {
+				const result = await detect(root);
+
+				expect(result.config.backend).toBe("express");
+				expect(
+					result.modules.find((module) => module.root === "apps/api"),
+				).toMatchObject({ proposal: "backend-app" });
+			},
+		);
+	});
+
+	it("leaves an Express consumer unadopted", async () => {
+		await withFixture(
+			"express-consumer",
+			{
+				"package.json": json({ workspaces: ["packages/*"] }),
+				"packages/tooling/package.json": json({
+					dependencies: { express: "^5" },
+				}),
+			},
+			async (root) => {
+				const result = await detect(root);
+
+				expect(result.config).not.toHaveProperty("backend");
+				expect(result.modules).toEqual([
+					{
+						evidence: "found no known adoption signature",
+						proposal: "unadopted",
+						root: "packages/tooling",
+					},
+				]);
+			},
+		);
+	});
+
 	it.each([
 		{
 			lockfile: "package-lock.json",
