@@ -749,7 +749,7 @@ describe("AdoptionDetector", () => {
 			"express-server",
 			{
 				"apps/api/package.json": json({
-					dependencies: { express: "^5" },
+					dependencies: { cors: "^2", express: "^5" },
 					private: true,
 				}),
 				"package.json": json({ private: true }),
@@ -762,6 +762,30 @@ describe("AdoptionDetector", () => {
 				expect(
 					result.modules.find((module) => module.root === "apps/api"),
 				).toMatchObject({ proposal: "backend-app" });
+			},
+		);
+	});
+
+	it("leaves an Express consumer unadopted", async () => {
+		await withFixture(
+			"express-consumer",
+			{
+				"package.json": json({ workspaces: ["packages/*"] }),
+				"packages/tooling/package.json": json({
+					dependencies: { express: "^5" },
+				}),
+			},
+			async (root) => {
+				const result = await detect(root);
+
+				expect(result.config).not.toHaveProperty("backend");
+				expect(result.modules).toEqual([
+					{
+						evidence: "found no known adoption signature",
+						proposal: "unadopted",
+						root: "packages/tooling",
+					},
+				]);
 			},
 		);
 	});
