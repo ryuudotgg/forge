@@ -39,7 +39,7 @@ export const versions = {
 	sherif: { name: "sherif", version: "^1.11.1", group: "Tooling" },
 	turbo: { name: "turbo", version: "^2.9.18", group: "Tooling" },
 	typescript: { name: "typescript", version: "^7.0.2", group: "Tooling" },
-	vitest: { name: "vitest", version: "^4.1.10", group: "Tooling" },
+	vitest: { name: "vitest", version: "^5.0.0", group: "Tooling" },
 	tsdown: { name: "tsdown", version: "^0.22.14", group: "Tooling" },
 	tsx: { name: "tsx", version: "^4.23.12", group: "Tooling" },
 
