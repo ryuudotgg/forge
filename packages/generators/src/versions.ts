@@ -40,7 +40,7 @@ export const versions = {
 	turbo: { name: "turbo", version: "^2.9.18", group: "Tooling" },
 	typescript: { name: "typescript", version: "^7.0.2", group: "Tooling" },
 	vitest: { name: "vitest", version: "^5.0.0", group: "Tooling" },
-	tsdown: { name: "tsdown", version: "^0.22.14", group: "Tooling" },
+	tsdown: { name: "tsdown", version: "^0.23.0", group: "Tooling" },
 	tsx: { name: "tsx", version: "^4.23.12", group: "Tooling" },
 
 	betterAuthExpo: {
@@ -91,7 +91,7 @@ export const versions = {
 	express: { name: "express", version: "5.2.1", group: "Framework" },
 	expressCors: { name: "cors", version: "2.8.6", group: "Framework" },
 
-	next: { name: "next", version: "16.3.3", group: "Framework" },
+	next: { name: "next", version: "16.3.4", group: "Framework" },
 
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
@@ -213,7 +213,7 @@ export const versions = {
 	},
 	libsqlClient: {
 		name: "@libsql/client",
-		version: "^0.17.3",
+		version: "^0.18.0",
 		group: "Database",
 	},
 	planetscaleDatabase: {
