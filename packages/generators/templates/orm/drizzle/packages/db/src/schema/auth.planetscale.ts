@@ -27,8 +27,6 @@ export const accounts = snakeCase.table(
     id: varchar({ length: 36 }).primaryKey(),
     userId: varchar({ length: 36 }).notNull(),
 
-    issuer: text().notNull(),
-
     accountId: text().notNull(),
     providerId: text().notNull(),
 
@@ -37,6 +35,8 @@ export const accounts = snakeCase.table(
 
     refreshToken: text(),
     refreshTokenExpiresAt: timestamp({ fsp: 3 }),
+
+    idToken: text(),
 
     scope: text(),
     // __PASSWORD_FIELD__

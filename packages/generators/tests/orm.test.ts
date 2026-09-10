@@ -212,16 +212,18 @@ describe("prisma addon", () => {
 		expect(schema).not.toContain("__");
 	});
 
-	it("declares the better-auth account issuer", () => {
+	it("declares the better-auth account id token", () => {
 		const withAuth = contributionsFor(prisma, {
 			slug: "acme",
 			orm: "prisma",
 			authentication: "better-auth",
 		});
 
-		expect(leafFile(withAuth, "prisma/schema.prisma")).toContain(
-			"issuer                String",
+		const schema = leafFile(withAuth, "prisma/schema.prisma");
+		expect(schema).toContain(
+			'idToken               String?   @map("id_token")',
 		);
+		expect(schema).not.toContain("issuer");
 	});
 
 	it("gitignores the generated client and sqlite files per provider", () => {
@@ -367,9 +369,8 @@ describe("drizzle addon", () => {
 		);
 	});
 
-	it("declares the better-auth account issuer on every dialect", () => {
-		// The marker proves each config really resolved its own dialect template,
-		// so the issuer assertion cannot pass by testing postgres four times.
+	it("declares the better-auth account id token on every dialect", () => {
+		// Without the marker, four postgres resolutions would satisfy this test.
 		const dialects: ReadonlyArray<{ config: ForgeConfig; marker: string }> = [
 			{
 				config: { slug: "acme", orm: "drizzle", authentication: "better-auth" },
@@ -410,7 +411,8 @@ describe("drizzle addon", () => {
 				"src/schema/auth.ts",
 			);
 			expect(authSchema).toContain(marker);
-			expect(authSchema).toContain("issuer: text().notNull(),");
+			expect(authSchema).toContain("idToken: text(),");
+			expect(authSchema).not.toContain("issuer");
 		}
 	});
 
