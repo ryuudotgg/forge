@@ -33,8 +33,6 @@ export const accounts = snakeCase.table(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
 
-    issuer: text().notNull(),
-
     accountId: text().notNull(),
     providerId: text().notNull(),
 
@@ -43,6 +41,8 @@ export const accounts = snakeCase.table(
 
     refreshToken: text(),
     refreshTokenExpiresAt: timestamp({ withTimezone: true }),
+
+    idToken: text(),
 
     scope: text(),
     // __PASSWORD_FIELD__
