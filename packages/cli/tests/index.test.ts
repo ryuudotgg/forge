@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Context, Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
+import { version } from "../package.json" with { type: "json" };
 import {
 	isParsedValues,
 	isUnknownCommand,
@@ -308,7 +309,7 @@ describe("CLI entry dispatch", () => {
 		await runCli(["--version"], testCli.cli);
 
 		expect(testCli.printHelp).toHaveBeenCalledOnce();
-		expect(testCli.log).toHaveBeenCalledWith("We're on Forge v0.1.0");
+		expect(testCli.log).toHaveBeenCalledWith(`We're on Forge v${version}`);
 		expect(testCli.exit).toHaveBeenNthCalledWith(1, 0);
 		expect(testCli.exit).toHaveBeenNthCalledWith(2, 0);
 		expect(runCreate).not.toHaveBeenCalled();
