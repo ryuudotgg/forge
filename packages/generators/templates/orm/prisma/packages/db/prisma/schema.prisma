@@ -49,8 +49,6 @@ model Account {
   id                    String    @id
   userId                String    @map("user_id")
 
-  issuer                String__TEXT__
-
   accountId             String    @map("account_id")__TEXT__
   providerId            String    @map("provider_id")__TEXT__
 
@@ -59,6 +57,8 @@ model Account {
 
   refreshToken          String?   @map("refresh_token")__TEXT__
   refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")__TIMESTAMPTZ__
+
+  idToken               String?   @map("id_token")__TEXT__
 
   scope                 String?__TEXT__
   // __PASSWORD_FIELD__
