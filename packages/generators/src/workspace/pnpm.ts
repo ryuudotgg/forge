@@ -2,6 +2,7 @@ import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
 import type { ForgeConfig } from "../config";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { catalogEntries } from "../versions";
+import { packageOverrides } from "./overrides";
 import { trustedBuildDependencies } from "./trusted-builds";
 
 const pnpm = defineAddon<ForgeConfig, "pnpm">({
@@ -64,6 +65,17 @@ function buildWorkspaceYaml(config: ForgeConfig): string {
 		left.localeCompare(right),
 	))
 		lines.push(`  ${quote(name)}: true`);
+
+	const overrides = Object.entries(packageOverrides(config)).sort(
+		([left], [right]) => left.localeCompare(right),
+	);
+
+	if (overrides.length > 0) {
+		lines.push("", "overrides:");
+
+		for (const [name, version] of overrides)
+			lines.push(`  ${quote(name)}: ${quote(version)}`);
+	}
 
 	lines.push("");
 

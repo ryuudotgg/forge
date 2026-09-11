@@ -75,6 +75,7 @@ import biome, { biomeMetadata } from "../linters/biome";
 import drizzle, { drizzleMetadata } from "../orm/drizzle";
 import prisma, { prismaMetadata } from "../orm/prisma";
 import shared, { sharedMetadata } from "../shared";
+import nativewind, { nativewindMetadata } from "../style/nativewind";
 import tailwind, { tailwindMetadata } from "../style/tailwind";
 import { readTemplate } from "../template";
 import commitlint, { commitlintMetadata } from "../tooling/commitlint";
@@ -146,6 +147,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		githubCi,
 		shared,
 		ui,
+		nativewind,
 		tailwind,
 		trpc,
 		drizzle,
@@ -220,6 +222,11 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(githubCi, githubCiMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(shared, sharedMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(ui, uiMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(
+		nativewind,
+		nativewindMetadata,
+		firstPartyRegistry.adapters,
+	),
 	addonCatalogEntry(tailwind, tailwindMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(trpc, trpcMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(drizzle, drizzleMetadata, firstPartyRegistry.adapters),

@@ -221,7 +221,7 @@ describe("assembleSchema", () => {
 		);
 	});
 
-	it("rejects unavailable native style frameworks", () => {
+	it("accepts NativeWind with Expo", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
@@ -230,9 +230,19 @@ describe("assembleSchema", () => {
 			nativeStyleFramework: "nativewind",
 		});
 
-		expect(decodeMessages(result)).toContain(
-			"We don't support NativeWind yet.",
-		);
+		expect(decodeMessages(result)).toEqual([]);
+	});
+
+	it("rejects unavailable native style frameworks", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			platforms: ["mobile"],
+			mobile: "expo",
+			nativeStyleFramework: "tamagui",
+		});
+
+		expect(decodeMessages(result)).toContain("We don't support Tamagui yet.");
 	});
 
 	it("lists unsupported platforms in one sentence", () => {

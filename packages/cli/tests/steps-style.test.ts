@@ -12,35 +12,12 @@ const promptMocks = vi.hoisted(() => ({
 	select: vi.fn(),
 }));
 
-const choiceMocks = vi.hoisted(() => ({
-	nativeStyleAvailable: vi.fn(),
-}));
-
 vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
 	isCancel: promptMocks.isCancel,
 	log: { warn: promptMocks.logWarn },
 	select: promptMocks.select,
 }));
-
-// Every native style framework is gated until M3 ships NativeWind, so the
-// "selection is available" branch is only reachable behind this mock.
-vi.mock("@ryuujs/generators", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/generators")>();
-
-	return {
-		...original,
-		nativeStyleFrameworks: {
-			...original.nativeStyleFrameworks,
-			available: choiceMocks.nativeStyleAvailable,
-		},
-	};
-});
-
-const generators =
-	await vi.importActual<typeof import("@ryuujs/generators")>(
-		"@ryuujs/generators",
-	);
 
 function rawConfig(entries: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
@@ -56,10 +33,6 @@ beforeEach(() => {
 	promptMocks.isCancel.mockReturnValue(false);
 	promptMocks.logWarn.mockReset();
 	promptMocks.select.mockReset();
-	choiceMocks.nativeStyleAvailable.mockReset();
-	choiceMocks.nativeStyleAvailable.mockImplementation(
-		generators.nativeStyleFrameworks.available,
-	);
 });
 
 describe("style framework step", () => {
@@ -145,6 +118,15 @@ describe("style framework step", () => {
 });
 
 describe("native style framework step", () => {
+	it("keeps NativeWind when non-interactive", async () => {
+		await expect(
+			nativeStyleFrameworkStep.execute(
+				{ nativeStyleFramework: "nativewind" },
+				false,
+			),
+		).resolves.toBe("nativewind");
+	});
+
 	it("only runs when a mobile framework is selected", () => {
 		expect(nativeStyleFrameworkStep.shouldRun({})).toBe(false);
 		expect(nativeStyleFrameworkStep.shouldRun({ mobile: "expo" })).toBe(true);
@@ -153,7 +135,7 @@ describe("native style framework step", () => {
 	it("skips unavailable native style frameworks when non-interactive", async () => {
 		await expect(
 			nativeStyleFrameworkStep.execute(
-				{ nativeStyleFramework: "nativewind" },
+				{ nativeStyleFramework: "tamagui" },
 				false,
 			),
 		).resolves.toBe(SKIP);
@@ -190,7 +172,7 @@ describe("native style framework step", () => {
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which styling framework do you want to use for Expo?",
 			options: [
-				{ label: "NativeWind", value: "nativewind", hint: "coming soon" },
+				{ label: "NativeWind", value: "nativewind" },
 				{ label: "Tamagui", value: "tamagui", hint: "coming soon" },
 				{ label: "Unistyles", value: "unistyles", hint: "coming soon" },
 				{ label: "None", value: "none" },
@@ -200,7 +182,7 @@ describe("native style framework step", () => {
 
 	it("warns and re-prompts when an unavailable native style is selected", async () => {
 		promptMocks.select
-			.mockResolvedValueOnce("nativewind")
+			.mockResolvedValueOnce("tamagui")
 			.mockResolvedValueOnce("none");
 
 		await expect(
@@ -208,7 +190,7 @@ describe("native style framework step", () => {
 		).resolves.toBe(SKIP);
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
-			"We don't support NativeWind yet.",
+			"We don't support Tamagui yet.",
 		);
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
@@ -221,8 +203,7 @@ describe("native style framework step", () => {
 		).resolves.toBe(SKIP);
 	});
 
-	it("returns the selection once a native style framework ships", async () => {
-		choiceMocks.nativeStyleAvailable.mockReturnValue(true);
+	it("returns the NativeWind selection", async () => {
 		promptMocks.select.mockResolvedValue("nativewind");
 
 		await expect(

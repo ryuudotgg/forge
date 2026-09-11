@@ -67,7 +67,7 @@ describe("printHelp", () => {
 				"        --auth <value>                 Better Auth · Auth.js (soon) · WorkOS (soon) · Clerk (soon)",
 				"        --database-provider <value>    PlanetScale · Neon · Nile · Supabase · Prisma Postgres · Turso",
 				"        --style <value>                Tailwind CSS · UnoCSS (soon)",
-				"        --native-style <value>         NativeWind (soon) · Tamagui (soon) · Unistyles (soon)",
+				"        --native-style <value>         NativeWind · Tamagui (soon) · Unistyles (soon)",
 				"",
 				"  forge list/info options",
 				"        --kind <value>                 Filter the catalog by addon, framework, or template.",
@@ -111,7 +111,7 @@ describe("printHelp", () => {
 			"Do not initialize a Git repository.",
 			"pnpm · npm · Yarn · Bun",
 			"PlanetScale · Neon · Nile · Supabase · Prisma Postgres · Turso",
-			"NativeWind (soon) · Tamagui (soon) · Unistyles (soon)",
+			"NativeWind · Tamagui (soon) · Unistyles (soon)",
 		];
 
 		const columns = descriptions.map((description) => {

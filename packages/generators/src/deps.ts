@@ -60,6 +60,10 @@ export const deps = {
 	typesReact: dep("typesReact"),
 	typesReactDom: dep("typesReactDom"),
 
+	nativewind: dep("nativewind"),
+	reactNativeCss: dep("reactNativeCss"),
+	reactNativeReanimated: dep("reactNativeReanimated"),
+	reactNativeWorklets: dep("reactNativeWorklets"),
 	tailwindcss: dep("tailwindcss"),
 	tailwindVite: dep("tailwindVite"),
 	tailwindPostcss: dep("tailwindPostcss"),

@@ -21,6 +21,7 @@ import {
 	expoFramework,
 	gitignore,
 	loadAddonDefinition,
+	nativewind,
 	shared,
 	tailwind,
 	trpc,
@@ -1044,6 +1045,27 @@ describe("vscode addon", () => {
 			);
 			expect(() => parseJson(file.content), path).not.toThrow();
 		}
+	});
+});
+
+describe("nativewind addon", () => {
+	it("adds the capability to the Expo template module", () => {
+		expect(
+			contributionsOf(nativewind, {
+				mobile: "expo",
+				nativeStyleFramework: "nativewind",
+			}),
+		).toContainEqual(
+			moduleCapabilities(templateModuleTarget("expo/base", 1), ["nativewind"]),
+		);
+	});
+
+	it("requires both Expo and NativeWind", () => {
+		expect(nativewind.when({ nativeStyleFramework: "nativewind" })).toBe(false);
+		expect(nativewind.when({ mobile: "expo" })).toBe(false);
+		expect(
+			nativewind.when({ mobile: "expo", nativeStyleFramework: "nativewind" }),
+		).toBe(true);
 	});
 });
 

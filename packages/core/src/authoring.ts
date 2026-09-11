@@ -43,6 +43,7 @@ export type GeneratorCategory =
 	| "database"
 	| "auth"
 	| "style"
+	| "nativeStyle"
 	| "ui"
 	| "runtime"
 	| "packageManager"

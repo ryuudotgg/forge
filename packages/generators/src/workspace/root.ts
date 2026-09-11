@@ -19,6 +19,7 @@ import {
 	frameworksInPlay,
 } from "../registry/frameworks-in-play";
 import type { FirstPartyAddonMetadata } from "../registry/types";
+import { packageOverrides } from "./overrides";
 
 const root = defineAddon<ForgeConfig, "root">({
 	id: "root",
@@ -109,6 +110,13 @@ function buildContributions(
 
 	if (packageManagerCommandName !== "pnpm")
 		packageJson.workspaces = ["apps/*", "packages/*", "tooling/*"];
+
+	const overrides = packageOverrides(config);
+
+	if (packageManagerCommandName !== "pnpm" && Object.keys(overrides).length > 0)
+		packageJson[
+			packageManagerCommandName === "yarn" ? "resolutions" : "overrides"
+		] = overrides;
 
 	const tsconfigDevDep = {
 		name: `@${slug}/tsconfig`,

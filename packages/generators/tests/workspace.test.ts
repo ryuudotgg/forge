@@ -11,6 +11,7 @@ import {
 } from "@ryuujs/core";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
+import { expoFramework } from "../src/frameworks/expo";
 import { nextjsFramework } from "../src/frameworks/nextjs";
 import {
 	bun,
@@ -143,6 +144,105 @@ function leafFile(
 
 	throw new Error(`Missing Leaf File: ${path}`);
 }
+
+describe("package overrides", () => {
+	const managers: ReadonlyArray<NonNullable<ForgeConfig["packageManager"]>> = [
+		"pnpm",
+		"npm",
+		"Bun",
+		"Yarn",
+	];
+
+	it.each(managers)(
+		"pins lightningcss only for NativeWind with %s",
+		async (packageManager) => {
+			for (const selected of [false, true]) {
+				const config: ForgeConfig = {
+					packageManager,
+					mobile: "expo",
+					nativeStyleFramework: selected ? "nativewind" : undefined,
+				};
+				const packageJson = jsonSurface(
+					await Effect.runPromise(
+						rootEffect(config, [nextjsFramework, expoFramework], {
+							...commandVersions,
+							bun: "1.3.0",
+							yarn: "4.0.0",
+						}).pipe(Effect.provide(probeLayer)),
+					),
+					"rootPackageJson",
+				);
+				const key = packageManager === "Yarn" ? "resolutions" : "overrides";
+
+				if (selected && packageManager !== "pnpm")
+					expect(packageJson[key]).toEqual({ lightningcss: "1.30.1" });
+				else expect(packageJson).not.toHaveProperty(key);
+
+				expect(packageJson).not.toHaveProperty(
+					key === "overrides" ? "resolutions" : "overrides",
+				);
+			}
+		},
+	);
+
+	it("pins effect for drizzle on npm only", async () => {
+		const rootPackageJson = async (config: ForgeConfig) =>
+			jsonSurface(
+				await Effect.runPromise(
+					rootEffect(config, [nextjsFramework], {
+						...commandVersions,
+						bun: "1.3.0",
+						yarn: "4.0.0",
+					}).pipe(Effect.provide(probeLayer)),
+				),
+				"rootPackageJson",
+			);
+
+		expect(
+			await rootPackageJson({ packageManager: "npm", orm: "drizzle" }),
+		).toHaveProperty("overrides", { effect: "4.0.0-rc.113" });
+
+		expect(
+			await rootPackageJson({ packageManager: "npm", orm: "prisma" }),
+		).not.toHaveProperty("overrides");
+
+		expect(
+			await rootPackageJson({ packageManager: "Bun", orm: "drizzle" }),
+		).not.toHaveProperty("overrides");
+
+		expect(
+			await rootPackageJson({ packageManager: "Yarn", orm: "drizzle" }),
+		).not.toHaveProperty("resolutions");
+
+		expect(
+			leafFile(
+				syncContributions(pnpm, { orm: "drizzle" }),
+				"pnpm-workspace.yaml",
+			),
+		).not.toContain("overrides:");
+	});
+
+	it("appends the pnpm override without changing the default bytes", () => {
+		const base = leafFile(syncContributions(pnpm, {}), "pnpm-workspace.yaml");
+		const selected = leafFile(
+			syncContributions(pnpm, {
+				mobile: "expo",
+				nativeStyleFramework: "nativewind",
+			}),
+			"pnpm-workspace.yaml",
+		);
+
+		expect(base).not.toContain("overrides:");
+		expect(base.endsWith("  sharp: true\n")).toBe(true);
+		expect(selected).toBe(`${base}\noverrides:\n  lightningcss: 1.30.1\n`);
+		expect(
+			leafFile(
+				syncContributions(pnpm, { nativeStyleFramework: "nativewind" }),
+				"pnpm-workspace.yaml",
+			),
+		).toBe(base);
+	});
+});
 
 describe("root workspace", () => {
 	it("probes create plans but reuses persisted versions for installed plans", async () => {
