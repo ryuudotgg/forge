@@ -28,6 +28,8 @@ import {
 	backends,
 	type ForgeConfig,
 	linters,
+	mobileFrameworks,
+	nativeStyleFrameworks,
 	styleFrameworks,
 	webFrameworks,
 } from "../config";
@@ -247,6 +249,16 @@ export const firstPartyCatalog = [
 		.map((id) =>
 			announcedCatalogEntry("framework", id, backends.label(id), "backend"),
 		),
+	...mobileFrameworks.ids
+		.filter((id) => !mobileFrameworks.available(id))
+		.map((id) =>
+			announcedCatalogEntry(
+				"framework",
+				id,
+				mobileFrameworks.label(id),
+				"mobile",
+			),
+		),
 	...authenticationProviders.ids
 		.filter((id) => !authenticationProviders.available(id))
 		.map((id) =>
@@ -261,6 +273,16 @@ export const firstPartyCatalog = [
 		.filter((id) => !styleFrameworks.available(id))
 		.map((id) =>
 			announcedCatalogEntry("addon", id, styleFrameworks.label(id), "style"),
+		),
+	...nativeStyleFrameworks.ids
+		.filter((id) => !nativeStyleFrameworks.available(id))
+		.map((id) =>
+			announcedCatalogEntry(
+				"addon",
+				id,
+				nativeStyleFrameworks.label(id),
+				"nativeStyle",
+			),
 		),
 	...linters.ids
 		.filter((id) => !linters.available(id))

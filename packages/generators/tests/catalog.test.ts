@@ -10,6 +10,8 @@ import {
 	listVisibleAddons,
 	loadAddonDefinition,
 	loadDefinitionRegistry,
+	mobileFrameworks,
+	nativeStyleFrameworks,
 	RegistryLoadError,
 	styleFrameworks,
 	webFrameworks,
@@ -64,6 +66,7 @@ describe("catalog", () => {
 			"convex",
 			"elysia",
 			"uwebsockets",
+			"react-native",
 		]);
 		expect(templates.map((entry) => entry.id)).toEqual([
 			"expo/base",
@@ -181,6 +184,13 @@ describe("catalog", () => {
 				kind: "framework",
 			},
 			{
+				category: "mobile",
+				expectedIds: mobileFrameworks.ids.filter(
+					(id) => !mobileFrameworks.available(id),
+				),
+				kind: "framework",
+			},
+			{
 				category: "auth",
 				expectedIds: authenticationProviders.ids.filter(
 					(id) => !authenticationProviders.available(id),
@@ -191,6 +201,13 @@ describe("catalog", () => {
 				category: "style",
 				expectedIds: styleFrameworks.ids.filter(
 					(id) => !styleFrameworks.available(id),
+				),
+				kind: "addon",
+			},
+			{
+				category: "nativeStyle",
+				expectedIds: nativeStyleFrameworks.ids.filter(
+					(id) => !nativeStyleFrameworks.available(id),
 				),
 				kind: "addon",
 			},
