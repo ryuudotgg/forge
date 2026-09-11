@@ -185,6 +185,43 @@ describe("package overrides", () => {
 		},
 	);
 
+	it("pins effect for drizzle on npm only", async () => {
+		const rootPackageJson = async (config: ForgeConfig) =>
+			jsonSurface(
+				await Effect.runPromise(
+					rootEffect(config, [nextjsFramework], {
+						...commandVersions,
+						bun: "1.3.0",
+						yarn: "4.0.0",
+					}).pipe(Effect.provide(probeLayer)),
+				),
+				"rootPackageJson",
+			);
+
+		expect(
+			await rootPackageJson({ packageManager: "npm", orm: "drizzle" }),
+		).toHaveProperty("overrides", { effect: "4.0.0-rc.113" });
+
+		expect(
+			await rootPackageJson({ packageManager: "npm", orm: "prisma" }),
+		).not.toHaveProperty("overrides");
+
+		expect(
+			await rootPackageJson({ packageManager: "Bun", orm: "drizzle" }),
+		).not.toHaveProperty("overrides");
+
+		expect(
+			await rootPackageJson({ packageManager: "Yarn", orm: "drizzle" }),
+		).not.toHaveProperty("resolutions");
+
+		expect(
+			leafFile(
+				syncContributions(pnpm, { orm: "drizzle" }),
+				"pnpm-workspace.yaml",
+			),
+		).not.toContain("overrides:");
+	});
+
 	it("appends the pnpm override without changing the default bytes", () => {
 		const base = leafFile(syncContributions(pnpm, {}), "pnpm-workspace.yaml");
 		const selected = leafFile(
