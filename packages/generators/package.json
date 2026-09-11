@@ -1,6 +1,6 @@
 {
 	"name": "@ryuujs/generators",
-	"version": "0.1.0",
+	"version": "0.0.0",
 	"description": "Built-in generators for Forge.",
 	"keywords": [
 		"forge"
