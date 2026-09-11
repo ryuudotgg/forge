@@ -184,7 +184,7 @@ export const nativeStyleFrameworks = defineChoices(
 		tamagui: "Tamagui",
 		unistyles: "Unistyles",
 	} as const,
-	{ unavailable: ["nativewind", "tamagui", "unistyles"] },
+	{ unavailable: ["tamagui", "unistyles"] },
 );
 
 export type NativeStyleFramework =
@@ -237,6 +237,7 @@ export const addonConfigBindings: Readonly<
 	biome: { linter: "biome" },
 	drizzle: { orm: "drizzle" },
 	prisma: { orm: "prisma" },
+	nativewind: { nativeStyleFramework: "nativewind" },
 	tailwind: { style: "tailwind" },
 	trpc: { rpc: "trpc" },
 };

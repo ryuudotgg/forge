@@ -1160,7 +1160,7 @@ describe("addon config bindings", () => {
 		for (const [addonId, binding] of Object.entries(addonConfigBindings)) {
 			const { addon } = loadAddonDefinition(addonId);
 
-			expect(addon.when({ ...binding }), addonId).toBe(true);
+			expect(addon.when({ mobile: "expo", ...binding }), addonId).toBe(true);
 			expect(addon.when({}), addonId).toBe(false);
 		}
 	});

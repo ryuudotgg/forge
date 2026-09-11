@@ -112,9 +112,91 @@ describe("Expo mobile framework", () => {
 			),
 		);
 		expect(writeContent(plan, "apps/mobile/src/app/_layout.tsx")).toBe(
-			readTemplate("frameworks/expo/src/app/_layout.tsx"),
+			readTemplate("frameworks/expo/src/app/_layout.tsx").replace(
+				"// __GLOBAL_CSS_IMPORT__\n",
+				"",
+			),
 		);
 	});
+
+	it.each([false, true])(
+		"renders NativeWind selection=%s",
+		async (selected) => {
+			const plan = await plannedProject(
+				mobileConfig({
+					nativeStyleFramework: selected ? "nativewind" : undefined,
+				}),
+			);
+
+			for (const file of [
+				"global.css",
+				"metro.config.js",
+				"postcss.config.mjs",
+				"nativewind-env.d.ts",
+			]) {
+				const path = `apps/mobile/${file}`;
+
+				if (selected)
+					expect(writeContent(plan, path)).toBe(
+						readTemplate(`style/nativewind/${file}`),
+					);
+				else
+					expect(plan.writes.some((write) => write.path === path)).toBe(false);
+			}
+
+			expect(writeContent(plan, "apps/mobile/src/app/_layout.tsx")).toBe(
+				selected
+					? 'import { Stack } from "expo-router";\n\nimport "../../global.css";\n\nexport default function RootLayout() {\n  return <Stack />;\n}\n'
+					: 'import { Stack } from "expo-router";\n\nexport default function RootLayout() {\n  return <Stack />;\n}\n',
+			);
+			expect(writeContent(plan, "apps/mobile/src/app/index.tsx")).toBe(
+				readTemplate(
+					selected
+						? "frameworks/expo/src/app/index.nativewind.tsx"
+						: "frameworks/expo/src/app/index.tsx",
+				),
+			);
+
+			if (selected) {
+				const packageJson: unknown = JSON.parse(
+					writeContent(plan, "apps/mobile/package.json"),
+				);
+				const tsconfig: unknown = JSON.parse(
+					writeContent(plan, "apps/mobile/tsconfig.json"),
+				);
+
+				expect(packageJson).toMatchObject({
+					dependencies: {
+						nativewind: expect.any(String),
+						"react-native-css": expect.any(String),
+						"react-native-reanimated": expect.any(String),
+						"react-native-worklets": expect.any(String),
+					},
+					devDependencies: {
+						tailwindcss: expect.any(String),
+						"@tailwindcss/postcss": expect.any(String),
+					},
+				});
+				expect(tsconfig).toHaveProperty("include", [
+					"**/*.ts",
+					"**/*.tsx",
+					".expo/types/**/*.ts",
+					"expo-env.d.ts",
+					"nativewind-env.d.ts",
+				]);
+				expect(writeContent(plan, "pnpm-workspace.yaml")).toContain(
+					"overrides:\n  lightningcss: 1.30.1\n",
+				);
+			}
+
+			for (const write of plan.writes.filter((entry) =>
+				entry.path.startsWith("apps/mobile/"),
+			)) {
+				expect(write.content, write.path).not.toMatch(markerPattern);
+				expect(write.content, write.path).not.toContain("\t");
+			}
+		},
+	);
 
 	it("uses the self-hosted web origin for the Expo environment", async () => {
 		const plan = await plannedProject(

@@ -69,8 +69,8 @@ describe("generator config choices", () => {
 		expect(platforms.available("desktop")).toBe(false);
 		expect(mobileFrameworks.availableIds).toEqual(["expo"]);
 		expect(mobileFrameworks.available("react-native")).toBe(false);
-		expect(nativeStyleFrameworks.availableIds).toEqual([]);
-		expect(nativeStyleFrameworks.available("nativewind")).toBe(false);
+		expect(nativeStyleFrameworks.availableIds).toEqual(["nativewind"]);
+		expect(nativeStyleFrameworks.available("nativewind")).toBe(true);
 		expect(nativeStyleFrameworks.available("tamagui")).toBe(false);
 		expect(nativeStyleFrameworks.available("unistyles")).toBe(false);
 		expect(webFrameworks.availableIds).toEqual([
@@ -104,6 +104,10 @@ describe("install config reconciliation", () => {
 		expect(configWithInstall({ orm: "prisma" }, "better-auth")).toEqual({
 			authentication: "better-auth",
 			orm: "prisma",
+		});
+
+		expect(configWithInstall({}, "nativewind")).toEqual({
+			nativeStyleFramework: "nativewind",
 		});
 
 		expect(configWithInstall({}, "trpc")).toEqual({ rpc: "trpc" });

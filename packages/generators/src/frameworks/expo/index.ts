@@ -94,6 +94,7 @@ function buildContributions(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";
 	const pm = resolvePackageManager(config);
 	const origin = appOrigin(config);
+	const useNativewind = config.nativeStyleFramework === "nativewind";
 
 	return [
 		ensureAppModule("mobile", "apps/mobile", {
@@ -169,12 +170,20 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("mobile"),
 			"src/app/_layout.tsx",
-			readTemplate("frameworks/expo/src/app/_layout.tsx"),
+			interpolate(readTemplate("frameworks/expo/src/app/_layout.tsx"), {
+				"// __GLOBAL_CSS_IMPORT__\n": useNativewind
+					? '\nimport "../../global.css";\n'
+					: "",
+			}),
 		),
 		leafTextFile(
 			ensuredModuleTarget("mobile"),
 			"src/app/index.tsx",
-			readTemplate("frameworks/expo/src/app/index.tsx"),
+			readTemplate(
+				useNativewind
+					? "frameworks/expo/src/app/index.nativewind.tsx"
+					: "frameworks/expo/src/app/index.tsx",
+			),
 		),
 		leafTextFile(
 			ensuredModuleTarget("mobile"),

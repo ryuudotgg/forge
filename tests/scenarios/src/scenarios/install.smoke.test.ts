@@ -405,6 +405,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				backend: "hono",
 				database: "sqlite",
 				mobile: "expo",
+				nativeStyleFramework: "nativewind",
 				orm: "drizzle",
 				packageManager: "pnpm",
 				platforms: ["web", "mobile"],
@@ -416,6 +417,9 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 			expect(
 				await pathExists(join(workspace.projectRoot, "apps/mobile/forge.json")),
+			).toBe(true);
+			expect(
+				await pathExists(join(workspace.projectRoot, "apps/mobile/global.css")),
 			).toBe(true);
 		});
 	}, 600_000);

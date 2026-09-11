@@ -160,6 +160,26 @@ export const versions = {
 		group: "Tooling",
 	},
 
+	nativewind: {
+		name: "nativewind",
+		version: "5.0.0-preview.4",
+		group: "Styling",
+	},
+	reactNativeCss: {
+		name: "react-native-css",
+		version: "^3.0.7",
+		group: "Styling",
+	},
+	reactNativeReanimated: {
+		name: "react-native-reanimated",
+		version: "~4.6.0",
+		group: "Framework",
+	},
+	reactNativeWorklets: {
+		name: "react-native-worklets",
+		version: "~0.12.2",
+		group: "Framework",
+	},
 	tailwindcss: { name: "tailwindcss", version: "^4.2.2", group: "Styling" },
 	tailwindVite: {
 		name: "@tailwindcss/vite",

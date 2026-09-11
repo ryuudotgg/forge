@@ -139,6 +139,7 @@ export type {
 	RegistryUnit,
 } from "./registry/types";
 export { default as shared } from "./shared";
+export { default as nativewind } from "./style/nativewind";
 export { default as tailwind } from "./style/tailwind";
 export { default as gitignore } from "./tooling/gitignore";
 export { default as typescript } from "./tooling/typescript";
