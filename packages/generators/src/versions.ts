@@ -97,7 +97,7 @@ export const versions = {
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
 	reactNative: {
 		name: "react-native",
-		version: "0.87.1",
+		version: "0.86.2",
 		group: "Framework",
 	},
 	reactNativeSafeAreaContext: {
@@ -172,12 +172,12 @@ export const versions = {
 	},
 	reactNativeReanimated: {
 		name: "react-native-reanimated",
-		version: "~4.6.0",
+		version: "~4.5.1",
 		group: "Framework",
 	},
 	reactNativeWorklets: {
 		name: "react-native-worklets",
-		version: "~0.12.2",
+		version: "~0.10.1",
 		group: "Framework",
 	},
 	tailwindcss: { name: "tailwindcss", version: "^4.2.2", group: "Styling" },

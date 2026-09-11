@@ -1,13 +1,15 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	createProject,
 	expectInstallAndTypecheck,
 	expectInstallBuildAndTypecheck,
+	forgeEnvironment,
 	pathExists,
 	runCommand,
+	type ScenarioProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
 
@@ -191,6 +193,55 @@ async function expectDrainingWorker(projectRoot: string) {
 	}
 
 	expect(await exited, output).toBe(0);
+}
+
+async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
+	const mobileRoot = join(workspace.projectRoot, "apps/mobile");
+	const outputDir = join(mobileRoot, "dist-export");
+
+	const exported = await runCommand(
+		"pnpm",
+		[
+			"exec",
+			"expo",
+			"export",
+			"--platform",
+			"ios",
+			"--no-bytecode",
+			"--output-dir",
+			outputDir,
+		],
+		{ cwd: mobileRoot, env: forgeEnvironment(workspace.workspaceRoot) },
+	);
+
+	expect(
+		exported.exitCode,
+		`expo export failed with code ${exported.exitCode}\n${exported.stdout}\n${exported.stderr}`,
+	).toBe(0);
+
+	const bundleRoot = join(outputDir, "_expo", "static", "js", "ios");
+	const bundleName = (await readdir(bundleRoot)).find((entry) =>
+		entry.endsWith(".js"),
+	);
+
+	if (bundleName === undefined)
+		throw new Error(`Missing Exported Bundle: ${bundleRoot}`);
+
+	const bundle = await readFile(join(bundleRoot, bundleName), "utf-8");
+	const stylesheet = /StyleCollection\.inject\([\s\S]{0,4000}/.exec(
+		bundle,
+	)?.[0];
+
+	if (stylesheet === undefined)
+		throw new Error(`Missing Compiled Stylesheet: ${bundleName}`);
+
+	for (const utility of [
+		"flex-1",
+		"items-center",
+		"justify-center",
+		"text-2xl",
+	])
+		expect(stylesheet, utility).toContain(utility);
 }
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
@@ -418,9 +469,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			expect(
 				await pathExists(join(workspace.projectRoot, "apps/mobile/forge.json")),
 			).toBe(true);
-			expect(
-				await pathExists(join(workspace.projectRoot, "apps/mobile/global.css")),
-			).toBe(true);
+			await expectBundledNativeWindStyles(workspace);
 		});
 	}, 600_000);
 
