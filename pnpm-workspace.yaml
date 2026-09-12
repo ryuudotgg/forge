@@ -51,7 +51,7 @@ catalogs:
   effect:
     effect: 4.0.0-rc.113
     "@effect/platform-node": 4.0.0-rc.114
-    "@effect/tsgo": ^0.40.0
+    "@effect/tsgo": ^0.45.0
     "@effect/vitest": 4.0.0-rc.114
 
 nodeLinker: hoisted
