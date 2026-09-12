@@ -71,7 +71,7 @@ export const versions = {
 	},
 	isbot: { name: "isbot", version: "5.2.2", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
-	hono: { name: "hono", version: "4.13.5", group: "Framework" },
+	hono: { name: "hono", version: "4.13.7", group: "Framework" },
 	honoNodeServer: {
 		name: "@hono/node-server",
 		version: "2.1.1",
@@ -82,7 +82,7 @@ export const versions = {
 		version: "0.4.2",
 		group: "Framework",
 	},
-	fastify: { name: "fastify", version: "5.12.1", group: "Framework" },
+	fastify: { name: "fastify", version: "5.12.4", group: "Framework" },
 	fastifyCors: {
 		name: "@fastify/cors",
 		version: "11.3.0",
@@ -97,7 +97,7 @@ export const versions = {
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
 	reactNative: {
 		name: "react-native",
-		version: "0.86.2",
+		version: "0.87.1",
 		group: "Framework",
 	},
 	reactNativeSafeAreaContext: {
@@ -134,26 +134,26 @@ export const versions = {
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
-		version: "1.170.32",
+		version: "1.170.35",
 		group: "Framework",
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.49",
+		version: "1.168.52",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.33",
+		version: "1.167.35",
 		group: "Tooling",
 	},
 	tanstackRouterPlugin: {
 		name: "@tanstack/router-plugin",
-		version: "1.168.35",
+		version: "1.168.37",
 		group: "Tooling",
 	},
 
-	vite: { name: "vite", version: "8.2.2", group: "Tooling" },
+	vite: { name: "vite", version: "8.3.0", group: "Tooling" },
 	viteReact: {
 		name: "@vitejs/plugin-react",
 		version: "6.1.1",
@@ -172,12 +172,12 @@ export const versions = {
 	},
 	reactNativeReanimated: {
 		name: "react-native-reanimated",
-		version: "~4.5.1",
+		version: "~4.6.0",
 		group: "Framework",
 	},
 	reactNativeWorklets: {
 		name: "react-native-worklets",
-		version: "~0.10.1",
+		version: "~0.12.0",
 		group: "Framework",
 	},
 	tailwindcss: { name: "tailwindcss", version: "^4.2.2", group: "Styling" },
