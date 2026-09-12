@@ -18,7 +18,7 @@ catalogs:
     lefthook: ^2.1.12
 
     # TypeScript & Compilation
-    "@types/node": 24.13.3
+    "@types/node": 24.13.4
     typescript: 7.0.2
     vitest: 5.0.0
     "@vitest/coverage-v8": 5.0.0
