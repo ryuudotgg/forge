@@ -29,15 +29,21 @@ const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
 function buildAdoptionPlanForTest(
 	...parameters: Parameters<typeof buildAdoptionPlan>
 ) {
-	const versions: Readonly<Record<string, string>> = {
-		node: "22.11.0",
-		pnpm: "10.12.1",
-	};
+	const versions = new Map([
+		["node", "22.11.0"],
+		["pnpm", "10.12.1"],
+	]);
 
 	return buildAdoptionPlan(...parameters).pipe(
 		Effect.provideService(CommandProbe, {
 			readVersion: (command: string) =>
-				Effect.succeed(versions[command] ?? "1.0.0"),
+				Effect.sync(() => {
+					const version = versions.get(command);
+					if (version === undefined)
+						throw new Error(`Unexpected Command Probe: ${command}`);
+
+					return version;
+				}),
 		}),
 		Effect.provide(cliLayer),
 	);
@@ -91,6 +97,26 @@ async function exists(path: string) {
 }
 
 describe("init command", () => {
+	it("rejects unexpected command probes", async () => {
+		await withTempDir("init-unexpected-probe", async (directory) => {
+			await fixture(directory);
+
+			await expect(
+				Effect.runPromise(
+					buildAdoptionPlanForTest(
+						directory,
+						{ ...config, packageManager: "npm" },
+						[
+							{ kind: "web-app", root: "apps/web" },
+							{ kind: "db", root: "packages/db" },
+						],
+						[],
+					),
+				),
+			).rejects.toThrow("Unexpected Command Probe: npm");
+		});
+	});
+
 	it("guides the next adoption step and conflict resolution", () => {
 		expect(adoptionOutro(false)).toBe(
 			"This project is now managed by Forge. Run forge update to reconcile it.",
