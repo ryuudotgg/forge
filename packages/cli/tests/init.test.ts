@@ -2,7 +2,7 @@ import { access, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { log } from "@clack/prompts";
 import { NodeServices } from "@effect/platform-node";
-import { Apply, CoreLive, State } from "@ryuujs/core";
+import { Apply, CommandProbe, CoreLive, State } from "@ryuujs/core";
 import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -29,7 +29,18 @@ const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
 function buildAdoptionPlanForTest(
 	...parameters: Parameters<typeof buildAdoptionPlan>
 ) {
-	return buildAdoptionPlan(...parameters).pipe(Effect.provide(cliLayer));
+	const versions: Readonly<Record<string, string>> = {
+		node: "22.11.0",
+		pnpm: "10.12.1",
+	};
+
+	return buildAdoptionPlan(...parameters).pipe(
+		Effect.provideService(CommandProbe, {
+			readVersion: (command: string) =>
+				Effect.succeed(versions[command] ?? "1.0.0"),
+		}),
+		Effect.provide(cliLayer),
+	);
 }
 
 const config: ForgeConfig = {
@@ -434,8 +445,8 @@ describe("init command", () => {
 		});
 	});
 
-	it("reports invalid mappings and capture hashing failures", async () => {
-		await withTempDir("init-plan-failures", async (directory) => {
+	it("reports invalid mappings", async () => {
+		await withTempDir("init-invalid-mapping", async (directory) => {
 			await fixture(directory);
 
 			const invalidMapping = await Effect.runPromise(
@@ -453,6 +464,12 @@ describe("init command", () => {
 			expect(invalidMapping.message).toBe(
 				"Adoption Mapping Invalid: apps/web cannot be mapped as auth with this configuration.",
 			);
+		});
+	});
+
+	it("reports capture hashing failures", async () => {
+		await withTempDir("init-hashing-failure", async (directory) => {
+			await fixture(directory);
 
 			const crypto = globalThis.crypto;
 			vi.stubGlobal("crypto", {
