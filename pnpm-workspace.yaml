@@ -9,7 +9,7 @@ overrides:
 
 catalogs:
   scaffold:
-    expo: 57.0.22
+    expo: 57.0.23
 
   # ===== BUILD TOOLS =====
   build:
