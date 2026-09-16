@@ -22,6 +22,7 @@ import { standaloneApiOrigin } from "../../origins";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
 
 const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	id: "drizzle",
@@ -100,7 +101,7 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			}),
 			surfaceDependencies(ensuredModuleTarget("db"), "packageJson", [
 				...provider.drizzle.runtimeDeps.map((key) => ({
-					...deps[key],
+					...catalogRef(key, config),
 					type: "dependencies" as const,
 				})),
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
@@ -113,7 +114,7 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 					type: "devDependencies",
 				},
 				...provider.drizzle.devDeps.map((key) => ({
-					...deps[key],
+					...catalogRef(key, config),
 					type: "devDependencies" as const,
 				})),
 				{ ...deps.typesNode, type: "devDependencies" },

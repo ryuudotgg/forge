@@ -35,8 +35,6 @@ export const deps = {
 
 	next: dep("next"),
 
-	react: dep("react"),
-	reactDom: dep("reactDom"),
 	reactNative: dep("reactNative"),
 	reactNativeSafeAreaContext: dep("reactNativeSafeAreaContext"),
 	reactNativeScreens: dep("reactNativeScreens"),

@@ -21,6 +21,7 @@ import { standaloneApiOrigin } from "../../origins";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
 
 const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 	id: "prisma",
@@ -100,7 +101,7 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			}),
 			surfaceDependencies(ensuredModuleTarget("db"), "packageJson", [
 				...provider.prisma.runtimeDeps.map((key) => ({
-					...deps[key],
+					...catalogRef(key, config),
 					type: "dependencies" as const,
 				})),
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
@@ -112,7 +113,7 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 					type: "devDependencies",
 				},
 				...provider.prisma.devDeps.map((key) => ({
-					...deps[key],
+					...catalogRef(key, config),
 					type: "devDependencies" as const,
 				})),
 				{ ...deps.typesNode, type: "devDependencies" },

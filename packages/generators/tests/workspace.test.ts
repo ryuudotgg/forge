@@ -222,8 +222,12 @@ describe("package overrides", () => {
 		).not.toContain("overrides:");
 	});
 
-	it("appends the pnpm override without changing the default bytes", () => {
-		const base = leafFile(syncContributions(pnpm, {}), "pnpm-workspace.yaml");
+	it("appends the pnpm override without changing the Expo catalog", () => {
+		const base = leafFile(
+			syncContributions(pnpm, { mobile: "expo" }),
+			"pnpm-workspace.yaml",
+		);
+
 		const selected = leafFile(
 			syncContributions(pnpm, {
 				mobile: "expo",
@@ -240,7 +244,7 @@ describe("package overrides", () => {
 				syncContributions(pnpm, { nativeStyleFramework: "nativewind" }),
 				"pnpm-workspace.yaml",
 			),
-		).toBe(base);
+		).toBe(leafFile(syncContributions(pnpm, {}), "pnpm-workspace.yaml"));
 	});
 });
 

@@ -59,6 +59,7 @@
 		"@ryuujs/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"@vitest/coverage-v8": "catalog:dev",
+		"expo": "catalog:scaffold",
 		"tsdown": "catalog:build",
 		"typescript": "catalog:dev",
 		"vitest": "catalog:dev"

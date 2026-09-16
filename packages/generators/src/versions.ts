@@ -1,3 +1,5 @@
+import expoNativeModules from "expo/bundledNativeModules.json";
+import expoPackage from "expo/package.json";
 import type { ForgeConfig } from "./config";
 
 export type CatalogGroup =
@@ -48,25 +50,25 @@ export const versions = {
 		version: "^1.7.0",
 		group: "Framework",
 	},
-	expo: { name: "expo", version: "~57.0.14", group: "Framework" },
+	expo: { name: "expo", version: expoPackage.version, group: "Framework" },
 	expoConstants: {
 		name: "expo-constants",
-		version: "~57.0.12",
+		version: expoNativeModules["expo-constants"],
 		group: "Framework",
 	},
 	expoLinking: {
 		name: "expo-linking",
-		version: "~57.0.6",
+		version: expoNativeModules["expo-linking"],
 		group: "Framework",
 	},
 	expoRouter: {
 		name: "expo-router",
-		version: "~57.0.14",
+		version: expoNativeModules["expo-router"],
 		group: "Framework",
 	},
 	expoSecureStore: {
 		name: "expo-secure-store",
-		version: "~57.0.1",
+		version: expoNativeModules["expo-secure-store"],
 		group: "Framework",
 	},
 	isbot: { name: "isbot", version: "5.2.2", group: "Framework" },
@@ -97,17 +99,17 @@ export const versions = {
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
 	reactNative: {
 		name: "react-native",
-		version: "0.86.2",
+		version: expoNativeModules["react-native"],
 		group: "Framework",
 	},
 	reactNativeSafeAreaContext: {
 		name: "react-native-safe-area-context",
-		version: "~5.9.0",
+		version: expoNativeModules["react-native-safe-area-context"],
 		group: "Framework",
 	},
 	reactNativeScreens: {
 		name: "react-native-screens",
-		version: "~4.27.0",
+		version: expoNativeModules["react-native-screens"],
 		group: "Framework",
 	},
 
@@ -162,22 +164,22 @@ export const versions = {
 
 	nativewind: {
 		name: "nativewind",
-		version: "5.0.0-preview.4",
+		version: "5.0.0-rc.0",
 		group: "Styling",
 	},
 	reactNativeCss: {
 		name: "react-native-css",
-		version: "^3.0.7",
+		version: "3.1.0-rc.0",
 		group: "Styling",
 	},
 	reactNativeReanimated: {
 		name: "react-native-reanimated",
-		version: "~4.5.1",
+		version: expoNativeModules["react-native-reanimated"],
 		group: "Framework",
 	},
 	reactNativeWorklets: {
 		name: "react-native-worklets",
-		version: "~0.10.1",
+		version: expoNativeModules["react-native-worklets"],
 		group: "Framework",
 	},
 	tailwindcss: { name: "tailwindcss", version: "^4.2.2", group: "Styling" },
@@ -366,10 +368,22 @@ export const versions = {
 
 export type VersionKey = keyof typeof versions;
 
-export function catalogRef(key: VersionKey) {
+function versionsFor(config: ForgeConfig) {
+	if (config.mobile !== "expo") return versions;
+
 	return {
-		name: versions[key].name,
-		version: versions[key].version,
+		...versions,
+		react: { ...versions.react, version: expoNativeModules.react },
+		reactDom: { ...versions.reactDom, version: expoNativeModules["react-dom"] },
+	};
+}
+
+export function catalogRef(key: VersionKey, config: ForgeConfig = {}) {
+	const entry = versionsFor(config)[key];
+
+	return {
+		name: entry.name,
+		version: entry.version,
 		catalog: "",
 	};
 }
@@ -385,14 +399,13 @@ const groupOrder: ReadonlyArray<CatalogGroup> = [
 	"Types",
 ];
 
-export function catalogEntries(_config: ForgeConfig): ReadonlyArray<{
+export function catalogEntries(config: ForgeConfig): ReadonlyArray<{
 	readonly group: CatalogGroup;
 	readonly entries: ReadonlyArray<CatalogEntry>;
 }> {
 	const grouped = new Map<CatalogGroup, CatalogEntry[]>();
 
-	for (const key of Object.keys(versions) as VersionKey[]) {
-		const entry = versions[key];
+	for (const entry of Object.values(versionsFor(config))) {
 		const list = grouped.get(entry.group) ?? [];
 		list.push(entry);
 		grouped.set(entry.group, list);
