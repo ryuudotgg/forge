@@ -22,6 +22,7 @@ import type {
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
 
 export const expoFramework: FrameworkDefinition<"expo"> = defineFramework({
 	id: "expo",
@@ -124,7 +125,7 @@ function buildContributions(config: ForgeConfig) {
 			{ ...deps.expoRouter, type: "dependencies" },
 			{ ...deps.reactNativeSafeAreaContext, type: "dependencies" },
 			{ ...deps.reactNativeScreens, type: "dependencies" },
-			{ ...deps.react, type: "dependencies" },
+			{ ...catalogRef("react", config), type: "dependencies" },
 			{ ...deps.reactNative, type: "dependencies" },
 			{ ...deps.t3OssEnvCore, type: "dependencies" },
 			{ ...deps.zod, type: "dependencies" },

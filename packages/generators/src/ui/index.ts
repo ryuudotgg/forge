@@ -10,6 +10,7 @@ import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 import { pmDlx, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
+import { catalogRef } from "../versions";
 import { renderUiTemplate } from "./shared";
 
 const ui = defineAddon<ForgeConfig, "ui">({
@@ -66,8 +67,8 @@ const ui = defineAddon<ForgeConfig, "ui">({
 			{ ...deps.clsx, type: "dependencies" },
 			{ ...deps.tailwindMerge, type: "dependencies" },
 			{ ...deps.classVarianceAuthority, type: "dependencies" },
-			{ ...deps.react, type: "dependencies" },
-			{ ...deps.reactDom, type: "dependencies" },
+			{ ...catalogRef("react", config), type: "dependencies" },
+			{ ...catalogRef("reactDom", config), type: "dependencies" },
 			{ ...deps.nextThemes, type: "dependencies" },
 			{ ...deps.sonner, type: "dependencies" },
 			{ ...deps.inputOtp, type: "dependencies" },

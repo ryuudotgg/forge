@@ -20,6 +20,7 @@ import type {
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
 
 export const tanstackStartFramework: FrameworkDefinition<"tanstack-start"> =
 	defineFramework({
@@ -151,8 +152,8 @@ function buildContributions(config: ForgeConfig) {
 		},
 		{ ...deps.tanstackReactRouter, type: "dependencies" },
 		{ ...deps.tanstackReactStart, type: "dependencies" },
-		{ ...deps.react, type: "dependencies" },
-		{ ...deps.reactDom, type: "dependencies" },
+		{ ...catalogRef("react", config), type: "dependencies" },
+		{ ...catalogRef("reactDom", config), type: "dependencies" },
 		{ ...deps.nextThemes, type: "dependencies" },
 		{ ...deps.t3OssEnvCore, type: "dependencies" },
 		{ ...deps.zod, type: "dependencies" },

@@ -20,6 +20,7 @@ import type {
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
 
 export const reactRouterFramework: FrameworkDefinition<"react-router"> =
 	defineFramework({
@@ -175,8 +176,8 @@ function buildContributions(config: ForgeConfig) {
 			version: "workspace:*",
 			type: "dependencies",
 		},
-		{ ...deps.react, type: "dependencies" },
-		{ ...deps.reactDom, type: "dependencies" },
+		{ ...catalogRef("react", config), type: "dependencies" },
+		{ ...catalogRef("reactDom", config), type: "dependencies" },
 		{ ...deps.reactRouter, type: "dependencies" },
 		{ ...deps.reactRouterNode, type: "dependencies" },
 		{ ...deps.reactRouterServe, type: "dependencies" },

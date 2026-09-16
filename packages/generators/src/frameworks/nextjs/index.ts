@@ -20,6 +20,7 @@ import type {
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
 
 export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	id: "nextjs",
@@ -155,8 +156,8 @@ function buildContributions(config: ForgeConfig) {
 			type: "dependencies" as const,
 		},
 		{ ...deps.next, type: "dependencies" as const },
-		{ ...deps.react, type: "dependencies" as const },
-		{ ...deps.reactDom, type: "dependencies" as const },
+		{ ...catalogRef("react", config), type: "dependencies" as const },
+		{ ...catalogRef("reactDom", config), type: "dependencies" as const },
 		{ ...deps.serverOnly, type: "dependencies" as const },
 		{ ...deps.nextThemes, type: "dependencies" as const },
 		{ ...deps.zod, type: "dependencies" as const },
