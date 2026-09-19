@@ -23,8 +23,8 @@ catalogs:
     # TypeScript & Compilation
     "@types/node": 24.13.5
     typescript: 7.0.2
-    vitest: 5.0.0
-    "@vitest/coverage-v8": 5.0.0
+    vitest: 5.0.1
+    "@vitest/coverage-v8": 5.0.1
 
   # ===== LINTING & FORMATTING =====
   lint:
