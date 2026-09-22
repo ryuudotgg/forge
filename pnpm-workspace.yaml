@@ -5,7 +5,7 @@ packages:
   - tooling/*
 
 overrides:
-  "@effect/platform-node-shared": 4.0.0-rc.115
+  "@effect/platform-node-shared": 4.0.0-rc.117
 
 catalogs:
   scaffold:
@@ -52,10 +52,10 @@ catalogs:
 
   # ===== EFFECT =====
   effect:
-    effect: 4.0.0-rc.115
-    "@effect/platform-node": 4.0.0-rc.115
+    effect: 4.0.0-rc.117
+    "@effect/platform-node": 4.0.0-rc.117
     "@effect/tsgo": ^0.45.0
-    "@effect/vitest": 4.0.0-rc.115
+    "@effect/vitest": 4.0.0-rc.117
 
 nodeLinker: hoisted
 linkWorkspacePackages: true
