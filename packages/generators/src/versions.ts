@@ -240,7 +240,7 @@ export const versions = {
 	},
 	planetscaleDatabase: {
 		name: "@planetscale/database",
-		version: "^1.20.1",
+		version: "^2.0.0",
 		group: "Database",
 	},
 	mysql2: {
