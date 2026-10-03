@@ -10,6 +10,7 @@
 		},
 		"test": {
 			"dependsOn": ["build", "@ryuujs/forge#build"],
+			"env": ["FORGE_SMOKE"],
 			"outputs": []
 		}
 	}

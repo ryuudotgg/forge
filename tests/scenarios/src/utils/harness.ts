@@ -12,10 +12,10 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { expect } from "vitest";
 
-export const forgeCliPath = resolve(
-	process.cwd(),
-	"..",
-	"..",
+export const repoRoot = resolve(process.cwd(), "..", "..");
+
+export const forgeCliPath = join(
+	repoRoot,
 	"packages",
 	"cli",
 	"dist",

@@ -44,6 +44,7 @@
 		"@clack/core": "catalog:node",
 		"@clack/prompts": "catalog:node",
 		"@effect/platform-node": "catalog:effect",
+		"@effect/platform-node-shared": "catalog:effect",
 		"@ryuujs/core": "workspace:*",
 		"@ryuujs/generators": "workspace:*",
 		"effect": "catalog:effect",
