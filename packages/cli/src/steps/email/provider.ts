@@ -14,7 +14,7 @@ const emailProviderStep = defineStep<typeof emailProviderSchema.Type>({
 	configKey: "emailProvider",
 	shouldRun: (config) =>
 		config.emailProvider !== undefined ||
-		resolveApiHost(config) !== undefined ||
+		resolveApiHost(config, "api") !== undefined ||
 		config.addons?.includes("worker") === true,
 	async execute(config, interactive) {
 		if (!interactive) {
