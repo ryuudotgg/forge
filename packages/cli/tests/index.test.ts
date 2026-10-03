@@ -12,6 +12,7 @@ import { Context, Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { version } from "../package.json" with { type: "json" };
 import {
+	buildFlagOverrides,
 	isParsedValues,
 	isUnknownCommand,
 	parseCliArgs,
@@ -30,6 +31,78 @@ function parse(args: string[]) {
 }
 
 describe("CLI argument parsing", () => {
+	it("accepts repeatable web flags without changing other flags", () => {
+		const { values } = parse([
+			"--web",
+			"tanstack-router",
+			"--web",
+			"admin=nextjs",
+			"--web",
+			"docs=react-router",
+			"--no-install",
+		]);
+
+		expect(values.web).toEqual([
+			"tanstack-router",
+			"admin=nextjs",
+			"docs=react-router",
+		]);
+
+		expect(buildFlagOverrides(values)).toEqual({
+			web: "tanstack-router",
+			webApps: [
+				{ name: "admin", framework: "nextjs" },
+				{ name: "docs", framework: "react-router" },
+			],
+		});
+
+		expect(values["no-install"]).toBe(true);
+	});
+
+	it.each([
+		"web=nextjs",
+		"server=nextjs",
+		"Admin=nextjs",
+		"admin=unknown",
+		"admin=",
+		"=nextjs",
+		"admin=nextjs=other",
+		"unknown",
+	])("rejects invalid web flag %s at the boundary", (entry) => {
+		expect(() => buildFlagOverrides(parse(["--web", entry]).values)).toThrow(
+			"CLI Args Invalid:",
+		);
+	});
+
+	it("rejects duplicate secondary names", () => {
+		expect(() =>
+			buildFlagOverrides(
+				parse(["--web", "admin=nextjs", "--web", "admin=react-router"]).values,
+			),
+		).toThrow("more than one web app");
+	});
+
+	it("rejects a boolean web override", () => {
+		expect(() => buildFlagOverrides({ web: true })).toThrow(
+			"CLI Args Invalid: web must contain frameworks or name=framework entries.",
+		);
+	});
+
+	it("keeps legacy string flags and normalizes framework aliases", () => {
+		expect(buildFlagOverrides({ web: "Next.js" })).toEqual({ web: "nextjs" });
+		expect(
+			buildFlagOverrides(parse(["--web", "admin=Next.js"]).values),
+		).toEqual({ webApps: [{ name: "admin", framework: "nextjs" }] });
+
+		expect(buildFlagOverrides({})).toEqual({});
+	});
+
+	it("accepts only string arrays on the repeatable web option", () => {
+		expect(isParsedValues({ web: ["nextjs"] })).toBe(true);
+		expect(isParsedValues({ web: [42] })).toBe(false);
+		expect(isParsedValues({ name: ["project"] })).toBe(false);
+	});
+
 	it("classifies a bare invocation, known commands, and unknown commands", () => {
 		expect(isUnknownCommand(undefined, undefined)).toBe(false);
 		expect(isUnknownCommand("add", getSubcommand("add"))).toBe(false);
@@ -147,6 +220,7 @@ function runtimeWithProbe(construct: () => void, dispose: () => void) {
 			() => Effect.sync(dispose),
 		),
 	);
+
 	const probe = Layer.effectDiscard(RuntimeProbe.use(() => Effect.void)).pipe(
 		Layer.provide(service),
 	);
@@ -179,6 +253,7 @@ describe("CLI entry dispatch", () => {
 				throw new Error("prompt cancelled");
 			}, runtime),
 		).rejects.toThrow("prompt cancelled");
+
 		expect(dispose).toHaveBeenCalledOnce();
 	});
 
@@ -186,6 +261,7 @@ describe("CLI entry dispatch", () => {
 		const directory = mkdtempSync(
 			join(realpathSync(tmpdir()), "forge-entrypoint-"),
 		);
+
 		const entryFile = join(directory, "entry.mjs");
 		writeFileSync(entryFile, "");
 
@@ -200,6 +276,7 @@ describe("CLI entry dispatch", () => {
 		const directory = mkdtempSync(
 			join(realpathSync(tmpdir()), "forge-entrypoint-"),
 		);
+
 		const entryFile = join(directory, "entry.mjs");
 		const invokedPath = join(directory, "forge");
 		writeFileSync(entryFile, "");
@@ -229,6 +306,7 @@ describe("CLI entry dispatch", () => {
 				_values: ParsedValues,
 			): Promise<void> => {},
 		);
+
 		const testCli = createTestCli({
 			defaultCommand: command(runCreate),
 		});
@@ -246,12 +324,14 @@ describe("CLI entry dispatch", () => {
 				_values: ParsedValues,
 			): Promise<void> => {},
 		);
+
 		const runAdd = vi.fn(
 			async (
 				_positionals: string[],
 				_values: ParsedValues,
 			): Promise<void> => {},
 		);
+
 		const add = command(runAdd);
 		const testCli = createTestCli({
 			defaultCommand: command(runCreate),
@@ -275,6 +355,7 @@ describe("CLI entry dispatch", () => {
 		expect(testCli.error).toHaveBeenCalledWith(
 			"You can't use --keep-user and --accept-forge together.",
 		);
+
 		expect(testCli.setExitCode).toHaveBeenCalledWith(1);
 		expect(runCreate).not.toHaveBeenCalled();
 	});
@@ -301,6 +382,7 @@ describe("CLI entry dispatch", () => {
 				_values: ParsedValues,
 			): Promise<void> => {},
 		);
+
 		const testCli = createTestCli({
 			defaultCommand: command(runCreate),
 		});
@@ -322,12 +404,14 @@ describe("CLI entry dispatch", () => {
 				_values: ParsedValues,
 			): Promise<void> => {},
 		);
+
 		const runAdd = vi.fn(
 			async (
 				_positionals: string[],
 				_values: ParsedValues,
 			): Promise<void> => {},
 		);
+
 		const add = command(runAdd, { arg: "[addon-id]", argRequired: true });
 		const testCli = createTestCli({
 			defaultCommand: command(runCreate),
@@ -348,10 +432,12 @@ describe("CLI entry dispatch", () => {
 				_values: ParsedValues,
 			): Promise<void> => {},
 		);
+
 		const runtimeCli = createTestCli({
 			checkRuntime: () => ({ ok: false, message: "Unsupported runtime" }),
 			defaultCommand: command(runCreate),
 		});
+
 		const optionCli = createTestCli({ defaultCommand: command(runCreate) });
 		const unknownCli = createTestCli({ defaultCommand: command(runCreate) });
 		const failure = new Error("Command failed");
@@ -368,8 +454,11 @@ describe("CLI entry dispatch", () => {
 
 		expect(runtimeCli.error).toHaveBeenCalledWith("Unsupported runtime");
 		expect(runtimeCli.exit).toHaveBeenCalledWith(1);
+
 		expect(optionCli.setExitCode).toHaveBeenCalledWith(1);
+
 		expect(unknownCli.setExitCode).toHaveBeenCalledWith(1);
+
 		expect(failingCli.error).toHaveBeenCalledWith("Command failed");
 		expect(failingCli.setExitCode).toHaveBeenCalledWith(1);
 	});

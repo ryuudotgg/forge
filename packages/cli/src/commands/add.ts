@@ -475,7 +475,7 @@ function buildProjectInstallRecord(
 
 export async function runAdd(
 	addonId: string | undefined,
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 ) {
 	const resolution = resolutionArguments(values);
 	const project = await loadManagedProject(".", "add");

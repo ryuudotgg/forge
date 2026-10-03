@@ -10,13 +10,11 @@ import type { PartialConfig } from "../steps/types";
 import { listOr } from "../utils/list";
 
 export async function runCreate(
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 ) {
 	let initialConfig: PartialConfig = {};
-
 	if (values.preset) {
 		const presetName = values.preset;
-
 		if (typeof presetName !== "string" || !(presetName in presets)) {
 			log.error(
 				`We couldn't find this preset. You can use: ${listOr.format(Object.keys(presets))}.`,
@@ -30,7 +28,6 @@ export async function runCreate(
 
 	if (values.config && typeof values.config === "string") {
 		let parsed: unknown;
-
 		try {
 			parsed = JSON.parse(readFileSync(values.config, "utf-8"));
 		} catch {
@@ -44,7 +41,6 @@ export async function runCreate(
 		const configSchema = Schema.Record(Schema.String, Schema.Unknown);
 
 		const configResult = Schema.decodeUnknownResult(configSchema)(parsed);
-
 		if (Result.isFailure(configResult)) {
 			const issues = formatSchemaError(configResult.failure, parsed);
 			const message = issues

@@ -97,7 +97,6 @@ describe("backend step", () => {
 
 	it("skips when none is selected", async () => {
 		promptMocks.select.mockResolvedValue("none");
-
 		await expect(backendStep.execute({}, true)).resolves.toBe(SKIP);
 	});
 
@@ -124,6 +123,29 @@ describe("backend step", () => {
 });
 
 describe("rpc step", () => {
+	it("names every web app in the RPC prompt", async () => {
+		promptMocks.isCancel.mockReturnValue(false);
+		promptMocks.select.mockResolvedValue("trpc");
+
+		await rpcStep.execute(
+			{
+				web: "tanstack-router",
+				webApps: [
+					{ name: "admin", framework: "nextjs", client: true },
+					{ name: "docs", framework: "react-router" },
+				],
+			},
+			true,
+		);
+
+		expect(promptMocks.select).toHaveBeenCalledWith(
+			expect.objectContaining({
+				message:
+					"Do you want to use an RPC API with web (TanStack Router), admin (Next.js), and docs (React Router)?",
+			}),
+		);
+	});
+
 	it("validates an RPC label like its canonical id", () => {
 		const config = rawConfig({
 			backend: "self",
@@ -209,7 +231,6 @@ describe("rpc step", () => {
 
 	it("refuses a mobile-only rpc without an API host", () => {
 		let error: unknown;
-
 		try {
 			rpcStep.validate?.("trpc", {
 				mobile: "expo",
@@ -234,7 +255,6 @@ describe("rpc step", () => {
 
 	it("accepts a canonical rpc id without prompting", async () => {
 		await expect(rpcStep.execute({ rpc: "trpc" }, false)).resolves.toBe("trpc");
-
 		expect(promptMocks.select).not.toHaveBeenCalled();
 	});
 
@@ -276,7 +296,6 @@ describe("rpc step", () => {
 
 	it("skips when none is selected", async () => {
 		promptMocks.select.mockResolvedValue("none");
-
 		await expect(rpcStep.execute({}, true)).resolves.toBe(SKIP);
 	});
 });

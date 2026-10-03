@@ -87,6 +87,7 @@ describe("printHelp", () => {
 				"    forge list auth",
 				"    forge info drizzle",
 				"    forge add trpc",
+				"    forge create --web tanstack-router --web admin=nextjs",
 				"",
 			]
 				.map((line) => (line.length === 0 ? "│" : `│  ${line}`))

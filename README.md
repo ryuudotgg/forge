@@ -47,6 +47,22 @@ bunx @ryuugg/forge
 
 `create` is the default command, so a bare invocation launches the interactive wizard and walks you through your framework, addons, and tooling.
 
+### Secondary web apps
+
+The wizard can add web apps with separate names and frameworks. For flags, repeat
+`--web`: a bare framework selects the primary app at `apps/web`, and
+`name=framework` adds an app at `apps/<name>`.
+
+```bash
+pnpm dlx @ryuugg/forge --web tanstack-router --web admin=nextjs
+```
+
+The wizard's API-client choice saves `client: true` on that app's `webApps` entry
+as future-only metadata. It does not generate RPC dependencies, providers,
+authentication clients, or API URL configuration for secondary apps. Leave it
+off unless you want to record that intent; generated files are the same either
+way. Repeatable `--web` flags do not set this metadata.
+
 ### Commands
 
 | Command | What it does |

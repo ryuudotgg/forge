@@ -21,9 +21,7 @@ vi.mock("@clack/prompts", () => ({
 
 function rawConfig(entries: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
-
 	for (const [key, value] of Object.entries(entries)) config[key] = value;
-
 	return config;
 }
 
@@ -36,6 +34,28 @@ beforeEach(() => {
 });
 
 describe("style framework step", () => {
+	it("names all web apps in the styling prompt", async () => {
+		promptMocks.select.mockResolvedValue("tailwind");
+
+		await styleFrameworkStep.execute(
+			{
+				web: "tanstack-router",
+				webApps: [
+					{ name: "admin", framework: "nextjs" },
+					{ name: "docs", framework: "react-router" },
+				],
+			},
+			true,
+		);
+
+		expect(promptMocks.select).toHaveBeenCalledWith(
+			expect.objectContaining({
+				message:
+					"Which styling framework do you want to use for web (TanStack Router), admin (Next.js), and docs (React Router)?",
+			}),
+		);
+	});
+
 	it("only runs when a web or desktop framework is selected", () => {
 		expect(styleFrameworkStep.shouldRun({})).toBe(false);
 		expect(styleFrameworkStep.shouldRun({ web: "nextjs" })).toBe(true);
@@ -105,6 +125,7 @@ describe("style framework step", () => {
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"We don't support UnoCSS yet.",
 		);
+
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
@@ -154,6 +175,7 @@ describe("native style framework step", () => {
 		await expect(nativeStyleFrameworkStep.execute({}, false)).resolves.toBe(
 			SKIP,
 		);
+
 		await expect(
 			nativeStyleFrameworkStep.execute(
 				rawConfig({ nativeStyleFramework: "styled-components" }),
@@ -192,6 +214,7 @@ describe("native style framework step", () => {
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"We don't support Tamagui yet.",
 		);
+
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
@@ -209,11 +232,31 @@ describe("native style framework step", () => {
 		await expect(
 			nativeStyleFrameworkStep.execute({ mobile: "expo" }, true),
 		).resolves.toBe("nativewind");
+
 		expect(promptMocks.logWarn).not.toHaveBeenCalled();
 	});
 });
 
 describe("ui library step", () => {
+	it("names all web apps in the primitive library prompt", async () => {
+		promptMocks.select.mockResolvedValue("radix");
+
+		await uiLibraryStep.execute(
+			{
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "react-router" }],
+			},
+			true,
+		);
+
+		expect(promptMocks.select).toHaveBeenCalledWith(
+			expect.objectContaining({
+				message:
+					"Which primitive library should your UI components use for web (Next.js) and admin (React Router)?",
+			}),
+		);
+	});
+
 	it("only runs when a web framework is selected", () => {
 		expect(uiLibraryStep.shouldRun({})).toBe(false);
 		expect(uiLibraryStep.shouldRun({ web: "nextjs" })).toBe(true);

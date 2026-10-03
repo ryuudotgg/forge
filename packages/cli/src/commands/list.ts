@@ -21,7 +21,7 @@ export interface ListOptions {
 }
 
 export function parseCatalogKind(
-	value: string | boolean | undefined,
+	value: string | boolean | string[] | undefined,
 ): CatalogKind | undefined {
 	if (value === undefined) return undefined;
 	if (value === "addon" || value === "framework" || value === "template")
@@ -159,7 +159,7 @@ export function buildListOutput(
 
 export async function runList(
 	query: string | undefined,
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 	loadRegistry: () => Promise<LoadedDefinitionRegistry> = () =>
 		loadDiscoveryRegistry("."),
 ) {

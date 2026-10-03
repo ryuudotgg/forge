@@ -17,7 +17,10 @@ import {
 	styleFrameworks,
 	webFrameworks,
 } from "@ryuugg/generators";
+import { Result, Schema } from "effect";
 import type { ParsedValues, SubcommandDef } from "./commands/registry";
+import { webSchema } from "./steps/platforms/web";
+import { webAppsSchema } from "./steps/platforms/web-apps";
 import type { PartialConfig } from "./steps/types";
 
 interface CLIOption {
@@ -28,6 +31,7 @@ interface CLIOption {
 	short?: string;
 	configKey?: string;
 	platform?: Platform;
+	multiple?: boolean;
 }
 
 interface CLIChoice {
@@ -137,6 +141,9 @@ export const options = {
 
 	web: {
 		type: "string",
+		multiple: true,
+		description:
+			"Repeat with a framework for web or name=framework for another app.",
 		choices: choiceHint(webFrameworks),
 		configKey: "web",
 	},
@@ -296,20 +303,20 @@ export const sections: CLISection[] = [
 
 export function getParseArgsOptions(): Record<
 	string,
-	{ type: "string" | "boolean"; short?: string; multiple: false }
+	{ type: "string" | "boolean"; short?: string; multiple: boolean }
 > {
 	const result: Record<
 		string,
-		{ type: "string" | "boolean"; short?: string; multiple: false }
+		{ type: "string" | "boolean"; short?: string; multiple: boolean }
 	> = {};
 
 	for (const [key, def] of Object.entries<CLIOption>(options)) {
 		const entry: {
 			type: "string" | "boolean";
 			short?: string;
-			multiple: false;
+			multiple: boolean;
 		} = {
-			multiple: false,
+			multiple: def.multiple ?? false,
 			type: def.type,
 		};
 
@@ -322,8 +329,13 @@ export function getParseArgsOptions(): Record<
 
 export function isParsedValues(values: unknown): values is ParsedValues {
 	if (typeof values !== "object" || values === null) return false;
-	return Object.values(values).every(
-		(value) => typeof value === "string" || typeof value === "boolean",
+	return Object.entries(values).every(
+		([key, value]) =>
+			typeof value === "string" ||
+			typeof value === "boolean" ||
+			(key === "web" &&
+				Array.isArray(value) &&
+				value.every((entry: unknown) => typeof entry === "string")),
 	);
 }
 
@@ -363,15 +375,44 @@ export function isUnknownCommand(
 	return subcommand !== undefined && command === undefined;
 }
 
-export function buildFlagOverrides(
-	values: Record<string, string | boolean | undefined>,
-): PartialConfig {
+export function buildFlagOverrides(values: ParsedValues): PartialConfig {
 	const overrides: PartialConfig = {};
 	for (const [key, opt] of Object.entries<CLIOption>(options)) {
 		const configKey = opt.configKey;
 		if (!configKey) continue;
 
 		const value = values[key];
+		if (key === "web" && value !== undefined) {
+			const entries = typeof value === "string" ? [value] : value;
+			if (!Array.isArray(entries))
+				throw new Error(
+					"CLI Args Invalid: web must contain frameworks or name=framework entries.",
+				);
+
+			const apps = [];
+			for (const entry of entries) {
+				const separator = entry.indexOf("=");
+				const framework = separator === -1 ? entry : entry.slice(separator + 1);
+				const normalized = webFrameworks.normalize(framework) ?? framework;
+				if (separator === -1) {
+					const result = Schema.decodeUnknownResult(webSchema)(normalized);
+					if (Result.isFailure(result))
+						throw new Error(`CLI Args Invalid: ${result.failure.message}`);
+
+					overrides.web = result.success;
+				} else
+					apps.push({ name: entry.slice(0, separator), framework: normalized });
+			}
+
+			const result = Schema.decodeUnknownResult(webAppsSchema)(apps);
+			if (Result.isFailure(result))
+				throw new Error(`CLI Args Invalid: ${result.failure.message}`);
+
+			if (result.success.length !== 0) overrides.webApps = result.success;
+
+			continue;
+		}
+
 		if (value !== undefined) overrides[configKey] = value;
 	}
 
