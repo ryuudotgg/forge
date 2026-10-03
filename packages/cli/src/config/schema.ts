@@ -1,5 +1,17 @@
+import { unmetAuthPluginRequirements } from "@ryuugg/generators";
 import { Effect, Schema } from "effect";
+import { authPluginRequirementMessage } from "../steps/auth/plugins";
+import * as schemas from "../steps/schemas";
 import type { Step } from "../steps/types";
+
+const authPluginConfigSchema = Schema.Struct({
+	authentication: Schema.optional(schemas.authentication),
+	authMethods: Schema.optional(schemas.authMethods),
+	authPlugins: Schema.optional(schemas.authPlugins),
+	backend: Schema.optional(schemas.backend),
+	web: Schema.optional(schemas.web),
+	mobile: Schema.optional(schemas.mobile),
+});
 
 export function assembleSchema(steps: Step[]) {
 	const fields: Record<
@@ -7,13 +19,12 @@ export function assembleSchema(steps: Step[]) {
 		Schema.Codec<unknown, unknown, never, never>
 	> = {};
 
-	for (const step of steps) {
-		if (step.configKey === null && step.schemaShape) {
+	for (const step of steps)
+		if (step.configKey === null && step.schemaShape)
 			for (const [key, schema] of Object.entries(step.schemaShape))
 				fields[key] = schema;
-		} else if (step.schema) {
+		else if (step.schema) {
 			const key = step.configKey ?? step.id;
-
 			if (step.schemaDefault)
 				fields[key] = step.schema.pipe(
 					Schema.optional,
@@ -21,7 +32,6 @@ export function assembleSchema(steps: Step[]) {
 				);
 			else fields[key] = Schema.optional(step.schema);
 		}
-	}
 
 	return Schema.Struct(fields).pipe(
 		Schema.check(
@@ -31,6 +41,18 @@ export function assembleSchema(steps: Step[]) {
 					data.authentication !== "better-auth"
 				)
 					return "Authentication methods need Better Auth.";
+
+				if (
+					data.authPlugins !== undefined &&
+					data.authentication !== "better-auth"
+				)
+					return "Authentication plugins need Better Auth.";
+
+				if (Schema.is(authPluginConfigSchema)(data)) {
+					const missing = unmetAuthPluginRequirements(data);
+					if (missing.length !== 0)
+						return authPluginRequirementMessage(missing);
+				}
 
 				const platforms = Array.isArray(data.platforms)
 					? data.platforms

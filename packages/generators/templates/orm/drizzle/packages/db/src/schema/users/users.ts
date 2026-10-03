@@ -6,6 +6,7 @@ export const users = snakeCase.table("users", {
   email: text().notNull().unique(),
   emailVerified: boolean().notNull().default(false),
   image: text(),
+  // __USER_PLUGIN_FIELDS_PACKED__
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp({ withTimezone: true })
     .notNull()

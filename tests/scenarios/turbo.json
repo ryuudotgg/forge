@@ -10,7 +10,11 @@
 		},
 		"test": {
 			"dependsOn": ["build", "@ryuugg/forge#build"],
-			"env": ["FORGE_SMOKE", "FORGE_SMOKE_DATABASE_URL"],
+			"env": [
+				"FORGE_SMOKE",
+				"FORGE_SMOKE_DATABASE_URL",
+				"FORGE_SMOKE_MYSQL_URL"
+			],
 			"outputs": []
 		}
 	}

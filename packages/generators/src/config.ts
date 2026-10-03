@@ -72,6 +72,13 @@ export const authMethods = defineChoices({
 
 export type AuthMethod = keyof typeof authMethods.definitions;
 
+export const authPlugins = defineChoices({
+	username: "Username",
+	admin: "Admin",
+});
+
+export type AuthPlugin = keyof typeof authPlugins.definitions;
+
 export const webFrameworks = defineChoices({
 	nextjs: "Next.js",
 	"react-router": "React Router",
@@ -267,7 +274,7 @@ export const addonConfigBindings: Readonly<
 };
 
 const addonDependentFields: Readonly<Record<string, ReadonlyArray<string>>> = {
-	"better-auth": ["authMethods"],
+	"better-auth": ["authMethods", "authPlugins"],
 };
 
 export function configWithInstall(
@@ -333,6 +340,7 @@ export interface ForgeConfig {
 	readonly orm?: Orm;
 	readonly authentication?: AuthenticationProvider;
 	readonly authMethods?: ReadonlyArray<AuthMethod>;
+	readonly authPlugins?: ReadonlyArray<AuthPlugin>;
 	readonly emailProvider?: EmailProvider;
 	readonly database?: Database;
 	readonly databaseProvider?: DatabaseProvider;

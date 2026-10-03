@@ -1,5 +1,6 @@
 "use client";
 
+// __CLIENT_PLUGIN_IMPORTS__
 import { createAuthClient } from "better-auth/react";
 // __CLIENT_ENV_TYPES__
 

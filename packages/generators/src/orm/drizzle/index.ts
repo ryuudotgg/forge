@@ -10,7 +10,8 @@ import {
 	surfaceScripts,
 } from "@ryuugg/core";
 import { authUsesPassword } from "../../auth/methods";
-import type { ForgeConfig } from "../../config";
+import { type AuthField, authPluginFields } from "../../auth/plugins";
+import type { Database, ForgeConfig } from "../../config";
 import {
 	drizzleKitCredentials,
 	envFileLine,
@@ -23,6 +24,45 @@ import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+
+const authColumnTypes: Record<Database, Record<AuthField["type"], string>> = {
+	postgresql: {
+		string: "text()",
+		boolean: "boolean()",
+		date: "timestamp({ withTimezone: true })",
+	},
+	mysql: {
+		string: "text()",
+		boolean: "boolean()",
+		date: "timestamp({ fsp: 3 })",
+	},
+	sqlite: {
+		string: "text()",
+		boolean: 'integer({ mode: "boolean" })',
+		date: 'integer({ mode: "timestamp_ms" })',
+	},
+};
+
+function drizzleAuthFields(
+	fields: ReadonlyArray<AuthField>,
+	dialect: Database,
+	indent: string,
+	grouped: boolean,
+): string {
+	if (fields.length === 0) return "";
+
+	const columns = fields.map((field) => {
+		const column =
+			dialect === "mysql" && field.type === "string" && field.unique
+				? "varchar({ length: 255 })"
+				: authColumnTypes[dialect][field.type];
+		const unique = field.unique ? ".unique()" : "";
+		const defaultValue = field.default === false ? ".default(false)" : "";
+		return `${indent}${field.name}: ${column}${unique}${defaultValue},\n`;
+	});
+
+	return `${grouped ? "\n" : ""}${columns.join("")}`;
+}
 
 const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	id: "drizzle",
@@ -42,6 +82,8 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 
 		const usesAuth = config.authentication === "better-auth";
 		const usesCredentials = authUsesPassword(config);
+		const userFields = authPluginFields(config, "user");
+		const sessionFields = authPluginFields(config, "session");
 		// Each schema template nests its columns differently, so the marker
 		// carries the indentation and the leading newline keys them apart.
 		const passwordField = (indent: string) =>
@@ -57,6 +99,30 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			KIT_DIALECT: provider.drizzle.kitDialect,
 			"\n    // __PASSWORD_FIELD__\n": passwordField("    "),
 			"\n  // __PASSWORD_FIELD__\n": passwordField("  "),
+			"  // __USER_PLUGIN_FIELDS_PACKED__\n": drizzleAuthFields(
+				userFields,
+				provider.dialect,
+				"  ",
+				false,
+			),
+			"  // __USER_PLUGIN_FIELDS__\n": drizzleAuthFields(
+				userFields,
+				provider.dialect,
+				"  ",
+				true,
+			),
+			"\n    // __SESSION_PLUGIN_FIELDS__\n": `\n${drizzleAuthFields(
+				sessionFields,
+				provider.dialect,
+				"    ",
+				true,
+			)}`,
+			"\n  // __SESSION_PLUGIN_FIELDS__\n": `\n${drizzleAuthFields(
+				sessionFields,
+				provider.dialect,
+				"  ",
+				true,
+			)}`,
 		};
 
 		const render = (path: string) =>

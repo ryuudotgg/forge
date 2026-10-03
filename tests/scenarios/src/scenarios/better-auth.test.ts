@@ -75,4 +75,148 @@ describe("better auth", () => {
 			expect(installs).not.toContain("prisma");
 		});
 	}, 120_000);
+
+	const pluginVariants = [
+		{
+			name: "drizzle postgres",
+			config: { database: "postgresql", orm: "drizzle" },
+			user: "packages/db/src/schema/users/users.ts",
+			session: "packages/db/src/schema/auth.ts",
+			columns: [
+				"username: text().unique(),",
+				"displayUsername: text(),",
+				"banned: boolean().default(false),",
+				"banExpires: timestamp({ withTimezone: true }),",
+				"impersonatedBy: text(),",
+			],
+		},
+		{
+			name: "drizzle mysql",
+			config: { database: "mysql", orm: "drizzle" },
+			user: "packages/db/src/schema/users/users.ts",
+			session: "packages/db/src/schema/auth.ts",
+			columns: [
+				"username: varchar({ length: 255 }).unique(),",
+				"displayUsername: text(),",
+				"banned: boolean().default(false),",
+				"banExpires: timestamp({ fsp: 3 }),",
+				"impersonatedBy: text(),",
+			],
+		},
+		{
+			name: "drizzle planetscale mysql",
+			config: {
+				database: "mysql",
+				databaseProvider: "planetscale",
+				orm: "drizzle",
+			},
+			user: "packages/db/src/schema/users/users.ts",
+			session: "packages/db/src/schema/auth.ts",
+			columns: [
+				"username: varchar({ length: 255 }).unique(),",
+				"banExpires: timestamp({ fsp: 3 }),",
+				"impersonatedBy: text(),",
+			],
+		},
+		{
+			name: "drizzle sqlite",
+			config: { database: "sqlite", orm: "drizzle" },
+			user: "packages/db/src/schema/users/users.ts",
+			session: "packages/db/src/schema/auth.ts",
+			columns: [
+				"username: text().unique(),",
+				'banned: integer({ mode: "boolean" }).default(false),',
+				'banExpires: integer({ mode: "timestamp_ms" }),',
+				"impersonatedBy: text(),",
+			],
+		},
+		{
+			name: "prisma postgres",
+			config: { database: "postgresql", orm: "prisma" },
+			user: "packages/db/prisma/schema.prisma",
+			session: "packages/db/prisma/schema.prisma",
+			columns: [
+				/username\s+String\?\s+@unique\n/,
+				/displayUsername\s+String\?\s+@map\("display_username"\)\n/,
+				/banned\s+Boolean\?\s+@default\(false\)\n/,
+				/banExpires\s+DateTime\?\s+@map\("ban_expires"\) @db\.Timestamptz\n/,
+				/impersonatedBy\s+String\?\s+@map\("impersonated_by"\)\n/,
+			],
+		},
+		{
+			name: "prisma mysql",
+			config: { database: "mysql", orm: "prisma" },
+			user: "packages/db/prisma/schema.prisma",
+			session: "packages/db/prisma/schema.prisma",
+			columns: [
+				/username\s+String\?\s+@unique\n/,
+				/displayUsername\s+String\?\s+@map\("display_username"\) @db\.Text\n/,
+				/impersonatedBy\s+String\?\s+@map\("impersonated_by"\) @db\.Text\n/,
+			],
+		},
+		{
+			name: "prisma sqlite",
+			config: { database: "sqlite", orm: "prisma" },
+			user: "packages/db/prisma/schema.prisma",
+			session: "packages/db/prisma/schema.prisma",
+			columns: [
+				/username\s+String\?\s+@unique\n/,
+				/banExpires\s+DateTime\?\s+@map\("ban_expires"\)\n/,
+				/impersonatedBy\s+String\?\s+@map\("impersonated_by"\)\n/,
+			],
+		},
+	] as const;
+
+	it.each(pluginVariants)(
+		"generates the username and admin plugins for $name",
+		async ({ name, config, user, session, columns }) => {
+			await withScenarioWorkspace(
+				`better-auth-plugins-${name.replaceAll(" ", "-")}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						...config,
+						authentication: "better-auth",
+						authMethods: ["email-password", "google"],
+						authPlugins: ["admin", "username"],
+						linter: "biome",
+						packageManager: "pnpm",
+						style: "tailwind",
+						web: "nextjs",
+					});
+
+					const readText = (path: string) =>
+						readFile(join(workspace.projectRoot, path), "utf-8");
+
+					const [auth, client, userSchema, sessionSchema] = await Promise.all([
+						readText("packages/auth/src/index.ts"),
+						readText("packages/auth/src/client.ts"),
+						readText(user),
+						readText(session),
+					]);
+
+					expect(auth).toContain(
+						'import { admin, username } from "better-auth/plugins";',
+					);
+					expect(auth).toContain(
+						"plugins: [username(), admin(), nextCookies()],",
+					);
+					expect(client).toContain(
+						'import { adminClient, usernameClient } from "better-auth/client/plugins";',
+					);
+					expect(client).toContain(
+						"plugins: [usernameClient(), adminClient()]",
+					);
+
+					const schemas = `${userSchema}\n${sessionSchema}`;
+					for (const column of columns)
+						if (typeof column === "string") expect(schemas).toContain(column);
+						else expect(schemas).toMatch(column);
+
+					for (const text of [auth, client, userSchema, sessionSchema])
+						expect(text).not.toMatch(/__[A-Z_]+__/);
+				},
+			);
+		},
+		120_000,
+	);
 });

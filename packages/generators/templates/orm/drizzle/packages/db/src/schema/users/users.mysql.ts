@@ -8,6 +8,7 @@ export const users = snakeCase.table("users", {
 
   email: varchar({ length: 255 }).notNull().unique(),
   emailVerified: boolean().notNull().default(false),
+  // __USER_PLUGIN_FIELDS__
 
   createdAt: timestamp({ fsp: 3 }).notNull().defaultNow(),
   updatedAt: timestamp({ fsp: 3 })

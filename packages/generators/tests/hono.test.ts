@@ -85,6 +85,7 @@ function expectedAuthClient(options: {
 		: "export const authClient: ReturnType<typeof createAuthClient> =\n  createAuthClient();\n";
 
 	return readTemplate("auth/better-auth/packages/auth/src/client.ts")
+		.replace("// __CLIENT_PLUGIN_IMPORTS__\n", "")
 		.replace("// __CLIENT_ENV_TYPES__\n", envTypes)
 		.replace(declaration, rendered);
 }

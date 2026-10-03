@@ -11,6 +11,7 @@ export const users = snakeCase.table("users", {
 
   email: text().notNull().unique(),
   emailVerified: integer({ mode: "boolean" }).notNull().default(false),
+  // __USER_PLUGIN_FIELDS__
 
   createdAt: integer({ mode: "timestamp_ms" }).notNull().default(unixepochMs),
   updatedAt: integer({ mode: "timestamp_ms" })

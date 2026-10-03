@@ -10,11 +10,13 @@ import {
 	surfaceScripts,
 } from "@ryuugg/core";
 import { authUsesPassword } from "../../auth/methods";
+import { type AuthField, authPluginFields } from "../../auth/plugins";
 import type { ForgeConfig } from "../../config";
 import {
 	envFileLine,
 	envRuntimeLines,
 	envServerLines,
+	type PrismaDatasourceProvider,
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { deps } from "../../deps";
@@ -22,6 +24,58 @@ import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+
+const authFieldTypes: Record<AuthField["type"], string> = {
+	string: "String?",
+	boolean: "Boolean?",
+	date: "DateTime?",
+};
+
+function prismaAuthFields(
+	fields: ReadonlyArray<AuthField>,
+	datasource: PrismaDatasourceProvider,
+): string {
+	if (fields.length === 0) return "";
+
+	const nameWidth = Math.max(...fields.map(({ name }) => name.length));
+	const typeWidth = Math.max(
+		...fields.map(({ type }) => authFieldTypes[type].length),
+	);
+
+	const columns = fields.map((field) => {
+		const snakeName = field.name.replace(
+			/[A-Z]/g,
+			(letter) => `_${letter.toLowerCase()}`,
+		);
+
+		const attributes = [
+			...(field.unique ? ["@unique"] : []),
+			...(field.default === false ? ["@default(false)"] : []),
+			...(snakeName !== field.name ? [`@map("${snakeName}")`] : []),
+		];
+
+		const fieldType = authFieldTypes[field.type];
+		const hasNativeAttribute =
+			(field.type === "string" && !field.unique && datasource === "mysql") ||
+			(field.type === "date" && datasource === "postgresql");
+
+		const definition =
+			attributes.length > 0 || hasNativeAttribute
+				? `${fieldType.padEnd(typeWidth)}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}`
+				: fieldType;
+
+		const nativeType =
+			field.type === "date"
+				? "__TIMESTAMPTZ__"
+				: field.type === "string" && !field.unique
+					? "__TEXT__"
+					: "";
+
+		return `  ${field.name.padEnd(nameWidth)} ${definition}${nativeType}\n`;
+	});
+
+	return `\n${columns.join("")}`;
+}
 
 const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 	id: "prisma",
@@ -53,6 +107,14 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			"  // __PASSWORD_FIELD__\n": authUsesPassword(config)
 				? "  password              String?__TEXT__\n"
 				: "",
+			"  // __USER_PLUGIN_FIELDS__\n": prismaAuthFields(
+				authPluginFields(config, "user"),
+				provider.prisma.datasourceProvider,
+			),
+			"  // __SESSION_PLUGIN_FIELDS__\n": prismaAuthFields(
+				authPluginFields(config, "session"),
+				provider.prisma.datasourceProvider,
+			),
 			TEXT: provider.prisma.datasourceProvider === "mysql" ? " @db.Text" : "",
 			TIMESTAMPTZ:
 				provider.prisma.datasourceProvider === "postgresql"

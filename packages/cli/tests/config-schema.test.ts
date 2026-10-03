@@ -18,6 +18,66 @@ function decodeMessages(result: ReturnType<typeof decodeConfig>) {
 }
 
 describe("assembleSchema", () => {
+	it("rejects plugins without Better Auth", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authPlugins: ["admin"],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"Authentication plugins need Better Auth.",
+		);
+	});
+
+	it("rejects username without the email-password method", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods: ["google", "apple"],
+			authPlugins: ["username"],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"Username needs this sign-in method: Email and password.",
+		);
+	});
+
+	it.each([
+		{ authPlugins: ["username"], authMethods: ["email-password"] },
+		{ authPlugins: ["admin"], authMethods: ["google", "apple"] },
+		{ authPlugins: [], authMethods: ["google"] },
+	])("accepts compatible auth plugins %j", (config) => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			...config,
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
+	it.each([
+		{ backend: "self", web: "nextjs", valid: false },
+		{ backend: "hono", valid: true },
+		{ mobile: "expo", valid: true },
+	])(
+		"checks username against resolved default methods %j",
+		({ valid, ...config }) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authPlugins: ["username"],
+				...config,
+			});
+
+			expect(Result.isSuccess(result)).toBe(valid);
+		},
+	);
+
 	it.each(
 		[[], ["unknown"], ["google", "unknown"]].map((authMethods) => ({
 			authMethods,

@@ -15,6 +15,7 @@ export const sessions = snakeCase.table(
 
     ipAddress: text(),
     userAgent: text(),
+    // __SESSION_PLUGIN_FIELDS__
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })

@@ -12,6 +12,7 @@ import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { standaloneApiOrigin } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
 import { authSocialProviders, authUsesPassword } from "../methods";
+import { authPluginBindings, authPluginImports } from "../plugins";
 
 // Only one of the two call shapes fits the generated formatter's line budget,
 // so the whole declaration is the marker rather than just its argument.
@@ -33,14 +34,29 @@ function clientEnvPrefix(config: ForgeConfig): string {
 }
 
 function authClientCall(config: ForgeConfig, standalone: boolean): string {
-	if (!standalone)
-		return "export const authClient: ReturnType<typeof createAuthClient> =\n  createAuthClient();\n";
-
 	const prefix = clientEnvPrefix(config);
 	const baseUrl =
 		config.web === "nextjs"
 			? `process.env.${prefix}SERVER_URL`
 			: `import.meta.env.${prefix}SERVER_URL`;
+
+	const plugins = authPluginBindings(config, "client");
+	if (plugins.length > 0)
+		return [
+			"export const authClient = createAuthClient({",
+			...(standalone
+				? [
+						`  baseURL: ${baseUrl},`,
+						'  fetchOptions: { credentials: "include" },',
+					]
+				: []),
+			`  plugins: [${plugins.map(({ name }) => `${name}()`).join(", ")}],`,
+			"});",
+			"",
+		].join("\n");
+
+	if (!standalone)
+		return "export const authClient: ReturnType<typeof createAuthClient> =\n  createAuthClient();\n";
 
 	return [
 		"export const authClient: ReturnType<typeof createAuthClient> = createAuthClient(",
@@ -62,6 +78,9 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 		SLUG: slug,
 		DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 		DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
+		"// __CLIENT_PLUGIN_IMPORTS__\n": authPluginImports(
+			authPluginBindings(config, "client"),
+		),
 		"// __CLIENT_ENV_TYPES__\n":
 			standalone && config.web !== "nextjs"
 				? `\ndeclare global {\n  interface ImportMetaEnv {\n    readonly ${clientEnvPrefix(config)}SERVER_URL: string;\n  }\n\n  interface ImportMeta {\n    readonly env: ImportMetaEnv;\n  }\n}\n`
@@ -137,16 +156,23 @@ export function betterAuthRecipeVars(
 	const isTanstackStart = framework.id === "tanstack-start";
 	const usesMobile = config.mobile === "expo";
 	const usesSocial = authSocialProviders(config).length > 0;
-	const cookieImports = [
-		usesMobile ? 'import { expo } from "@better-auth/expo";\n' : "",
-		isNextjs
-			? 'import { nextCookies } from "better-auth/next-js";\n'
+	const pluginImports = [
+		...authPluginBindings(config, "server"),
+		...(usesMobile ? [{ module: "@better-auth/expo", name: "expo" }] : []),
+		...(isNextjs
+			? [{ module: "better-auth/next-js", name: "nextCookies" }]
 			: isTanstackStart
-				? 'import { tanstackStartCookies } from "better-auth/tanstack-start";\n'
-				: "",
+				? [
+						{
+							module: "better-auth/tanstack-start",
+							name: "tanstackStartCookies",
+						},
+					]
+				: []),
 	];
 
-	const cookiePlugins = [
+	const plugins = [
+		...authPluginBindings(config, "server").map(({ name }) => `${name}()`),
 		usesMobile ? "expo()" : undefined,
 		isNextjs
 			? "nextCookies()"
@@ -162,11 +188,9 @@ export function betterAuthRecipeVars(
 
 	return {
 		...values,
-		COOKIE_IMPORT: cookieImports.join(""),
-		COOKIE_PLUGIN:
-			cookiePlugins.length > 0
-				? `  plugins: [${cookiePlugins.join(", ")}],\n\n`
-				: "",
+		PLUGIN_IMPORTS: authPluginImports(pluginImports),
+		PLUGINS:
+			plugins.length > 0 ? `  plugins: [${plugins.join(", ")}],\n\n` : "",
 		TRUSTED_ORIGINS:
 			trustedOrigins.length > 0
 				? `  trustedOrigins: [${trustedOrigins.join(", ")}],\n`

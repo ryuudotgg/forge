@@ -111,10 +111,88 @@ async function readGeneratedEnv(projectRoot: string) {
 	return env;
 }
 
+const authPluginConfig = {
+	authMethods: ["email-password", "google"],
+	authPlugins: ["username", "admin"],
+};
+
+function smokeMysqlUrl() {
+	const url = process.env.FORGE_SMOKE_MYSQL_URL;
+	if (url === undefined)
+		throw new Error("Missing Smoke Database: FORGE_SMOKE_MYSQL_URL");
+
+	return url;
+}
+
+function smokeDatabaseOn(serverUrl: string, name: string) {
+	const url = new URL(serverUrl);
+	url.pathname = `/${name}`;
+	return url.toString();
+}
+
+const createDatabaseScripts = {
+	postgresql: (name: string) =>
+		[
+			'import pg from "pg";',
+			`const client = new pg.Client({ connectionString: ${JSON.stringify(smokeDatabaseUrl())} });`,
+			"await client.connect();",
+			`await client.query(${JSON.stringify(`DROP DATABASE IF EXISTS "${name}"`)});`,
+			`await client.query(${JSON.stringify(`CREATE DATABASE "${name}"`)});`,
+			"await client.end();",
+		].join("\n"),
+	mysql: (name: string) =>
+		[
+			'import mysql from "mysql2/promise";',
+			`const connection = await mysql.createConnection(${JSON.stringify(smokeMysqlUrl())});`,
+			`await connection.query(${JSON.stringify(`DROP DATABASE IF EXISTS \`${name}\``)});`,
+			`await connection.query(${JSON.stringify(`CREATE DATABASE \`${name}\``)});`,
+			"await connection.end();",
+		].join("\n"),
+};
+
+async function createSmokeDatabase(
+	projectRoot: string,
+	dialect: keyof typeof createDatabaseScripts,
+	name: string,
+) {
+	const result = await runCommand(
+		"node",
+		["--input-type=module", "-e", createDatabaseScripts[dialect](name)],
+		{ cwd: join(projectRoot, "packages/db") },
+	);
+
+	expect(
+		result.exitCode,
+		`creating database ${name} failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
+	).toBe(0);
+}
+
+async function expectSchemaPush(projectRoot: string, env?: NodeJS.ProcessEnv) {
+	const push = await runCommand("pnpm", ["db:push"], {
+		cwd: join(projectRoot, "apps/web"),
+		env,
+	});
+
+	expect(
+		push.exitCode,
+		`pnpm db:push failed with code ${push.exitCode}\n${push.stdout}\n${push.stderr}`,
+	).toBe(0);
+}
+
+function postgresDatabaseEnv(name: string): NodeJS.ProcessEnv {
+	const url = smokeDatabaseOn(smokeDatabaseUrl(), name);
+	return { DATABASE_URL: url, DATABASE_DIRECT_URL: url };
+}
+
+function mysqlDatabaseEnv(name: string): NodeJS.ProcessEnv {
+	return { DATABASE_URL: smokeDatabaseOn(smokeMysqlUrl(), name) };
+}
+
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
-	rpc: "trpc" | "orpc" = "trpc",
+	options?: { readonly rpc?: "trpc" | "orpc"; readonly username?: string },
 ) {
+	const rpc = options?.rpc ?? "trpc";
 	const generatedEnv = await readGeneratedEnv(projectRoot);
 	const origin = generatedEnv.WEB_URL;
 	const serverOrigin = generatedEnv.APP_ORIGIN;
@@ -124,14 +202,7 @@ async function expectCredentialedGeneratedServer(
 	expect(origin).toBe("http://localhost:3000");
 	expect(serverOrigin).toBe("http://localhost:3001");
 
-	const push = await runCommand("pnpm", ["db:push"], {
-		cwd: join(projectRoot, "apps/web"),
-	});
-
-	expect(
-		push.exitCode,
-		`pnpm db:push failed with code ${push.exitCode}\n${push.stdout}\n${push.stderr}`,
-	).toBe(0);
+	await expectSchemaPush(projectRoot);
 
 	const ambientEnv = { ...process.env };
 	delete ambientEnv.CI;
@@ -208,6 +279,7 @@ async function expectCredentialedGeneratedServer(
 				email,
 				name: "Hono Smoke",
 				password: "forge-smoke-password",
+				...(options?.username ? { username: options.username } : {}),
 			}),
 			headers: { "Content-Type": "application/json", Origin: origin },
 			method: "POST",
@@ -238,8 +310,12 @@ async function expectCredentialedGeneratedServer(
 			"true",
 		);
 
+		const username = options?.username;
 		const session: unknown = await authSession.json();
-		expect(session).toMatchObject({ user: { email } });
+		expect(session).toMatchObject({
+			user:
+				username === undefined ? { email } : { email, role: "user", username },
+		});
 
 		if (rpc === "orpc") {
 			if (
@@ -261,6 +337,20 @@ async function expectCredentialedGeneratedServer(
 				session.user.id,
 			);
 		}
+
+		if (username === undefined) return;
+
+		const usernameSignIn = await fetch(
+			`${serverOrigin}/api/auth/sign-in/username`,
+			{
+				body: JSON.stringify({ password: "forge-smoke-password", username }),
+				headers: { "Content-Type": "application/json", Origin: origin },
+				method: "POST",
+			},
+		);
+
+		const usernameSignInBody = await usernameSignIn.text();
+		expect(usernameSignIn.status, `${usernameSignInBody}\n${output}`).toBe(200);
 	} finally {
 		if (server.exitCode === null) server.kill("SIGTERM");
 		await exited;
@@ -518,7 +608,9 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			});
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot, "orpc");
+			await expectCredentialedGeneratedServer(workspace.projectRoot, {
+				rpc: "orpc",
+			});
 		});
 	}, 600_000);
 
@@ -526,6 +618,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
+				authPlugins: ["username", "admin"],
 				backend: "hono",
 				database: "sqlite",
 				emailProvider: "smtp",
@@ -538,7 +631,9 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			});
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot);
+			await expectCredentialedGeneratedServer(workspace.projectRoot, {
+				username: "hono_smoke",
+			});
 		});
 	}, 600_000);
 
@@ -638,11 +733,12 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		});
 	}, 600_000);
 
-	it("installs a prisma project, generates the client, and typechecks", async () => {
+	it("installs a prisma project, generates the client, typechecks, and pushes", async () => {
 		await withScenarioWorkspace("smoke-prisma", async (workspace) => {
 			await createProject(
 				workspace,
 				{
+					...authPluginConfig,
 					authentication: "better-auth",
 					database: "postgresql",
 					linter: "biome",
@@ -661,14 +757,19 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			).toBe(true);
 
 			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectSchemaPush(
+				workspace.projectRoot,
+				postgresDatabaseEnv("forge_smoke_prisma"),
+			);
 		});
 	}, 600_000);
 
-	it("installs and typechecks a drizzle project with trpc and tailwind", async () => {
+	it("installs, typechecks, and pushes a drizzle project with trpc and tailwind", async () => {
 		await withScenarioWorkspace("smoke-drizzle", async (workspace) => {
 			await createProject(
 				workspace,
 				{
+					...authPluginConfig,
 					authentication: "better-auth",
 					database: "postgresql",
 					linter: "biome",
@@ -682,14 +783,25 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			);
 
 			await expectInstallAndTypecheck(workspace, "pnpm");
+			await createSmokeDatabase(
+				workspace.projectRoot,
+				"postgresql",
+				"forge_smoke_drizzle",
+			);
+
+			await expectSchemaPush(
+				workspace.projectRoot,
+				postgresDatabaseEnv("forge_smoke_drizzle"),
+			);
 		});
 	}, 600_000);
 
-	it("installs and typechecks a drizzle mysql project", async () => {
+	it("installs, typechecks, and pushes a drizzle mysql project", async () => {
 		await withScenarioWorkspace("smoke-drizzle-mysql", async (workspace) => {
 			await createProject(
 				workspace,
 				{
+					...authPluginConfig,
 					authentication: "better-auth",
 					database: "mysql",
 					linter: "biome",
@@ -703,6 +815,98 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			);
 
 			await expectInstallAndTypecheck(workspace, "pnpm");
+			await createSmokeDatabase(
+				workspace.projectRoot,
+				"mysql",
+				"forge_smoke_drizzle_mysql",
+			);
+
+			await expectSchemaPush(
+				workspace.projectRoot,
+				mysqlDatabaseEnv("forge_smoke_drizzle_mysql"),
+			);
+		});
+	}, 600_000);
+
+	it("installs, typechecks, and pushes a drizzle planetscale mysql project", async () => {
+		await withScenarioWorkspace(
+			"smoke-drizzle-planetscale-mysql",
+			async (workspace) => {
+				await createProject(
+					workspace,
+					{
+						...authPluginConfig,
+						authentication: "better-auth",
+						database: "mysql",
+						databaseProvider: "planetscale",
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						style: "tailwind",
+						web: "nextjs",
+					},
+					{ install: true },
+				);
+
+				await expectInstallAndTypecheck(workspace, "pnpm");
+				await createSmokeDatabase(
+					workspace.projectRoot,
+					"mysql",
+					"forge_smoke_drizzle_planetscale",
+				);
+
+				await expectSchemaPush(
+					workspace.projectRoot,
+					mysqlDatabaseEnv("forge_smoke_drizzle_planetscale"),
+				);
+			},
+		);
+	}, 600_000);
+
+	it("installs, typechecks, and pushes a prisma mysql project", async () => {
+		await withScenarioWorkspace("smoke-prisma-mysql", async (workspace) => {
+			await createProject(
+				workspace,
+				{
+					...authPluginConfig,
+					authentication: "better-auth",
+					database: "mysql",
+					linter: "biome",
+					orm: "prisma",
+					packageManager: "pnpm",
+					style: "tailwind",
+					web: "nextjs",
+				},
+				{ install: true },
+			);
+
+			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectSchemaPush(
+				workspace.projectRoot,
+				mysqlDatabaseEnv("forge_smoke_prisma_mysql"),
+			);
+		});
+	}, 600_000);
+
+	it("installs, typechecks, and pushes a prisma sqlite project", async () => {
+		await withScenarioWorkspace("smoke-prisma-sqlite", async (workspace) => {
+			await createProject(
+				workspace,
+				{
+					...authPluginConfig,
+					authentication: "better-auth",
+					database: "sqlite",
+					linter: "biome",
+					orm: "prisma",
+					packageManager: "pnpm",
+					style: "tailwind",
+					web: "nextjs",
+				},
+				{ install: true },
+			);
+
+			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectSchemaPush(workspace.projectRoot);
 		});
 	}, 600_000);
 
