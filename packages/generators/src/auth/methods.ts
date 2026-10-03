@@ -39,6 +39,15 @@ export function authUsesPasskey(config: ForgeConfig): boolean {
 	);
 }
 
+export function authUsesEmail(config: ForgeConfig): boolean {
+	return (
+		config.authentication === "better-auth" &&
+		resolveAuthMethods(config).some(
+			(method) => method === "email-otp" || method === "magic-link",
+		)
+	);
+}
+
 const socialProviders = [
 	{ id: "google", envStem: "AUTH_GOOGLE" },
 	{ id: "apple", envStem: "AUTH_APPLE" },

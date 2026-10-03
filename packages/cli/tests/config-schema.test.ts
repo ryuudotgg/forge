@@ -17,6 +17,47 @@ function decodeMessages(result: ReturnType<typeof decodeConfig>) {
 }
 
 describe("assembleSchema", () => {
+	it.each(["email-otp", "magic-link"])(
+		"requires an email provider for %s",
+		(method) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authMethods: [method],
+			});
+
+			expect(decodeMessages(result)).toEqual([
+				"Email OTP and magic link need an email provider.",
+			]);
+		},
+	);
+
+	it.each(["resend", "postmark", "smtp"])(
+		"accepts email methods with %s",
+		(emailProvider) => {
+			for (const authMethods of [
+				["email-otp"],
+				["magic-link"],
+				["email-otp", "magic-link"],
+			]) {
+				const result = decodeConfig({
+					name: "Acme",
+					slug: "acme",
+					authentication: "better-auth",
+					authMethods,
+					emailProvider,
+				});
+
+				expect(decodeMessages(result)).toEqual([]);
+				expect(Result.getOrThrow(result)).toMatchObject({
+					authMethods,
+					emailProvider,
+				});
+			}
+		},
+	);
+
 	it("rejects duplicate secondary web app names", () => {
 		const result = decodeConfig({
 			name: "Acme",

@@ -15,7 +15,6 @@ vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 
 function rawConfig(values: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
-
 	return Object.assign(config, values);
 }
 
@@ -28,10 +27,13 @@ describe("email provider step", () => {
 	it("runs for an API host, worker, or preset provider", () => {
 		expect(emailProviderStep.shouldRun({})).toBe(false);
 		expect(emailProviderStep.shouldRun({ web: "tanstack-router" })).toBe(false);
+
 		expect(emailProviderStep.shouldRun({ web: "nextjs" })).toBe(true);
 		expect(emailProviderStep.shouldRun({ backend: "hono" })).toBe(true);
+
 		expect(emailProviderStep.shouldRun({ addons: ["worker"] })).toBe(true);
 		expect(emailProviderStep.shouldRun({ addons: ["shared"] })).toBe(false);
+
 		expect(emailProviderStep.shouldRun({ emailProvider: "resend" })).toBe(true);
 	});
 
@@ -49,6 +51,7 @@ describe("email provider step", () => {
 			await expect(
 				emailProviderStep.execute(rawConfig({ emailProvider: id }), false),
 			).resolves.toBe(id);
+
 			expect(promptMocks.select).not.toHaveBeenCalled();
 		},
 	);
@@ -67,6 +70,7 @@ describe("email provider step", () => {
 		await expect(
 			emailProviderStep.execute(rawConfig({ emailProvider: "unknown" }), false),
 		).resolves.toBe(SKIP);
+
 		await expect(emailProviderStep.execute({}, false)).resolves.toBe(SKIP);
 	});
 
@@ -87,9 +91,31 @@ describe("email provider step", () => {
 
 	it("skips None", async () => {
 		promptMocks.select.mockResolvedValue("none");
-
 		await expect(emailProviderStep.execute({}, true)).resolves.toBe(SKIP);
 	});
+
+	it.each(["email-otp", "magic-link"])(
+		"requires a provider for %s",
+		async (method) => {
+			promptMocks.select.mockResolvedValue("smtp");
+
+			await expect(
+				emailProviderStep.execute(
+					rawConfig({ authentication: "better-auth", authMethods: [method] }),
+					true,
+				),
+			).resolves.toBe("smtp");
+
+			expect(promptMocks.select).toHaveBeenCalledWith({
+				message: "Which email provider would you like to use?",
+				options: [
+					{ label: "Resend", value: "resend" },
+					{ label: "Postmark", value: "postmark" },
+					{ label: "SMTP", value: "smtp" },
+				],
+			});
+		},
+	);
 
 	it("cancels once", async () => {
 		promptMocks.select.mockResolvedValue(Symbol("cancel"));
@@ -98,6 +124,7 @@ describe("email provider step", () => {
 		await expect(emailProviderStep.execute({}, true)).rejects.toThrow(
 			"Cancelled",
 		);
+
 		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
 	});
 });

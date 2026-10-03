@@ -31,7 +31,12 @@ const emailProviderStep = defineStep<typeof emailProviderSchema.Type>({
 			message: "Which email provider would you like to use?",
 			options: [
 				...choiceOptions(emailProviders),
-				{ label: "None", value: "none" },
+				...(config.authentication === "better-auth" &&
+				config.authMethods?.some(
+					(method) => method === "email-otp" || method === "magic-link",
+				)
+					? []
+					: [{ label: "None", value: "none" }]),
 			],
 		});
 

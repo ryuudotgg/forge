@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { orchestrate } from "../src/orchestrator";
 import { defaultPreset } from "../src/presets/default";
 import authenticationCustomUIStep from "../src/steps/auth/custom-ui";
-import authMethodsStep from "../src/steps/auth/methods";
+import authMethodsStep, {
+	createAuthMethodsStep,
+} from "../src/steps/auth/methods";
 import authPluginsStep from "../src/steps/auth/plugins";
 import authenticationStep from "../src/steps/auth/provider";
 import { type PartialConfig, SKIP, type Step } from "../src/steps/types";
@@ -66,6 +68,41 @@ describe("auth methods step", () => {
 		});
 	});
 
+	it("omits email methods during adoption", async () => {
+		promptMocks.multiselect.mockResolvedValue(["google"]);
+
+		await expect(
+			createAuthMethodsStep({ email: false }).execute({}, true),
+		).resolves.toEqual(["google"]);
+
+		expect(promptMocks.multiselect).toHaveBeenCalledWith(
+			expect.objectContaining({
+				options: [
+					{ label: "Email and password", value: "email-password" },
+					{ label: "Google", value: "google" },
+					{ label: "Apple", value: "apple" },
+					{ label: "Passkey", value: "passkey" },
+				],
+			}),
+		);
+	});
+
+	it.each(["email-otp", "magic-link"])(
+		"rejects %s in adoption config",
+		async (method) => {
+			await expect(
+				orchestrate([createAuthMethodsStep({ email: false })], {
+					interactive: false,
+					initialConfig: rawConfig({
+						authentication: "better-auth",
+						authMethods: [method],
+						emailProvider: "resend",
+					}),
+				}),
+			).rejects.toThrow("aren't supported when adopting a project");
+		},
+	);
+
 	it("returns the selection and requires at least one method", async () => {
 		promptMocks.multiselect.mockResolvedValue(["email-password", "google"]);
 
@@ -83,6 +120,8 @@ describe("auth methods step", () => {
 				{ label: "Google", value: "google" },
 				{ label: "Apple", value: "apple" },
 				{ label: "Passkey", value: "passkey" },
+				{ label: "Email OTP", value: "email-otp" },
+				{ label: "Magic link", value: "magic-link" },
 			],
 		});
 	});
