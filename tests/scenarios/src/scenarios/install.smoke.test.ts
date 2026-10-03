@@ -827,23 +827,21 @@ async function expectSelfHostedOrpc(projectRoot: string, sourceRoot: string) {
 		for (let attempt = 0; attempt < 200; attempt += 1) {
 			if (server.exitCode !== null) break;
 
-			if (output.includes(origin)) {
-				try {
-					const response = await fetch(`${origin}/api/orpc/health`, {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json",
-							"x-csrf-token": "orpc",
-						},
-						body: JSON.stringify({ json: null }),
-					});
+			try {
+				const response = await fetch(`${origin}/api/orpc/health`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"x-csrf-token": "orpc",
+					},
+					body: JSON.stringify({ json: null }),
+				});
 
-					if (response.ok) {
-						ready = true;
-						break;
-					}
-				} catch {}
-			}
+				if (response.ok) {
+					ready = true;
+					break;
+				}
+			} catch {}
 
 			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 		}
