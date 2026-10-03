@@ -747,17 +747,19 @@ async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it.each([
-		{ primary: "tanstack-router", secondary: "nextjs" },
-		{ primary: "nextjs", secondary: "tanstack-router" },
+		{ primary: "tanstack-router", secondary: "nextjs", backend: "hono" },
+		{ primary: "nextjs", secondary: "tanstack-router", backend: "hono" },
+		{ primary: "react-router", secondary: "tanstack-start" },
+		{ primary: "tanstack-start", secondary: "react-router" },
 	])(
 		"installs, builds, and typechecks $primary with a $secondary secondary app",
-		async ({ primary, secondary }) => {
+		async ({ primary, secondary, backend }) => {
 			await withScenarioWorkspace(
 				`smoke-secondary-${primary}-${secondary}`,
 				async (workspace) => {
 					await createProject(workspace, {
 						web: primary,
-						backend: "hono",
+						backend,
 						rpc: "trpc",
 						authentication: "better-auth",
 						orm: "drizzle",
