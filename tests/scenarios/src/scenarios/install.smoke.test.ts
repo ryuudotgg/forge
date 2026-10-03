@@ -169,6 +169,12 @@ async function expectCredentialedGeneratedServer(
 				throw new Error("Missing Session User: Better Auth get-session");
 
 			await expectOrpcSession(serverOrigin, origin, cookie, session.user.id);
+			await expectGeneratedOrpcClient(
+				projectRoot,
+				generatedEnv,
+				cookie,
+				session.user.id,
+			);
 		}
 	} finally {
 		if (server.exitCode === null) server.kill("SIGTERM");
@@ -240,6 +246,63 @@ async function expectOrpcSession(
 	});
 
 	expect(anonymous.status).toBe(401);
+}
+
+const generatedOrpcClientProbe = `import { client } from "./src/orpc/client";
+
+const cookie = process.env.SMOKE_COOKIE;
+const forward = globalThis.fetch;
+globalThis.fetch = (input, init) => {
+  const request = new Request(input, init);
+  if (cookie) request.headers.set("cookie", cookie);
+  return forward(request);
+};
+
+const health = await client.health();
+const me = await client.me().then(
+  (value) => ({ value }),
+  (error: { status?: number }) => ({ status: error.status }),
+);
+
+console.log(JSON.stringify({ health, me }));
+`;
+
+async function expectGeneratedOrpcClient(
+	projectRoot: string,
+	generatedEnv: NodeJS.ProcessEnv,
+	cookie: string,
+	userId: string,
+) {
+	const webRoot = join(projectRoot, "apps/web");
+	await writeFile(join(webRoot, "orpc-probe.ts"), generatedOrpcClientProbe);
+
+	const probe = async (sessionCookie: string) => {
+		const result = await runCommand(
+			join(projectRoot, "apps/server/node_modules/.bin/tsx"),
+			["orpc-probe.ts"],
+			{ cwd: webRoot, env: { ...generatedEnv, SMOKE_COOKIE: sessionCookie } },
+		);
+
+		expect(
+			result.exitCode,
+			`generated oRPC client probe failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
+		).toBe(0);
+
+		const output: unknown = JSON.parse(
+			result.stdout.trim().split("\n").at(-1) ?? "",
+		);
+		return output;
+	};
+
+	expect(await probe(cookie)).toEqual({
+		health: { status: "ok" },
+		me: { value: { id: userId } },
+	});
+
+	expect(await probe("")).toEqual({
+		health: { status: "ok" },
+		me: { status: 401 },
+	});
 }
 
 async function expectDrainingWorker(projectRoot: string) {
