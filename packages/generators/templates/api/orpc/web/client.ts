@@ -4,10 +4,10 @@ import { RPCLink } from "@orpc/client/fetch";
 import { SimpleCsrfProtectionLinkPlugin } from "@orpc/client/plugins";
 import type { RouterClient } from "@orpc/server";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-import { env } from "../../env";
+import { env } from "__ENV_IMPORT__";
 
 const link = new RPCLink({
-  url: `${env.VITE_SERVER_URL}/api/orpc`,
+  url: `${env.__SERVER_URL__}/api/orpc`,
   fetch: (request, init) =>
     globalThis.fetch(request, {
       ...init,

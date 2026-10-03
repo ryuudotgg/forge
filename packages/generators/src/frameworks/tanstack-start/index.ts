@@ -19,7 +19,7 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
-import { rpcDescriptor } from "../../rpc";
+import { rpcDescriptor, rpcProviderTemplate } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
 import {
@@ -130,8 +130,14 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 
 	const rpc = rpcDescriptor(renderConfig);
 
+	const providersTemplate = readTemplate(
+		"frameworks/tanstack-start/src/providers.tsx",
+	);
+
 	const providers = interpolate(
-		readTemplate("frameworks/tanstack-start/src/providers.tsx"),
+		renderConfig.rpc === undefined
+			? providersTemplate
+			: rpcProviderTemplate(providersTemplate, renderConfig.rpc),
 		{
 			SLUG: slug,
 			"// __TRPC_IMPORT__\n":

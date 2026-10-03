@@ -1,3 +1,4 @@
+__CLIENT_DIRECTIVE__
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 

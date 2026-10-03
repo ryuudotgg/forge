@@ -30,9 +30,6 @@ const unsupportedOrpcPairs: ReadonlyArray<{
 		name: "TanStack Start self host",
 		config: { backend: "self", web: "tanstack-start" },
 	},
-	{ name: "Next.js client", config: { web: "nextjs" } },
-	{ name: "React Router client", config: { web: "react-router" } },
-	{ name: "TanStack Start client", config: { web: "tanstack-start" } },
 	{ name: "Express host", config: { backend: "express" } },
 	{ name: "Fastify host", config: { backend: "fastify" } },
 	{
@@ -207,6 +204,111 @@ describe("oRPC on Hono with TanStack Router", () => {
 				generatorId: "orpc",
 				reason: "framework-not-supported-yet",
 			});
+		},
+	);
+});
+
+describe("oRPC web clients beside Hono", () => {
+	it.each([
+		{ web: "nextjs", sourceRoot: "", prefix: "NEXT_PUBLIC_" },
+		{ web: "react-router", sourceRoot: "app/", prefix: "VITE_" },
+		{ web: "tanstack-start", sourceRoot: "src/", prefix: "VITE_" },
+	] satisfies ReadonlyArray<{
+		web: ForgeConfig["web"];
+		sourceRoot: string;
+		prefix: string;
+	}>)(
+		"renders a typed $web client with and without auth",
+		async ({ web, sourceRoot, prefix }) => {
+			for (const usesAuth of [false, true]) {
+				const plan = await plannedProject({
+					...supportedConfig,
+					web,
+					...(usesAuth
+						? ({
+								authentication: "better-auth",
+								orm: "drizzle",
+								database: "sqlite",
+							} satisfies Partial<ForgeConfig>)
+						: {}),
+				});
+
+				const client = writeContent(
+					plan,
+					`apps/web/${sourceRoot}orpc/client.ts`,
+				);
+
+				expect(client).toContain('import type { AppRouter } from "@acme/orpc"');
+				expect(client).toContain(
+					"export const client: RouterClient<AppRouter>",
+				);
+
+				expect(client).toContain(
+					"export const orpc = createTanstackQueryUtils(client)",
+				);
+
+				expect(client).toContain(`env.${prefix}SERVER_URL`);
+				expect(client).toContain(
+					web === "nextjs" ? 'from "../env"' : 'from "../../env"',
+				);
+
+				expect(client).toContain('credentials: "include"');
+				expect(client).toContain("SimpleCsrfProtectionLinkPlugin");
+
+				const provider = writeContent(
+					plan,
+					`apps/web/${sourceRoot}orpc/react.tsx`,
+				);
+
+				expect(provider).toContain("QueryClientProvider");
+				if (web === "nextjs") expect(provider).toMatch(/^"use client";/);
+
+				const providers = writeContent(
+					plan,
+					`apps/web/${web === "tanstack-start" ? "src" : "app"}/providers.tsx`,
+				);
+
+				expect(providers).toContain(
+					'import { ORPCReactProvider } from "@/orpc/react"',
+				);
+
+				expect(providers).not.toContain("dataProviders.trpc");
+				if (web !== "nextjs") expect(providers).toContain("dataProviders.orpc");
+
+				if (web === "react-router")
+					expect(writeContent(plan, "apps/web/app/routes.ts")).not.toMatch(
+						/api\/(orpc|auth)/,
+					);
+
+				const manifest = JSON.parse(
+					writeContent(plan, "apps/web/package.json"),
+				);
+
+				expect(manifest.dependencies).toMatchObject({
+					"@acme/orpc": "workspace:*",
+					"@orpc/client": "catalog:",
+					"@orpc/server": "catalog:",
+					"@orpc/tanstack-query": "catalog:",
+					"@tanstack/react-query": "catalog:",
+				});
+
+				expect(
+					plan.writes.some((write) =>
+						write.path.startsWith(`apps/web/${sourceRoot}orpc/server`),
+					),
+				).toBe(false);
+
+				expect(
+					plan.writes.some(
+						(write) =>
+							write.path.startsWith("apps/web/") &&
+							write.path.includes("api/orpc"),
+					),
+				).toBe(false);
+
+				for (const write of plan.writes)
+					expect(write.content, write.path).not.toMatch(/__[A-Z_]+__/);
+			}
 		},
 	);
 });

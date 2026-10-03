@@ -10,6 +10,7 @@ import {
 	type ForgeCommandResult,
 	forgeEnvironment,
 	pathExists,
+	readJson,
 	runCommand,
 	type ScenarioProject,
 	withScenarioWorkspace,
@@ -265,6 +266,7 @@ async function expectCredentialedGeneratedServer(
 		readonly polar?: boolean;
 		readonly rpc?: "trpc" | "orpc";
 		readonly username?: string;
+		readonly webOrigin?: string;
 	},
 ) {
 	const rpc = options?.rpc ?? "trpc";
@@ -274,7 +276,7 @@ async function expectCredentialedGeneratedServer(
 	if (origin === undefined || serverOrigin === undefined)
 		throw new Error(`Missing Generated Origins: ${projectRoot}`);
 
-	expect(origin).toBe("http://localhost:3000");
+	expect(origin).toBe(options?.webOrigin ?? "http://localhost:3000");
 	expect(serverOrigin).toBe("http://localhost:3001");
 
 	if (options?.polar) {
@@ -600,7 +602,7 @@ async function expectOrpcSession(
 	expect(anonymous.status).toBe(401);
 }
 
-const generatedOrpcClientProbe = `import { client } from "./src/orpc/client";
+const generatedOrpcClientProbe = `import { client } from "__CLIENT_IMPORT__";
 
 const cookie = process.env.SMOKE_COOKIE;
 const forward = globalThis.fetch;
@@ -626,7 +628,18 @@ async function expectGeneratedOrpcClient(
 	userId: string,
 ) {
 	const webRoot = join(projectRoot, "apps/web");
-	await writeFile(join(webRoot, "orpc-probe.ts"), generatedOrpcClientProbe);
+	const manifest = await readJson<{ framework: string }>(
+		join(webRoot, "forge.json"),
+	);
+
+	const sourceRoot = manifest.framework === "react-router" ? "app" : "src";
+	await writeFile(
+		join(webRoot, "orpc-probe.ts"),
+		generatedOrpcClientProbe.replace(
+			"__CLIENT_IMPORT__",
+			`./${sourceRoot}/orpc/client`,
+		),
+	);
 
 	const probe = async (sessionCookie: string) => {
 		const result = await runCommand(
@@ -824,26 +837,58 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		);
 	}, 600_000);
 
-	it("installs, builds, and typechecks TanStack Router with an oRPC Hono host", async () => {
-		await withScenarioWorkspace("smoke-orpc-hono-spa", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				backend: "hono",
-				database: "sqlite",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "orpc",
-				style: "tailwind",
-				web: "tanstack-router",
-			});
+	it.each(["tanstack-router", "react-router"])(
+		"installs, builds, and typechecks %s with an oRPC Hono host",
+		async (web) => {
+			await withScenarioWorkspace(
+				`smoke-orpc-hono-${web}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						backend: "hono",
+						database: "sqlite",
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "orpc",
+						style: "tailwind",
+						web,
+					});
 
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot, {
-				rpc: "orpc",
-			});
-		});
-	}, 600_000);
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						rpc: "orpc",
+						webOrigin:
+							web === "react-router"
+								? "http://localhost:5173"
+								: "http://localhost:3000",
+					});
+				},
+			);
+		},
+		600_000,
+	);
+
+	it.each(["nextjs", "tanstack-start"])(
+		"installs, builds, and typechecks %s as an oRPC Hono client",
+		async (web) => {
+			await withScenarioWorkspace(
+				`smoke-orpc-hono-${web}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						backend: "hono",
+						packageManager: "pnpm",
+						rpc: "orpc",
+						style: "tailwind",
+						web,
+					});
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+				},
+			);
+		},
+		600_000,
+	);
 
 	it("installs, builds, and typechecks Next.js with a Hono API host", async () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
