@@ -1,3 +1,4 @@
+import { authPlugins } from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { orchestrate } from "../src/orchestrator";
 import { defaultPreset } from "../src/presets/default";
@@ -268,6 +269,38 @@ describe("auth plugins step", () => {
 			2,
 			expect.objectContaining({ initialValues: ["admin"] }),
 		);
+	});
+
+	it("warns and drops unsupported plugins before retrying", async () => {
+		const available = vi
+			.spyOn(authPlugins, "available")
+			.mockImplementation((plugin) => plugin !== "admin");
+
+		promptMocks.multiselect
+			.mockResolvedValueOnce(["username", "admin"])
+			.mockResolvedValueOnce(["username"]);
+
+		try {
+			await expect(
+				authPluginsStep.execute(
+					{
+						authentication: "better-auth",
+						authMethods: ["email-password"],
+					},
+					true,
+				),
+			).resolves.toEqual(["username"]);
+
+			expect(promptMocks.logWarn).toHaveBeenCalledWith(
+				"Choose only the plugins we support today.",
+			);
+			expect(promptMocks.multiselect).toHaveBeenNthCalledWith(
+				2,
+				expect.objectContaining({ initialValues: ["username"] }),
+			);
+		} finally {
+			available.mockRestore();
+		}
 	});
 });
 
