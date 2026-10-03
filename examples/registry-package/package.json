@@ -1,0 +1,14 @@
+{
+	"name": "@example/forge-registry",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		".": "./index.mjs"
+	},
+	"files": [
+		"index.mjs"
+	],
+	"dependencies": {
+		"effect": "4.0.0-rc.117"
+	}
+}
