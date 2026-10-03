@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://forge.ryuu.gg">Website</a>
+  <a href="https://github.com/ryuudotgg/forge">GitHub</a>
   ·
-  <a href="https://forge.ryuu.gg/docs">Documentation</a>
+  <a href="https://github.com/ryuudotgg/forge/releases">Releases</a>
   ·
   <a href="https://github.com/ryuudotgg/forge/issues">Issues</a>
 </p>
@@ -109,7 +109,7 @@ Lifecycle commands support explicit conflict resolution:
 
 ## 📚 Documentation
 
-Visit our [Documentation](https://forge.ryuu.gg/docs) to view the full documentation
+The documentation site is not live yet. Until it is, this README covers usage, and [GitHub Discussions](https://github.com/ryuudotgg/forge/discussions) is the place for questions.
 
 ## 🤝 Contributing
 
@@ -134,7 +134,7 @@ We have a [Code of Conduct](CODE_OF_CONDUCT.md) in place to ensure a welcoming a
 
 ## 📝 Versioning
 
-We use [SemVer](http://semver.org) for versioning. For available versions, see the [tags on this repository](https://github.com/ryuudotgg/forge/tags).
+Forge follows [SemVer](https://semver.org). The CLI and its packages share one version number, and each release will be tagged `forge@x.y.z`. Once releases are published, every version and its changelog will be listed on the [releases page](https://github.com/ryuudotgg/forge/releases).
 
 ## 👥 Authors
 
