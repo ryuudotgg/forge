@@ -54,7 +54,10 @@ const paper = tegami({
 	groups: {
 		forge: { syncBump: true, syncGitTag: true },
 	},
-	npm: { client: "pnpm" },
+	npm: {
+		client: "pnpm",
+		trustedPublish: { provider: "github", workflow: "publish.yml" },
+	},
 	packages: {
 		"@ryuugg/core": { group: "forge" },
 		"@ryuugg/forge": { group: "forge" },
@@ -62,6 +65,7 @@ const paper = tegami({
 	},
 	plugins: [
 		github({
+			repo: "ryuudotgg/forge",
 			versionPr: {
 				create() {
 					return { title: releaseTitle(this.graph) };

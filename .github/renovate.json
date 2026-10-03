@@ -1,6 +1,10 @@
 {
 	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
-	"extends": ["config:recommended", "customManagers:biomeVersions"],
+	"extends": [
+		"config:recommended",
+		"customManagers:biomeVersions",
+		"helpers:pinGitHubActionDigests"
+	],
 	"labels": ["dependencies"],
 	"lockFileMaintenance": {
 		"enabled": true,
@@ -62,6 +66,10 @@
 			"matchFileNames": [
 				"packages/generators/templates/tooling/github/*.yml"
 			]
+		},
+		{
+			"matchFileNames": ["packages/generators/templates/**"],
+			"pinDigests": false
 		}
 	],
 	"rangeStrategy": "bump",

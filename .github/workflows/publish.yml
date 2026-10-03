@@ -1,0 +1,132 @@
+name: Publish
+
+on:
+  push:
+    branches: ["main"]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_COLOR: 3
+  DO_NOT_TRACK: true
+
+jobs:
+  pending:
+    name: Check Publish Lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+
+    outputs:
+      publish: ${{ steps.lock.outputs.publish }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check Publish Lock
+        id: lock
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          publish=false
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if [ "$GITHUB_REF" = refs/heads/main ] && [ -f .tegami/publish-lock.yaml ]; then
+              locked=$(git log -1 --format=%H -- .tegami/publish-lock.yaml)
+              if [ "$locked" = "$GITHUB_SHA" ]; then
+                publish=true
+              else
+                echo "::error::main has moved past the commit that set the publish lock, rerun the failed jobs of that commit's run instead"
+                exit 1
+              fi
+            fi
+          elif [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            changed=$(git diff --name-only --diff-filter=AM "$BEFORE" "$GITHUB_SHA" -- .tegami/publish-lock.yaml)
+            if [ -n "$changed" ]; then
+              publish=true
+            fi
+          fi
+
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          if [ "$publish" = false ]; then
+            echo "No publish lock change on $GITHUB_SHA, nothing to publish."
+          fi
+
+      - name: Require Approval in npm Environment
+        if: steps.lock.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! approved=$(gh api "repos/$GITHUB_REPOSITORY/environments/npm" --jq 'any(.protection_rules[]?; .type == "required_reviewers" and .prevent_self_review == false and any(.reviewers[]?; .type == "User" and .reviewer.login == "ryuudotgg"))') || [ "$approved" != true ]; then
+            echo "::error::The npm environment must exist with ryuudotgg as required reviewer and prevent self review off before publishing"
+            exit 1
+          fi
+
+  smoke:
+    name: Tarball Smoke
+    needs: pending
+    if: needs.pending.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Build CLI
+        run: pnpm build --filter=@ryuugg/forge
+
+      - name: Tarball Smoke
+        run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/tarball.smoke.test.ts
+        env:
+          FORGE_SMOKE: "1"
+
+  publish:
+    name: Publish
+    needs: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    concurrency:
+      group: npm-publish
+      cancel-in-progress: false
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Require npm 11.5.1
+        run: |
+          version=$(npm --version)
+          if ! printf '%s\n' 11.5.1 "$version" | sort -V -C; then
+            echo "::error::npm 11.5.1 or newer is required for trusted publishing"
+            exit 1
+          fi
+
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NPM_CONFIG_PROVENANCE: "true"
+        run: pnpm tegami publish
