@@ -374,6 +374,7 @@ export class ModuleIdGenerationError extends Schema.TaggedError<ModuleIdGenerati
 }
 
 const StateErrorReason = Schema.Literals([
+	"schema-version-unknown",
 	"manifest-parse-failed",
 	"manifest-invalid",
 	"lockfile-parse-failed",
@@ -409,6 +410,7 @@ const StateErrorFields = Schema.Struct({
 type StateErrorPayload = typeof StateErrorFields.Type;
 
 const stateRequiredFields = {
+	"schema-version-unknown": [],
 	"manifest-parse-failed": ["detail"],
 	"manifest-invalid": ["issues"],
 	"lockfile-parse-failed": ["detail"],
@@ -455,7 +457,11 @@ export class StateError extends Schema.TaggedError<StateError>()(
 	}
 }
 
+export const UNKNOWN_STATE_VERSION_MESSAGE =
+	"We can't read this project's metadata because it was saved by a different version of Forge.";
+
 const stateMessages = {
+	"schema-version-unknown": () => UNKNOWN_STATE_VERSION_MESSAGE,
 	"manifest-parse-failed": (error: StateError) =>
 		`Manifest Parse Failed: ${error.detail ?? ""}`,
 	"manifest-invalid": (error: StateError) =>
@@ -641,6 +647,7 @@ export const ApplyRefusalReason = Schema.Literals([
 	"managed-file-modified",
 	"unmanaged-file-exists",
 ]);
+
 export type ApplyRefusalReason = typeof ApplyRefusalReason.Type;
 
 const ApplyErrorReason = Schema.Literals([
@@ -794,6 +801,7 @@ export const PlannerErrors = Schema.Union([
 	RendererError,
 	StateError,
 ]);
+
 export type PlannerErrors = typeof PlannerErrors.Type;
 
 export const ApplyErrors = Schema.Union([ApplyError, StateError]);

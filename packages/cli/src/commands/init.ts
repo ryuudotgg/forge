@@ -102,6 +102,7 @@ const ConfirmedModulesSchema = Schema.Array(
 		root: Schema.String,
 	}),
 );
+
 const InitConfigFileSchema = Schema.StructWithRest(
 	Schema.Struct({ modules: ConfirmedModulesSchema }),
 	[Schema.Record(Schema.String, Schema.Unknown)],
@@ -137,6 +138,7 @@ export function readInitConfigFile(filePath: string): InitConfigFile {
 		reportFailure(
 			`Your config file is invalid.\n${schemaMessage(result.failure, parsed)}`,
 		);
+
 	const { modules: _modules, ...config } = result.success;
 	return { config, modules: result.success.modules };
 }
@@ -337,7 +339,6 @@ export function buildAdoptionPlan(
 		> = {};
 
 		const prototypeIdByAdoptedId = new Map<string, string>();
-
 		for (const mapping of confirmedModules) {
 			const prototype = modulePrototype(mapping.kind, prototypes);
 			if (prototype === undefined)
@@ -555,13 +556,32 @@ export function initDirectoryRefusal(projectRoot: string) {
 		const directory = join(projectRoot, ".forge");
 		if (!(yield* fs.exists(directory))) return undefined;
 
-		const stateBundle = yield* State.readStateBundle(projectRoot).pipe(
-			Effect.option,
+		const stateBundleResult = yield* State.readStateBundle(projectRoot).pipe(
+			Effect.result,
 		);
+
+		if (
+			Result.isFailure(stateBundleResult) &&
+			stateBundleResult.failure.reason === "schema-version-unknown"
+		)
+			return stateBundleResult.failure.message;
+
+		const stateResults = yield* Effect.all([
+			State.readManifest(projectRoot).pipe(Effect.asVoid, Effect.result),
+			State.readLockfile(projectRoot).pipe(Effect.asVoid, Effect.result),
+		]);
+
+		for (const result of stateResults)
+			if (
+				Result.isFailure(result) &&
+				result.failure.reason === "schema-version-unknown"
+			)
+				return result.failure.message;
+
+		const stateBundle = Result.getSuccess(stateBundleResult);
 
 		const manifestExists = yield* fs.exists(join(directory, "manifest.json"));
 		const lockfileExists = yield* fs.exists(join(directory, "lock.json"));
-
 		if (
 			Option.isSome(stateBundle) &&
 			stateBundle.value !== undefined &&

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import {
 	Apply,
+	CliVersion,
 	CommandProbe,
 	ConfigStore,
 	type DefinitionRegistry,
@@ -53,7 +54,9 @@ function makePlannerLayer(versions: Readonly<Record<string, string>>) {
 		makeCommandProbeLayer(versions),
 		ConfigStore.Default,
 		Renderer.Default,
-		State.Default,
+		State.Default.pipe(
+			Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+		),
 	);
 
 	return Planner.Default.pipe(
@@ -64,7 +67,6 @@ function makePlannerLayer(versions: Readonly<Record<string, string>>) {
 
 export async function plannedDefinitionIds(config: ForgeConfig) {
 	const plan = await plannedProject(config);
-
 	return [
 		...new Set([
 			...plan.manifest.installs.map((install) => install.definitionId),
@@ -82,7 +84,6 @@ export async function plannedProject(
 ) {
 	const directory = await mkdtemp(join(tmpdir(), "forge-generators-"));
 	const plannerLayer = makePlannerLayer(versions);
-
 	try {
 		return await Effect.runPromise(
 			Effect.gen(function* () {
@@ -111,7 +112,6 @@ export async function replannedProject(
 
 	const createLayer = makePlannerLayer(createVersions);
 	const replanLayer = makePlannerLayer(replanVersions);
-
 	try {
 		const createPlan = await Effect.runPromise(
 			Effect.gen(function* () {
@@ -139,9 +139,18 @@ export async function replannedProject(
 				})),
 			}).pipe(
 				Effect.provide(
-					Layer.mergeAll(Apply.Default, State.Default).pipe(
-						Layer.provide(NodeServices.layer),
-					),
+					Layer.mergeAll(
+						Apply.Default.pipe(
+							Layer.provide(
+								Layer.succeed(CliVersion, { version: "test-cli-version" }),
+							),
+						),
+						State.Default.pipe(
+							Layer.provide(
+								Layer.succeed(CliVersion, { version: "test-cli-version" }),
+							),
+						),
+					).pipe(Layer.provide(NodeServices.layer)),
 				),
 			),
 		);

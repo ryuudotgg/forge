@@ -51,14 +51,17 @@ async function scaffoldWebModule(directory: string) {
 		template: { id: "nextjs/base", version: 1 },
 		type: "app",
 	};
+
 	const content = `${JSON.stringify(marker, null, "\t")}\n`;
 	const buffer = await crypto.subtle.digest(
 		"SHA-256",
 		new TextEncoder().encode(content),
 	);
+
 	const hash = Array.from(new Uint8Array(buffer))
 		.map((byte) => byte.toString(16).padStart(2, "0"))
 		.join("");
+
 	await writeJson(join(directory, "apps/web/forge.json"), marker);
 	await writeJson(join(directory, ".forge/lock.json"), {
 		artifacts: {
@@ -93,6 +96,7 @@ describe("lifecycle", () => {
 			const manifest = decodeManifest(
 				await readJson(join(directory, ".forge/manifest.json")),
 			);
+
 			expect(manifest.config).toEqual({ slug: "acme", web: "nextjs" });
 			expect(manifest.installs).toEqual([
 				tailwindInstall,
@@ -113,12 +117,14 @@ describe("lifecycle", () => {
 			await expect(
 				readFile(join(directory, "apps/web/app/layout.tsx"), "utf-8"),
 			).resolves.toContain('import "@acme/ui/globals.css";');
+
 			await expect(
 				readFile(
 					join(directory, "packages/ui/src/styles/globals.css"),
 					"utf-8",
 				),
 			).resolves.toContain('@import "tailwindcss";');
+
 			await expect(
 				readJson(join(directory, ".forge/lock.json")),
 			).resolves.toMatchObject({ artifacts: expect.any(Object) });
@@ -135,6 +141,7 @@ describe("lifecycle", () => {
 			await expect(
 				hasProjectDevDependency(directory, "@acme/forge-sentry"),
 			).resolves.toBe(true);
+
 			await expect(
 				hasProjectDevDependency(directory, "@acme/runtime"),
 			).resolves.toBe(false);
@@ -153,6 +160,7 @@ describe("lifecycle", () => {
 					command: "/usr/bin/true",
 				}),
 			).resolves.toBe(true);
+
 			await expect(
 				runPackageManagerOperation(directory, {
 					args: [],
@@ -189,6 +197,7 @@ describe("lifecycle", () => {
 			expect(
 				loaded.catalog.every((entry) => entry.source === "first-party"),
 			).toBe(true);
+
 			expect(promptMocks.logWarn).not.toHaveBeenCalled();
 		});
 	});
@@ -209,6 +218,7 @@ describe("lifecycle", () => {
 			expect(
 				loaded.catalog.every((entry) => entry.source === "first-party"),
 			).toBe(true);
+
 			expect(promptMocks.logWarn).toHaveBeenCalledWith(
 				"We couldn't load this project's registries (Registry Not Installed: @fixture/missing-registry), so we're showing the first-party catalog.",
 				{ output: process.stderr },
@@ -219,7 +229,8 @@ describe("lifecycle", () => {
 	it("degrades unreadable Forge metadata to first-party data", async () => {
 		await withTempDir("discovery-manifest-failure", async (directory) => {
 			await writeJson(join(directory, ".forge/manifest.json"), {
-				schemaVersion: "invalid",
+				schemaVersion: 1,
+				modules: null,
 			});
 
 			const loaded = await loadDiscoveryRegistry(directory);
@@ -233,6 +244,48 @@ describe("lifecycle", () => {
 			);
 		});
 	});
+
+	it.each(["manifest.json", "lock.json"])(
+		"refuses unknown versions in %s without a prefix or discovery fallback",
+		async (filename) => {
+			await withTempDir("lifecycle-unknown-version", async (directory) => {
+				await writeJson(join(directory, ".forge/manifest.json"), {
+					config: { slug: "acme" },
+					installs: [],
+					modules: {},
+					schemaVersion: filename === "manifest.json" ? 99 : 1,
+				});
+
+				await writeJson(join(directory, ".forge/lock.json"), {
+					artifacts: {},
+					schemaVersion: filename === "lock.json" ? 99 : 1,
+				});
+
+				const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+					throw new Error("exit:1");
+				});
+
+				try {
+					await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+						"exit:1",
+					);
+
+					await expect(loadDiscoveryRegistry(directory)).rejects.toThrow(
+						"exit:1",
+					);
+
+					expect(promptMocks.logError).toHaveBeenCalledTimes(2);
+					expect(promptMocks.logError).toHaveBeenCalledWith(
+						"We can't read this project's metadata because it was saved by a different version of Forge.",
+					);
+
+					expect(promptMocks.logWarn).not.toHaveBeenCalled();
+				} finally {
+					exit.mockRestore();
+				}
+			});
+		},
+	);
 
 	it("round-trips the manifest config instead of inferring it", async () => {
 		await withTempDir("lifecycle-roundtrip", async (directory) => {
@@ -255,6 +308,7 @@ describe("lifecycle", () => {
 					targets: [{ kind: "module", moduleId: "abcde" }],
 				},
 			]);
+
 			expect(project.modules.map((module) => module.root)).toEqual(
 				expect.arrayContaining(["apps/web", "packages/ui"]),
 			);
@@ -270,6 +324,7 @@ describe("lifecycle", () => {
 				[tailwindInstall],
 				commandVersions,
 			);
+
 			const path = join(directory, ".forge/manifest.json");
 			const manifest = decodeManifest(await readJson(path));
 			await writeJson(path, {
@@ -287,6 +342,7 @@ describe("lifecycle", () => {
 				project.manifest.installs,
 				commandVersions,
 			);
+
 			expect(decodeManifest(await readJson(path)).config.backend).toBe("self");
 		});
 	});
@@ -305,7 +361,6 @@ describe("lifecycle", () => {
 
 			try {
 				const project = await loadManagedProject(".", "add");
-
 				expect(project.projectRoot).toBe(resolve("."));
 				expect(isAbsolute(project.projectRoot)).toBe(true);
 			} finally {
@@ -337,6 +392,7 @@ describe("lifecycle", () => {
 				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(promptMocks.logError).toHaveBeenCalledWith(
 					"We couldn't find a Forge project here. The .forge directory is missing or incomplete.",
 				);
@@ -419,6 +475,7 @@ describe("lifecycle", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"Registry Not Installed: @fixture/missing-registry",
 			);
+
 			expect(promptMocks.logError.mock.calls.flat().join("\n")).not.toContain(
 				"RegistryLoadError",
 			);
@@ -443,6 +500,7 @@ describe("lifecycle", () => {
 				commandVersions,
 			),
 		).rejects.toBe(defect);
+
 		expect(promptMocks.logError).not.toHaveBeenCalled();
 	});
 });

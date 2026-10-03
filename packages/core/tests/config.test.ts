@@ -12,6 +12,7 @@ import {
 } from "effect";
 import { describe, expect, it } from "vitest";
 import {
+	CliVersion,
 	CommandProbe,
 	ConfigStore,
 	CoreLive,
@@ -19,7 +20,10 @@ import {
 } from "../src/index";
 import { withTempDir, writeJson, writeText } from "./harness";
 
-const projectLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
+const projectLayer = CoreLive.pipe(
+	Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	Layer.provideMerge(NodeServices.layer),
+);
 
 function systemFailure(method: string, path: string) {
 	return Effect.fail(
@@ -51,6 +55,7 @@ function configLayerWithFileSystem(
 	).pipe(Layer.provide(NodeServices.layer));
 
 	return CoreLive.pipe(
+		Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
 		Layer.provideMerge(fileSystemLayer),
 		Layer.provideMerge(NodeServices.layer),
 	);
@@ -68,7 +73,6 @@ function appConfig(id: string) {
 
 async function failure<A, E>(effect: Effect.Effect<A, E, never>) {
 	const exit = await Effect.runPromiseExit(effect);
-
 	if (!Exit.isFailure(exit)) throw new Error("Expected Effect Failure");
 
 	const failed = Cause.findErrorOption(exit.cause);
@@ -95,6 +99,7 @@ describe("module config store", () => {
 			);
 
 			expect(error._tag).toBe("DuplicateModuleIdError");
+
 			if (error._tag !== "DuplicateModuleIdError")
 				throw new Error("Expected Duplicate Module Id");
 
@@ -114,6 +119,7 @@ describe("module config store", () => {
 			);
 
 			expect(error._tag).toBe("ModuleConfigError");
+
 			if (error._tag !== "ModuleConfigError")
 				throw new Error("Expected Module Config Error");
 
@@ -131,6 +137,7 @@ describe("module config store", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				exists: (target) =>
@@ -142,8 +149,10 @@ describe("module config store", () => {
 			);
 
 			expect(error._tag).toBe("ModuleConfigError");
+
 			if (error._tag !== "ModuleConfigError")
 				throw new Error("Expected Module Config Error");
+
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("read-failed");
 			expect(error.message).toBe("Module Config Read Failed");
@@ -167,6 +176,7 @@ describe("module config store", () => {
 			);
 
 			expect(error._tag).toBe("ModuleConfigError");
+
 			if (error._tag !== "ModuleConfigError")
 				throw new Error("Expected Module Config Error");
 
@@ -183,6 +193,7 @@ describe("module config store", () => {
 			);
 
 			expect(error._tag).toBe("ModuleConfigError");
+
 			if (error._tag !== "ModuleConfigError")
 				throw new Error("Expected Module Config Error");
 
@@ -226,6 +237,7 @@ describe("module config store", () => {
 						? systemFailure("exists", target)
 						: fileSystem.exists(target),
 			}));
+
 			const modules = await Effect.runPromise(
 				ConfigStore.discover(directory).pipe(Effect.provide(failingLayer)),
 			);
@@ -249,6 +261,7 @@ describe("module config store", () => {
 						? systemFailure("readFileString", target)
 						: fileSystem.readFileString(target, encoding),
 			}));
+
 			const modules = await Effect.runPromise(
 				ConfigStore.discover(directory).pipe(Effect.provide(failingLayer)),
 			);
@@ -325,6 +338,7 @@ describe("module config store", () => {
 				join(directory, "packages/zeta/forge.json"),
 				appConfig("zzzzz"),
 			);
+
 			await writeJson(
 				join(directory, "apps/alpha/forge.json"),
 				appConfig("aaaaa"),
@@ -397,6 +411,7 @@ describe("module config store", () => {
 				pathOrDescriptor: moduleRoot,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = configLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				makeDirectory: (target, options) =>
@@ -404,6 +419,7 @@ describe("module config store", () => {
 						? Effect.fail(cause)
 						: fileSystem.makeDirectory(target, options),
 			}));
+
 			const config: PackageConfig = {
 				id: "fghij",
 				type: "package",
@@ -420,8 +436,10 @@ describe("module config store", () => {
 			);
 
 			expect(error._tag).toBe("ModuleConfigError");
+
 			if (error._tag !== "ModuleConfigError")
 				throw new Error("Expected Module Config Error");
+
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("directory-failed");
 			expect(error.message).toBe("Module Config Directory Failed");

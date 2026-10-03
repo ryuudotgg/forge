@@ -7,6 +7,7 @@ import {
 	Apply,
 	ApplyError,
 	type ApplyPlan,
+	CliVersion,
 	CoreLive,
 	formatApplyError,
 	type Lockfile,
@@ -24,7 +25,10 @@ async function pathExists(path: string) {
 	}
 }
 
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
+const coreLayer = CoreLive.pipe(
+	Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	Layer.provideMerge(NodeServices.layer),
+);
 
 describe("apply", () => {
 	it("stages adopted base content without writing the managed artifact", async () => {
@@ -91,6 +95,7 @@ describe("apply", () => {
 				message: "Path Escapes Project Root",
 				path: "../escape.txt",
 			});
+
 			expect(await pathExists(outside)).toBe(false);
 		});
 	});
@@ -132,6 +137,7 @@ describe("apply", () => {
 				message: "Path Escapes Project Root",
 				path: "../outside.txt",
 			});
+
 			expect(await readFile(outside, "utf-8")).toBe(content);
 		});
 	});
@@ -159,6 +165,7 @@ describe("apply", () => {
 				message: "Path Escapes Project Root",
 				path: outside,
 			});
+
 			expect(await pathExists(outside)).toBe(false);
 		});
 	});
@@ -251,6 +258,7 @@ describe("apply", () => {
 			const lockfile = await Effect.runPromise(
 				State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(lockfile.artifacts["project:surface:rootEnv"]).toEqual(artifact);
 		});
 	});
@@ -288,9 +296,11 @@ describe("apply", () => {
 			expect(await readFile(join(directory, ".env"), "utf-8")).toBe(
 				userContent,
 			);
+
 			const lockfile = await Effect.runPromise(
 				State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(lockfile.artifacts).toEqual({});
 		});
 	});
@@ -384,6 +394,7 @@ describe("apply", () => {
 					path: ".env.example",
 				},
 			];
+
 			const initialArtifacts: Lockfile["artifacts"] = {
 				"project:surface:rootPackageJson": {
 					base: {
@@ -433,10 +444,12 @@ describe("apply", () => {
 				join(directory, "package.json"),
 				'{\n\t"scripts": {\n\t\t"dev": "vite --host"\n\t}\n}\n',
 			);
+
 			await writeText(
 				join(directory, ".gitignore"),
 				"# Build\ndist/\n.cache/\n",
 			);
+
 			await writeText(
 				join(directory, ".env.example"),
 				"DATABASE_URL=user-value\n",
@@ -444,6 +457,7 @@ describe("apply", () => {
 
 			const packageIncoming =
 				'{\n\t"scripts": {\n\t\t"dev": "vite",\n\t\t"test": "vitest"\n\t}\n}\n';
+
 			const gitignoreIncoming = "# Build\ndist/\ncoverage/\n";
 			const envIncoming = "DATABASE_URL=forge-new\nAUTH_SECRET=\n";
 			await Effect.runPromise(
@@ -510,27 +524,33 @@ describe("apply", () => {
 			expect(await readJson(join(directory, "package.json"))).toEqual({
 				scripts: { dev: "vite --host", test: "vitest" },
 			});
+
 			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
 				"# Build\ndist/\n.cache/\ncoverage/\n",
 			);
+
 			expect(await readFile(join(directory, ".env.example"), "utf-8")).toBe(
 				"DATABASE_URL=user-value\nAUTH_SECRET=\n",
 			);
+
 			const packageIncomingHash = await hashContent(packageIncoming);
 			const mergedLockfile = await readJson<Lockfile>(
 				join(directory, ".forge/lock.json"),
 			);
+
 			expect(
 				mergedLockfile.artifacts["project:surface:rootPackageJson"],
 			).toMatchObject({
 				base: { hash: packageIncomingHash },
 			});
+
 			expect(
 				await readFile(
 					join(directory, ".forge/bases", packageIncomingHash),
 					"utf-8",
 				),
 			).toBe(packageIncoming);
+
 			expect(
 				await pathExists(
 					join(directory, ".forge/bases", await hashContent(packageBase)),
@@ -539,6 +559,7 @@ describe("apply", () => {
 
 			const thirdPackageRender =
 				'{\n\t"scripts": {\n\t\t"build": "vite build",\n\t\t"dev": "vite",\n\t\t"test": "vitest"\n\t}\n}\n';
+
 			const thirdPackageHash = await hashContent(thirdPackageRender);
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
@@ -568,6 +589,7 @@ describe("apply", () => {
 					],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(await readJson(join(directory, "package.json"))).toEqual({
 				scripts: {
 					build: "vite build",
@@ -575,6 +597,7 @@ describe("apply", () => {
 					test: "vitest",
 				},
 			});
+
 			expect(
 				await readFile(
 					join(directory, ".forge/bases", thirdPackageHash),
@@ -610,9 +633,11 @@ describe("apply", () => {
 					},
 				],
 			};
+
 			await Effect.runPromise(
 				Apply.applyPlan(directory, initialPlan).pipe(Effect.provide(coreLayer)),
 			);
+
 			await writeText(
 				join(directory, "package.json"),
 				'{\n\t"dependencies": {}\n}\n',
@@ -620,6 +645,7 @@ describe("apply", () => {
 
 			const incoming =
 				'{\n\t"dependencies": {\n\t\t"react": "19.1.0",\n\t\t"vite": "7.0.0"\n\t}\n}\n';
+
 			const incomingHash = await hashContent(incoming);
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
@@ -659,6 +685,7 @@ describe("apply", () => {
 		await withTempDir("apply-semantic-conflicts", async (directory) => {
 			const base =
 				'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite"\n\t}\n}\n';
+
 			const baseHash = await hashContent(base);
 			const artifact: LockfileArtifact = {
 				base: { hash: baseHash, mergeKind: "json", semanticsVersion: 1 },
@@ -667,6 +694,7 @@ describe("apply", () => {
 				kind: "surface",
 				path: "package.json",
 			};
+
 			const lineBase = "# Build\ndist/\n";
 			const lineBaseHash = await hashContent(lineBase);
 			const lineArtifact: LockfileArtifact = {
@@ -680,6 +708,7 @@ describe("apply", () => {
 				kind: "surface",
 				path: ".gitignore",
 			};
+
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
 					lockfile: {
@@ -704,8 +733,10 @@ describe("apply", () => {
 					],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const user =
 				'{\n\t"scripts": {\n\t\t"build": "tsc --watch",\n\t\t"dev": "vite --host"\n\t}\n}\n';
+
 			await writeText(join(directory, "package.json"), user);
 			const lineUser = "# Build\nbuild/\n";
 			await writeText(join(directory, ".gitignore"), lineUser);
@@ -713,8 +744,10 @@ describe("apply", () => {
 				join(directory, ".forge/lock.json"),
 				"utf-8",
 			);
+
 			const incoming =
 				'{\n\t"scripts": {\n\t\t"build": "tsc -b",\n\t\t"dev": "vite --port 4000"\n\t}\n}\n';
+
 			const incomingHash = await hashContent(incoming);
 			const lineIncoming = "# Build\noutput/\n";
 			const lineIncomingHash = await hashContent(lineIncoming);
@@ -788,15 +821,19 @@ describe("apply", () => {
 					refusals: [],
 				},
 			});
+
 			expect(error.message).toBe(
 				'Semantic merge conflicts were found:\npackage.json -> scripts.build: base was "tsc", user has "tsc --watch", and forge wants "tsc -b".\npackage.json -> scripts.dev: base was "vite", user has "vite --host", and forge wants "vite --port 4000".\n.gitignore -> Build -> dist/: base was "dist/", user has "build/", and forge wants "output/".\nResolve each conflict, then run Forge again.',
 			);
+
 			expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
 				user,
 			);
+
 			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
 				lineUser,
 			);
+
 			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
 				beforeLock,
 			);
@@ -813,6 +850,7 @@ describe("apply", () => {
 				async (directory) => {
 					const base =
 						'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite"\n\t}\n}\n';
+
 					const baseHash = await hashContent(base);
 					const artifact: LockfileArtifact = {
 						base: { hash: baseHash, mergeKind: "json", semanticsVersion: 1 },
@@ -821,6 +859,7 @@ describe("apply", () => {
 						kind: "surface",
 						path: "package.json",
 					};
+
 					await Effect.runPromise(
 						Apply.applyPlan(directory, {
 							lockfile: {
@@ -842,8 +881,10 @@ describe("apply", () => {
 						join(directory, "package.json"),
 						'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite --host",\n\t\t"user": "custom"\n\t}\n}\n',
 					);
+
 					const incoming =
 						'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite --port 4000",\n\t\t"test": "vitest"\n\t}\n}\n';
+
 					const incomingHash = await hashContent(incoming);
 
 					await Effect.runPromise(
@@ -899,6 +940,7 @@ describe("apply", () => {
 			const lineArtifactId = "project:surface:gitignore";
 			const base =
 				'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite"\n\t}\n}\n';
+
 			const baseHash = await hashContent(base);
 			const artifact: LockfileArtifact = {
 				base: { hash: baseHash, mergeKind: "json", semanticsVersion: 1 },
@@ -907,6 +949,7 @@ describe("apply", () => {
 				kind: "surface",
 				path: "package.json",
 			};
+
 			const lineBase = "# Build\ndist/\n";
 			const lineBaseHash = await hashContent(lineBase);
 			const lineArtifact: LockfileArtifact = {
@@ -920,6 +963,7 @@ describe("apply", () => {
 				kind: "surface",
 				path: ".gitignore",
 			};
+
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
 					lockfile: {
@@ -945,9 +989,11 @@ describe("apply", () => {
 				join(directory, "package.json"),
 				'{\n\t"scripts": {\n\t\t"build": "tsc --watch",\n\t\t"dev": "vite --host"\n\t}\n}\n',
 			);
+
 			await writeText(join(directory, ".gitignore"), "# Build\nbuild/\n");
 			const incoming =
 				'{\n\t"scripts": {\n\t\t"build": "tsc -b",\n\t\t"dev": "vite --port 4000"\n\t}\n}\n';
+
 			const incomingHash = await hashContent(incoming);
 			const lineIncoming = "# Build\noutput/\n";
 			const lineIncomingHash = await hashContent(lineIncoming);
@@ -1005,6 +1051,7 @@ describe("apply", () => {
 					dev: "vite --port 4000",
 				},
 			});
+
 			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
 				"# Build\nbuild/\n",
 			);
@@ -1022,10 +1069,12 @@ describe("apply", () => {
 				const artifactId = "project:surface:config";
 				const path = "config.json";
 				const base = `${JSON.stringify({ value: [{ side: "base" }] })}\n`;
+
 				const userValue = [{ local: true, side: "user" }];
 				const forgeValue = [{ generated: true, side: "forge" }];
 				const user = `${JSON.stringify({ value: userValue })}\n`;
 				const incoming = `${JSON.stringify({ value: forgeValue })}\n`;
+
 				const baseHash = await hashContent(base);
 				const incomingHash = await hashContent(incoming);
 				await Effect.runPromise(
@@ -1050,6 +1099,7 @@ describe("apply", () => {
 						writes: [{ artifactId, content: base, path }],
 					}).pipe(Effect.provide(coreLayer)),
 				);
+
 				await writeText(join(directory, path), user);
 
 				const result = await Effect.runPromise(
@@ -1106,6 +1156,7 @@ describe("apply", () => {
 							path: "managed surfaces",
 						}),
 					});
+
 					expect(await readJson(join(directory, path))).toEqual({
 						value: userValue,
 					});
@@ -1119,6 +1170,7 @@ describe("apply", () => {
 			[{ generated: true, side: "forge" }],
 			true,
 		);
+
 		await verify("array-length", [], [], false);
 		await verify("object-size", [{ local: true }], [], false);
 		await verify("object-key", [{ generated: true, side: "user" }], [], false);
@@ -1284,6 +1336,7 @@ describe("apply", () => {
 				kind: "surface",
 				path: "package.json",
 			};
+
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
 					lockfile: {
@@ -1300,6 +1353,7 @@ describe("apply", () => {
 					],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			await writeText(
 				join(directory, "package.json"),
 				'{\n\t"scripts": {\n\t\t"dev": "vite --host"\n\t}\n}\n',
@@ -1307,6 +1361,7 @@ describe("apply", () => {
 
 			const incoming =
 				'{\n\t"scripts": {\n\t\t"dev": "vite --port 4000",\n\t\t"test": "vitest"\n\t}\n}\n';
+
 			const incomingHash = await hashContent(incoming);
 			const nextPlan: ApplyPlan = {
 				lockfile: {
@@ -1338,6 +1393,7 @@ describe("apply", () => {
 					resolutionPolicy: "keep-user",
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const packagePath = join(directory, "package.json");
 			const resolved = await readFile(packagePath, "utf-8");
 			const inode = (await stat(packagePath)).ino;
@@ -1376,6 +1432,7 @@ describe("apply", () => {
 					});
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const incoming = "# Build\noutput/\n";
 			const incomingHash = await hashContent(incoming);
 			const error = await Effect.runPromise(
@@ -1412,6 +1469,7 @@ describe("apply", () => {
 			expect(error.message).toBe(
 				'Semantic merge conflicts were found:\n.gitignore -> Build -> dist/: base was "dist/", user has "build/", and forge wants "output/".\nResolve each conflict, then run Forge again.',
 			);
+
 			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
 				"# Build\nbuild/\n",
 			);
@@ -1426,6 +1484,7 @@ describe("apply", () => {
 				join(directory, ".gitignore"),
 				"# Build\nuser-one\nanchor\nuser-two\n",
 			);
+
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					yield* State.writeBase(directory, baseHash, base);
@@ -1446,6 +1505,7 @@ describe("apply", () => {
 					});
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const incoming = "# Build\nforge-one\nanchor\nforge-two\n";
 			const incomingHash = await hashContent(incoming);
 			const error = await Effect.runPromise(
@@ -1524,6 +1584,7 @@ describe("apply", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({ path: "managed files" });
 			expect(error.message).toContain(firstPath);
 			expect(error.message).toContain(secondPath);
@@ -1558,10 +1619,12 @@ describe("apply", () => {
 					],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			await writeText(
 				join(directory, ".gitignore"),
 				"# Build\ndist/\nuser-only/\n",
 			);
+
 			const incoming = "# Build\ndist/\ncoverage/\n";
 			const incomingHash = await hashContent(incoming);
 			await Effect.runPromise(
@@ -1592,6 +1655,7 @@ describe("apply", () => {
 					],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
 				"# Build\ndist/\nuser-only/\ncoverage/\n",
 			);
@@ -1628,6 +1692,7 @@ describe("apply", () => {
 							},
 						},
 					});
+
 					yield* State.writeManifest(directory, {
 						config: { version: "old" },
 						installs: [],
@@ -1635,6 +1700,7 @@ describe("apply", () => {
 					});
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const nextContent = '{\n\t"name": "next"\n}\n';
 			const nextHash = await hashContent(nextContent);
 			await writeText(join(directory, ".forge/bases", nextHash), "corrupt\n");
@@ -1642,6 +1708,7 @@ describe("apply", () => {
 				join(directory, ".forge/lock.json"),
 				"utf-8",
 			);
+
 			const oldManifest = await readFile(
 				join(directory, ".forge/manifest.json"),
 				"utf-8",
@@ -1681,13 +1748,16 @@ describe("apply", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({ message: "Managed Base Hash Mismatch" });
 			expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
 				oldContent,
 			);
+
 			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
 				oldLock,
 			);
+
 			expect(
 				await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
 			).toBe(oldManifest);
@@ -1724,10 +1794,12 @@ describe("apply", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({
 				message: "Managed Base Forbidden",
 				path: ".env",
 			});
+
 			expect(await pathExists(join(directory, ".env"))).toBe(false);
 			expect(await pathExists(join(directory, ".forge/bases", hash))).toBe(
 				false,
@@ -1783,13 +1855,16 @@ describe("apply", () => {
 					},
 				],
 			};
+
 			await Effect.runPromise(
 				Apply.applyPlan(directory, initialPlan).pipe(Effect.provide(coreLayer)),
 			);
+
 			const oldLock = await readFile(
 				join(directory, ".forge/lock.json"),
 				"utf-8",
 			);
+
 			const packageIncoming = '{\n\t"name": "new"\n}\n';
 			const gitignoreIncoming = "# Build\ndist/\ncoverage/\n";
 			const nextPlan: ApplyPlan = {
@@ -1848,18 +1923,31 @@ describe("apply", () => {
 							committedFiles++;
 							if (committedFiles === 2) return Effect.die("simulated crash");
 						}
+
 						return fileSystem.rename(oldPath, newPath);
 					},
 				})),
 			).pipe(Layer.provide(NodeServices.layer));
-			const crashingLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
-				Layer.provide(failingFileSystem),
-			);
+
+			const crashingLayer = Layer.mergeAll(
+				Apply.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+			).pipe(Layer.provide(failingFileSystem));
+
 			const crashed = await Effect.runPromiseExit(
 				Apply.applyPlan(directory, nextPlan).pipe(
 					Effect.provide(crashingLayer),
 				),
 			);
+
 			expect(crashed._tag).toBe("Failure");
 			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
 				oldLock,
@@ -1868,15 +1956,19 @@ describe("apply", () => {
 			await Effect.runPromise(
 				Apply.applyPlan(directory, nextPlan).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
 				packageIncoming,
 			);
+
 			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
 				gitignoreIncoming,
 			);
+
 			const manifest = await readJson<{ config: { version: number } }>(
 				join(directory, ".forge/manifest.json"),
 			);
+
 			expect(manifest.config.version).toBe(2);
 		});
 	});
@@ -1904,6 +1996,7 @@ describe("apply", () => {
 				removals: [],
 				writes: [{ artifactId, content, path: "managed.txt" }],
 			});
+
 			await Effect.runPromise(
 				Apply.applyPlan(directory, await planFor(oldContent, 1)).pipe(
 					Effect.provide(coreLayer),
@@ -1920,21 +2013,34 @@ describe("apply", () => {
 							: fileSystem.rename(oldPath, newPath),
 				})),
 			).pipe(Layer.provide(NodeServices.layer));
-			const crashingLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
-				Layer.provide(failingFileSystem),
-			);
+
+			const crashingLayer = Layer.mergeAll(
+				Apply.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+			).pipe(Layer.provide(failingFileSystem));
+
 			const nextPlan = await planFor(newContent, 2);
 			const crashed = await Effect.runPromiseExit(
 				Apply.applyPlan(directory, nextPlan).pipe(
 					Effect.provide(crashingLayer),
 				),
 			);
+
 			expect(crashed._tag).toBe("Failure");
 			expect(
 				await Effect.runPromise(
 					State.readManifest(directory).pipe(Effect.provide(coreLayer)),
 				),
 			).toMatchObject({ config: { version: 1 } });
+
 			expect(
 				await Effect.runPromise(
 					State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
@@ -1946,9 +2052,11 @@ describe("apply", () => {
 			await Effect.runPromise(
 				Apply.applyPlan(directory, nextPlan).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(await readFile(join(directory, "managed.txt"), "utf-8")).toBe(
 				newContent,
 			);
+
 			expect(
 				await Effect.runPromise(
 					State.readManifest(directory).pipe(Effect.provide(coreLayer)),
@@ -1979,6 +2087,7 @@ describe("apply", () => {
 					writes: [{ artifactId, content, path: ".gitignore" }],
 				};
 			};
+
 			const oldContent = "# Build\nold/\n";
 			const nextContent = "# Build\nnext/\n";
 			const oldHash = await hashContent(oldContent);
@@ -2009,15 +2118,26 @@ describe("apply", () => {
 							: fileSystem.remove(path, options),
 				})),
 			).pipe(Layer.provide(NodeServices.layer));
-			const gcFailingLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
-				Layer.provide(failingFileSystem),
-			);
+
+			const gcFailingLayer = Layer.mergeAll(
+				Apply.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+			).pipe(Layer.provide(failingFileSystem));
 
 			await Effect.runPromise(
 				Apply.applyPlan(directory, await planFor(nextContent)).pipe(
 					Effect.provide(gcFailingLayer),
 				),
 			);
+
 			expect(await pathExists(oldBasePath)).toBe(true);
 			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
 				nextContent,
@@ -2028,6 +2148,7 @@ describe("apply", () => {
 					Effect.provide(coreLayer),
 				),
 			);
+
 			expect(await pathExists(oldBasePath)).toBe(false);
 		});
 	});
@@ -2076,9 +2197,11 @@ describe("apply", () => {
 					},
 				],
 			};
+
 			await Effect.runPromise(
 				Apply.applyPlan(directory, seededPlan).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(
 				await readFile(join(directory, ".forge/bases", baseHash), "utf-8"),
 			).toBe(base);
@@ -2087,8 +2210,10 @@ describe("apply", () => {
 				join(directory, "package.json"),
 				'{\n\t"scripts": {\n\t\t"dev": "vite --host"\n\t}\n}\n',
 			);
+
 			const incoming =
 				'{\n\t"scripts": {\n\t\t"dev": "vite",\n\t\t"test": "vitest"\n\t}\n}\n';
+
 			const incomingHash = await hashContent(incoming);
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
@@ -2117,6 +2242,7 @@ describe("apply", () => {
 					],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(await readJson(join(directory, "package.json"))).toEqual({
 				scripts: { dev: "vite --host", test: "vitest" },
 			});
@@ -2176,6 +2302,7 @@ describe("apply", () => {
 					},
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			await Effect.runPromise(
 				Apply.applyPlan(legacy, makePlan("lines", 1)).pipe(
 					Effect.provide(coreLayer),
@@ -2206,6 +2333,7 @@ describe("apply", () => {
 					});
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			await Effect.runPromise(
 				Apply.applyPlan(matching, makePlan("lines", 1)).pipe(
 					Effect.provide(coreLayer),
@@ -2218,6 +2346,7 @@ describe("apply", () => {
 				["kind", "json", 1],
 				["version", "lines", 99],
 			];
+
 			for (const [name, storedKind, storedVersion] of mismatchCases) {
 				const directory = join(scratch, name);
 				const old = "# Build\nold/\n";
@@ -2243,6 +2372,7 @@ describe("apply", () => {
 						});
 					}).pipe(Effect.provide(coreLayer)),
 				);
+
 				const error = await Effect.runPromise(
 					Effect.flip(
 						Apply.applyPlan(directory, makePlan("lines", 1)).pipe(
@@ -2250,6 +2380,7 @@ describe("apply", () => {
 						),
 					),
 				);
+
 				expect(error).toMatchObject({ message: "Managed File Modified" });
 			}
 		});
@@ -2263,6 +2394,7 @@ describe("apply", () => {
 				join(directory, "package.json"),
 				'{\n\t"name": "user"\n}\n',
 			);
+
 			await Effect.runPromise(
 				State.writeLockfile(directory, {
 					artifacts: {
@@ -2275,6 +2407,7 @@ describe("apply", () => {
 					},
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const incoming = '{\n\t"name": "forge"\n}\n';
 			const incomingHash = await hashContent(incoming);
 			const plan: ApplyPlan = {
@@ -2303,11 +2436,13 @@ describe("apply", () => {
 					},
 				],
 			};
+
 			const legacyError = await Effect.runPromise(
 				Effect.flip(
 					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(legacyError).toMatchObject({ message: "Managed File Modified" });
 
 			await Effect.runPromise(
@@ -2315,6 +2450,7 @@ describe("apply", () => {
 					Effect.provide(coreLayer),
 				),
 			);
+
 			await Effect.runPromise(
 				State.writeLockfile(directory, {
 					artifacts: {
@@ -2332,11 +2468,13 @@ describe("apply", () => {
 					},
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const versionError = await Effect.runPromise(
 				Effect.flip(
 					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(versionError).toMatchObject({ message: "Managed File Modified" });
 			const keepUserError = await Effect.runPromise(
 				Effect.flip(
@@ -2345,6 +2483,7 @@ describe("apply", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(keepUserError).toMatchObject({
 				message: "Managed File Modified",
 			});
@@ -2358,6 +2497,7 @@ describe("apply", () => {
 				join(directory, "apps/web/tsconfig.json"),
 				'{\n\t// user comment\n\t"compilerOptions": {}\n}\n',
 			);
+
 			await Effect.runPromise(
 				State.writeLockfile(directory, {
 					artifacts: {
@@ -2387,6 +2527,7 @@ describe("apply", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({
 				message: "Managed File Modified",
 				path: "apps/web/tsconfig.json",
@@ -2402,6 +2543,7 @@ describe("apply", () => {
 				join(directory, "turbo.json"),
 				'{\n\t// user comment\n\t"tasks": {}\n}\n',
 			);
+
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					yield* State.writeBase(directory, baseHash, base);
@@ -2422,6 +2564,7 @@ describe("apply", () => {
 					});
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const incoming = '{\n\t"tasks": { "build": {} }\n}\n';
 			const incomingHash = await hashContent(incoming);
 			const error = await Effect.runPromise(
@@ -2454,12 +2597,15 @@ describe("apply", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({
 				message: "Managed File Modified",
 				path: "turbo.json",
 			});
+
 			if (!(error instanceof ApplyError))
 				throw new Error("Expected ApplyError");
+
 			expect(formatApplyError(error)).toBe(
 				"Forge cannot safely update these files:\nturbo.json was modified after Forge last managed it.\nRun again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
 			);
@@ -2546,6 +2692,7 @@ describe("apply", () => {
 							},
 						}).pipe(Effect.provide(coreLayer)),
 					);
+
 					const plan: ApplyPlan = {
 						lockfile: {
 							artifacts: {
@@ -2578,6 +2725,7 @@ describe("apply", () => {
 					expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
 						expected,
 					);
+
 					const lockfile = await readJson(join(directory, ".forge/lock.json"));
 					expect(lockfile).toMatchObject({
 						artifacts: { [artifactId]: { hash: await hashContent(expected) } },
@@ -2587,9 +2735,11 @@ describe("apply", () => {
 						await Effect.runPromise(
 							Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
 						);
+
 						expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
 							userContent,
 						);
+
 						const rebased = await readJson(join(directory, ".forge/lock.json"));
 						expect(rebased).toMatchObject({
 							artifacts: {
@@ -2602,6 +2752,7 @@ describe("apply", () => {
 								},
 							},
 						});
+
 						expect(
 							await readFile(
 								join(
@@ -2618,12 +2769,15 @@ describe("apply", () => {
 								resolutionPolicy: "accept-forge",
 							}).pipe(Effect.provide(coreLayer)),
 						);
+
 						expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
 							forgeContent,
 						);
+
 						await Effect.runPromise(
 							Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
 						);
+
 						expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
 							forgeContent,
 						);
@@ -2645,8 +2799,10 @@ describe("apply", () => {
 				const render = "export default function Page() {}\n";
 				const changedRender =
 					"export default function Page() { return null; }\n";
+
 				const acceptedRender =
 					"export default function Page() { return <main />; }\n";
+
 				const userContent = `${render}// my page tweak\n`;
 				const obsoleteBase = "obsolete render\n";
 				const obsoleteHash = await hashContent(obsoleteBase);
@@ -2694,6 +2850,7 @@ describe("apply", () => {
 				expect(await readFile(join(directory, path), "utf-8")).toBe(
 					userContent,
 				);
+
 				expect(
 					await readJson<Lockfile>(join(directory, ".forge/lock.json")),
 				).toMatchObject({
@@ -2709,9 +2866,11 @@ describe("apply", () => {
 						},
 					},
 				});
+
 				expect(
 					await readFile(join(directory, ".forge/bases", renderHash), "utf-8"),
 				).toBe(render);
+
 				expect(
 					await pathExists(join(directory, ".forge/bases", obsoleteHash)),
 				).toBe(false);
@@ -2719,9 +2878,11 @@ describe("apply", () => {
 				await Effect.runPromise(
 					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
 				);
+
 				expect(await readFile(join(directory, path), "utf-8")).toBe(
 					userContent,
 				);
+
 				expect(
 					await pathExists(join(directory, ".forge/bases", renderHash)),
 				).toBe(true);
@@ -2731,6 +2892,7 @@ describe("apply", () => {
 					join(directory, ".forge/lock.json"),
 					"utf-8",
 				);
+
 				const error = await Effect.runPromise(
 					Effect.flip(
 						Apply.applyPlan(directory, changedPlan).pipe(
@@ -2738,10 +2900,12 @@ describe("apply", () => {
 						),
 					),
 				);
+
 				expect(error).toMatchObject({ message: "Managed File Modified", path });
 				expect(await readFile(join(directory, path), "utf-8")).toBe(
 					userContent,
 				);
+
 				expect(
 					await readFile(join(directory, ".forge/lock.json"), "utf-8"),
 				).toBe(lockBeforeRefusal);
@@ -2751,13 +2915,16 @@ describe("apply", () => {
 						resolutionPolicy: "keep-user",
 					}).pipe(Effect.provide(coreLayer)),
 				);
+
 				const changedHash = await hashContent(changedRender);
 				expect(await readFile(join(directory, path), "utf-8")).toBe(
 					userContent,
 				);
+
 				expect(
 					await readFile(join(directory, ".forge/bases", changedHash), "utf-8"),
 				).toBe(changedRender);
+
 				expect(
 					await pathExists(join(directory, ".forge/bases", renderHash)),
 				).toBe(false);
@@ -2767,6 +2934,7 @@ describe("apply", () => {
 						resolutionPolicy: "accept-forge",
 					}).pipe(Effect.provide(coreLayer)),
 				);
+
 				expect(await readFile(join(directory, path), "utf-8")).toBe(
 					acceptedRender,
 				);
@@ -2824,6 +2992,7 @@ describe("apply", () => {
 					const artifactId = "project:surface:turboConfig";
 					const base = '{\n\t"tasks": {}\n}\n';
 					const baseHash = await hashContent(base);
+
 					const user = '{\n\t// user comment\n\t"tasks": {}\n}\n';
 					const incoming = '{\n\t"tasks": { "build": {} }\n}\n';
 					const incomingHash = await hashContent(incoming);
@@ -2880,11 +3049,13 @@ describe("apply", () => {
 					expect(await readFile(join(directory, "turbo.json"), "utf-8")).toBe(
 						expected,
 					);
+
 					expect(
 						await readJson(join(directory, ".forge/lock.json")),
 					).toMatchObject({
 						artifacts: { [artifactId]: { hash: await hashContent(expected) } },
 					});
+
 					if (policy === "keep-user") {
 						await Effect.runPromise(
 							Apply.applyPlan(directory, {
@@ -2908,6 +3079,7 @@ describe("apply", () => {
 								writes: [{ artifactId, content: incoming, path: "turbo.json" }],
 							}).pipe(Effect.provide(coreLayer)),
 						);
+
 						expect(await readFile(join(directory, "turbo.json"), "utf-8")).toBe(
 							user,
 						);
@@ -2959,8 +3131,10 @@ describe("apply", () => {
 				path: "packages/ui/forge.json",
 				preflight: { hasManagedRemovals: true },
 			});
+
 			if (!(error instanceof ApplyError))
 				throw new Error("Expected ApplyError");
+
 			expect(formatApplyError(error)).toBe(
 				"Forge cannot safely update these files:\npackages/ui/forge.json was modified after Forge last managed it.\nRun again with --accept-forge to remove modified managed files that Forge no longer plans.",
 			);
@@ -3011,6 +3185,7 @@ describe("apply", () => {
 				"refuse",
 				"keep-user",
 			];
+
 			for (const resolutionPolicy of resolutionPolicies) {
 				const error = await Effect.runPromise(
 					Effect.flip(
@@ -3032,11 +3207,14 @@ describe("apply", () => {
 					path,
 					preflight: { hasManagedRemovals: true },
 				});
+
 				if (!(error instanceof ApplyError))
 					throw new Error("Expected ApplyError");
+
 				expect(formatApplyError(error)).toContain(
 					"Run again with --accept-forge to remove",
 				);
+
 				expect(formatApplyError(error)).not.toContain("--keep-user");
 				expect(await readFile(join(directory, path), "utf-8")).toBe(content);
 			}
@@ -3053,6 +3231,7 @@ describe("apply", () => {
 					{ resolutionPolicy: "accept-forge" },
 				).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(await pathExists(join(directory, path))).toBe(false);
 		});
 	});
@@ -3072,6 +3251,7 @@ describe("apply", () => {
 					},
 				},
 			};
+
 			await Effect.runPromise(
 				State.writeLockfile(directory, previous).pipe(
 					Effect.provide(coreLayer),
@@ -3092,6 +3272,7 @@ describe("apply", () => {
 					).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({ message: "Managed File Modified", path });
 			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
 			expect(await readJson(join(directory, ".forge/lock.json"))).toEqual(
@@ -3137,6 +3318,7 @@ describe("apply", () => {
 					).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({ message: "Managed File Modified", path });
 			expect(await readFile(join(directory, path), "utf-8")).toBe(content);
 		});
@@ -3209,15 +3391,20 @@ describe("apply", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({ message: "Unmanaged File Exists" });
+
 			if (!(error instanceof ApplyError))
 				throw new Error("Expected ApplyError");
+
 			expect(formatApplyError(error)).toBe(
 				"Forge cannot safely update these files:\nconfig.txt already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
 			);
+
 			expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
 				"user\n",
 			);
+
 			expect(await pathExists(join(directory, ".forge/lock.json"))).toBe(false);
 		});
 
@@ -3228,9 +3415,11 @@ describe("apply", () => {
 					resolutionPolicy: "accept-forge",
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
 				"forge\n",
 			);
+
 			expect(await readJson(join(directory, ".forge/lock.json"))).toEqual({
 				...plan.lockfile,
 				schemaVersion: 1,
@@ -3250,6 +3439,7 @@ describe("apply", () => {
 				kind: "surface",
 				path: "package.json",
 			};
+
 			await Effect.runPromise(
 				Apply.applyPlan(directory, {
 					lockfile: { artifacts: { [artifactId]: artifact } },
@@ -3258,6 +3448,7 @@ describe("apply", () => {
 					writes: [{ artifactId, content: base, path: "package.json" }],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const userPackage = '{\n\t"scripts": { "dev": "vite --host" }\n}\n';
 			await writeText(join(directory, "package.json"), userPackage);
 			await writeText(join(directory, "config.txt"), "user\n");
@@ -3265,6 +3456,7 @@ describe("apply", () => {
 				join(directory, ".forge/lock.json"),
 				"utf-8",
 			);
+
 			const incoming = '{\n\t"scripts": { "dev": "vite --port 4000" }\n}\n';
 			const incomingHash = await hashContent(incoming);
 
@@ -3316,9 +3508,11 @@ describe("apply", () => {
 			expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
 				userPackage,
 			);
+
 			expect(await readFile(join(directory, "config.txt"), "utf-8")).toBe(
 				"user\n",
 			);
+
 			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
 				lockBefore,
 			);
@@ -3349,8 +3543,10 @@ describe("apply", () => {
 			expect(
 				await readFile(join(directory, "packages/ui/notes.txt"), "utf-8"),
 			).toBe("keep me\n");
+
 			if (!(error instanceof ApplyError))
 				throw new Error("Expected ApplyError");
+
 			expect(formatApplyError(error)).toBe(
 				"Forge cannot safely update these files:\npackages/ui/notes.txt already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to remove files Forge no longer plans.",
 			);
@@ -3368,6 +3564,7 @@ describe("apply", () => {
 				join(directory, "turbo.json"),
 				'{\n\t// user comment\n\t"tasks": {}\n}\n',
 			);
+
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					yield* State.writeBase(directory, baseHash, base);
@@ -3431,9 +3628,10 @@ describe("apply", () => {
 				await readFile(join(directory, "packages/db/src/index.ts"), "utf-8"),
 			).toBe("export {};\n");
 
-			expect(await readJson(join(directory, ".forge/manifest.json"))).toEqual(
-				plan.manifest,
-			);
+			expect(await readJson(join(directory, ".forge/manifest.json"))).toEqual({
+				...plan.manifest,
+				cliVersion: "test-cli-version",
+			});
 
 			expect(await readJson(join(directory, ".forge/lock.json"))).toEqual(
 				plan.lockfile,
@@ -3600,9 +3798,18 @@ describe("apply", () => {
 							: fileSystem.rename(oldPath, newPath),
 				})),
 			).pipe(Layer.provide(nodeLayer));
+
 			const noMarkerWriteLayer = Layer.mergeAll(
-				Apply.Default,
-				State.Default,
+				Apply.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
 			).pipe(Layer.provide(fileSystemLayer));
 
 			await Effect.runPromise(
@@ -3675,6 +3882,7 @@ describe("apply", () => {
 				message: "Unmanaged File Exists",
 				path,
 			});
+
 			expect(await readFile(join(directory, path), "utf-8")).toBe(userContent);
 		});
 	});
@@ -3721,6 +3929,7 @@ describe("apply", () => {
 				message: "Managed File Modified",
 				path: "forge.json",
 			});
+
 			expect(await readFile(join(directory, "forge.json"), "utf-8")).toBe(
 				userContent,
 			);
@@ -3842,6 +4051,7 @@ describe("apply", () => {
 				message: "Path Escapes Project Root",
 				path: removedFile,
 			});
+
 			expect(await pathExists(join(outside, "sub/index.ts"))).toBe(true);
 			expect(await pathExists(join(projectRoot, "packages/link"))).toBe(true);
 		});
@@ -3857,6 +4067,7 @@ describe("apply", () => {
 				join(directory, "packages/real-db"),
 				join(directory, "packages/db"),
 			);
+
 			await writeText(join(directory, removedFile), content);
 
 			await Effect.runPromise(
