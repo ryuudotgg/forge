@@ -1,30 +1,7 @@
 {
 	"name": "@ryuugg/generators",
 	"version": "0.0.0",
-	"description": "Built-in generators for Forge.",
-	"keywords": [
-		"forge"
-	],
-	"homepage": "https://github.com/ryuudotgg/forge",
-	"bugs": {
-		"url": "https://github.com/ryuudotgg/forge/issues",
-		"email": "contact@ryuu.gg"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/ryuudotgg/forge.git",
-		"directory": "packages/generators"
-	},
-	"funding": {
-		"type": "github",
-		"url": "https://github.com/sponsors/ryuudotgg"
-	},
-	"license": "MIT",
-	"author": {
-		"name": "Ryuu",
-		"email": "me@ryuu.gg",
-		"url": "https://ryuu.gg"
-	},
+	"private": true,
 	"type": "module",
 	"exports": {
 		".": {
@@ -34,10 +11,6 @@
 	},
 	"main": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
-	"files": [
-		"dist",
-		"templates"
-	],
 	"scripts": {
 		"build": "tsdown",
 		"check": "biome check",

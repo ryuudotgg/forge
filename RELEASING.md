@@ -38,6 +38,29 @@ runs. A registry pinned to a different effect version is untested. The
 externalized build had the same exposure: it shared the CLI's copy only when
 the project happened to dedupe it, and never when Forge ran through npx.
 
-`@ryuugg/core` and `@ryuugg/generators` still pack and publish. The CLI no
-longer needs them at runtime, so whether they ship stays an open call for
-activation.
+Only `@ryuugg/forge` publishes. `@ryuugg/core` and `@ryuugg/generators` are
+private workspace packages: they keep their place in the monorepo and reach
+users only inside the CLI bundle. The tarball smoke fails if either loses
+`private: true`.
+
+## Activation
+
+Releases are on hold. Lifting the hold is the maintainer's act, done once,
+in this order.
+
+1. Write the first change file, `.tegami/<name>.md` naming
+   `"@ryuugg/forge": minor`, and merge it to `main`.
+2. On a clean checkout of `main`, run `pnpm tegami version` and check that
+   `@ryuugg/forge` lands on `0.1.0`. Without `CI` set it opens nothing. Keep
+   the changes for the next two steps.
+3. Run `npm login`.
+4. Run `pnpm tegami npm pretrust` in that checkout. It publishes a
+   placeholder `0.0.0-tegami-trusted-publish-setup` of `@ryuugg/forge` under
+   the `temp` dist-tag and trusts `publish.yml` on `ryuudotgg/forge`.
+   Then discard the local changes from step 2.
+5. Create the `npm` environment on the repository with `ryuudotgg` as
+   required reviewer and prevent self review off. The Publish workflow
+   refuses to publish without it.
+6. Run the Release workflow, merge the `chore: release 0.1.0` pull request
+   and approve the `npm` deployment on the Publish run it starts.
+7. Confirm `npm view @ryuugg/forge dist.attestations` is non-empty.

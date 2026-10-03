@@ -6,78 +6,34 @@ import {
 	forgeEnvironment,
 	pathExists,
 	readJson,
+	repoRoot,
 	runCommand,
 	updateProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
-import {
-	installPackedForge,
-	type PackedPackage,
-	packPackage,
-} from "../utils/packed";
+import { installPackedForge, packPackage } from "../utils/packed";
 
 interface ProjectManifest {
 	readonly installs: ReadonlyArray<{ readonly definitionId: string }>;
 }
 
-const releasePackages: ReadonlyArray<{
-	readonly dir: string;
-	readonly name: string;
-}> = [
-	{ dir: "cli", name: "@ryuugg/forge" },
-	{ dir: "core", name: "@ryuugg/core" },
-	{ dir: "generators", name: "@ryuugg/generators" },
-];
-
-function packedPackage(
-	packages: Readonly<Record<string, PackedPackage>>,
-	name: string,
-): PackedPackage {
-	const packed = packages[name];
-	if (!packed) throw new Error(`Packed Package Not Found: ${name}`);
-	return packed;
-}
+const workspacePackages = ["core", "generators"];
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
-	it("installs the packed tarballs and runs create, add and update through the installed binary", async () => {
+	it("installs the packed CLI tarball and runs create, add and update through the installed binary", async () => {
 		await withScenarioWorkspace("smoke-tarball", async (workspace) => {
-			const packages: Record<string, PackedPackage> = {};
-			for (const packageDefinition of releasePackages)
-				packages[packageDefinition.name] = await packPackage(
-					packageDefinition.dir,
-					workspace.workspaceRoot,
+			for (const dir of workspacePackages) {
+				const manifest = await readJson<{ readonly private?: boolean }>(
+					join(repoRoot, "packages", dir, "package.json"),
 				);
 
-			for (const { manifest, entries } of Object.values(packages)) {
-				for (const dependencies of [
-					manifest.dependencies,
-					manifest.devDependencies,
-					manifest.peerDependencies,
-					manifest.optionalDependencies,
-				])
-					for (const [name, version] of Object.entries(dependencies ?? {}))
-						expect(
-							version,
-							`${manifest.name} ${name} must not retain a workspace or catalog protocol`,
-						).not.toMatch(/^(workspace:|catalog:)/);
-
-				for (const [name, version] of Object.entries(
-					manifest.dependencies ?? {},
-				))
-					if (name.startsWith("@ryuugg/"))
-						expect(
-							version,
-							`${manifest.name} must pin ${name} to its packed version`,
-						).toBe(packedPackage(packages, name).manifest.version);
-
 				expect(
-					entries,
-					`${manifest.name} must ship its built entry point`,
-				).toContain("package/dist/index.mjs");
+					manifest.private,
+					`packages/${dir} is bundled into @ryuugg/forge and must stay private`,
+				).toBe(true);
 			}
 
-			const forge = packedPackage(packages, "@ryuugg/forge");
-			const generators = packedPackage(packages, "@ryuugg/generators");
+			const forge = await packPackage("cli", workspace.workspaceRoot);
 			for (const dependencies of [
 				forge.manifest.dependencies,
 				forge.manifest.peerDependencies,
@@ -88,11 +44,23 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 					"The CLI bundles its runtime, so its tarball must declare no installable dependencies",
 				).toEqual({});
 
-			for (const { manifest, entries } of [forge, generators])
+			for (const [name, version] of Object.entries(
+				forge.manifest.devDependencies ?? {},
+			))
 				expect(
-					entries.some((entry) => entry.startsWith("package/templates/")),
-					`${manifest.name} must ship package/templates/ so the installed CLI can scaffold projects`,
-				).toBe(true);
+					version,
+					`@ryuugg/forge ${name} must not retain a workspace or catalog protocol`,
+				).not.toMatch(/^(workspace:|catalog:)/);
+
+			expect(
+				forge.entries,
+				"@ryuugg/forge must ship its built entry point",
+			).toContain("package/dist/index.mjs");
+
+			expect(
+				forge.entries.some((entry) => entry.startsWith("package/templates/")),
+				"@ryuugg/forge must ship package/templates/ so the installed CLI can scaffold projects",
+			).toBe(true);
 
 			const cliPath = await installPackedForge(forge, workspace.workspaceRoot);
 
