@@ -135,6 +135,10 @@ describe("install config reconciliation", () => {
 				"better-auth",
 			),
 		).toEqual({ orm: "prisma" });
+
+		expect(
+			configWithoutInstall({ emailProvider: "smtp", slug: "acme" }, "email"),
+		).toEqual({ slug: "acme" });
 	});
 
 	it("keeps a mapped field that belongs to a different addon", () => {

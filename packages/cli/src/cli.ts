@@ -8,6 +8,7 @@ import {
 	databaseProviders,
 	databases,
 	desktopFrameworks,
+	emailProviders,
 	linters,
 	mobileFrameworks,
 	nativeStyleFrameworks,
@@ -182,6 +183,11 @@ export const options = {
 		choices: choiceHint(authenticationProviders),
 		configKey: "authentication",
 	},
+	email: {
+		type: "string",
+		choices: choiceHint(emailProviders),
+		configKey: "emailProvider",
+	},
 
 	"database-provider": {
 		type: "string",
@@ -264,6 +270,7 @@ export const sections: CLISection[] = [
 			"database",
 			"orm",
 			"auth",
+			"email",
 			"database-provider",
 			"style",
 			"native-style",
@@ -356,7 +363,6 @@ export function buildFlagOverrides(
 	values: Record<string, string | boolean | undefined>,
 ): PartialConfig {
 	const overrides: PartialConfig = {};
-
 	for (const [key, opt] of Object.entries<CLIOption>(options)) {
 		const configKey = opt.configKey;
 		if (!configKey) continue;

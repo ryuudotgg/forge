@@ -318,6 +318,9 @@ export const versions = {
 
 	clsx: { name: "clsx", version: "^2.1.1", group: "Utilities" },
 	nanoid: { name: "nanoid", version: "^6.0.0", group: "Utilities" },
+	resend: { name: "resend", version: "^6.32.0", group: "Utilities" },
+	postmark: { name: "postmark", version: "^5.1.0", group: "Utilities" },
+	nodemailer: { name: "nodemailer", version: "^10.0.13", group: "Utilities" },
 	tailwindMerge: {
 		name: "tailwind-merge",
 		version: "^3.5.0",
@@ -380,7 +383,6 @@ function versionsFor(config: ForgeConfig) {
 
 export function catalogRef(key: VersionKey, config: ForgeConfig = {}) {
 	const entry = versionsFor(config)[key];
-
 	return {
 		name: entry.name,
 		version: entry.version,
@@ -404,7 +406,6 @@ export function catalogEntries(config: ForgeConfig): ReadonlyArray<{
 	readonly entries: ReadonlyArray<CatalogEntry>;
 }> {
 	const grouped = new Map<CatalogGroup, CatalogEntry[]>();
-
 	for (const entry of Object.values(versionsFor(config))) {
 		const list = grouped.get(entry.group) ?? [];
 		list.push(entry);

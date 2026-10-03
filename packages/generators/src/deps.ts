@@ -103,6 +103,9 @@ export const deps = {
 
 	clsx: dep("clsx"),
 	nanoid: dep("nanoid"),
+	resend: dep("resend"),
+	postmark: dep("postmark"),
+	nodemailer: dep("nodemailer"),
 	tailwindMerge: dep("tailwindMerge"),
 	classVarianceAuthority: dep("classVarianceAuthority"),
 

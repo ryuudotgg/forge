@@ -7,6 +7,7 @@ import rpc from "./backend/rpc";
 import database from "./data/database";
 import databaseProvider from "./data/database-provider";
 import orm from "./data/orm";
+import emailProvider from "./email/provider";
 import generate from "./generate";
 import intro from "./intro";
 import outro from "./outro";
@@ -59,6 +60,7 @@ export const steps: Step[] = [
 	uiLibrary,
 
 	addonSelect,
+	emailProvider,
 
 	summary,
 	generate,

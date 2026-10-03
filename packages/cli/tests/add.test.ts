@@ -182,6 +182,25 @@ describe("add command", () => {
 		}));
 	});
 
+	it("rejects adding email to an existing project", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ config: { slug: "acme" } }),
+		);
+
+		try {
+			await expect(runAdd("email", {})).rejects.toThrow("exit:1");
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't add email to an existing project yet.",
+			);
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
 	it("installs, registers, reloads, and adds a single-addon registry", async () => {
 		const addon = defineAddon<ForgeConfig>({
 			id: "@acme/sentry",

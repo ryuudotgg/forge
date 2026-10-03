@@ -15,10 +15,10 @@ function defineChoices<const T extends Record<string, string>>(
 		if (value === undefined) throw new Error(`Missing Choice: ${id}`);
 		return value;
 	};
+
 	const byDisplayName = new Map(ids.map((id) => [read(id).toLowerCase(), id]));
 	const unavailable = new Set(options?.unavailable ?? []);
 	const aliases = new Map(Object.entries(options?.aliases ?? {}));
-
 	function normalize(value: unknown): ChoiceId | undefined {
 		if (typeof value !== "string") return undefined;
 
@@ -126,6 +126,14 @@ export const authenticationProviders = defineChoices(
 export type AuthenticationProvider =
 	keyof typeof authenticationProviders.definitions;
 
+export const emailProviders = defineChoices({
+	resend: "Resend",
+	postmark: "Postmark",
+	smtp: "SMTP",
+} as const);
+
+export type EmailProvider = keyof typeof emailProviders.definitions;
+
 export const styleFrameworks = defineChoices(
 	{ tailwind: "Tailwind CSS", unocss: "UnoCSS" } as const,
 	{ unavailable: ["unocss"] },
@@ -224,7 +232,6 @@ export function hasAddon(config: ForgeConfig, addon: OptionalAddon): boolean {
 export function withAddon(config: ForgeConfig, addon: string): ForgeConfig {
 	const normalized = optionalAddons.normalize(addon);
 	if (normalized === undefined || hasAddon(config, normalized)) return config;
-
 	return { ...config, addons: [...(config.addons ?? []), normalized] };
 }
 
@@ -260,7 +267,6 @@ export function configWithInstall(
 ): ForgeConfig {
 	const binding = addonConfigBindings[addonId];
 	if (binding === undefined) return withAddon(config, addonId);
-
 	return { ...config, ...binding };
 }
 
@@ -268,6 +274,11 @@ export function configWithoutInstall(
 	config: ForgeConfig,
 	addonId: string,
 ): ForgeConfig {
+	if (addonId === "email") {
+		const { emailProvider, ...rest } = config;
+		return rest;
+	}
+
 	const binding = addonConfigBindings[addonId];
 	if (binding === undefined) return withoutAddon(config, addonId);
 
@@ -313,6 +324,7 @@ export interface ForgeConfig {
 	readonly orm?: Orm;
 	readonly authentication?: AuthenticationProvider;
 	readonly authMethods?: ReadonlyArray<AuthMethod>;
+	readonly emailProvider?: EmailProvider;
 	readonly database?: Database;
 	readonly databaseProvider?: DatabaseProvider;
 	readonly style?: StyleFramework;
