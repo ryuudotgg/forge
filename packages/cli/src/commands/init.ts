@@ -638,7 +638,7 @@ function formatInitApplyError(error: ApplyError): string {
 }
 
 async function executePlannedAdoption(
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 	projectRoot: string,
 	config: ForgeConfig,
 	modules: ReadonlyArray<ConfirmedModule>,
@@ -687,7 +687,7 @@ export function adoptionOutro(reconciled: boolean): string {
 }
 
 export async function runInit(
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 	projectRoot = resolve("."),
 ) {
 	const directoryRefusal = await runCliEffectValue(

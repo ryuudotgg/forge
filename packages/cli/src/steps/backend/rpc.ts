@@ -4,11 +4,12 @@ import {
 	rpcConsumer,
 	rpcProviderError,
 	rpcProviders,
-	webFrameworks,
 } from "@ryuugg/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { acceptedChoice, type Choices } from "../../utils/choices";
+import { listAnd } from "../../utils/list";
+import { webAppLabels } from "../../utils/web-apps";
 import { defineStep, SKIP, type Skip } from "../types";
 
 export const rpcSchema = Schema.Literals(rpcProviders.ids).pipe(
@@ -32,7 +33,7 @@ export default defineStep<typeof rpcSchema.Type>({
 	schema: rpcSchema,
 	configKey: "rpc",
 
-	dependencies: ["backend"],
+	dependencies: ["backend", "webApps"],
 
 	shouldRun: (config) =>
 		config.backend !== "convex" &&
@@ -57,12 +58,13 @@ export default defineStep<typeof rpcSchema.Type>({
 			return SKIP;
 		}
 
-		const web = config.web;
+		const apps = webAppLabels(config);
 
 		const rpc = await select({
-			message: web
-				? `Do you want to use an RPC API with ${webFrameworks.label(web)}?`
-				: "Do you want to use an RPC API?",
+			message:
+				apps.length !== 0
+					? `Do you want to use an RPC API with ${listAnd.format(apps)}?`
+					: "Do you want to use an RPC API?",
 			options: rpcOptions(rpcProviders),
 		});
 

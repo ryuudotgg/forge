@@ -33,7 +33,7 @@ export class UpdateCommand extends Context.Service<
 }
 
 export function runUpdateEffect(
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 ) {
 	return Effect.gen(function* () {
 		const command = yield* UpdateCommand;
@@ -76,7 +76,7 @@ export function runUpdateEffect(
 }
 
 export async function runUpdate(
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 	layer: Layer.Layer<UpdateCommand>,
 ) {
 	await Effect.runPromise(runUpdateEffect(values).pipe(Effect.provide(layer)));

@@ -8,6 +8,8 @@ import {
 } from "@ryuugg/generators";
 import { Cause, Effect, Exit, Option } from "effect";
 import { runCliEffect } from "../runtime";
+import { listAnd } from "../utils/list";
+import { webAppLabels } from "../utils/web-apps";
 import { defineStep, SKIP } from "./types";
 
 function formatLine(label: string, value: string) {
@@ -64,6 +66,11 @@ const summaryStep = defineStep({
 			formatLine("Template", template?.name ?? "None"),
 			formatLine("Addons", addons.length > 0 ? addons.join(", ") : "None"),
 		];
+
+		if (forgeConfig.webApps?.length)
+			lines.push(
+				formatLine("Web apps", listAnd.format(webAppLabels(forgeConfig))),
+			);
 
 		const planExit = await runCliEffect(
 			Effect.gen(function* () {

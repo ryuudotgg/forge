@@ -11,18 +11,15 @@ interface HelpEntry {
 }
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
 function visibleLength(value: string): number {
 	return value.replace(ansiPattern, "").length;
 }
 
 function buildCommandEntries(): HelpEntry[] {
 	const entries: HelpEntry[] = [];
-
 	for (const [name, cmd] of Object.entries<SubcommandDef>(subcommands)) {
 		const label = cmd.default ? "forge [create]" : `forge ${name}`;
 		const command = color.bold(color.cyan(label));
-
 		if (cmd.arg)
 			entries.push({
 				label: `${command} ${color.dim(cmd.arg)}`,
@@ -54,6 +51,7 @@ function formatFlag(key: OptionKey, unavailable: boolean): string {
 				? `-${opt.short}, `
 				: `${color.bold(`-${opt.short}`)}, `
 			: "    ";
+
 	const long = `--${key}`;
 	const arg =
 		opt.type === "string"
@@ -61,8 +59,8 @@ function formatFlag(key: OptionKey, unavailable: boolean): string {
 				? " <value>"
 				: color.dim(" <value>")
 			: "";
-	const soon = unavailable ? color.dim(" (soon)") : "";
 
+	const soon = unavailable ? color.dim(" (soon)") : "";
 	return `${short}${unavailable ? long : color.bold(long)}${arg}${soon}`;
 }
 
@@ -73,7 +71,6 @@ function flagLength(key: OptionKey): number {
 function formatChoices(key: OptionKey, unavailable: boolean): string {
 	const opt = options[key];
 	const choices = "choices" in opt ? opt.choices : [];
-
 	return choices
 		.map((choice) =>
 			unavailable
@@ -132,6 +129,7 @@ export function printHelp() {
 		`    ${color.bold("forge list")} ${color.dim("auth")}`,
 		`    ${color.bold("forge info")} ${color.dim("drizzle")}`,
 		`    ${color.bold("forge add")} ${color.dim("trpc")}`,
+		`    ${color.bold("forge create")} ${color.dim("--web tanstack-router --web admin=nextjs")}`,
 	);
 
 	log.message(`${lines.join("\n")}\n`);

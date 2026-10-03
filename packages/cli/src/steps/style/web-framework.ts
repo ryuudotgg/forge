@@ -1,9 +1,5 @@
 import { isCancel, log, select } from "@clack/prompts";
-import {
-	desktopFrameworks,
-	styleFrameworks,
-	webFrameworks,
-} from "@ryuugg/generators";
+import { desktopFrameworks, styleFrameworks } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {
@@ -11,7 +7,9 @@ import {
 	choiceOptions,
 	unsupportedMessage,
 } from "../../utils/choices";
+import { listAnd } from "../../utils/list";
 import { stripNulls } from "../../utils/strip-nulls";
+import { webAppLabels } from "../../utils/web-apps";
 import { defineStep, SKIP } from "../types";
 
 export const styleFrameworkSchema = Schema.Literals(styleFrameworks.ids).pipe(
@@ -23,6 +21,7 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 	group: "style",
 	schema: styleFrameworkSchema,
 	configKey: "style",
+	dependencies: ["webApps", "desktop"],
 
 	shouldRun: (config) => !!(config.web || config.desktop),
 
@@ -39,10 +38,12 @@ const styleFrameworkStep = defineStep<typeof styleFrameworkSchema.Type>({
 
 		for (;;) {
 			const styleFramework = await select({
-				message: `Which styling framework do you want to use for ${stripNulls([
-					config.web ? webFrameworks.label(config.web) : null,
-					config.desktop ? desktopFrameworks.label(config.desktop) : null,
-				]).join(" and ")}?`,
+				message: `Which styling framework do you want to use for ${listAnd.format(
+					stripNulls([
+						...webAppLabels(config),
+						config.desktop ? desktopFrameworks.label(config.desktop) : null,
+					]),
+				)}?`,
 				options: [
 					...choiceOptions(styleFrameworks),
 					{ label: "None", value: "none" as const },

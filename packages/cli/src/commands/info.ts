@@ -137,7 +137,6 @@ export function suggestCatalogEntries(
 	query: string,
 ) {
 	const visible = entries.filter((entry) => !entry.hidden);
-
 	for (let length = query.length; length >= 3; length -= 1) {
 		const suggestions = visible.filter((entry) =>
 			matchQuery(entry, query.slice(0, length)),
@@ -181,7 +180,7 @@ export function buildInfoEnvelope(
 
 export async function runInfo(
 	id: string,
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 	loadRegistry: () => Promise<LoadedDefinitionRegistry> = () =>
 		loadDiscoveryRegistry("."),
 ) {

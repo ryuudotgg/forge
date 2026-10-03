@@ -19,7 +19,6 @@ vi.mock("@clack/prompts", () => ({
 }));
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
 function stripAnsi(text: string): string {
 	return text.replace(ansiPattern, "");
 }
@@ -31,9 +30,31 @@ beforeEach(() => {
 });
 
 describe("summary step", () => {
+	it("names the primary and every secondary framework", async () => {
+		await summaryStep.execute(
+			{
+				path: "./preview",
+				slug: "acme",
+				web: "tanstack-router",
+				webApps: [
+					{ name: "admin", framework: "nextjs", client: true },
+					{ name: "docs", framework: "react-router" },
+				],
+			},
+			true,
+		);
+
+		const [body] = promptMocks.note.mock.calls[0] ?? [];
+		expect(body).toContain(
+			"Web apps: web (TanStack Router), admin (Next.js), and docs (React Router)",
+		);
+
+		expect(body).toContain("apps/admin");
+		expect(body).toContain("apps/docs");
+	});
+
 	it("skips without a note when non-interactive", async () => {
 		await expect(summaryStep.execute({}, false)).resolves.toBe(SKIP);
-
 		expect(promptMocks.note).not.toHaveBeenCalled();
 	});
 
@@ -55,6 +76,7 @@ describe("summary step", () => {
 		expect(body).toContain(
 			"Addons: pnpm Workspace, TypeScript, .gitignore, UI Package",
 		);
+
 		expect(body).toContain("Modules:");
 		expect(body).toContain("apps/web");
 	});
@@ -134,6 +156,7 @@ describe("summary step", () => {
 			expect(String(stderr.mock.calls[0]?.[0])).toContain(
 				"synthetic summary defect",
 			);
+
 			expect(exit).not.toHaveBeenCalled();
 		} finally {
 			loadRegistry.mockRestore();
@@ -146,7 +169,6 @@ describe("summary step", () => {
 describe("intro step", () => {
 	it("prints the banner and starts the forge when interactive", async () => {
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
 		try {
 			await introStep.execute({}, true);
 
@@ -168,10 +190,8 @@ describe("intro step", () => {
 
 	it("skips without a banner when non-interactive", async () => {
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
 		try {
 			await expect(introStep.execute({}, false)).resolves.toBe(SKIP);
-
 			expect(logSpy).not.toHaveBeenCalled();
 		} finally {
 			logSpy.mockRestore();
@@ -196,7 +216,6 @@ describe("outro step", () => {
 
 	it("skips when non-interactive", async () => {
 		await expect(outroStep.execute({}, false)).resolves.toBe(SKIP);
-
 		expect(promptMocks.outro).not.toHaveBeenCalled();
 	});
 });

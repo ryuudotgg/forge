@@ -84,7 +84,6 @@ function assertNoRemovalBlockers(
 	);
 
 	const label = addon.category === "orm" ? "the ORM" : addon.name;
-
 	if (blockers.frameworks.length > 0) {
 		log.error(
 			`We can't remove ${label} because your ${listAnd.format(blockers.frameworks)} app needs it.`,
@@ -288,7 +287,7 @@ async function promptForInstalledAddonId(
 
 export async function runRemove(
 	addonId: string | undefined,
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 ) {
 	const resolution = resolutionArguments(values);
 	const project = await loadManagedProject(".", "remove");
@@ -397,7 +396,6 @@ export async function runRemove(
 	}
 
 	let nextInstalls = project.manifest.installs;
-
 	if (install.targets.some((target) => target.kind === "project"))
 		nextInstalls = nextInstalls.filter(
 			(entry) => entry.definitionId !== resolvedAddonId,
@@ -434,11 +432,12 @@ export async function runRemove(
 	const removedEverywhere = !nextInstalls.some(
 		(entry) => entry.definitionId === resolvedAddonId,
 	);
+
 	const nextConfig = removedEverywhere
 		? configWithoutInstall(project.config, resolvedAddonId)
 		: project.config;
 
-	if (removedEverywhere) {
+	if (removedEverywhere)
 		assertNoRemovalBlockers(
 			addon,
 			nextConfig,
@@ -446,7 +445,6 @@ export async function runRemove(
 			project,
 			loadedRegistry,
 		);
-	}
 
 	const registryIds = project.manifest.registries;
 	const descriptor = loadedRegistry.descriptors.find((entry) =>

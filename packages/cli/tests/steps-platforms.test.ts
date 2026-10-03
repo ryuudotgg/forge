@@ -1,5 +1,7 @@
 import { Result, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildFlagOverrides, parseCliArgs } from "../src/cli";
+import { orchestrate } from "../src/orchestrator";
 import desktopStep from "../src/steps/platforms/desktop";
 import mobileStep from "../src/steps/platforms/mobile";
 import platformsStep from "../src/steps/platforms/select";
@@ -8,10 +10,17 @@ import webAppsStep, { webAppsSchema } from "../src/steps/platforms/web-apps";
 import { type PartialConfig, SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
-	isCancel: vi.fn(() => false),
+	confirm: vi.fn(),
+	isCancel: vi.fn<(value: unknown) => boolean>(() => false),
 	logWarn: vi.fn(),
 	multiselect: vi.fn(),
 	select: vi.fn(),
+	text: vi.fn<
+		(options: {
+			message: string;
+			validate: (value: string | undefined) => string | undefined;
+		}) => Promise<string | symbol>
+	>(),
 }));
 
 const cancelMocks = vi.hoisted(() => ({
@@ -21,25 +30,28 @@ const cancelMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@clack/prompts", () => ({
+	confirm: promptMocks.confirm,
 	isCancel: promptMocks.isCancel,
 	log: { warn: promptMocks.logWarn },
 	multiselect: promptMocks.multiselect,
 	select: promptMocks.select,
+	text: promptMocks.text,
 }));
 
 vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 
 function rawConfig(entries: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
-
 	for (const [key, value] of Object.entries(entries)) config[key] = value;
-
 	return config;
 }
 
 beforeEach(() => {
+	promptMocks.confirm.mockReset();
+	promptMocks.text.mockReset();
 	promptMocks.isCancel.mockReset();
 	promptMocks.isCancel.mockReturnValue(false);
+
 	promptMocks.logWarn.mockReset();
 	promptMocks.multiselect.mockReset();
 	promptMocks.select.mockReset();
@@ -103,6 +115,7 @@ describe("platforms step", () => {
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"We don't support Desktop yet.",
 		);
+
 		expect(promptMocks.multiselect).toHaveBeenCalledTimes(2);
 	});
 
@@ -124,7 +137,6 @@ describe("platforms step", () => {
 
 	it("skips when the interactive selection is empty", async () => {
 		promptMocks.multiselect.mockResolvedValue([]);
-
 		await expect(platformsStep.execute({}, true)).resolves.toBe(SKIP);
 	});
 
@@ -139,7 +151,7 @@ describe("platforms step", () => {
 });
 
 describe("secondary web apps step", () => {
-	it("runs after web selection without prompting", async () => {
+	it("runs after web selection and skips non-interactive defaults", async () => {
 		expect(webAppsStep.id).toBe("webApps");
 		expect(webAppsStep.group).toBe("platforms");
 		expect(webAppsStep.configKey).toBe("webApps");
@@ -149,11 +161,135 @@ describe("secondary web apps step", () => {
 		expect(webAppsStep.shouldRun({ platforms: ["mobile"] })).toBe(false);
 		expect(webAppsStep.shouldRun({ platforms: ["web"] })).toBe(true);
 
-		for (const interactive of [true, false])
-			await expect(webAppsStep.execute({}, interactive)).resolves.toBe(SKIP);
+		await expect(webAppsStep.execute({}, false)).resolves.toBe(SKIP);
 
+		expect(promptMocks.confirm).not.toHaveBeenCalled();
 		expect(promptMocks.select).not.toHaveBeenCalled();
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+	});
+
+	it("declines secondary apps without changing the config", async () => {
+		promptMocks.confirm.mockResolvedValue(false);
+
+		await expect(webAppsStep.execute({ web: "nextjs" }, true)).resolves.toBe(
+			SKIP,
+		);
+
+		expect(promptMocks.text).not.toHaveBeenCalled();
+	});
+
+	it("collects two secondary apps with separate client choices", async () => {
+		promptMocks.confirm
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(false);
+
+		promptMocks.text
+			.mockResolvedValueOnce("admin")
+			.mockResolvedValueOnce("docs");
+
+		promptMocks.select
+			.mockResolvedValueOnce("nextjs")
+			.mockResolvedValueOnce("react-router");
+
+		await expect(
+			webAppsStep.execute({ web: "tanstack-router" }, true),
+		).resolves.toEqual([
+			{ name: "admin", framework: "nextjs", client: true },
+			{ name: "docs", framework: "react-router" },
+		]);
+
+		expect(promptMocks.confirm).toHaveBeenCalledWith({
+			message: "Mark admin as an API client? Wiring is not generated yet.",
+			initialValue: false,
+		});
+
+		const first = promptMocks.text.mock.calls[0]?.[0];
+		const second = promptMocks.text.mock.calls[1]?.[0];
+
+		expect(first?.validate("web")).toBeDefined();
+		expect(first?.validate("Bad_Name")).toBeDefined();
+		expect(first?.validate(undefined)).toBeDefined();
+		expect(first?.validate("settings")).toBeUndefined();
+
+		expect(second?.validate("admin")).toBeDefined();
+	});
+
+	it("produces the same secondary config as repeatable web flags", async () => {
+		promptMocks.confirm
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(false);
+
+		promptMocks.text.mockResolvedValue("admin");
+		promptMocks.select.mockResolvedValue("nextjs");
+		const apps = await webAppsStep.execute({ web: "tanstack-router" }, true);
+
+		expect(
+			buildFlagOverrides(
+				parseCliArgs(["--web", "tanstack-router", "--web", "admin=nextjs"])
+					.values,
+			),
+		).toEqual({ web: "tanstack-router", webApps: apps });
+	});
+
+	it.each(["more", "name", "framework", "client"])(
+		"cancels at %s before generation",
+		async (stage) => {
+			const cancelled = Symbol("cancel");
+			promptMocks.isCancel.mockImplementation(
+				(value: unknown) => value === cancelled,
+			);
+
+			promptMocks.confirm
+				.mockResolvedValueOnce(stage === "more" ? cancelled : true)
+				.mockResolvedValueOnce(stage === "client" ? cancelled : false);
+
+			promptMocks.text.mockResolvedValue(
+				stage === "name" ? cancelled : "admin",
+			);
+
+			promptMocks.select.mockResolvedValue(
+				stage === "framework" ? cancelled : "nextjs",
+			);
+
+			const generate = vi.fn();
+
+			await expect(
+				orchestrate(
+					[
+						webAppsStep,
+						{
+							id: "generate",
+							group: "generate",
+							schema: null,
+							configKey: null,
+							shouldRun: () => true,
+							execute: generate,
+						},
+					],
+					{
+						initialConfig: { platforms: ["web"], web: "nextjs" },
+						interactive: true,
+					},
+				),
+			).rejects.toThrow("Cancelled");
+
+			expect(cancelMocks.cancel).toHaveBeenCalledOnce();
+			expect(generate).not.toHaveBeenCalled();
+		},
+	);
+
+	it("keeps the no-flags non-interactive primary and no secondaries", async () => {
+		const config = await orchestrate([webStep, webAppsStep], {
+			initialConfig: { platforms: ["web"] },
+			interactive: false,
+		});
+
+		expect(config).toEqual({ web: "nextjs" });
+		expect(promptMocks.confirm).not.toHaveBeenCalled();
 	});
 
 	it.each([
@@ -166,6 +302,7 @@ describe("secondary web apps step", () => {
 		[{ name: "2admin", framework: "nextjs" }],
 		[{ name: "admin_tools", framework: "nextjs" }],
 		[{ name: "admin", framework: "unknown" }],
+		[{ name: "admin", framework: "nextjs", client: "yes" }],
 	])("rejects invalid secondary apps %j", (...apps) => {
 		expect(
 			Result.isFailure(Schema.decodeUnknownResult(webAppsSchema)(apps)),
@@ -173,7 +310,11 @@ describe("secondary web apps step", () => {
 	});
 
 	it("accepts valid secondary apps and an empty list", () => {
-		for (const apps of [[], [{ name: "admin-tools", framework: "nextjs" }]])
+		for (const apps of [
+			[],
+			[{ name: "admin-tools", framework: "nextjs" }],
+			[{ name: "admin", framework: "nextjs", client: true }],
+		])
 			expect(
 				Result.isSuccess(Schema.decodeUnknownResult(webAppsSchema)(apps)),
 			).toBe(true);
@@ -191,12 +332,15 @@ describe("web step", () => {
 		await expect(webStep.execute({ web: "nextjs" }, false)).resolves.toBe(
 			"nextjs",
 		);
+
 		await expect(webStep.execute({ web: "react-router" }, false)).resolves.toBe(
 			"react-router",
 		);
+
 		await expect(
 			webStep.execute({ web: "tanstack-router" }, false),
 		).resolves.toBe("tanstack-router");
+
 		await expect(
 			webStep.execute({ web: "tanstack-start" }, false),
 		).resolves.toBe("tanstack-start");
@@ -332,6 +476,7 @@ describe("mobile step", () => {
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"We don't support React Native yet.",
 		);
+
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 

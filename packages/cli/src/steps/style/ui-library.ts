@@ -2,6 +2,8 @@ import { isCancel, select } from "@clack/prompts";
 import { uiLibraries } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
+import { listAnd } from "../../utils/list";
+import { webAppLabels } from "../../utils/web-apps";
 import { defineStep, SKIP } from "../types";
 
 export const uiLibrarySchema = Schema.Literals(uiLibraries.ids);
@@ -12,7 +14,7 @@ const uiLibraryStep = defineStep<typeof uiLibrarySchema.Type>({
 	schema: uiLibrarySchema,
 	configKey: "uiLibrary",
 
-	dependencies: ["web"],
+	dependencies: ["web", "webApps"],
 
 	shouldRun: (config) => !!config.web,
 
@@ -28,7 +30,9 @@ const uiLibraryStep = defineStep<typeof uiLibrarySchema.Type>({
 		}
 
 		const uiLibrary = await select({
-			message: "Which primitive library should your UI components use?",
+			message: config.webApps?.length
+				? `Which primitive library should your UI components use for ${listAnd.format(webAppLabels(config))}?`
+				: "Which primitive library should your UI components use?",
 			options: uiLibraries.ids.map((option) => ({
 				label: uiLibraries.label(option),
 				value: option,
