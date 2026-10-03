@@ -126,7 +126,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 				for (const [name, version] of Object.entries(
 					manifest.dependencies ?? {},
 				))
-					if (name.startsWith("@ryuujs/"))
+					if (name.startsWith("@ryuugg/"))
 						expect(
 							version,
 							`${manifest.name} must pin ${name} to its packed version`,
@@ -172,7 +172,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 			expect(install.exitCode, `${install.stdout}\n${install.stderr}`).toBe(0);
 
 			const installedForgeRoot = await realpath(
-				join(installRoot, "node_modules", "@ryuujs", "forge"),
+				join(installRoot, "node_modules", "@ryuugg", "forge"),
 			);
 
 			const forgeRequire = createRequire(
