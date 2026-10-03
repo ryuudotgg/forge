@@ -13,6 +13,7 @@ export const sessions = snakeCase.table("sessions", {
 
   ipAddress: text(),
   userAgent: text(),
+  // __SESSION_PLUGIN_FIELDS__
 
   createdAt: timestamp({ fsp: 3 }).notNull().defaultNow(),
   updatedAt: timestamp({ fsp: 3 })

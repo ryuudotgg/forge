@@ -1,4 +1,5 @@
 import { expoClient } from "@better-auth/expo/client";
+// __CLIENT_PLUGIN_IMPORTS__
 import { createAuthClient } from "better-auth/react";
 import * as SecureStore from "expo-secure-store";
 import { env } from "../../env";
@@ -13,5 +14,6 @@ export const authClient = createAuthClient({
       storagePrefix: "__SLUG__",
       storage: SecureStore,
     }),
+    // __CLIENT_PLUGINS__
   ],
 });

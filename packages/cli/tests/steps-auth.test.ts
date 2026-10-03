@@ -3,6 +3,7 @@ import { orchestrate } from "../src/orchestrator";
 import { defaultPreset } from "../src/presets/default";
 import authenticationCustomUIStep from "../src/steps/auth/custom-ui";
 import authMethodsStep from "../src/steps/auth/methods";
+import authPluginsStep from "../src/steps/auth/plugins";
 import authenticationStep from "../src/steps/auth/provider";
 import { type PartialConfig, SKIP, type Step } from "../src/steps/types";
 
@@ -168,6 +169,105 @@ describe("auth methods step", () => {
 		).rejects.toThrow("Invalid Configuration:");
 
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+	});
+});
+
+describe("auth plugins step", () => {
+	beforeEach(() => {
+		promptMocks.multiselect.mockReset();
+		promptMocks.isCancel.mockReset();
+		promptMocks.logWarn.mockReset();
+		cancelMocks.cancel.mockClear();
+		promptMocks.isCancel.mockReturnValue(false);
+	});
+
+	it("runs only for Better Auth", () => {
+		expect(authPluginsStep.shouldRun({ authentication: "better-auth" })).toBe(
+			true,
+		);
+
+		for (const authentication of ["authjs", "workos", "clerk", undefined])
+			expect(authPluginsStep.shouldRun(rawConfig({ authentication }))).toBe(
+				false,
+			);
+
+		expect(authPluginsStep).toMatchObject({
+			id: "authPlugins",
+			configKey: "authPlugins",
+			group: "auth",
+			dependencies: ["authentication", "authMethods"],
+		});
+	});
+
+	it("returns the optional selection", async () => {
+		promptMocks.multiselect.mockResolvedValue(["username", "admin"]);
+
+		await expect(
+			authPluginsStep.execute(
+				{
+					authentication: "better-auth",
+					authMethods: ["email-password"],
+				},
+				true,
+			),
+		).resolves.toEqual(["username", "admin"]);
+
+		expect(promptMocks.multiselect).toHaveBeenCalledWith({
+			message: "Which Better Auth plugins do you want?",
+			required: false,
+			initialValues: [],
+			options: [
+				{ label: "Username", value: "username" },
+				{ label: "Admin", value: "admin" },
+			],
+		});
+	});
+
+	it("skips an empty selection", async () => {
+		promptMocks.multiselect.mockResolvedValue([]);
+
+		await expect(authPluginsStep.execute({}, true)).resolves.toBe(SKIP);
+		expect(promptMocks.logWarn).not.toHaveBeenCalled();
+	});
+
+	it("skips non-interactively", async () => {
+		await expect(authPluginsStep.execute({}, false)).resolves.toBe(SKIP);
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+	});
+
+	it("cancels when interrupted", async () => {
+		promptMocks.multiselect.mockResolvedValue(Symbol("cancel"));
+		promptMocks.isCancel.mockReturnValueOnce(true);
+
+		await expect(authPluginsStep.execute({}, true)).rejects.toThrow(
+			"Cancelled",
+		);
+		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
+	});
+
+	it("warns and removes plugins with unmet requirements before retrying", async () => {
+		promptMocks.multiselect
+			.mockResolvedValueOnce(["username", "admin"])
+			.mockResolvedValueOnce(["admin"]);
+
+		await expect(
+			authPluginsStep.execute(
+				{
+					authentication: "better-auth",
+					authMethods: ["google", "apple"],
+				},
+				true,
+			),
+		).resolves.toEqual(["admin"]);
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"Username needs this sign-in method: Email and password.",
+		);
+		expect(promptMocks.multiselect).toHaveBeenCalledTimes(2);
+		expect(promptMocks.multiselect).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ initialValues: ["admin"] }),
+		);
 	});
 });
 

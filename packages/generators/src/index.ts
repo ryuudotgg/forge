@@ -11,6 +11,11 @@ export {
 } from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
 export { resolveAuthMethods } from "./auth/methods";
+export {
+	authPluginRequirement,
+	resolveAuthPlugins,
+	unmetAuthPluginRequirements,
+} from "./auth/plugins";
 export type {
 	AddonCatalogEntry,
 	CatalogEntry,
@@ -27,6 +32,7 @@ export {
 export type {
 	AuthenticationProvider,
 	AuthMethod,
+	AuthPlugin,
 	Backend,
 	Catalogs,
 	Database,
@@ -49,6 +55,7 @@ export {
 	addonConfigBindings,
 	authenticationProviders,
 	authMethods,
+	authPlugins,
 	backends,
 	catalogs,
 	configWithInstall,

@@ -18,6 +18,7 @@ export const sessions = snakeCase.table(
 
     ipAddress: text(),
     userAgent: text(),
+    // __SESSION_PLUGIN_FIELDS__
 
     createdAt: integer({ mode: "timestamp_ms" }).notNull().default(unixepochMs),
     updatedAt: integer({ mode: "timestamp_ms" })

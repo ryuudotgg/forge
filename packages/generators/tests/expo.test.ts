@@ -264,6 +264,8 @@ describe("Expo mobile framework", () => {
 			if (usesAuth)
 				expect(writeContent(plan, "apps/mobile/src/lib/auth-client.ts")).toBe(
 					readTemplate("auth/better-auth/expo/auth-client.ts")
+						.replace("// __CLIENT_PLUGIN_IMPORTS__\n", "")
+						.replace("    // __CLIENT_PLUGINS__\n", "")
 						.replaceAll("__SCHEME__", "acme")
 						.replaceAll("__SLUG__", "acme"),
 				);

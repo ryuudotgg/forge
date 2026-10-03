@@ -24,20 +24,26 @@ import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
+import { authPluginBindings, authPluginImports } from "../plugins";
 import { betterAuthRecipeVars } from "./shared";
 
 const betterAuthMarkers = {
 	SLUG: marker.required,
 	DATASOURCE_PROVIDER: marker.required,
 	DRIZZLE_PROVIDER: marker.required,
-	COOKIE_IMPORT: marker.toggleLine("// __COOKIE_IMPORT__\n"),
-	COOKIE_PLUGIN: marker.toggleLine("  // __COOKIE_PLUGIN__\n\n"),
+	PLUGIN_IMPORTS: marker.toggleLine("// __PLUGIN_IMPORTS__\n"),
+	PLUGINS: marker.toggleLine("  // __PLUGINS__\n\n"),
+	CLIENT_PLUGIN_IMPORTS: marker.toggleLine("// __CLIENT_PLUGIN_IMPORTS__\n"),
+	CLIENT_PLUGINS: marker.toggleLine("    // __CLIENT_PLUGINS__\n"),
 	TRUSTED_ORIGINS: marker.toggleLine("  // __TRUSTED_ORIGINS__\n"),
 	EMAIL_PASSWORD: marker.toggleLine("  // __EMAIL_PASSWORD__\n"),
 	SOCIAL_DECLARATION: marker.toggleLine("// __SOCIAL_DECLARATION__\n"),
 	SOCIAL_OPTION: marker.toggleLine("  // __SOCIAL_OPTION__\n\n"),
 	SOCIAL_FUNCTION: marker.toggleLine("// __SOCIAL_FUNCTION__\n\n"),
 } as const;
+
+const { CLIENT_PLUGIN_IMPORTS, CLIENT_PLUGINS, ...betterAuthServerMarkers } =
+	betterAuthMarkers;
 
 function betterAuthModuleDependencies(slug: string) {
 	return [
@@ -52,7 +58,7 @@ function betterAuthModuleDependencies(slug: string) {
 
 export const betterAuthRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthMarkers,
+	markers: betterAuthServerMarkers,
 	assets: [
 		sharedAsset("index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -110,7 +116,7 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 // distinct keys here even though `path` below rewrites both to src/index.ts.
 export const betterAuthHonoRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthMarkers,
+	markers: betterAuthServerMarkers,
 	assets: [
 		sharedAsset("index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -156,7 +162,7 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 
 export const betterAuthFastifyRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthMarkers,
+	markers: betterAuthServerMarkers,
 	assets: [
 		sharedAsset("fastify-index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -202,7 +208,7 @@ export const betterAuthFastifyAdapters = deriveRecipeAdapters({
 
 export const betterAuthExpressRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthMarkers,
+	markers: betterAuthServerMarkers,
 	assets: [
 		sharedAsset("express-index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -248,7 +254,12 @@ export const betterAuthExpressAdapters = deriveRecipeAdapters({
 
 export const betterAuthExpoRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: { SCHEME: marker.required, SLUG: marker.required },
+	markers: {
+		SCHEME: marker.required,
+		SLUG: marker.required,
+		CLIENT_PLUGIN_IMPORTS,
+		CLIENT_PLUGINS,
+	},
 	assets: [
 		sharedAsset("expo-client", {
 			template: "auth/better-auth/expo/auth-client.ts",
@@ -261,7 +272,14 @@ export function expoAuthClientContributions(config: ForgeConfig) {
 	if (config.mobile !== "expo") return [];
 
 	const slug = config.slug ?? "my-app";
-	const markers = { SCHEME: expoScheme(slug), SLUG: slug };
+	const plugins = authPluginBindings(config, "client");
+	const markers = {
+		SCHEME: expoScheme(slug),
+		SLUG: slug,
+		CLIENT_PLUGIN_IMPORTS: authPluginImports(plugins),
+		CLIENT_PLUGINS: plugins.map(({ name }) => `    ${name}(),\n`).join(""),
+	};
+
 	const asset = betterAuthExpoRecipe.assets[0];
 	const rendered = renderRecipeAsset(
 		betterAuthExpoRecipe,
@@ -271,7 +289,6 @@ export function expoAuthClientContributions(config: ForgeConfig) {
 	);
 
 	const target = ensuredModuleTarget("mobile");
-
 	return [
 		leafTextFile(target, rendered.destination, rendered.content),
 		surfaceDependencies(target, "packageJson", [

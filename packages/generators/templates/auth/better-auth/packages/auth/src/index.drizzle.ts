@@ -4,7 +4,7 @@ import { accounts, sessions, users, verifications } from "@__SLUG__/db/schema";
 import type { BetterAuthOptions } from "better-auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-// __COOKIE_IMPORT__
+// __PLUGIN_IMPORTS__
 
 const SESSION_EXPIRES_IN = 60 * 60 * 24 * 7; // 7 days
 const SESSION_UPDATE_AGE = 60 * 60 * 24; // 1 day
@@ -30,7 +30,7 @@ const config = {
   }),
   // __EMAIL_PASSWORD__
 
-  // __COOKIE_PLUGIN__
+  // __PLUGINS__
 
   session: {
     expiresIn: SESSION_EXPIRES_IN,
