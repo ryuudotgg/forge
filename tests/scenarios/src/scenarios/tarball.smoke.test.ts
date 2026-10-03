@@ -1,6 +1,5 @@
-import { mkdir, realpath, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { dirname, join, resolve, sep } from "node:path";
+import { mkdir, realpath } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	addAddon,
@@ -139,26 +138,28 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 			}
 
 			const forge = packedPackage(packages, "@ryuugg/forge");
-			const core = packedPackage(packages, "@ryuugg/core");
 			const generators = packedPackage(packages, "@ryuugg/generators");
-			expect(
-				generators.entries.some((entry) =>
-					entry.startsWith("package/templates/"),
-				),
-				"The generators tarball must ship package/templates/ so the installed CLI can scaffold projects",
-			).toBe(true);
+			for (const dependencies of [
+				forge.manifest.dependencies,
+				forge.manifest.peerDependencies,
+				forge.manifest.optionalDependencies,
+			])
+				expect(
+					dependencies ?? {},
+					"The CLI bundles its runtime, so its tarball must declare no installable dependencies",
+				).toEqual({});
+
+			for (const { manifest, entries } of [forge, generators])
+				expect(
+					entries.some((entry) => entry.startsWith("package/templates/")),
+					`${manifest.name} must ship package/templates/ so the installed CLI can scaffold projects`,
+				).toBe(true);
 
 			const installRoot = join(workspace.workspaceRoot, "install");
 			await writeJson(join(installRoot, "package.json"), {
 				name: "forge-tarball-smoke",
 				private: true,
 			});
-
-			await writeFile(
-				join(installRoot, "pnpm-workspace.yaml"),
-				`overrides:\n  "@ryuugg/core": ${JSON.stringify(`file:${core.tarballPath}`)}\n  "@ryuugg/generators": ${JSON.stringify(`file:${generators.tarballPath}`)}\n`,
-				"utf-8",
-			);
 
 			const install = await runCommand(
 				"pnpm",
@@ -175,44 +176,11 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 				join(installRoot, "node_modules", "@ryuugg", "forge"),
 			);
 
-			const forgeRequire = createRequire(
-				join(installedForgeRoot, "package.json"),
-			);
-
-			const installedCorePath = await realpath(
-				forgeRequire.resolve("@ryuugg/core"),
-			);
-
-			const installedGeneratorsPath = await realpath(
-				forgeRequire.resolve("@ryuugg/generators"),
-			);
-
-			const generatorsRequire = createRequire(
-				join(dirname(dirname(installedGeneratorsPath)), "package.json"),
-			);
-
-			const generatorsCorePath = await realpath(
-				generatorsRequire.resolve("@ryuugg/core"),
-			);
-
 			const realInstallRoot = await realpath(installRoot);
-			const realRepoRoot = await realpath(repoRoot);
-			for (const installedPath of [
-				installedForgeRoot,
-				installedCorePath,
-				installedGeneratorsPath,
-				generatorsCorePath,
-			]) {
-				expect(
-					installedPath.startsWith(`${realInstallRoot}${sep}`),
-					`${installedPath} must resolve inside the scratch install`,
-				).toBe(true);
-
-				expect(
-					installedPath.startsWith(`${realRepoRoot}${sep}`),
-					`${installedPath} must not resolve into the repo`,
-				).toBe(false);
-			}
+			expect(
+				installedForgeRoot.startsWith(`${realInstallRoot}${sep}`),
+				`${installedForgeRoot} must resolve inside the scratch install`,
+			).toBe(true);
 
 			const bin =
 				typeof forge.manifest.bin === "string"
