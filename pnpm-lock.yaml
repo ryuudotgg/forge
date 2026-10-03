@@ -271,7 +271,7 @@ importers:
         version: 7.0.2
 
   packages/cli:
-    dependencies:
+    devDependencies:
       '@clack/core':
         specifier: catalog:node
         version: 1.5.1
@@ -284,22 +284,15 @@ importers:
       '@effect/platform-node-shared':
         specifier: 4.0.0-rc.117
         version: 4.0.0-rc.117(effect@4.0.0-rc.117)
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1)
       '@ryuugg/core':
         specifier: workspace:*
         version: link:../core
       '@ryuugg/generators':
         specifier: workspace:*
         version: link:../generators
-      effect:
-        specifier: catalog:effect
-        version: 4.0.0-rc.117
-      picocolors:
-        specifier: catalog:node
-        version: 1.1.1
-    devDependencies:
-      '@effect/vitest':
-        specifier: catalog:effect
-        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1)
       '@ryuujs/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
@@ -312,6 +305,12 @@ importers:
       '@vitest/coverage-v8':
         specifier: catalog:dev
         version: 5.0.1(vitest@5.0.1)
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-rc.117
+      picocolors:
+        specifier: catalog:node
+        version: 1.1.1
       tsdown:
         specifier: catalog:build
         version: 0.23.0(typescript@7.0.2)
