@@ -14,6 +14,7 @@ import {
 	type ScenarioProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
+import { expectPasskeyCeremony } from "../utils/passkey";
 
 const postgresProviderCells = [
 	{ provider: "planetscale", transaction: "supported" },
@@ -260,6 +261,7 @@ async function withGeneratedServer(
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
+		readonly passkey?: boolean;
 		readonly polar?: boolean;
 		readonly rpc?: "trpc" | "orpc";
 		readonly username?: string;
@@ -353,6 +355,9 @@ async function expectCredentialedGeneratedServer(
 			const cookie = setCookie.split(";", 1)[0];
 			if (cookie === undefined)
 				throw new Error("Missing Cookie Value: Better Auth sign-up");
+
+			if (options?.passkey)
+				await expectPasskeyCeremony(serverOrigin, origin, cookie, output);
 
 			if (options?.polar) {
 				const checkout = await fetch(`${serverOrigin}/api/auth/checkout`, {
@@ -813,6 +818,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
+				authMethods: ["email-password", "google", "apple", "passkey"],
 				authPlugins: ["username", "admin", "polar"],
 				backend: "hono",
 				database: "sqlite",
@@ -827,6 +833,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 			await expectCredentialedGeneratedServer(workspace.projectRoot, {
+				passkey: true,
 				polar: true,
 				username: "hono_smoke",
 			});
