@@ -47,7 +47,6 @@ function mergeInstallRecord(
 
 	const current = records.get(record.definitionId) ?? [];
 	const next = [...current];
-
 	for (const target of record.targets) {
 		const key =
 			target.kind === "project" ? "project" : `module:${target.moduleId}`;
@@ -222,13 +221,16 @@ function announceAdapterSupport(
 		const addonName =
 			loaded.registry.addons.find((entry) => entry.id === unit.addon)?.name ??
 			titleFromId(unit.addon);
+
 		const frameworkName =
 			loaded.registry.frameworks.find((entry) => entry.id === unit.framework)
 				?.name ?? titleFromId(unit.framework);
+
 		const support = supportByAddon.get(unit.addon) ?? {
 			frameworks: new Set<string>(),
 			name: addonName,
 		};
+
 		support.frameworks.add(frameworkName);
 		supportByAddon.set(unit.addon, support);
 	}
@@ -330,7 +332,6 @@ function retargetAdapterInstalls(
 				];
 
 		const uniqueTargetIds = [...new Set(targetIds)];
-
 		return {
 			definitionId: install.definitionId,
 			targets: uniqueTargetIds.map(
@@ -379,7 +380,6 @@ async function installRegistryPackage(
 	);
 
 	const manualCommand = [operation.command, ...operation.args].join(" ");
-
 	if (noInstall) {
 		log.error(
 			`We can't add ${registryId} without installing it. Run "${manualCommand}" inside the project, then try again.`,
@@ -530,6 +530,11 @@ export async function runAdd(
 				: "We can't add a mobile framework to an existing project yet.",
 		);
 
+		process.exit(1);
+	}
+
+	if (resolvedAddonId === "email") {
+		log.error("We can't add email to an existing project yet.");
 		process.exit(1);
 	}
 

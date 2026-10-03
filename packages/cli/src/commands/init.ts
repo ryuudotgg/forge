@@ -65,6 +65,7 @@ const initSteps = steps.filter(
 	(step) =>
 		!new Set([
 			"intro",
+			"emailProvider",
 			"summary",
 			"generate",
 			"installDeps",

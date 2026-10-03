@@ -34,6 +34,7 @@ import {
 	styleFrameworks,
 	webFrameworks,
 } from "../config";
+import email, { emailMetadata } from "../email";
 import expoBaseTemplate, {
 	expoBaseTemplateMetadata,
 	expoFramework,
@@ -149,6 +150,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		vscode,
 		githubCi,
 		shared,
+		email,
 		ui,
 		nativewind,
 		tailwind,
@@ -224,6 +226,7 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(vscode, vscodeMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(githubCi, githubCiMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(shared, sharedMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(email, emailMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(ui, uiMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(
 		nativewind,

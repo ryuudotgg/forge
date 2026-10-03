@@ -3,7 +3,6 @@ import { options } from "../src/cli";
 import { printHelp } from "../src/utils/help";
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
 function stripAnsi(text: string): string {
 	return text.replace(ansiPattern, "");
 }
@@ -19,7 +18,6 @@ function captureHelp(): string[] {
 
 	try {
 		printHelp();
-
 		return stripAnsi(output).split("\n").slice(0, -1);
 	} finally {
 		writeSpy.mockRestore();
@@ -65,6 +63,7 @@ describe("printHelp", () => {
 				"        --database <value>             MySQL · PostgreSQL · SQLite",
 				"        --orm <value>                  Drizzle ORM · Prisma",
 				"        --auth <value>                 Better Auth · Auth.js (soon) · WorkOS (soon) · Clerk (soon)",
+				"        --email <value>                Resend · Postmark · SMTP",
 				"        --database-provider <value>    PlanetScale · Neon · Nile · Supabase · Prisma Postgres · Turso",
 				"        --style <value>                Tailwind CSS · UnoCSS (soon)",
 				"        --native-style <value>         NativeWind · Tamagui (soon) · Unistyles (soon)",
@@ -96,7 +95,6 @@ describe("printHelp", () => {
 
 	it("documents every option as a long flag", () => {
 		const output = captureHelp().join("\n");
-
 		for (const key of Object.keys(options))
 			expect(output).toContain(`--${key}`);
 	});
@@ -116,7 +114,6 @@ describe("printHelp", () => {
 
 		const columns = descriptions.map((description) => {
 			const line = lines.find((entry) => entry.includes(description));
-
 			expect(line).toBeDefined();
 			return line?.indexOf(description);
 		});

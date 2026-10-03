@@ -7,6 +7,7 @@ export { rpcSchema as rpc } from "./backend/rpc";
 export { databaseSchema as database } from "./data/database";
 export { databaseProviderSchema as databaseProvider } from "./data/database-provider";
 export { ormSchema as orm } from "./data/orm";
+export { emailProviderSchema as emailProvider } from "./email/provider";
 export { desktopSchema as desktop } from "./platforms/desktop";
 export { mobileSchema as mobile } from "./platforms/mobile";
 export { platformsSchema as platforms } from "./platforms/select";
