@@ -85,7 +85,7 @@ For any new features or changes:
 
 - **Questions**: [GitHub Discussions](https://github.com/ryuudotgg/forge/discussions)
 - **Issues**: [GitHub Issues](https://github.com/ryuudotgg/forge/issues)
-- **Documentation**: [Forge Docs](https://forge.ryuu.gg/docs)
+- **Documentation**: [README](README.md)
 - **Community**: [Discord](https://discord.gg/YaarU42KxQ)
 
 ## Good First Issues

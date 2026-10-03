@@ -134,7 +134,7 @@ We have a [Code of Conduct](CODE_OF_CONDUCT.md) in place to ensure a welcoming a
 
 ## 📝 Versioning
 
-Forge follows [SemVer](https://semver.org). The CLI and its packages share one version number, and each release is tagged `forge@x.y.z`. Every version and its changelog is listed on the [releases page](https://github.com/ryuudotgg/forge/releases).
+Forge follows [SemVer](https://semver.org). The CLI and its packages share one version number, and each release will be tagged `forge@x.y.z`. Once releases are published, every version and its changelog will be listed on the [releases page](https://github.com/ryuudotgg/forge/releases).
 
 ## 👥 Authors
 

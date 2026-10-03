@@ -140,4 +140,4 @@ Before submitting a PR, please read our [Pull Request Guidelines](./PULL_REQUEST
 
 - Ask for help on [GitHub Discussions](https://github.com/ryuudotgg/forge/discussions)
 - Check existing issues on [GitHub Issues](https://github.com/ryuudotgg/forge/issues)
-- Review the [Documentation](https://forge.ryuu.gg/docs)
+- Review the [README](../README.md)
