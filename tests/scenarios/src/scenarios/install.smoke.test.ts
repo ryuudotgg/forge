@@ -3,6 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { expectEmailAuth } from "../utils/email-auth";
 import {
 	createProject,
 	expectInstallAndTypecheck,
@@ -261,6 +262,7 @@ async function withGeneratedServer(
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
+		readonly emailAuth?: boolean;
 		readonly passkey?: boolean;
 		readonly polar?: boolean;
 		readonly rpc?: "trpc" | "orpc";
@@ -358,6 +360,9 @@ async function expectCredentialedGeneratedServer(
 
 			if (options?.passkey)
 				await expectPasskeyCeremony(serverOrigin, origin, cookie, output);
+
+			if (options?.emailAuth)
+				await expectEmailAuth(serverOrigin, origin, output);
 
 			if (options?.polar) {
 				const checkout = await fetch(`${serverOrigin}/api/auth/checkout`, {
@@ -771,6 +776,69 @@ async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
 }
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
+	it.each([
+		{ backend: "hono", web: "nextjs", emailProvider: "resend" },
+		{ backend: "fastify", web: "tanstack-router", emailProvider: "postmark" },
+		{ backend: "express", web: "tanstack-router", emailProvider: "smtp" },
+	])(
+		"installs and authenticates email methods on $backend with $emailProvider",
+		async ({ backend, web, emailProvider }) => {
+			await withScenarioWorkspace(
+				`smoke-email-auth-${backend}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						authMethods: ["email-password", "email-otp", "magic-link"],
+						backend,
+						database: "sqlite",
+						emailProvider,
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "trpc",
+						style: "tailwind",
+						web,
+					});
+
+					await writeFile(
+						join(workspace.projectRoot, "packages/auth/src/email-probe.ts"),
+						[
+							'import { authClient } from "./client";',
+							"export const sendOtp = authClient.emailOtp.sendVerificationOtp;",
+							"export const signInOtp = authClient.signIn.emailOtp;",
+							"export const signInMagic = authClient.signIn.magicLink;",
+							"",
+						].join("\n"),
+					);
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+
+					const declarations = await runCommand(
+						"pnpm",
+						[
+							"exec",
+							"tsc",
+							"--emitDeclarationOnly",
+							"--outDir",
+							join(workspace.workspaceRoot, "auth-declarations"),
+						],
+						{ cwd: join(workspace.projectRoot, "packages/auth") },
+					);
+
+					expect(
+						declarations.exitCode,
+						`${declarations.stdout}\n${declarations.stderr}`,
+					).toBe(0);
+
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						emailAuth: true,
+					});
+				},
+			);
+		},
+		600_000,
+	);
+
 	it.each([
 		{ primary: "tanstack-router", secondary: "nextjs", backend: "hono" },
 		{ primary: "nextjs", secondary: "tanstack-router", backend: "hono" },

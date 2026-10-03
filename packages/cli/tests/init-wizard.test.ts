@@ -200,6 +200,38 @@ describe("init wizard", () => {
 		});
 	});
 
+	it.each(["email-otp", "magic-link"])(
+		"rejects %s before adopting an email dependency",
+		async (method) => {
+			await withTempDir("init-email-method", async (directory) => {
+				await webFixture(directory);
+				const configPath = join(directory, "forge.init.json");
+				await writeJson(configPath, {
+					addons: [],
+					authentication: "better-auth",
+					authMethods: [method],
+					emailProvider: "resend",
+					catalogs: "flat",
+					linter: "biome",
+					modules: [{ kind: "web-app", root: "apps/web" }],
+					name: "Acme",
+					packageManager: "pnpm",
+					path: ".",
+					platforms: ["web"],
+					runtime: "Node.js",
+					slug: "acme",
+					web: "nextjs",
+				});
+
+				await expect(
+					runInit({ config: configPath }, directory),
+				).rejects.toThrow(
+					"Email OTP and magic link aren't supported when adopting a project.",
+				);
+			});
+		},
+	);
+
 	it("presents unmanaged marker conflicts with init-specific guidance", async () => {
 		await withTempDir("init-marker-conflict", async (directory) => {
 			await webFixture(directory);

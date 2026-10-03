@@ -5,7 +5,7 @@ import {
 	type ForgeConfig,
 } from "../config";
 import { deps } from "../deps";
-import { authUsesPasskey, resolveAuthMethods } from "./methods";
+import { resolveAuthMethods } from "./methods";
 import { type AuthTable, passkeyTable } from "./tables";
 
 export interface AuthField {
@@ -17,7 +17,10 @@ export interface AuthField {
 
 type AuthModel = "user" | "session";
 type AuthPluginSide = "server" | "client" | "expo";
-type AuthExtension = AuthPlugin | Extract<AuthMethod, "passkey">;
+type AuthExtension =
+	| AuthPlugin
+	| Extract<AuthMethod, "passkey" | "email-otp" | "magic-link">;
+
 type AuthPackageSide = "auth" | "expo";
 
 interface AuthPluginEnvEntry {
@@ -35,6 +38,7 @@ interface AuthPluginPackage {
 interface AuthPluginImport {
 	readonly module: string;
 	readonly name: string;
+	readonly call?: string;
 }
 
 interface AuthPluginDefinition {
@@ -53,6 +57,48 @@ interface AuthPluginDefinition {
 }
 
 const authPluginDefinitions = {
+	"email-otp": {
+		server: [
+			{
+				module: "better-auth/plugins",
+				name: "emailOTP",
+				call: [
+					"emailOTP({",
+					"      async sendVerificationOTP({ email, otp, type }) {",
+					"        await sendEmail({",
+					"          to: email,",
+					'          subject: "Your verification code",',
+					`          text: \`Your \${type} code is \${otp}.\`,`,
+					"        });",
+					"      },",
+					"    })",
+				].join("\n"),
+			},
+		],
+		client: [{ module: "better-auth/client/plugins", name: "emailOTPClient" }],
+		fields: {},
+	},
+	"magic-link": {
+		server: [
+			{
+				module: "better-auth/plugins",
+				name: "magicLink",
+				call: [
+					"magicLink({",
+					"      async sendMagicLink({ email, url }) {",
+					"        await sendEmail({",
+					"          to: email,",
+					'          subject: "Your sign-in link",',
+					`          text: \`Sign in using this link: \${url}\`,`,
+					"        });",
+					"      },",
+					"    })",
+				].join("\n"),
+			},
+		],
+		client: [{ module: "better-auth/client/plugins", name: "magicLinkClient" }],
+		fields: {},
+	},
 	passkey: {
 		server: [{ module: "./passkey", name: "passkeyPlugin" }],
 		client: [{ module: "@better-auth/passkey/client", name: "passkeyClient" }],
@@ -127,7 +173,16 @@ function activeAuthExtensions(
 ): ReadonlyArray<AuthExtension> {
 	const plugins = resolveAuthPlugins(config);
 	if (config.authentication !== "better-auth") return plugins;
-	return authUsesPasskey(config) ? ["passkey", ...plugins] : plugins;
+
+	const methods = resolveAuthMethods(config);
+	const extensions: ReadonlyArray<
+		Extract<AuthMethod, "passkey" | "email-otp" | "magic-link">
+	> = ["passkey", "email-otp", "magic-link"];
+
+	return [
+		...extensions.filter((extension) => methods.includes(extension)),
+		...plugins,
+	];
 }
 
 export function authPluginTables(

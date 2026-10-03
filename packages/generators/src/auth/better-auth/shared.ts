@@ -11,7 +11,11 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { standaloneApiOrigin } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
-import { authSocialProviders, authUsesPassword } from "../methods";
+import {
+	authSocialProviders,
+	authUsesEmail,
+	authUsesPassword,
+} from "../methods";
 import {
 	authPluginBindings,
 	authPluginEnvEntries,
@@ -176,6 +180,9 @@ export function betterAuthRecipeVars(
 	const usesSocial = authSocialProviders(config).length > 0;
 	const pluginImports = [
 		...authPluginBindings(config, "server"),
+		...(authUsesEmail(config)
+			? [{ module: `@${values.SLUG}/email`, name: "sendEmail" }]
+			: []),
 		...(usesMobile ? [{ module: "@better-auth/expo", name: "expo" }] : []),
 		...(isNextjs
 			? [{ module: "better-auth/next-js", name: "nextCookies" }]
@@ -190,7 +197,9 @@ export function betterAuthRecipeVars(
 	];
 
 	const plugins = [
-		...authPluginBindings(config, "server").map(({ name }) => `${name}()`),
+		...authPluginBindings(config, "server").map(
+			({ name, call }) => call ?? `${name}()`,
+		),
 		usesMobile ? "expo()" : undefined,
 		isNextjs
 			? "nextCookies()"

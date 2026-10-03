@@ -39,6 +39,7 @@ import { Effect, Exit, FileSystem, Option, Result, Schema } from "effect";
 import { orchestrate } from "../orchestrator";
 import { failureFromCause, runCliEffect, runCliEffectValue } from "../runtime";
 import { steps } from "../steps";
+import { createAuthMethodsStep } from "../steps/auth/methods";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import { slugify } from "../utils/slugify";
@@ -61,18 +62,22 @@ const moduleKinds: ReadonlyArray<ModuleKind> = [
 	"ui",
 ];
 
-const initSteps = steps.filter(
-	(step) =>
-		!new Set([
-			"intro",
-			"emailProvider",
-			"summary",
-			"generate",
-			"installDeps",
-			"gitInit",
-			"outro",
-		]).has(step.id),
-);
+const initSteps = steps
+	.filter(
+		(step) =>
+			!new Set([
+				"intro",
+				"emailProvider",
+				"summary",
+				"generate",
+				"installDeps",
+				"gitInit",
+				"outro",
+			]).has(step.id),
+	)
+	.map((step) =>
+		step.id === "authMethods" ? createAuthMethodsStep({ email: false }) : step,
+	);
 
 interface ConfirmedModule {
 	readonly kind: ModuleKind;

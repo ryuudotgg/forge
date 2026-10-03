@@ -70,6 +70,8 @@ export const authMethods = defineChoices({
 	google: "Google",
 	apple: "Apple",
 	passkey: "Passkey",
+	"email-otp": "Email OTP",
+	"magic-link": "Magic link",
 });
 
 export type AuthMethod = keyof typeof authMethods.definitions;

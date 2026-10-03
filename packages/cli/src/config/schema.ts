@@ -57,6 +57,14 @@ export function assembleSchema(steps: Step[]) {
 				)
 					return "Authentication plugins need Better Auth.";
 
+				if (
+					Array.isArray(data.authMethods) &&
+					(data.authMethods.includes("email-otp") ||
+						data.authMethods.includes("magic-link")) &&
+					data.emailProvider === undefined
+				)
+					return "Email OTP and magic link need an email provider.";
+
 				if (Schema.is(authPluginConfigSchema)(data)) {
 					const missing = unmetAuthPluginRequirements(data);
 					if (missing.length !== 0)

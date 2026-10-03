@@ -21,33 +21,53 @@ export const authMethodsSchema = Schema.NonEmptyArray(
 	),
 );
 
-const authMethodsStep = defineStep<typeof authMethodsSchema.Type>({
-	id: "authMethods",
-	group: "auth",
-	schema: authMethodsSchema,
-	configKey: "authMethods",
-	dependencies: ["authentication"],
-	shouldRun: (config) => config.authentication === "better-auth",
+export function createAuthMethodsStep(options = { email: true }) {
+	const schema = options.email
+		? authMethodsSchema
+		: authMethodsSchema.pipe(
+				Schema.check(
+					Schema.makeFilter((methods) =>
+						methods.some(
+							(method) => method === "email-otp" || method === "magic-link",
+						)
+							? "Email OTP and magic link aren't supported when adopting a project."
+							: undefined,
+					),
+				),
+			);
 
-	async execute(config, interactive) {
-		if (!interactive) return SKIP;
+	return defineStep<typeof authMethodsSchema.Type>({
+		id: "authMethods",
+		group: "auth",
+		schema,
+		configKey: "authMethods",
+		dependencies: ["authentication"],
+		shouldRun: (config) => config.authentication === "better-auth",
 
-		for (;;) {
-			const selection = await multiselect({
-				message: "How should people sign in?",
-				required: true,
-				options: choiceOptions(authMethods),
-				initialValues: [...resolveAuthMethods(config)],
-			});
+		async execute(config, interactive) {
+			if (!interactive) return SKIP;
 
-			if (isCancel(selection)) cancel();
+			for (;;) {
+				const selection = await multiselect({
+					message: "How should people sign in?",
+					required: true,
+					options: choiceOptions(authMethods).filter(
+						({ value }) =>
+							options.email ||
+							(value !== "email-otp" && value !== "magic-link"),
+					),
+					initialValues: [...resolveAuthMethods(config)],
+				});
 
-			const result = Schema.decodeUnknownResult(authMethodsSchema)(selection);
-			if (Result.isSuccess(result)) return result.success;
+				if (isCancel(selection)) cancel();
 
-			log.warn("Choose at least one supported sign-in method.");
-		}
-	},
-});
+				const result = Schema.decodeUnknownResult(schema)(selection);
+				if (Result.isSuccess(result)) return result.success;
 
-export default authMethodsStep;
+				log.warn("Choose at least one supported sign-in method.");
+			}
+		},
+	});
+}
+
+export default createAuthMethodsStep();

@@ -22,7 +22,7 @@ import { appOrigin } from "../../origins";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { catalogRef } from "../../versions";
-import { authSocialProviders } from "../methods";
+import { authSocialProviders, authUsesEmail } from "../methods";
 import {
 	authPluginEnvEntries,
 	authPluginFiles,
@@ -65,6 +65,9 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 
 		if (config.orm === undefined)
 			throw new Error("You need to add an ORM before you can use Better Auth.");
+
+		if (authUsesEmail(config) && config.emailProvider === undefined)
+			throw new Error("Email Provider Required: email-otp and magic-link");
 
 		const failure = apiHostError(config, betterAuthConsumer, frameworks);
 		if (failure !== undefined) return Effect.fail(failure);
@@ -124,6 +127,15 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				},
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
 				{ ...catalogRef("betterAuth", config), type: "dependencies" },
+				...(authUsesEmail(config)
+					? [
+							{
+								name: `@${slug}/email`,
+								version: "workspace:*",
+								type: "dependencies",
+							} satisfies Dependency,
+						]
+					: []),
 				...authPluginPackages(config, "auth").map(
 					(dependency): Dependency => ({
 						...dependency,
