@@ -12,10 +12,10 @@ export const env = createEnv({
   // __SERVER_ENV__
   client: {},
 
-  runtimeEnv: { ...import.meta.env, ...process.env },
+  runtimeEnv: __RUNTIME_ENV__,
 
   emptyStringAsUndefined: true,
-  skipValidation: !!process.env.CI || shouldSkipValidation(),
+  skipValidation: __SKIP_VALIDATION__,
 });
 
 function shouldSkipValidation() {

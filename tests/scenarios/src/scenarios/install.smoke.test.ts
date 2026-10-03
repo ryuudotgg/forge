@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createContext, Script } from "node:vm";
+import { build } from "vite";
 import { describe, expect, it } from "vitest";
 import {
 	createProject,
@@ -604,21 +606,15 @@ async function expectOrpcSession(
 
 const generatedOrpcClientProbe = `import { client } from "__CLIENT_IMPORT__";
 
-const cookie = process.env.SMOKE_COOKIE;
-const forward = globalThis.fetch;
-globalThis.fetch = (input, init) => {
-  const request = new Request(input, init);
-  if (cookie) request.headers.set("cookie", cookie);
-  return forward(request);
-};
+void (async () => {
+  const health = await client.health();
+  const me = await client.me().then(
+    (value) => ({ value }),
+    (error: { status?: number }) => ({ status: error.status }),
+  );
 
-const health = await client.health();
-const me = await client.me().then(
-  (value) => ({ value }),
-  (error: { status?: number }) => ({ status: error.status }),
-);
-
-console.log(JSON.stringify({ health, me }));
+  globalThis.reportResult({ health, me });
+})().catch(globalThis.reportError);
 `;
 
 async function expectGeneratedOrpcClient(
@@ -632,33 +628,113 @@ async function expectGeneratedOrpcClient(
 		join(webRoot, "forge.json"),
 	);
 
-	const sourceRoot = manifest.framework === "react-router" ? "app" : "src";
+	const sourceRoot =
+		manifest.framework === "nextjs"
+			? ""
+			: manifest.framework === "react-router"
+				? "app/"
+				: "src/";
+
 	await writeFile(
 		join(webRoot, "orpc-probe.ts"),
 		generatedOrpcClientProbe.replace(
 			"__CLIENT_IMPORT__",
-			`./${sourceRoot}/orpc/client`,
+			`./${sourceRoot}orpc/client`,
 		),
 	);
 
-	const probe = async (sessionCookie: string) => {
-		const result = await runCommand(
-			join(projectRoot, "apps/server/node_modules/.bin/tsx"),
-			["orpc-probe.ts"],
-			{ cwd: webRoot, env: { ...generatedEnv, SMOKE_COOKIE: sessionCookie } },
-		);
+	const result = await build({
+		configFile: false,
+		root: webRoot,
+		logLevel: "error",
+		define: {
+			"import.meta.env.VITE_SERVER_URL": JSON.stringify(
+				generatedEnv.VITE_SERVER_URL,
+			),
+			...(manifest.framework === "nextjs"
+				? {
+						"process.env": "{}",
+						"process.env.NODE_ENV": '"production"',
+						"process.env.NEXT_PUBLIC_SERVER_URL": JSON.stringify(
+							generatedEnv.NEXT_PUBLIC_SERVER_URL,
+						),
+					}
+				: {}),
+		},
+		build: {
+			minify: false,
+			write: false,
+			lib: {
+				entry: join(webRoot, "orpc-probe.ts"),
+				name: "OrpcProbe",
+				formats: ["iife"],
+			},
+		},
+	});
 
-		expect(
-			result.exitCode,
-			`generated oRPC client probe failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
-		).toBe(0);
+	const outputs = Array.isArray(result) ? result : [result];
+	const bundle = outputs
+		.flatMap((output) => ("output" in output ? output.output : []))
+		.find((output) => output.type === "chunk" && output.isEntry);
 
-		const output: unknown = JSON.parse(
-			result.stdout.trim().split("\n").at(-1) ?? "",
-		);
+	if (bundle?.type !== "chunk")
+		throw new Error("Missing Browser Client Bundle");
 
-		return output;
-	};
+	const probe = (sessionCookie: string) =>
+		new Promise<unknown>((resolveResult, rejectResult) => {
+			const context = createContext({
+				AbortController,
+				AbortSignal,
+				Blob,
+				DOMException,
+				File,
+				FormData,
+				Headers,
+				ReadableStream,
+				Request,
+				Response,
+				TextDecoder,
+				TextEncoder,
+				TransformStream,
+				URL,
+				URLSearchParams,
+				WritableStream,
+				atob,
+				btoa,
+				clearTimeout,
+				console,
+				crypto,
+				setTimeout,
+				reportResult: resolveResult,
+				reportError: rejectResult,
+				fetch: async (
+					input: Parameters<typeof fetch>[0],
+					init?: RequestInit,
+				) => {
+					const request = new Request(input, init);
+					expect(request.credentials).toBe("include");
+					request.headers.set("Origin", generatedEnv.WEB_URL ?? "");
+					if (sessionCookie) request.headers.set("Cookie", sessionCookie);
+
+					const response = await fetch(request);
+					expect(response.headers.get("access-control-allow-origin")).toBe(
+						generatedEnv.WEB_URL,
+					);
+
+					expect(response.headers.get("access-control-allow-credentials")).toBe(
+						"true",
+					);
+
+					return response;
+				},
+			});
+
+			new Script(
+				"globalThis.window = globalThis; globalThis.self = globalThis;",
+			).runInContext(context);
+
+			new Script(bundle.code).runInContext(context, { timeout: 5000 });
+		});
 
 	expect(await probe(cookie)).toEqual({
 		health: { status: "ok" },
@@ -876,7 +952,10 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				`smoke-orpc-hono-${web}`,
 				async (workspace) => {
 					await createProject(workspace, {
+						authentication: "better-auth",
 						backend: "hono",
+						database: "sqlite",
+						orm: "drizzle",
 						packageManager: "pnpm",
 						rpc: "orpc",
 						style: "tailwind",
@@ -884,6 +963,9 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					});
 
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						rpc: "orpc",
+					});
 				},
 			);
 		},

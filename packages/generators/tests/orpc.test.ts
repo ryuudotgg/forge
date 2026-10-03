@@ -255,6 +255,11 @@ describe("oRPC web clients beside Hono", () => {
 				expect(client).toContain('credentials: "include"');
 				expect(client).toContain("SimpleCsrfProtectionLinkPlugin");
 
+				if (web !== "nextjs")
+					expect(writeContent(plan, "apps/web/env.ts")).toContain(
+						'typeof process === "undefined" ? {} : process.env',
+					);
+
 				const provider = writeContent(
 					plan,
 					`apps/web/${sourceRoot}orpc/react.tsx`,
