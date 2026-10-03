@@ -520,6 +520,14 @@ export async function runAdd(
 	);
 
 	if (
+		requestedCatalogEntry?.kind === "addon" &&
+		!requestedCatalogEntry.available
+	) {
+		log.error(`"${requestedCatalogEntry.name}" isn't available yet.`);
+		process.exit(1);
+	}
+
+	if (
 		requestedCatalogEntry?.kind === "framework" &&
 		(requestedCatalogEntry.category === "backend" ||
 			requestedCatalogEntry.category === "mobile")
@@ -545,12 +553,6 @@ export async function runAdd(
 			loadAddonDefinition(resolvedAddonId).addon;
 	} catch (error) {
 		if (error instanceof RegistryLoadError) {
-			const catalogEntry = catalogAddon(loadedRegistry, resolvedAddonId);
-			if (catalogEntry?.kind === "addon" && !catalogEntry.available) {
-				log.error(`"${catalogEntry.name}" isn't available yet.`);
-				process.exit(1);
-			}
-
 			log.error(`We couldn't find the "${resolvedAddonId}" addon.`);
 			process.exit(1);
 		}

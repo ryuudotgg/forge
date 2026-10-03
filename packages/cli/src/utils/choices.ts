@@ -1,6 +1,7 @@
 import { listAnd } from "./list";
 
 export interface Choices<Id extends string> {
+	readonly accepted: (id: Id) => boolean;
 	readonly available: (id: Id) => boolean;
 	readonly ids: ReadonlyArray<Id>;
 	readonly label: (id: Id) => string;
@@ -16,6 +17,11 @@ export function unsupportedMessage<Id extends string>(
 export function availableChoice<Id extends string>(choices: Choices<Id>) {
 	return (id: Id) =>
 		choices.available(id) ? undefined : unsupportedMessage(choices, [id]);
+}
+
+export function acceptedChoice<Id extends string>(choices: Choices<Id>) {
+	return (id: Id) =>
+		choices.accepted(id) ? undefined : unsupportedMessage(choices, [id]);
 }
 
 export function choiceOptions<Id extends string>(choices: Choices<Id>) {

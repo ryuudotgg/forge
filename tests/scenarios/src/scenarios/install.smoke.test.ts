@@ -26,7 +26,10 @@ async function readGeneratedEnv(projectRoot: string) {
 	return env;
 }
 
-async function expectCredentialedGeneratedServer(projectRoot: string) {
+async function expectCredentialedGeneratedServer(
+	projectRoot: string,
+	rpc: "trpc" | "orpc" = "trpc",
+) {
 	const generatedEnv = await readGeneratedEnv(projectRoot);
 	const origin = generatedEnv.WEB_URL;
 	const serverOrigin = generatedEnv.APP_ORIGIN;
@@ -80,32 +83,39 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 
 		expect(ready, output).toBe(true);
 
-		const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
-			method: "OPTIONS",
-			headers: {
-				Origin: origin,
-				"Access-Control-Request-Headers": "x-trpc-source",
-				"Access-Control-Request-Method": "GET",
-			},
-		});
+		if (rpc === "trpc") {
+			const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
+				method: "OPTIONS",
+				headers: {
+					Origin: origin,
+					"Access-Control-Request-Headers": "x-trpc-source",
+					"Access-Control-Request-Method": "GET",
+				},
+			});
 
-		expect(preflight.status).toBe(204);
-		expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
-		expect(preflight.headers.get("access-control-allow-credentials")).toBe(
-			"true",
-		);
+			expect(preflight.status).toBe(204);
+			expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
+			expect(preflight.headers.get("access-control-allow-credentials")).toBe(
+				"true",
+			);
 
-		expect(preflight.headers.get("access-control-allow-headers")).toContain(
-			"x-trpc-source",
-		);
+			expect(preflight.headers.get("access-control-allow-headers")).toContain(
+				"x-trpc-source",
+			);
 
-		const actual = await fetch(`${serverOrigin}/api/trpc/health?input=%7B%7D`, {
-			headers: { Origin: origin, "x-trpc-source": "smoke" },
-		});
+			const actual = await fetch(
+				`${serverOrigin}/api/trpc/health?input=%7B%7D`,
+				{
+					headers: { Origin: origin, "x-trpc-source": "smoke" },
+				},
+			);
 
-		expect(actual.status).toBe(200);
-		expect(actual.headers.get("access-control-allow-origin")).toBe(origin);
-		expect(actual.headers.get("access-control-allow-credentials")).toBe("true");
+			expect(actual.status).toBe(200);
+			expect(actual.headers.get("access-control-allow-origin")).toBe(origin);
+			expect(actual.headers.get("access-control-allow-credentials")).toBe(
+				"true",
+			);
+		}
 
 		const email = "hono-smoke@example.com";
 		const signup = await fetch(`${serverOrigin}/api/auth/sign-up/email`, {
@@ -143,11 +153,93 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 			"true",
 		);
 
-		expect(await authSession.json()).toMatchObject({ user: { email } });
+		const session: unknown = await authSession.json();
+		expect(session).toMatchObject({ user: { email } });
+
+		if (rpc === "orpc") {
+			if (
+				typeof session !== "object" ||
+				session === null ||
+				!("user" in session) ||
+				typeof session.user !== "object" ||
+				session.user === null ||
+				!("id" in session.user) ||
+				typeof session.user.id !== "string"
+			)
+				throw new Error("Missing Session User: Better Auth get-session");
+
+			await expectOrpcSession(serverOrigin, origin, cookie, session.user.id);
+		}
 	} finally {
 		if (server.exitCode === null) server.kill("SIGTERM");
 		await exited;
 	}
+}
+
+async function expectOrpcSession(
+	serverOrigin: string,
+	origin: string,
+	cookie: string,
+	userId: string,
+) {
+	const preflight = await fetch(`${serverOrigin}/api/orpc/me`, {
+		method: "OPTIONS",
+		headers: {
+			Origin: origin,
+			"Access-Control-Request-Headers": "content-type,x-csrf-token",
+			"Access-Control-Request-Method": "POST",
+		},
+	});
+
+	expect(preflight.status).toBe(204);
+	expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
+	expect(preflight.headers.get("access-control-allow-credentials")).toBe(
+		"true",
+	);
+
+	expect(preflight.headers.get("access-control-allow-headers")).toContain(
+		"x-csrf-token",
+	);
+
+	const headers = {
+		Origin: origin,
+		"Content-Type": "application/json",
+		"x-csrf-token": "orpc",
+	};
+
+	const authenticated = await fetch(`${serverOrigin}/api/orpc/me`, {
+		method: "POST",
+		headers: { ...headers, Cookie: cookie },
+		body: JSON.stringify({ json: null }),
+	});
+
+	expect(authenticated.status).toBe(200);
+	expect(authenticated.headers.get("access-control-allow-origin")).toBe(origin);
+	expect(authenticated.headers.get("access-control-allow-credentials")).toBe(
+		"true",
+	);
+
+	expect(await authenticated.json()).toMatchObject({ json: { id: userId } });
+
+	const forged = await fetch(`${serverOrigin}/api/orpc/me`, {
+		method: "POST",
+		headers: {
+			Origin: origin,
+			"Content-Type": "application/json",
+			Cookie: cookie,
+		},
+		body: JSON.stringify({ json: null }),
+	});
+
+	expect(forged.status).toBe(403);
+
+	const anonymous = await fetch(`${serverOrigin}/api/orpc/me`, {
+		method: "POST",
+		headers,
+		body: JSON.stringify({ json: null }),
+	});
+
+	expect(anonymous.status).toBe(401);
 }
 
 async function expectDrainingWorker(projectRoot: string) {
@@ -263,6 +355,25 @@ async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
 }
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
+	it("installs, builds, and typechecks TanStack Router with an oRPC Hono host", async () => {
+		await withScenarioWorkspace("smoke-orpc-hono-spa", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				backend: "hono",
+				database: "sqlite",
+				linter: "biome",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "orpc",
+				style: "tailwind",
+				web: "tanstack-router",
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectCredentialedGeneratedServer(workspace.projectRoot, "orpc");
+		});
+	}, 600_000);
+
 	it("installs, builds, and typechecks Next.js with a Hono API host", async () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
 			await createProject(workspace, {

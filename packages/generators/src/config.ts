@@ -5,6 +5,7 @@ function defineChoices<const T extends Record<string, string>>(
 	options?: {
 		aliases?: Readonly<Record<string, keyof T & string>>;
 		unavailable?: ReadonlyArray<keyof T & string>;
+		preview?: ReadonlyArray<keyof T & string>;
 	},
 ) {
 	type ChoiceId = keyof T & string;
@@ -18,6 +19,7 @@ function defineChoices<const T extends Record<string, string>>(
 
 	const byDisplayName = new Map(ids.map((id) => [read(id).toLowerCase(), id]));
 	const unavailable = new Set(options?.unavailable ?? []);
+	const preview = new Set(options?.preview ?? []);
 	const aliases = new Map(Object.entries(options?.aliases ?? {}));
 	function normalize(value: unknown): ChoiceId | undefined {
 		if (typeof value !== "string") return undefined;
@@ -36,11 +38,16 @@ function defineChoices<const T extends Record<string, string>>(
 		return read(id);
 	}
 
-	function available(id: ChoiceId): boolean {
+	function accepted(id: ChoiceId): boolean {
 		return !unavailable.has(id);
 	}
 
+	function available(id: ChoiceId): boolean {
+		return accepted(id) && !preview.has(id);
+	}
+
 	return {
+		accepted,
 		available,
 		availableIds: ids.filter(available),
 		definitions,
@@ -92,9 +99,10 @@ export const backends = defineChoices(
 
 export type Backend = keyof typeof backends.definitions;
 
-export const rpcProviders = defineChoices({
-	trpc: "tRPC",
-} as const);
+export const rpcProviders = defineChoices(
+	{ trpc: "tRPC", orpc: "oRPC" } as const,
+	{ preview: ["orpc"] },
+);
 
 export type RpcProvider = keyof typeof rpcProviders.definitions;
 
@@ -255,6 +263,7 @@ export const addonConfigBindings: Readonly<
 	nativewind: { nativeStyleFramework: "nativewind" },
 	tailwind: { style: "tailwind" },
 	trpc: { rpc: "trpc" },
+	orpc: { rpc: "orpc" },
 };
 
 const addonDependentFields: Readonly<Record<string, ReadonlyArray<string>>> = {

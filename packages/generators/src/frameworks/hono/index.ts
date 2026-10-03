@@ -32,6 +32,7 @@ const honoSlots = {
 
 const honoRpcRoutes: { readonly [Id in RpcProvider]: string } = {
 	trpc: "trpcRoutes",
+	orpc: "orpcRoutes",
 };
 
 export const honoFramework: FrameworkDefinition<"hono"> = defineFramework({
@@ -40,7 +41,7 @@ export const honoFramework: FrameworkDefinition<"hono"> = defineFramework({
 	ignoreDirs: [],
 	name: "Hono",
 	sourceRoot: "src",
-	slots: Object.keys(honoSlots),
+	slots: [...Object.keys(honoSlots), "orpc"],
 	tsconfigPreset: {
 		name: "hono",
 		content: {
@@ -107,6 +108,7 @@ function buildContributions(config: ForgeConfig) {
 					module: rpcDescriptors[config.rpc].routes.module,
 					name: honoRpcRoutes[config.rpc],
 				};
+
 	const usesAuth = config.authentication === "better-auth";
 
 	const webOrigin = webDevOrigin(config);
@@ -136,7 +138,10 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("server", "apps/server", {
 			framework: "hono",
 			template: { id: "hono/base", version: 1 },
-			slots: honoSlots,
+			slots:
+				config.rpc === "orpc"
+					? { ...honoSlots, orpc: "src/routes/orpc.ts" }
+					: honoSlots,
 		}),
 		surfaceJson(ensuredModuleTarget("server"), "packageJson", {
 			name: `@${slug}/server`,

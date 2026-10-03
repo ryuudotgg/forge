@@ -13,6 +13,7 @@ import {
 	mobileFrameworks,
 	nativeStyleFrameworks,
 	RegistryLoadError,
+	rpcProviders,
 	styleFrameworks,
 	webFrameworks,
 } from "../src/index";
@@ -231,7 +232,7 @@ describe("catalog", () => {
 		}
 	});
 
-	it("marks every definition-backed entry as available", async () => {
+	it("marks definition-backed entries as available except preview choices", async () => {
 		const catalog = await listCatalogEntries();
 		const { registry } = await loadDefinitionRegistry();
 		const definitionIds = new Set([
@@ -241,8 +242,28 @@ describe("catalog", () => {
 		]);
 
 		for (const entry of catalog) {
-			expect(entry.available, entry.id).toBe(definitionIds.has(entry.id));
+			const rpc = rpcProviders.normalize(entry.id);
+			const preview =
+				rpc !== undefined &&
+				rpcProviders.accepted(rpc) &&
+				!rpcProviders.available(rpc);
+
+			expect(entry.available, entry.id).toBe(
+				definitionIds.has(entry.id) && !preview,
+			);
 		}
+	});
+
+	it("keeps oRPC announced after loading the definition-backed catalog", async () => {
+		const loaded = await loadDefinitionRegistry();
+
+		expect(loaded.registry.addons.some((addon) => addon.id === "orpc")).toBe(
+			true,
+		);
+
+		expect(loaded.catalog.filter((entry) => entry.id === "orpc")).toMatchObject(
+			[{ available: false, name: "oRPC", kind: "addon" }],
+		);
 	});
 
 	it("keeps catalog ids unique across kinds", async () => {
@@ -285,8 +306,15 @@ describe("catalog", () => {
 		expect(catalogIds("template")).toEqual(
 			registry.templates.map((definition) => definition.id).sort(),
 		);
+
 		expect(catalogIds("addon")).toEqual(
-			registry.addons.map((definition) => definition.id).sort(),
+			registry.addons
+				.filter((definition) => {
+					const rpc = rpcProviders.normalize(definition.id);
+					return rpc === undefined || rpcProviders.available(rpc);
+				})
+				.map((definition) => definition.id)
+				.sort(),
 		);
 
 		for (const entry of catalog.filter(

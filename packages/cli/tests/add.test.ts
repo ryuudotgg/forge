@@ -201,6 +201,29 @@ describe("add command", () => {
 		}
 	});
 
+	it("refuses preview oRPC", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: { slug: "acme", backend: "hono", web: "tanstack-router" },
+			}),
+		);
+
+		try {
+			await expect(runAdd("orpc", {})).rejects.toThrow("exit:1");
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'"oRPC" isn\'t available yet.',
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
 	it("installs, registers, reloads, and adds a single-addon registry", async () => {
 		const addon = defineAddon<ForgeConfig>({
 			id: "@acme/sentry",

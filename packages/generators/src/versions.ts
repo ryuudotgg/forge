@@ -1,6 +1,6 @@
 import expoNativeModules from "expo/bundledNativeModules.json";
 import expoPackage from "expo/package.json";
-import type { ForgeConfig } from "./config";
+import type { ForgeConfig, RpcProvider } from "./config";
 
 export type CatalogGroup =
 	| "Framework"
@@ -13,6 +13,7 @@ export type CatalogGroup =
 	| "Types";
 
 export interface CatalogEntry {
+	readonly rpc?: RpcProvider;
 	readonly name: string;
 	readonly version: string;
 	readonly group: CatalogGroup;
@@ -199,6 +200,24 @@ export const versions = {
 		group: "UI",
 	},
 
+	orpcClient: {
+		name: "@orpc/client",
+		version: "1.15.4",
+		rpc: "orpc",
+		group: "Framework",
+	},
+	orpcServer: {
+		name: "@orpc/server",
+		version: "1.15.4",
+		rpc: "orpc",
+		group: "Framework",
+	},
+	orpcTanstackQuery: {
+		name: "@orpc/tanstack-query",
+		version: "1.15.4",
+		rpc: "orpc",
+		group: "Framework",
+	},
 	trpcServer: { name: "@trpc/server", version: "^11.7.1", group: "Framework" },
 	trpcClient: { name: "@trpc/client", version: "^11.7.1", group: "Framework" },
 	trpcReactQuery: {
@@ -407,6 +426,8 @@ export function catalogEntries(config: ForgeConfig): ReadonlyArray<{
 }> {
 	const grouped = new Map<CatalogGroup, CatalogEntry[]>();
 	for (const entry of Object.values(versionsFor(config))) {
+		if ("rpc" in entry && entry.rpc !== config.rpc) continue;
+
 		const list = grouped.get(entry.group) ?? [];
 		list.push(entry);
 		grouped.set(entry.group, list);

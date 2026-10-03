@@ -59,7 +59,7 @@ describe("printHelp", () => {
 				"        --desktop <value> (soon)       Electron · Tauri",
 				"        --mobile <value>               Expo · React Native (soon)",
 				"        --backend <value>              Same app · Convex (soon) · Hono · Elysia (soon) · µWebSockets (soon) · Fastify · Express",
-				"        --rpc <value>                  tRPC",
+				"        --rpc <value>                  tRPC · oRPC (soon)",
 				"        --database <value>             MySQL · PostgreSQL · SQLite",
 				"        --orm <value>                  Drizzle ORM · Prisma",
 				"        --auth <value>                 Better Auth · Auth.js (soon) · WorkOS (soon) · Clerk (soon)",

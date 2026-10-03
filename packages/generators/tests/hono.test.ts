@@ -177,7 +177,7 @@ describe("Hono backend", () => {
 		expect(honoFramework).toMatchObject({
 			buildOutputs: ["dist/**"],
 			ignoreDirs: [],
-			slots: ["api", "trpc", "auth"],
+			slots: ["api", "trpc", "auth", "orpc"],
 			sourceRoot: "src",
 			tsconfigPreset: { name: "hono" },
 		});

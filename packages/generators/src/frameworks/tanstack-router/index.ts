@@ -19,7 +19,7 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
-import { rpcDescriptor } from "../../rpc";
+import { rpcDescriptor, rpcProviderTemplate } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
 
@@ -114,9 +114,14 @@ function buildContributions(config: ForgeConfig) {
 	};
 
 	const rpc = rpcDescriptor(config);
+	const providersTemplate = readTemplate(
+		"frameworks/tanstack-router/src/providers.tsx",
+	);
 
 	const providers = interpolate(
-		readTemplate("frameworks/tanstack-router/src/providers.tsx"),
+		config.rpc === undefined
+			? providersTemplate
+			: rpcProviderTemplate(providersTemplate, config.rpc),
 		{
 			"// __TRPC_IMPORT__\n":
 				rpc !== undefined
