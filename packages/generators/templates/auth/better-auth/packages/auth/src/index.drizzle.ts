@@ -5,6 +5,7 @@ import type { BetterAuthOptions } from "better-auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 // __PLUGIN_IMPORTS__
+__RELATIVE_PLUGIN_IMPORTS__
 
 const SESSION_EXPIRES_IN = 60 * 60 * 24 * 7; // 7 days
 const SESSION_UPDATE_AGE = 60 * 60 * 24; // 1 day

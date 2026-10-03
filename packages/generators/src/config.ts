@@ -75,6 +75,7 @@ export type AuthMethod = keyof typeof authMethods.definitions;
 export const authPlugins = defineChoices({
 	username: "Username",
 	admin: "Admin",
+	polar: "Polar",
 });
 
 export type AuthPlugin = keyof typeof authPlugins.definitions;

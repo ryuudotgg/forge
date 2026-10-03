@@ -1,5 +1,6 @@
 import type { AdapterContext } from "@ryuugg/core";
 import {
+	type Dependency,
 	defineTemplateRecipe,
 	ensuredModuleTarget,
 	inModule,
@@ -24,7 +25,11 @@ import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
-import { authPluginBindings, authPluginImports } from "../plugins";
+import {
+	authPluginBindings,
+	authPluginImports,
+	authPluginPackages,
+} from "../plugins";
 import { betterAuthRecipeVars } from "./shared";
 
 const betterAuthMarkers = {
@@ -32,6 +37,7 @@ const betterAuthMarkers = {
 	DATASOURCE_PROVIDER: marker.required,
 	DRIZZLE_PROVIDER: marker.required,
 	PLUGIN_IMPORTS: marker.toggleLine("// __PLUGIN_IMPORTS__\n"),
+	RELATIVE_PLUGIN_IMPORTS: marker.toggleLine("__RELATIVE_PLUGIN_IMPORTS__\n"),
 	PLUGINS: marker.toggleLine("  // __PLUGINS__\n\n"),
 	CLIENT_PLUGIN_IMPORTS: marker.toggleLine("// __CLIENT_PLUGIN_IMPORTS__\n"),
 	CLIENT_PLUGINS: marker.toggleLine("    // __CLIENT_PLUGINS__\n"),
@@ -294,6 +300,12 @@ export function expoAuthClientContributions(config: ForgeConfig) {
 		surfaceDependencies(target, "packageJson", [
 			{ ...deps.betterAuth, type: "dependencies" },
 			{ ...deps.betterAuthExpo, type: "dependencies" },
+			...authPluginPackages(config, "expo").map(
+				(dependency): Dependency => ({
+					...dependency,
+					type: "dependencies",
+				}),
+			),
 			{ ...deps.expoSecureStore, type: "dependencies" },
 		]),
 	];

@@ -220,13 +220,23 @@ describe("auth plugins step", () => {
 			options: [
 				{ label: "Username", value: "username" },
 				{ label: "Admin", value: "admin" },
+				{ label: "Polar", value: "polar" },
 			],
 		});
 	});
 
+	it("accepts Polar without a sign-in method", async () => {
+		promptMocks.multiselect.mockResolvedValue(["polar"]);
+
+		await expect(
+			authPluginsStep.execute({ authentication: "better-auth" }, true),
+		).resolves.toEqual(["polar"]);
+
+		expect(promptMocks.logWarn).not.toHaveBeenCalled();
+	});
+
 	it("skips an empty selection", async () => {
 		promptMocks.multiselect.mockResolvedValue([]);
-
 		await expect(authPluginsStep.execute({}, true)).resolves.toBe(SKIP);
 		expect(promptMocks.logWarn).not.toHaveBeenCalled();
 	});
@@ -243,6 +253,7 @@ describe("auth plugins step", () => {
 		await expect(authPluginsStep.execute({}, true)).rejects.toThrow(
 			"Cancelled",
 		);
+
 		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
 	});
 
@@ -264,6 +275,7 @@ describe("auth plugins step", () => {
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"Username needs this sign-in method: Email and password.",
 		);
+
 		expect(promptMocks.multiselect).toHaveBeenCalledTimes(2);
 		expect(promptMocks.multiselect).toHaveBeenNthCalledWith(
 			2,
@@ -294,6 +306,7 @@ describe("auth plugins step", () => {
 			expect(promptMocks.logWarn).toHaveBeenCalledWith(
 				"Choose only the plugins we support today.",
 			);
+
 			expect(promptMocks.multiselect).toHaveBeenNthCalledWith(
 				2,
 				expect.objectContaining({ initialValues: ["username"] }),
@@ -311,6 +324,7 @@ describe("authentication step", () => {
 		promptMocks.isCancel.mockReset();
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
+
 		promptMocks.isCancel.mockReturnValue(false);
 	});
 
@@ -330,6 +344,7 @@ describe("authentication step", () => {
 		expect(
 			authenticationStep.shouldRun({ orm: "drizzle", web: "tanstack-router" }),
 		).toBe(false);
+
 		expect(
 			authenticationStep.shouldRun({
 				backend: "self",
@@ -337,6 +352,7 @@ describe("authentication step", () => {
 				web: "tanstack-router",
 			}),
 		).toBe(false);
+
 		expect(
 			authenticationStep.shouldRun({
 				backend: "hono",
@@ -361,6 +377,7 @@ describe("authentication step", () => {
 			schema: null,
 			shouldRun: () => true,
 		};
+
 		const initialConfig = {
 			authentication: "better-auth" as const,
 			backend: "self" as const,
@@ -377,6 +394,7 @@ describe("authentication step", () => {
 		).rejects.toThrow(
 			"Better Auth needs a backend. TanStack Router can't host it; add a backend framework.",
 		);
+
 		expect(generate).not.toHaveBeenCalled();
 	});
 
@@ -443,12 +461,12 @@ describe("authentication step", () => {
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"We don't support WorkOS yet.",
 		);
+
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
 	it("skips when none is selected", async () => {
 		promptMocks.select.mockResolvedValue("none");
-
 		await expect(authenticationStep.execute({}, true)).resolves.toBe(SKIP);
 	});
 });
@@ -460,6 +478,7 @@ describe("authenticationCustomUI step", () => {
 		promptMocks.isCancel.mockReset();
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
+
 		promptMocks.isCancel.mockReturnValue(false);
 		cancelMocks.cancel.mockClear();
 	});
@@ -468,12 +487,15 @@ describe("authenticationCustomUI step", () => {
 		expect(
 			authenticationCustomUIStep.shouldRun({ authentication: "workos" }),
 		).toBe(true);
+
 		expect(
 			authenticationCustomUIStep.shouldRun({ authentication: "clerk" }),
 		).toBe(true);
+
 		expect(
 			authenticationCustomUIStep.shouldRun({ authentication: "better-auth" }),
 		).toBe(false);
+
 		expect(authenticationCustomUIStep.shouldRun({})).toBe(false);
 	});
 
