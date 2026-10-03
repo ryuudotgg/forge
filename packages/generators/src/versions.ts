@@ -362,6 +362,16 @@ export const versions = {
 		version: "^1.7.2",
 		group: "Framework",
 	},
+	polarBetterAuth: {
+		name: "@polar-sh/better-auth",
+		version: "^2.0.1",
+		group: "Framework",
+	},
+	polarSdk: {
+		name: "@polar-sh/sdk",
+		version: "^1.0.2",
+		group: "Framework",
+	},
 
 	typesBetterSqlite3: {
 		name: "@types/better-sqlite3",

@@ -139,6 +139,19 @@ describe("Fastify backend", () => {
 
 				expect(route).toContain("fromNodeHeaders(request.headers)");
 				expect(route).toContain("await auth.handler(");
+				expect(route).toContain("app.register(async (scope) => {");
+				expect(route).toContain("scope.removeAllContentTypeParsers();");
+				expect(route).toContain(
+					'scope.addContentTypeParser(\n      "*",\n      { parseAs: "buffer" },',
+				);
+
+				expect(route).toContain("(_request, body, done) => done(null, body)");
+				expect(route).toContain("scope.route({");
+				expect(route).toContain(
+					"Buffer.isBuffer(request.body) ? request.body : undefined",
+				);
+
+				expect(route).not.toContain("JSON.stringify(request.body)");
 				expect(route).toContain("reply.status(response.status)");
 				expect(route).not.toMatch(markerPattern);
 			}

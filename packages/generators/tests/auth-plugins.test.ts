@@ -10,9 +10,12 @@ import {
 } from "../src";
 import {
 	authPluginBindings,
+	authPluginEnvEntries,
 	authPluginFields,
 	authPluginImports,
+	authPluginPackages,
 } from "../src/auth/plugins";
+import { versions } from "../src/versions";
 import { plannedProject } from "./planner-harness";
 
 const baseConfig: ForgeConfig = {
@@ -109,7 +112,6 @@ function writeContent(
 ): string {
 	const write = plan.writes.find((entry) => entry.path === path);
 	if (write === undefined) throw new Error(`Missing Write: ${path}`);
-
 	return write.content;
 }
 
@@ -158,14 +160,17 @@ function expectDrizzleFields(
 	const admin = plugins.includes("admin");
 	const uniqueText =
 		config.database === "mysql" ? "varchar({ length: 255 })" : "text()";
+
 	const boolean =
 		config.database === "sqlite" ? 'integer({ mode: "boolean" })' : "boolean()";
+
 	const timestamp =
 		config.database === "postgresql"
 			? "timestamp({ withTimezone: true })"
 			: config.database === "mysql"
 				? "timestamp({ fsp: 3 })"
 				: 'integer({ mode: "timestamp_ms" })';
+
 	const fields = [
 		{ line: `username: ${uniqueText}.unique(),`, present: username },
 		{ line: "displayUsername: text(),", present: username },
@@ -174,15 +179,18 @@ function expectDrizzleFields(
 		{ line: "banReason: text(),", present: admin },
 		{ line: `banExpires: ${timestamp},`, present: admin },
 	];
+
 	for (const { line, present } of fields)
 		expect(users.includes(line)).toBe(present);
 
 	expect(sessions.includes("impersonatedBy: text(),")).toBe(admin);
+
 	if (plugins.length > 0) {
 		const columns = fields
 			.filter(({ present }) => present)
 			.map(({ line }) => `  ${line}\n`)
 			.join("");
+
 		const grouped = config.database !== "postgresql";
 		expect(users).toContain(
 			`${grouped ? "\n\n" : "\n"}${columns}${grouped ? "\n" : ""}  createdAt:`,
@@ -194,6 +202,7 @@ function expectDrizzleFields(
 			config.database === "mysql" && config.databaseProvider !== "planetscale"
 				? "  "
 				: "    ";
+
 		expect(sessions).toContain(
 			`${indent}userAgent: text(),\n\n${indent}impersonatedBy: text(),\n\n${indent}createdAt:`,
 		);
@@ -244,11 +253,14 @@ function expectPrismaFields(
 			present: plugins.includes("admin"),
 		},
 	];
+
 	for (const field of fields) {
 		const line = schema
 			.split("\n")
 			.find((candidate) => candidate.trimStart().startsWith(`${field.name} `));
+
 		expect(line !== undefined).toBe(field.present);
+
 		if (line !== undefined)
 			expect(line.trim().replace(/\s+/g, " ")).toBe(
 				`${field.name} ${field.definition}`,
@@ -259,18 +271,22 @@ function expectPrismaFields(
 		const userFields = fields.filter(
 			({ name, present }) => name !== "impersonatedBy" && present,
 		);
+
 		const nameWidth = Math.max(...userFields.map(({ name }) => name.length));
 		const typeWidth = plugins.includes("admin")
 			? "DateTime?".length
 			: "String?".length;
+
 		const lines = userFields.map(({ name, definition }) => {
 			const space = definition.indexOf(" ");
 			const aligned =
 				space === -1
 					? definition
 					: `${definition.slice(0, space).padEnd(typeWidth)}${definition.slice(space)}`;
+
 			return `  ${name.padEnd(nameWidth)} ${aligned}\n`;
 		});
+
 		expect(schema).toContain(`\n\n${lines.join("")}\n  createdAt`);
 	}
 
@@ -282,11 +298,14 @@ function expectPrismaFields(
 
 describe("auth plugins", () => {
 	it("exports choices, requirements and the unmet selections for the CLI", () => {
-		expect(authPlugins.ids).toEqual(["username", "admin"]);
+		expect(authPlugins.ids).toEqual(["username", "admin", "polar"]);
 		expect(authPlugins.label("username")).toBe("Username");
 		expect(authPlugins.label("admin")).toBe("Admin");
 		expect(authPluginRequirement("username")).toBe("email-password");
 		expect(authPluginRequirement("admin")).toBeUndefined();
+
+		expect(authPlugins.label("polar")).toBe("Polar");
+		expect(authPluginRequirement("polar")).toBeUndefined();
 		expect(
 			unmetAuthPluginRequirements({
 				...baseConfig,
@@ -294,7 +313,226 @@ describe("auth plugins", () => {
 				authPlugins: ["admin", "username"],
 			}),
 		).toEqual(["username"]);
+
 		expect(unmetAuthPluginRequirements(baseConfig)).toEqual([]);
+	});
+
+	it("declares Polar bindings, packages and env without schema fields", () => {
+		const config: ForgeConfig = {
+			...baseConfig,
+			authMethods: ["google"],
+			authPlugins: ["polar"],
+		};
+
+		expect(resolveAuthPlugins(config)).toEqual(["polar"]);
+		expect(authPluginFields(config, "user")).toEqual([]);
+		expect(authPluginFields(config, "session")).toEqual([]);
+		expect(authPluginBindings(config, "server")).toEqual([
+			{ module: "./polar", name: "polarPlugin" },
+			{ module: "./polar", name: "polarAvailability" },
+		]);
+
+		expect(authPluginBindings(config, "client")).toEqual([
+			{ module: "@polar-sh/better-auth/client", name: "polarClient" },
+		]);
+
+		for (const side of ["auth", "expo"] satisfies ReadonlyArray<
+			"auth" | "expo"
+		>) {
+			expect(authPluginPackages(config, side)).toMatchObject([
+				{
+					name: versions.polarBetterAuth.name,
+					version: versions.polarBetterAuth.version,
+				},
+				{ name: versions.polarSdk.name, version: versions.polarSdk.version },
+			]);
+
+			expect(authPluginPackages(baseConfig, side)).toEqual([]);
+		}
+
+		expect(authPluginEnvEntries(config).map(({ name }) => name)).toEqual([
+			"POLAR_ACCESS_TOKEN",
+			"POLAR_WEBHOOK_SECRET",
+			"POLAR_SERVER",
+		]);
+
+		expect(authPluginEnvEntries(baseConfig)).toEqual([]);
+		expect(versions.polarBetterAuth.group).toBe(versions.polarSdk.group);
+	});
+
+	describe("Polar", () => {
+		it.each(schemaVariants)(
+			"renders $name and both clients",
+			async (variant) => {
+				const config: ForgeConfig = {
+					...baseConfig,
+					...variant.config,
+					authPlugins: ["polar"],
+					mobile: "expo",
+					platforms: ["web", "mobile"],
+				};
+
+				const plan = await plannedProject(config);
+				const polar = writeContent(plan, "packages/auth/src/polar.ts");
+				const server = writeContent(plan, "packages/auth/src/index.ts");
+				const env = writeContent(plan, "packages/auth/env.ts");
+
+				expect(polar).toContain(
+					'import { createPolarCore } from "@polar-sh/sdk/2026-10";',
+				);
+
+				expect(polar).toContain('import { env } from "../env";');
+				expect(polar).toContain("export function polarPlugin()");
+				expect(polar).toContain("export function polarAvailability()");
+				expect(polar).toContain("createCustomerOnSignUp: false");
+
+				expect(polar).toContain("checkout({ authenticatedUsersOnly: true })");
+				expect(polar).toContain('accessToken: env.POLAR_ACCESS_TOKEN ?? ""');
+				expect(polar).toContain('environment: env.POLAR_SERVER ?? "sandbox"');
+				expect(polar).toContain(
+					'webhooks({ secret: env.POLAR_WEBHOOK_SECRET ?? "" })',
+				);
+
+				expect(polar).toContain('new APIError("SERVICE_UNAVAILABLE"');
+				expect(polar).toContain("path: string | undefined");
+
+				for (const path of [
+					"portal",
+					"state",
+					"benefits/list",
+					"subscriptions/list",
+					"orders/list",
+				])
+					expect(polar).toContain(`"/customer/${path}"`);
+
+				expect(polar).not.toMatch(
+					/\b(?:products|prices|productId|priceId|product_id|price_id)\b/,
+				);
+
+				expect(server).toContain(
+					'import { polarAvailability, polarPlugin } from "./polar";\n\nconst',
+				);
+
+				expect(server).toContain("polarPlugin(), polarAvailability()");
+
+				for (const path of [
+					"packages/auth/src/client.ts",
+					"apps/mobile/src/lib/auth-client.ts",
+				]) {
+					const client = writeContent(plan, path);
+
+					expect(client).toContain(
+						'import { polarClient } from "@polar-sh/better-auth/client";',
+					);
+
+					expect(client).toContain("polarClient()");
+				}
+
+				for (const path of [
+					"packages/auth/package.json",
+					"apps/mobile/package.json",
+				]) {
+					const manifest: unknown = JSON.parse(writeContent(plan, path));
+
+					expect(manifest).toMatchObject({
+						dependencies: {
+							[versions.polarBetterAuth.name]: "catalog:",
+							[versions.polarSdk.name]: "catalog:",
+						},
+					});
+				}
+
+				const catalog = writeContent(plan, "pnpm-workspace.yaml");
+				for (const entry of [versions.polarBetterAuth, versions.polarSdk])
+					expect(catalog).toContain(`  "${entry.name}": ${entry.version}`);
+
+				for (const path of [".env", ".env.example"]) {
+					const content = writeContent(plan, path);
+
+					expect(content).toContain(
+						'POLAR_ACCESS_TOKEN=""\nPOLAR_WEBHOOK_SECRET=""\nPOLAR_SERVER="sandbox"',
+					);
+				}
+
+				for (const name of ["POLAR_ACCESS_TOKEN", "POLAR_WEBHOOK_SECRET"])
+					expect(env).toContain(
+						`${name}: z.string().trim().min(1).optional(),`,
+					);
+
+				expect(env).toContain(
+					'POLAR_SERVER: z.enum(["sandbox", "production"]).optional(),',
+				);
+
+				for (const name of [
+					"POLAR_ACCESS_TOKEN",
+					"POLAR_WEBHOOK_SECRET",
+					"POLAR_SERVER",
+				])
+					expect(env).toContain(`${name}: process.env.${name},`);
+
+				const declarationsOff = {
+					compilerOptions: { declaration: false, declarationMap: false },
+				};
+
+				expect(
+					JSON.parse(writeContent(plan, "packages/auth/tsconfig.json")),
+				).toMatchObject(declarationsOff);
+
+				const baseline = await plannedProject({ ...config, authPlugins: [] });
+				expect(
+					JSON.parse(writeContent(baseline, "packages/auth/tsconfig.json")),
+				).not.toMatchObject(declarationsOff);
+
+				const schemaWrites = (project: typeof plan) =>
+					project.writes
+						.filter(
+							({ path }) =>
+								path.startsWith("packages/db/src/schema/") ||
+								path.endsWith("schema.prisma"),
+						)
+						.map(({ path, content }) => ({ path, content }));
+
+				expect(schemaWrites(plan)).toEqual(schemaWrites(baseline));
+				expect(
+					baseline.writes.some(({ path }) => path.endsWith("/polar.ts")),
+				).toBe(false);
+
+				for (const write of baseline.writes) {
+					expect(write.content).not.toContain("POLAR");
+
+					if (write.path !== "pnpm-workspace.yaml")
+						expect(write.content).not.toContain("@polar-sh/");
+				}
+			},
+		);
+	});
+
+	it("wraps the Next.js plugins array when Polar exceeds 80 columns", async () => {
+		const plan = await plannedProject({
+			...baseConfig,
+			backend: "self",
+			orm: "drizzle",
+			database: "sqlite",
+			authPlugins: ["polar", "admin", "username"],
+		});
+
+		const server = writeContent(plan, "packages/auth/src/index.ts");
+
+		expect(server).toContain(
+			[
+				"  plugins: [",
+				"    username(),",
+				"    admin(),",
+				"    polarPlugin(),",
+				"    polarAvailability(),",
+				"    nextCookies(),",
+				"  ],",
+			].join("\n"),
+		);
+
+		expect(server).toContain(
+			'import { nextCookies } from "better-auth/next-js";\nimport { admin, username } from "better-auth/plugins";\nimport { polarAvailability, polarPlugin } from "./polar";',
+		);
 	});
 
 	it("canonicalizes and deduplicates without mutating the selection", () => {
@@ -352,12 +590,15 @@ describe("auth plugins", () => {
 		expect(() => resolveAuthPlugins(config)).toThrow(
 			"Auth Plugin Requirement: username",
 		);
+
 		await expect(plannedProject(config)).rejects.toThrow(
 			"Auth Plugin Requirement: username",
 		);
+
 		expect(resolveAuthPlugins({ ...config, authPlugins: ["admin"] })).toEqual([
 			"admin",
 		]);
+
 		expect(() =>
 			resolveAuthPlugins({
 				...config,
@@ -365,6 +606,7 @@ describe("auth plugins", () => {
 				authMethods: undefined,
 			}),
 		).toThrow("Auth Plugin Requirement: username");
+
 		expect(resolveAuthPlugins({ ...config, authMethods: undefined })).toEqual([
 			"username",
 		]);
@@ -395,6 +637,7 @@ describe("auth plugins", () => {
 		).toBe(
 			'import { expo } from "a-module";\nimport { admin, username } from "z-module";\n',
 		);
+
 		const module = "a".repeat(55);
 
 		expect(
@@ -416,6 +659,7 @@ describe("auth plugins", () => {
 					mobile: "expo",
 					platforms: ["web", "mobile"],
 				};
+
 				const plan = await plannedProject(config);
 				const server = writeContent(plan, "packages/auth/src/index.ts");
 				const client = writeContent(plan, "packages/auth/src/client.ts");
@@ -429,6 +673,7 @@ describe("auth plugins", () => {
 				expect(server).toContain(`  plugins: [${calls.join(", ")}],`);
 				expect(server).not.toMatch(/__[A-Z_]+__/);
 				expectPluginClients(client, expo, selection.expected);
+
 				expect(client).toContain("baseURL: process.env.NEXT_PUBLIC_SERVER_URL");
 				expect(client).toContain('fetchOptions: { credentials: "include" }');
 
@@ -437,9 +682,11 @@ describe("auth plugins", () => {
 						plan,
 						"packages/db/src/schema/users/users.ts",
 					);
+
 					const sessions = writeContent(plan, "packages/db/src/schema/auth.ts");
 
 					expectDrizzleFields(users, sessions, config, selection.expected);
+
 					for (const content of [users, sessions]) {
 						expect(content).not.toMatch(/__[A-Z_]+__/);
 						expect(content).not.toContain("\n\n\n");
@@ -468,6 +715,7 @@ describe("auth plugins", () => {
 						mobile: "expo",
 						platforms: ["web", "mobile"],
 					});
+
 					const server = writeContent(plan, "packages/auth/src/index.ts");
 					const client = writeContent(plan, "packages/auth/src/client.ts");
 					const expo = writeContent(plan, "apps/mobile/src/lib/auth-client.ts");
@@ -480,6 +728,7 @@ describe("auth plugins", () => {
 					expect(server).toContain(`  plugins: [${calls.join(", ")}],`);
 					expect(server).not.toMatch(/__[A-Z_]+__/);
 					expectPluginClients(client, expo, selection.expected);
+
 					for (const plugin of authPlugins.ids)
 						expect(server.includes(`${plugin}()`)).toBe(
 							selection.expected.includes(plugin),
@@ -499,11 +748,13 @@ describe("auth plugins", () => {
 					const imports = server
 						.split("\n")
 						.filter((line) => line.startsWith("import {"));
+
 					const pluginImports = imports.filter((line) =>
 						/"(?:@better-auth\/expo|better-auth\/(?:plugins|next-js|tanstack-start))"/.test(
 							line,
 						),
 					);
+
 					expect(pluginImports).toEqual(
 						[...pluginImports].sort((left, right) => {
 							const leftModule = left.split('"')[1] ?? "";
@@ -527,15 +778,18 @@ describe("auth plugins", () => {
 					database: "postgresql",
 					authPlugins: plugins,
 				});
+
 				const server = writeContent(plan, "packages/auth/src/index.ts");
 				const client = writeContent(plan, "packages/auth/src/client.ts");
 
 				expect(client).toContain(
 					"authClient: ReturnType<typeof createAuthClient>",
 				);
+
 				expect(client).not.toContain("better-auth/client/plugins");
 				expect(server).not.toMatch(/__[A-Z_]+__/);
 				expect(client).not.toMatch(/__[A-Z_]+__/);
+
 				if (host.config.backend === "self")
 					expect(client).toContain("  createAuthClient();\n");
 				else

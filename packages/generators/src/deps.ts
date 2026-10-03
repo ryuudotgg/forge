@@ -119,4 +119,6 @@ export const deps = {
 	inputOtp: dep("inputOtp"),
 
 	betterAuth: dep("betterAuth"),
+	polarBetterAuth: dep("polarBetterAuth"),
+	polarSdk: dep("polarSdk"),
 } as const;

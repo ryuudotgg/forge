@@ -1,4 +1,5 @@
 import {
+	type Dependency,
 	defineAddon,
 	ensuredModuleTarget,
 	ensurePackageModule,
@@ -21,6 +22,12 @@ import { appOrigin } from "../../origins";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { authSocialProviders } from "../methods";
+import {
+	authPluginEnvEntries,
+	authPluginPackages,
+	authPluginsBlockDeclarations,
+	resolveAuthPlugins,
+} from "../plugins";
 import { renderBetterAuthTemplate } from "./shared";
 
 const betterAuthConsumer: ApiHostConsumer = {
@@ -72,6 +79,12 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 			],
 		);
 
+		const pluginEnv = authPluginEnvEntries(config);
+		const pluginEnvLines =
+			pluginEnv.length > 0
+				? ["", ...pluginEnv.map(({ name, example }) => `${name}=${example}`)]
+				: [];
+
 		return [
 			ensurePackageModule("auth", "packages/auth", {
 				packageType: "library",
@@ -93,6 +106,9 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 			surfaceJson(ensuredModuleTarget("auth"), "tsconfig", {
 				extends: `@${slug}/tsconfig/base.json`,
 				compilerOptions: {
+					...(authPluginsBlockDeclarations(config)
+						? { declaration: false, declarationMap: false }
+						: {}),
 					types: ["node"],
 					paths: { [`@${slug}/auth/*`]: ["./src/*"] },
 				},
@@ -107,6 +123,12 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				},
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
 				{ ...deps.betterAuth, type: "dependencies" },
+				...authPluginPackages(config, "auth").map(
+					(dependency): Dependency => ({
+						...dependency,
+						type: "dependencies",
+					}),
+				),
 				...(config.mobile === "expo"
 					? [{ ...deps.betterAuthExpo, type: "dependencies" as const }]
 					: []),
@@ -130,6 +152,15 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				"src/client.ts",
 				renderBetterAuthTemplate(config, "packages/auth/src/client.ts"),
 			),
+			...(resolveAuthPlugins(config).includes("polar")
+				? [
+						leafTextFile(
+							ensuredModuleTarget("auth"),
+							"src/polar.ts",
+							renderBetterAuthTemplate(config, "packages/auth/src/polar.ts"),
+						),
+					]
+				: []),
 
 			surfaceLines(
 				projectTarget(),
@@ -141,6 +172,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					"",
 					envFileLine("APP_ORIGIN", origin),
 					...socialEnvLines,
+					...pluginEnvLines,
 				],
 				{ section: "Better Auth" },
 			),
@@ -154,6 +186,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					"",
 					envFileLine("APP_ORIGIN", origin),
 					...socialEnvLines,
+					...pluginEnvLines,
 				],
 				{ section: "Better Auth" },
 			),

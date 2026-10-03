@@ -19,6 +19,8 @@ export const env = createEnv({
     // __WEB_URL_SCHEMA__
 
     // __SOCIAL_SCHEMA__
+
+    __PLUGIN_SCHEMA__
   },
 
   runtimeEnvStrict: {
@@ -31,6 +33,8 @@ export const env = createEnv({
     // __WEB_URL_RUNTIME__
 
     // __SOCIAL_RUNTIME__
+
+    __PLUGIN_RUNTIME__
   },
 
   emptyStringAsUndefined: true,

@@ -12,7 +12,11 @@ import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { standaloneApiOrigin } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
 import { authSocialProviders, authUsesPassword } from "../methods";
-import { authPluginBindings, authPluginImports } from "../plugins";
+import {
+	authPluginBindings,
+	authPluginEnvEntries,
+	authPluginImports,
+} from "../plugins";
 
 // Only one of the two call shapes fits the generated formatter's line budget,
 // so the whole declaration is the marker rather than just its argument.
@@ -74,6 +78,7 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 	const provider = resolveDatabaseProvider(config);
 	const standalone = standaloneApiOrigin(config) !== undefined;
 	const providers = authSocialProviders(config);
+	const pluginEnv = authPluginEnvEntries(config);
 	return {
 		SLUG: slug,
 		DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
@@ -110,6 +115,14 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 				].join("\n"),
 			)
 			.join(""),
+		"\n    __PLUGIN_SCHEMA__\n":
+			pluginEnv.length > 0
+				? `\n${pluginEnv.map(({ name, schema }) => `    ${name}: ${schema},\n`).join("")}`
+				: "",
+		"\n    __PLUGIN_RUNTIME__\n":
+			pluginEnv.length > 0
+				? `\n${pluginEnv.map(({ name, runtime }) => `    ${name}: ${runtime},\n`).join("")}`
+				: "",
 	};
 }
 
@@ -188,9 +201,18 @@ export function betterAuthRecipeVars(
 
 	return {
 		...values,
-		PLUGIN_IMPORTS: authPluginImports(pluginImports),
+		PLUGIN_IMPORTS: authPluginImports(
+			pluginImports.filter(({ module }) => !module.startsWith(".")),
+		),
+		RELATIVE_PLUGIN_IMPORTS: authPluginImports(
+			pluginImports.filter(({ module }) => module.startsWith(".")),
+		),
 		PLUGINS:
-			plugins.length > 0 ? `  plugins: [${plugins.join(", ")}],\n\n` : "",
+			plugins.length === 0
+				? ""
+				: `  plugins: [${plugins.join(", ")}],`.length <= 80
+					? `  plugins: [${plugins.join(", ")}],\n\n`
+					: `  plugins: [\n${plugins.map((plugin) => `    ${plugin},\n`).join("")}  ],\n\n`,
 		TRUSTED_ORIGINS:
 			trustedOrigins.length > 0
 				? `  trustedOrigins: [${trustedOrigins.join(", ")}],\n`

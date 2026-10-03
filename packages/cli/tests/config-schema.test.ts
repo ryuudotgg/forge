@@ -6,7 +6,6 @@ import { steps } from "../src/steps";
 import { defineStep } from "../src/steps/types";
 
 const configSchema = assembleSchema(steps);
-
 function decodeConfig(input: unknown) {
 	return Schema.decodeUnknownResult(configSchema)(input);
 }
@@ -18,11 +17,11 @@ function decodeMessages(result: ReturnType<typeof decodeConfig>) {
 }
 
 describe("assembleSchema", () => {
-	it("rejects plugins without Better Auth", () => {
+	it.each(["admin", "polar"])("rejects %s without Better Auth", (plugin) => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
-			authPlugins: ["admin"],
+			authPlugins: [plugin],
 		});
 
 		expect(decodeMessages(result)).toContain(
@@ -47,6 +46,8 @@ describe("assembleSchema", () => {
 	it.each([
 		{ authPlugins: ["username"], authMethods: ["email-password"] },
 		{ authPlugins: ["admin"], authMethods: ["google", "apple"] },
+		{ authPlugins: ["polar"], authMethods: ["google"] },
+		{ authPlugins: ["polar"] },
 		{ authPlugins: [], authMethods: ["google"] },
 	])("accepts compatible auth plugins %j", (config) => {
 		const result = decodeConfig({
@@ -269,6 +270,7 @@ describe("assembleSchema", () => {
 				shouldRun: () => true,
 				execute: async () => undefined,
 			});
+
 			const frameworkStep = defineStep<string>({
 				id: platform,
 				group: "platforms",
@@ -276,6 +278,7 @@ describe("assembleSchema", () => {
 				shouldRun: () => true,
 				execute: async () => undefined,
 			});
+
 			const result = Schema.decodeResult(
 				assembleSchema([platformStep, frameworkStep]),
 			)({ platforms: [platform] });
@@ -357,7 +360,6 @@ describe("assembleSchema", () => {
 
 	it("spreads schema shape fields from null-key steps into the struct", () => {
 		const result = decodeConfig({ name: "Acme", slug: "acme" });
-
 		expect(Result.getOrThrow(result)).toEqual({ name: "Acme", slug: "acme" });
 	});
 

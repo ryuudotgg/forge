@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHmac, randomUUID } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -188,22 +189,12 @@ function mysqlDatabaseEnv(name: string): NodeJS.ProcessEnv {
 	return { DATABASE_URL: smokeDatabaseOn(smokeMysqlUrl(), name) };
 }
 
-async function expectCredentialedGeneratedServer(
+async function withGeneratedServer(
 	projectRoot: string,
-	options?: { readonly rpc?: "trpc" | "orpc"; readonly username?: string },
+	generatedEnv: NodeJS.ProcessEnv,
+	serverOrigin: string,
+	exercise: (output: () => string) => Promise<void>,
 ) {
-	const rpc = options?.rpc ?? "trpc";
-	const generatedEnv = await readGeneratedEnv(projectRoot);
-	const origin = generatedEnv.WEB_URL;
-	const serverOrigin = generatedEnv.APP_ORIGIN;
-	if (origin === undefined || serverOrigin === undefined)
-		throw new Error(`Missing Generated Origins: ${projectRoot}`);
-
-	expect(origin).toBe("http://localhost:3000");
-	expect(serverOrigin).toBe("http://localhost:3001");
-
-	await expectSchemaPush(projectRoot);
-
 	const ambientEnv = { ...process.env };
 	delete ambientEnv.CI;
 
@@ -239,122 +230,283 @@ async function expectCredentialedGeneratedServer(
 
 		expect(ready, output).toBe(true);
 
-		if (rpc === "trpc") {
-			const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
-				method: "OPTIONS",
-				headers: {
-					Origin: origin,
-					"Access-Control-Request-Headers": "x-trpc-source",
-					"Access-Control-Request-Method": "GET",
-				},
-			});
-
-			expect(preflight.status).toBe(204);
-			expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
-			expect(preflight.headers.get("access-control-allow-credentials")).toBe(
-				"true",
-			);
-
-			expect(preflight.headers.get("access-control-allow-headers")).toContain(
-				"x-trpc-source",
-			);
-
-			const actual = await fetch(
-				`${serverOrigin}/api/trpc/health?input=%7B%7D`,
-				{
-					headers: { Origin: origin, "x-trpc-source": "smoke" },
-				},
-			);
-
-			expect(actual.status).toBe(200);
-			expect(actual.headers.get("access-control-allow-origin")).toBe(origin);
-			expect(actual.headers.get("access-control-allow-credentials")).toBe(
-				"true",
-			);
-		}
-
-		const email = "hono-smoke@example.com";
-		const signup = await fetch(`${serverOrigin}/api/auth/sign-up/email`, {
-			body: JSON.stringify({
-				email,
-				name: "Hono Smoke",
-				password: "forge-smoke-password",
-				...(options?.username ? { username: options.username } : {}),
-			}),
-			headers: { "Content-Type": "application/json", Origin: origin },
-			method: "POST",
-		});
-
-		const signupBody = await signup.text();
-		expect(signup.status, `${signupBody}\n${output}`).toBe(200);
-		expect(signup.headers.get("access-control-allow-origin")).toBe(origin);
-		expect(signup.headers.get("access-control-allow-credentials")).toBe("true");
-
-		const setCookie = signup.headers.get("set-cookie");
-		expect(setCookie).toBeTruthy();
-
-		if (setCookie === null)
-			throw new Error("Missing Session Cookie: Better Auth sign-up");
-
-		const cookie = setCookie.split(";", 1)[0];
-		if (cookie === undefined)
-			throw new Error("Missing Cookie Value: Better Auth sign-up");
-
-		const authSession = await fetch(`${serverOrigin}/api/auth/get-session`, {
-			headers: { Cookie: cookie, Origin: origin },
-		});
-
-		expect(authSession.status).toBe(200);
-		expect(authSession.headers.get("access-control-allow-origin")).toBe(origin);
-		expect(authSession.headers.get("access-control-allow-credentials")).toBe(
-			"true",
-		);
-
-		const username = options?.username;
-		const session: unknown = await authSession.json();
-		expect(session).toMatchObject({
-			user:
-				username === undefined ? { email } : { email, role: "user", username },
-		});
-
-		if (rpc === "orpc") {
-			if (
-				typeof session !== "object" ||
-				session === null ||
-				!("user" in session) ||
-				typeof session.user !== "object" ||
-				session.user === null ||
-				!("id" in session.user) ||
-				typeof session.user.id !== "string"
-			)
-				throw new Error("Missing Session User: Better Auth get-session");
-
-			await expectOrpcSession(serverOrigin, origin, cookie, session.user.id);
-			await expectGeneratedOrpcClient(
-				projectRoot,
-				generatedEnv,
-				cookie,
-				session.user.id,
-			);
-		}
-
-		if (username === undefined) return;
-
-		const usernameSignIn = await fetch(
-			`${serverOrigin}/api/auth/sign-in/username`,
-			{
-				body: JSON.stringify({ password: "forge-smoke-password", username }),
-				headers: { "Content-Type": "application/json", Origin: origin },
-				method: "POST",
-			},
-		);
-
-		const usernameSignInBody = await usernameSignIn.text();
-		expect(usernameSignIn.status, `${usernameSignInBody}\n${output}`).toBe(200);
+		await exercise(() => output);
 	} finally {
 		if (server.exitCode === null) server.kill("SIGTERM");
 		await exited;
 	}
+}
+
+async function expectCredentialedGeneratedServer(
+	projectRoot: string,
+	options?: {
+		readonly polar?: boolean;
+		readonly rpc?: "trpc" | "orpc";
+		readonly username?: string;
+	},
+) {
+	const rpc = options?.rpc ?? "trpc";
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const origin = generatedEnv.WEB_URL;
+	const serverOrigin = generatedEnv.APP_ORIGIN;
+	if (origin === undefined || serverOrigin === undefined)
+		throw new Error(`Missing Generated Origins: ${projectRoot}`);
+
+	expect(origin).toBe("http://localhost:3000");
+	expect(serverOrigin).toBe("http://localhost:3001");
+
+	if (options?.polar) {
+		expect(generatedEnv.POLAR_ACCESS_TOKEN).toBe("");
+		expect(generatedEnv.POLAR_WEBHOOK_SECRET).toBe("");
+		expect(generatedEnv.POLAR_SERVER).toBe("sandbox");
+	}
+
+	await expectSchemaPush(projectRoot);
+
+	await withGeneratedServer(
+		projectRoot,
+		generatedEnv,
+		serverOrigin,
+		async (output) => {
+			if (rpc === "trpc") {
+				const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
+					method: "OPTIONS",
+					headers: {
+						Origin: origin,
+						"Access-Control-Request-Headers": "x-trpc-source",
+						"Access-Control-Request-Method": "GET",
+					},
+				});
+
+				expect(preflight.status).toBe(204);
+				expect(preflight.headers.get("access-control-allow-origin")).toBe(
+					origin,
+				);
+
+				expect(preflight.headers.get("access-control-allow-credentials")).toBe(
+					"true",
+				);
+
+				expect(preflight.headers.get("access-control-allow-headers")).toContain(
+					"x-trpc-source",
+				);
+
+				const actual = await fetch(
+					`${serverOrigin}/api/trpc/health?input=%7B%7D`,
+					{
+						headers: { Origin: origin, "x-trpc-source": "smoke" },
+					},
+				);
+
+				expect(actual.status).toBe(200);
+				expect(actual.headers.get("access-control-allow-origin")).toBe(origin);
+				expect(actual.headers.get("access-control-allow-credentials")).toBe(
+					"true",
+				);
+			}
+
+			const email = "hono-smoke@example.com";
+			const signup = await fetch(`${serverOrigin}/api/auth/sign-up/email`, {
+				body: JSON.stringify({
+					email,
+					name: "Hono Smoke",
+					password: "forge-smoke-password",
+					...(options?.username ? { username: options.username } : {}),
+				}),
+				headers: { "Content-Type": "application/json", Origin: origin },
+				method: "POST",
+			});
+
+			const signupBody = await signup.text();
+			expect(signup.status, `${signupBody}\n${output()}`).toBe(200);
+			expect(signup.headers.get("access-control-allow-origin")).toBe(origin);
+			expect(signup.headers.get("access-control-allow-credentials")).toBe(
+				"true",
+			);
+
+			const setCookie = signup.headers.get("set-cookie");
+			expect(setCookie).toBeTruthy();
+
+			if (setCookie === null)
+				throw new Error("Missing Session Cookie: Better Auth sign-up");
+
+			const cookie = setCookie.split(";", 1)[0];
+			if (cookie === undefined)
+				throw new Error("Missing Cookie Value: Better Auth sign-up");
+
+			if (options?.polar) {
+				const checkout = await fetch(`${serverOrigin}/api/auth/checkout`, {
+					body: JSON.stringify({ products: ["forge-smoke"] }),
+					headers: {
+						Cookie: cookie,
+						Origin: origin,
+						"Content-Type": "application/json",
+					},
+					method: "POST",
+				});
+
+				expect(checkout.status, `${await checkout.text()}\n${output()}`).toBe(
+					503,
+				);
+
+				const customerState = await fetch(
+					`${serverOrigin}/api/auth/customer/state`,
+					{ headers: { Cookie: cookie, Origin: origin } },
+				);
+
+				expect(
+					customerState.status,
+					`${await customerState.text()}\n${output()}`,
+				).toBe(503);
+
+				const webhook = await fetch(`${serverOrigin}/api/auth/polar/webhooks`, {
+					body: JSON.stringify({
+						type: "forge.smoke",
+						data: { message: "original" },
+					}),
+					headers: { "Content-Type": "application/json" },
+					method: "POST",
+				});
+
+				expect(webhook.status, `${await webhook.text()}\n${output()}`).toBe(
+					503,
+				);
+			}
+
+			const authSession = await fetch(`${serverOrigin}/api/auth/get-session`, {
+				headers: { Cookie: cookie, Origin: origin },
+			});
+
+			expect(authSession.status).toBe(200);
+			expect(authSession.headers.get("access-control-allow-origin")).toBe(
+				origin,
+			);
+
+			expect(authSession.headers.get("access-control-allow-credentials")).toBe(
+				"true",
+			);
+
+			const username = options?.username;
+			const session: unknown = await authSession.json();
+			expect(session).toMatchObject({
+				user:
+					username === undefined
+						? { email }
+						: { email, role: "user", username },
+			});
+
+			if (rpc === "orpc") {
+				if (
+					typeof session !== "object" ||
+					session === null ||
+					!("user" in session) ||
+					typeof session.user !== "object" ||
+					session.user === null ||
+					!("id" in session.user) ||
+					typeof session.user.id !== "string"
+				)
+					throw new Error("Missing Session User: Better Auth get-session");
+
+				await expectOrpcSession(serverOrigin, origin, cookie, session.user.id);
+				await expectGeneratedOrpcClient(
+					projectRoot,
+					generatedEnv,
+					cookie,
+					session.user.id,
+				);
+			}
+
+			if (username === undefined) return;
+
+			const usernameSignIn = await fetch(
+				`${serverOrigin}/api/auth/sign-in/username`,
+				{
+					body: JSON.stringify({ password: "forge-smoke-password", username }),
+					headers: { "Content-Type": "application/json", Origin: origin },
+					method: "POST",
+				},
+			);
+
+			const usernameSignInBody = await usernameSignIn.text();
+			expect(usernameSignIn.status, `${usernameSignInBody}\n${output()}`).toBe(
+				200,
+			);
+		},
+	);
+
+	if (!options?.polar) return;
+
+	const secret = "forge-smoke-webhook-secret";
+	await withGeneratedServer(
+		projectRoot,
+		{ ...generatedEnv, POLAR_WEBHOOK_SECRET: secret },
+		serverOrigin,
+		async (output) => {
+			const body = JSON.stringify(
+				{ type: "forge.smoke", data: { message: "original" } },
+				null,
+				2,
+			);
+
+			const checkout = await fetch(`${serverOrigin}/api/auth/checkout`, {
+				body: JSON.stringify({ products: ["forge-smoke"] }),
+				headers: { "Content-Type": "application/json" },
+				method: "POST",
+			});
+
+			expect(checkout.status, `${await checkout.text()}\n${output()}`).toBe(
+				503,
+			);
+
+			const webhookId = randomUUID();
+			const timestamp = Math.floor(Date.now() / 1000).toString();
+			const signature = createHmac("sha256", Buffer.from(secret, "utf8"))
+				.update(`${webhookId}.${timestamp}.${body}`)
+				.digest("base64");
+
+			const headers = {
+				"Content-Type": "application/json",
+				"webhook-id": webhookId,
+				"webhook-timestamp": timestamp,
+				"webhook-signature": `v1,${signature}`,
+			};
+
+			const webhook = await fetch(`${serverOrigin}/api/auth/polar/webhooks`, {
+				body,
+				headers,
+				method: "POST",
+			});
+
+			expect(webhook.status, `${await webhook.text()}\n${output()}`).toBe(200);
+
+			const tampered = await fetch(`${serverOrigin}/api/auth/polar/webhooks`, {
+				body: body.replace("original", "tampered"),
+				headers,
+				method: "POST",
+			});
+
+			expect(tampered.status, `${await tampered.text()}\n${output()}`).toBe(
+				403,
+			);
+		},
+	);
+
+	await withGeneratedServer(
+		projectRoot,
+		{ ...generatedEnv, POLAR_ACCESS_TOKEN: "forge-smoke-token" },
+		serverOrigin,
+		async (output) => {
+			const checkout = await fetch(`${serverOrigin}/api/auth/checkout`, {
+				body: JSON.stringify({ products: ["forge-smoke"] }),
+				headers: { "Content-Type": "application/json" },
+				method: "POST",
+			});
+
+			expect(checkout.status, `${await checkout.text()}\n${output()}`).toBe(
+				401,
+			);
+		},
+	);
 }
 
 async function expectOrpcSession(
@@ -466,6 +618,7 @@ async function expectGeneratedOrpcClient(
 		const output: unknown = JSON.parse(
 			result.stdout.trim().split("\n").at(-1) ?? "",
 		);
+
 		return output;
 	};
 
@@ -618,7 +771,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
-				authPlugins: ["username", "admin"],
+				authPlugins: ["username", "admin", "polar"],
 				backend: "hono",
 				database: "sqlite",
 				emailProvider: "smtp",
@@ -632,6 +785,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 			await expectCredentialedGeneratedServer(workspace.projectRoot, {
+				polar: true,
 				username: "hono_smoke",
 			});
 		});
@@ -660,6 +814,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-fastify-nextjs", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
+				authPlugins: ["polar"],
 				backend: "fastify",
 				database: "sqlite",
 				emailProvider: "postmark",
@@ -672,7 +827,9 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			});
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot);
+			await expectCredentialedGeneratedServer(workspace.projectRoot, {
+				polar: true,
+			});
 		});
 	}, 600_000);
 
@@ -699,6 +856,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-express-nextjs", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
+				authPlugins: ["polar"],
 				backend: "express",
 				database: "sqlite",
 				linter: "biome",
@@ -710,7 +868,9 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			});
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot);
+			await expectCredentialedGeneratedServer(workspace.projectRoot, {
+				polar: true,
+			});
 		});
 	}, 600_000);
 
@@ -994,6 +1154,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-expo", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
+				authPlugins: ["polar"],
 				backend: "hono",
 				database: "sqlite",
 				mobile: "expo",
