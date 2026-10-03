@@ -15,6 +15,11 @@
 				"FORGE_SMOKE_DATABASE_URL",
 				"FORGE_SMOKE_MYSQL_URL"
 			],
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/contributing/PUBLISHING.md",
+				"$TURBO_ROOT$/examples/**"
+			],
 			"outputs": []
 		}
 	}
