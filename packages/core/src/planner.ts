@@ -166,6 +166,44 @@ export function retargetAdoptedContribution(
 	}
 }
 
+function retargetMovedPrimary(
+	entry: EvaluationPhaseContract["evaluated"][number],
+	modules: ReadonlyArray<DiscoveredModule>,
+): EvaluationPhaseContract["evaluated"][number] {
+	const primary = entry.contributions.find(
+		(contribution) =>
+			contribution._tag === "EnsureModuleContribution" &&
+			contribution.module.type === "app" &&
+			contribution.module.role === "primary",
+	);
+
+	if (primary?._tag !== "EnsureModuleContribution") return entry;
+	if (modules.some((module) => module.root === primary.root)) return entry;
+
+	const moved = modules.filter(
+		(module) =>
+			module.type === "app" &&
+			module.role === "primary" &&
+			module.template.id === entry.definitionId &&
+			module.template.version === primary.module.template.version,
+	);
+
+	const [module] = moved;
+	if (module === undefined || moved.length !== 1) return entry;
+
+	return {
+		...entry,
+		contributions: entry.contributions.map((contribution) =>
+			retargetAdoptedContribution(
+				contribution,
+				primary.moduleKey,
+				module,
+				primary.moduleKey,
+			),
+		),
+	};
+}
+
 function expandAdoptedTemplateEvaluations<ConfigValue>(
 	evaluated: EvaluationPhaseContract["evaluated"],
 	registry: DefinitionRegistry<ConfigValue>,
@@ -179,6 +217,14 @@ function expandAdoptedTemplateEvaluations<ConfigValue>(
 
 	return evaluated.flatMap((entry) => {
 		if (!templateIds.has(entry.definitionId)) return [entry];
+
+		const appEnsures = entry.contributions.filter(
+			(contribution) =>
+				contribution._tag === "EnsureModuleContribution" &&
+				contribution.module.type === "app",
+		);
+
+		if (appEnsures.length > 1) return [retargetMovedPrimary(entry, modules)];
 
 		const ensured = entry.contributions.find(
 			(contribution) => contribution._tag === "EnsureModuleContribution",
@@ -279,7 +325,6 @@ function collectDependencyNames<ConfigValue>(
 	definitions: ReadonlyArray<Definition<ConfigValue>>,
 ): ProjectPlan["dependencyNames"] {
 	const directNames = new Map<string, Set<string>>();
-
 	for (const input of inputs) {
 		if (input.contribution._tag !== "ManagedDependenciesSurfaceContribution")
 			continue;
@@ -306,7 +351,6 @@ function collectDependencyNames<ConfigValue>(
 			for (const dependency of definition.dependencies) {
 				const dependencyDefinition = definitionsById.get(dependency.id);
 				if (dependencyDefinition === undefined) continue;
-
 				for (const name of collect(dependencyDefinition.id)) names.add(name);
 			}
 
@@ -390,6 +434,7 @@ function cloneModule(
 						id: module.id,
 						type: "app",
 						framework: module.framework,
+						...(module.role === undefined ? {} : { role: module.role }),
 						template: module.template,
 						slots: { ...module.slots },
 					}
@@ -416,7 +461,6 @@ function mergeEnsuredModule(
 	onDiskSlots: Slots,
 ): Effect.Effect<ManagedModuleRecord, PlannerError> {
 	const nextConfig = ensured.module;
-
 	if (!existing)
 		return Effect.succeed({
 			config: withModuleId(nextConfig, moduleId),
@@ -543,6 +587,11 @@ function buildTargetCandidates<ConfigValue>(
 				(addon.target?.(config, module.config) ?? true) &&
 				isAddonCompatibleWithModule(addon, module.config, frameworks, adapters),
 		)
+		.sort(
+			(left, right) =>
+				Number(right.config.type === "app" && right.config.role === "primary") -
+				Number(left.config.type === "app" && left.config.role === "primary"),
+		)
 		.map(
 			(module): InstallTarget => ({
 				kind: "module",
@@ -572,7 +621,6 @@ export function mergeInstallRecords(installs: ReadonlyArray<InstallRecord>) {
 		};
 
 		const targets = [...existing.targets];
-
 		for (const target of install.targets) {
 			const key = installTargetKey(target);
 			if (targets.some((entry) => installTargetKey(entry) === key)) continue;
@@ -637,7 +685,6 @@ const makePlanner = Effect.gen(function* () {
 				);
 
 		const directAddons = registry.addons.filter((entry) => entry.when(config));
-
 		return Effect.succeed({
 			directAddons,
 			templates,
@@ -651,7 +698,6 @@ const makePlanner = Effect.gen(function* () {
 	): Effect.Effect<void, GeneratorError> =>
 		Effect.gen(function* () {
 			let firstFailure: GeneratorError | undefined;
-
 			for (const template of templates) {
 				const framework = registry.frameworks.find(
 					(entry) => entry.id === template.framework,
@@ -667,6 +713,7 @@ const makePlanner = Effect.gen(function* () {
 				);
 
 				if (Result.isSuccess(result)) return;
+
 				firstFailure ??= result.failure;
 			}
 
@@ -785,7 +832,6 @@ const makePlanner = Effect.gen(function* () {
 					const direct = byRoot.get(contribution.root);
 					const keyedId = byKey.get(contribution.moduleKey);
 					const keyed = keyedId ? byId.get(keyedId) : undefined;
-
 					if (direct && keyed && direct.id !== keyed.id)
 						return yield* new PlannerError({
 							path: contribution.root,
@@ -803,6 +849,7 @@ const makePlanner = Effect.gen(function* () {
 							contribution,
 							entry.definitionId,
 						);
+
 					const moduleId = existing
 						? existing.id
 						: yield* configStore.generateId(usedIds);
@@ -975,7 +1022,6 @@ const makePlanner = Effect.gen(function* () {
 			selectedTargets: TargetingPhaseContract["result"]["selectedTargets"],
 		) {
 			const byId = new Map(modules.map((module) => [module.id, module]));
-
 			for (const entry of evaluated)
 				for (const contribution of entry.contributions)
 					if (contribution._tag === "ModuleCapabilitiesContribution") {
@@ -1018,7 +1064,6 @@ const makePlanner = Effect.gen(function* () {
 		selectedTargets: TargetingPhaseContract["result"]["selectedTargets"],
 	) {
 		const collected: SurfaceRenderContribution[] = [];
-
 		for (const entry of evaluated)
 			for (const contribution of entry.contributions) {
 				if (
@@ -1213,7 +1258,6 @@ const makePlanner = Effect.gen(function* () {
 		leafFiles: RenderPlanningPhaseContract["result"]["leafFiles"],
 	) {
 		const artifacts: Record<string, LockfileArtifact> = {};
-
 		for (const artifact of renderedSurfaces) {
 			const hash = yield* hashString(artifact.content);
 			const mergeKind = artifact.mergeKind;
@@ -1279,7 +1323,6 @@ const makePlanner = Effect.gen(function* () {
 	) =>
 		Effect.gen(function* () {
 			const writes: PlannedFile[] = [];
-
 			for (const module of modules)
 				writes.push({
 					artifactId: `module:${module.id}:file:forge.json`,
@@ -1491,6 +1534,7 @@ const makePlanner = Effect.gen(function* () {
 					registry.adapters,
 				),
 			}));
+
 		const defaultCreateInstalls = [
 			...baseInstalls,
 			...dependencyAdapterInstalls,
@@ -1571,6 +1615,7 @@ const makePlanner = Effect.gen(function* () {
 			...genericEvaluations,
 			...adapterEvaluations,
 		];
+
 		const { moduleIdsByKey: allModuleIdsByKey, modules: adapterMergedModules } =
 			yield* applyAdapterEnsures(
 				adapterEvaluations,
@@ -1617,6 +1662,7 @@ const makePlanner = Effect.gen(function* () {
 
 		const writes: RenderPlanningPhaseContract["result"]["writes"] =
 			yield* buildWrites(modules, renderedSurfaces, leafFiles);
+
 		const manifest: RenderPlanningPhaseContract["result"]["manifest"] =
 			yield* buildManifest(
 				intent.config,
@@ -1642,7 +1688,6 @@ const makePlanner = Effect.gen(function* () {
 		const nextPaths = new Set(writes.map((write) => write.path));
 
 		const removals = [...previousPaths].filter((path) => !nextPaths.has(path));
-
 		return {
 			dependencyNames,
 			lockfile,

@@ -22,6 +22,11 @@ import type {
 import { rpcDescriptor, rpcProviderTemplate } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+import {
+	type WebAppInstance,
+	webAppInstances,
+	webAppRenderConfig,
+} from "../../web-apps";
 
 const tanstackRouterSlots = {
 	layout: "src/routes/__root.tsx",
@@ -84,7 +89,10 @@ const tanstackRouterBaseTemplate: TemplateDefinition<
 		{ id: "ui", type: "addon" },
 	],
 	when: (config) => config.web === "tanstack-router",
-	contribute: ({ config }) => buildContributions(config),
+	contribute: ({ config }) =>
+		webAppInstances(config)
+			.filter((instance) => instance.framework === "tanstack-router")
+			.flatMap((instance) => buildContributions(config, instance)),
 });
 
 export const tanstackRouterBaseTemplateMetadata: FirstPartyTemplateMetadata = {
@@ -99,7 +107,8 @@ export const tanstackRouterBaseTemplateMetadata: FirstPartyTemplateMetadata = {
 	summary: "Base TanStack Router template.",
 };
 
-function buildContributions(config: ForgeConfig) {
+function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
+	const renderConfig = webAppRenderConfig(config, instance);
 	const slug = config.slug ?? "my-app";
 	const projectName = config.name ?? slug;
 	const pm = resolvePackageManager(config);
@@ -113,15 +122,15 @@ function buildContributions(config: ForgeConfig) {
 		"/* __TAILWIND_PLUGIN__ */ ": useTailwind ? "tailwindcss(), " : "",
 	};
 
-	const rpc = rpcDescriptor(config);
+	const rpc = rpcDescriptor(renderConfig);
 	const providersTemplate = readTemplate(
 		"frameworks/tanstack-router/src/providers.tsx",
 	);
 
 	const providers = interpolate(
-		config.rpc === undefined
+		renderConfig.rpc === undefined
 			? providersTemplate
-			: rpcProviderTemplate(providersTemplate, config.rpc),
+			: rpcProviderTemplate(providersTemplate, renderConfig.rpc),
 		{
 			"// __TRPC_IMPORT__\n":
 				rpc !== undefined
@@ -133,7 +142,7 @@ function buildContributions(config: ForgeConfig) {
 	);
 
 	const webPackageJson: Record<string, unknown> = {
-		name: `@${slug}/web`,
+		name: instance.packageName,
 		version: "0.1.0",
 		private: true,
 		type: "module",
@@ -186,14 +195,20 @@ function buildContributions(config: ForgeConfig) {
 	];
 
 	return [
-		ensureAppModule("web", "apps/web", {
+		ensureAppModule(instance.key, instance.root, {
 			framework: "tanstack-router",
 			template: { id: "tanstack-router/base", version: 1 },
-			slots: tanstackRouterSlots,
+			slots: instance.primary
+				? tanstackRouterSlots
+				: {
+						layout: tanstackRouterSlots.layout,
+						page: tanstackRouterSlots.page,
+					},
+			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),
 
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"layout",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/src/routes/__root.tsx"),
@@ -202,7 +217,7 @@ function buildContributions(config: ForgeConfig) {
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"page",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/src/routes/index.tsx"),
@@ -211,19 +226,27 @@ function buildContributions(config: ForgeConfig) {
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"frameworkConfig",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/vite.config.ts"),
 				vars,
 			),
 		),
-		surfaceJson(ensuredModuleTarget("web"), "tsconfig", webTsconfig),
-		surfaceJson(ensuredModuleTarget("web"), "packageJson", webPackageJson),
-		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", appDeps),
-		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+		surfaceJson(ensuredModuleTarget(instance.key), "tsconfig", webTsconfig),
+		surfaceJson(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			webPackageJson,
+		),
+		surfaceDependencies(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			appDeps,
+		),
+		surfaceScripts(ensuredModuleTarget(instance.key), "packageJson", {
 			build: pmRun(pm, "with-env", "vite build"),
-			dev: pmRun(pm, "with-env", "vite dev --port 3000"),
+			dev: pmRun(pm, "with-env", `vite dev --port ${instance.port}`),
 			"generate-routes": "tsr generate",
 			postinstall: pmRun(pm, "generate-routes"),
 			pretypecheck: pmRun(pm, "generate-routes"),
@@ -233,31 +256,35 @@ function buildContributions(config: ForgeConfig) {
 		}),
 
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"env.ts",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/env.ts"),
-				viteServerEnvMarkers(config),
+				viteServerEnvMarkers(renderConfig),
 			),
 		),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"index.html",
 			interpolate(readTemplate("frameworks/tanstack-router/index.html"), vars),
 		),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"src/main.tsx",
 			readTemplate("frameworks/tanstack-router/src/main.tsx"),
 		),
-		leafTextFile(ensuredModuleTarget("web"), "src/providers.tsx", providers),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
+			"src/providers.tsx",
+			providers,
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
 			"src/router.tsx",
 			readTemplate("frameworks/tanstack-router/src/router.tsx"),
 		),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"src/routeTree.gen.ts",
 			readTemplate("frameworks/tanstack-router/src/routeTree.gen.ts"),
 		),

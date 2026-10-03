@@ -22,6 +22,11 @@ import type {
 import { rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+import {
+	type WebAppInstance,
+	webAppInstances,
+	webAppRenderConfig,
+} from "../../web-apps";
 
 const nextjsSlots = {
 	layout: "app/layout.tsx",
@@ -88,7 +93,10 @@ const nextjsBaseTemplate: TemplateDefinition<
 		{ id: "ui", type: "addon" },
 	],
 	when: (config) => config.web === "nextjs",
-	contribute: ({ config }) => buildContributions(config),
+	contribute: ({ config }) =>
+		webAppInstances(config)
+			.filter((instance) => instance.framework === "nextjs")
+			.flatMap((instance) => buildContributions(config, instance)),
 });
 
 export const nextjsBaseTemplateMetadata = {
@@ -103,7 +111,8 @@ export const nextjsBaseTemplateMetadata = {
 	summary: "Base Next.js template.",
 } as const satisfies FirstPartyTemplateMetadata;
 
-function buildContributions(config: ForgeConfig) {
+function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
+	const renderConfig = webAppRenderConfig(config, instance);
 	const slug = config.slug ?? "my-app";
 	const projectName = config.name ?? slug;
 
@@ -111,11 +120,12 @@ function buildContributions(config: ForgeConfig) {
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
 	const transpilePackages = [`@${slug}/ui`];
+	if (renderConfig.orm !== undefined) transpilePackages.push(`@${slug}/db`);
 
-	if (config.orm !== undefined) transpilePackages.push(`@${slug}/db`);
-	if (config.rpc !== undefined)
+	if (renderConfig.rpc !== undefined)
 		transpilePackages.push(`@${slug}/${config.rpc}`);
-	if (config.authentication === "better-auth")
+
+	if (renderConfig.authentication === "better-auth")
 		transpilePackages.push(`@${slug}/auth`);
 
 	const transpileList = transpilePackages
@@ -130,11 +140,11 @@ function buildContributions(config: ForgeConfig) {
 
 	const webEnv = interpolate(
 		readTemplate("frameworks/nextjs/env.ts"),
-		nextServerEnvMarkers(config),
+		nextServerEnvMarkers(renderConfig),
 	);
 
 	const webPackageJson: Record<string, unknown> = {
-		name: `@${slug}/web`,
+		name: instance.packageName,
 		version: "0.1.0",
 		private: true,
 		type: "module",
@@ -184,7 +194,7 @@ function buildContributions(config: ForgeConfig) {
 		{ ...deps.typescript, type: "devDependencies" as const },
 	];
 
-	const rpc = rpcDescriptor(config);
+	const rpc = rpcDescriptor(renderConfig);
 	const providers = interpolate(
 		readTemplate("frameworks/nextjs/app/providers.tsx"),
 		{
@@ -200,41 +210,68 @@ function buildContributions(config: ForgeConfig) {
 	);
 
 	return [
-		ensureAppModule("web", "apps/web", {
+		ensureAppModule(instance.key, instance.root, {
 			framework: "nextjs",
 			template: { id: "nextjs/base", version: 1 },
-			slots: nextjsSlots,
+			slots: instance.primary
+				? nextjsSlots
+				: { layout: nextjsSlots.layout, page: nextjsSlots.page },
+			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),
 
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"layout",
 			interpolate(readTemplate("frameworks/nextjs/app/layout.tsx"), vars),
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"page",
 			interpolate(readTemplate("frameworks/nextjs/app/page.tsx"), vars),
 			{ priority: 0 },
 		),
-		surfaceText(ensuredModuleTarget("web"), "frameworkConfig", nextConfig),
-		surfaceJson(ensuredModuleTarget("web"), "tsconfig", webTsconfig),
-		surfaceJson(ensuredModuleTarget("web"), "packageJson", webPackageJson),
-		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", appDeps),
-		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+		surfaceText(
+			ensuredModuleTarget(instance.key),
+			"frameworkConfig",
+			nextConfig,
+		),
+		surfaceJson(ensuredModuleTarget(instance.key), "tsconfig", webTsconfig),
+		surfaceJson(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			webPackageJson,
+		),
+		surfaceDependencies(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			appDeps,
+		),
+		surfaceScripts(ensuredModuleTarget(instance.key), "packageJson", {
 			build: pmRun(pm, "with-env", "next build"),
-			dev: pmRun(pm, "with-env", "next dev"),
+			dev: pmRun(
+				pm,
+				"with-env",
+				instance.primary ? "next dev" : `next dev --port ${instance.port}`,
+			),
 			postinstall: pmRun(pm, "typegen"),
 			pretypecheck: pmRun(pm, "with-env", "next typegen"),
-			start: pmRun(pm, "with-env", "next start"),
+			start: pmRun(
+				pm,
+				"with-env",
+				instance.primary ? "next start" : `next start --port ${instance.port}`,
+			),
 			typecheck: "tsc --noEmit",
 			typegen: pmRun(pm, "with-env", "next typegen"),
 			"with-env": "dotenv -e ../../.env --",
 		}),
 
-		leafTextFile(ensuredModuleTarget("web"), "env.ts", webEnv),
-		leafTextFile(ensuredModuleTarget("web"), "app/providers.tsx", providers),
+		leafTextFile(ensuredModuleTarget(instance.key), "env.ts", webEnv),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"app/providers.tsx",
+			providers,
+		),
 	];
 }
 

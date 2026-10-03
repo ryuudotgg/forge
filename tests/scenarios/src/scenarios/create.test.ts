@@ -13,7 +13,6 @@ import {
 async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 	const entries = await readdir(join(root, prefix), { withFileTypes: true });
 	const files: string[] = [];
-
 	for (const entry of entries) {
 		if (entry.name === ".forge") continue;
 
@@ -27,6 +26,62 @@ async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 }
 
 describe("create", () => {
+	it("creates a secondary web app without primary API wiring", async () => {
+		await withScenarioWorkspace(
+			"create-secondary-web-app",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "tanstack-router",
+					backend: "hono",
+					rpc: "trpc",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					style: "tailwind",
+					linter: "biome",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "tanstack-router" }],
+				});
+
+				const adminRoot = join(workspace.projectRoot, "apps/admin");
+				const webRoot = join(workspace.projectRoot, "apps/web");
+				const admin = await readJson<{
+					name: string;
+					dependencies: Record<string, string>;
+					scripts: { dev: string };
+				}>(join(adminRoot, "package.json"));
+
+				const web = await readJson<{
+					dependencies: Record<string, string>;
+					scripts: { dev: string };
+				}>(join(webRoot, "package.json"));
+
+				expect(await pathExists(adminRoot)).toBe(true);
+				expect(admin.name).toBe("@acme/admin");
+				expect(admin.scripts.dev).toBe("pnpm with-env vite dev --port 3002");
+				expect(web.scripts.dev).toBe("pnpm with-env vite dev --port 3000");
+				expect(await readJson(join(webRoot, "forge.json"))).toHaveProperty(
+					"role",
+					"primary",
+				);
+
+				expect(
+					await readJson(join(adminRoot, "forge.json")),
+				).not.toHaveProperty("role");
+
+				for (const name of ["@acme/trpc", "@acme/auth", "@acme/db"])
+					expect(admin.dependencies).not.toHaveProperty(name);
+
+				expect(await pathExists(join(adminRoot, "src/trpc"))).toBe(false);
+				expect(await pathExists(join(webRoot, "src/trpc/react.tsx"))).toBe(
+					true,
+				);
+
+				expect(web.dependencies).toHaveProperty("@acme/trpc");
+			},
+		);
+	});
+
 	it("creates a standalone Hono backend at its API slot paths", async () => {
 		await withScenarioWorkspace("create-hono", async (workspace) => {
 			await createProject(workspace, {
@@ -55,6 +110,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/server/forge.json"));
+
 			expect(serverConfig).toMatchObject({
 				framework: "hono",
 				slots: {
@@ -93,6 +149,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/server/forge.json"));
+
 			expect(serverConfig).toMatchObject({
 				framework: "fastify",
 				slots: {
@@ -131,6 +188,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/server/forge.json"));
+
 			expect(serverConfig).toMatchObject({
 				framework: "express",
 				slots: {
@@ -166,6 +224,7 @@ describe("create", () => {
 				slots: Record<string, string>;
 				type: string;
 			}>(join(workspace.projectRoot, "apps/worker/forge.json"));
+
 			expect(workerConfig).toMatchObject({
 				framework: "hono",
 				slots: {},
@@ -245,6 +304,7 @@ describe("create", () => {
 			const lockfile = await readJson<{
 				artifacts: Record<string, { path: string }>;
 			}>(join(workspace.projectRoot, ".forge/lock.json"));
+
 			const gitignore = await readFile(
 				join(workspace.projectRoot, ".gitignore"),
 				"utf-8",
@@ -350,6 +410,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/web/forge.json"));
+
 			expect(appConfig).toMatchObject({
 				framework: "react-router",
 				slots: {
@@ -399,6 +460,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/web/forge.json"));
+
 			expect(appConfig.framework).toBe("tanstack-router");
 			expect(appConfig.slots).toEqual({
 				layout: "src/routes/__root.tsx",

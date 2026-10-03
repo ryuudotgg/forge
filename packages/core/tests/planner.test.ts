@@ -594,6 +594,213 @@ const adapterGuardUnsupportedRegistry = defineRegistry({
 });
 
 describe("planner", () => {
+	it("adopts a moved primary and a moved secondary of a multi-app template", async () => {
+		await withTempDir("planner-moved-web-apps", async (directory) => {
+			const baseRegistry = testRegistry([]);
+			const registry: DefinitionRegistry<TestConfig> = {
+				...baseRegistry,
+				templates: baseRegistry.templates.map((template) => ({
+					...template,
+					contribute: () => [
+						ensureAppModule("web", "apps/web", {
+							framework: "nextjs",
+							template: { id: "nextjs/base", version: 1 },
+							slots: { layout: "app/layout.tsx" },
+							role: "primary",
+						}),
+						ensureAppModule("admin", "apps/admin", {
+							framework: "nextjs",
+							template: { id: "nextjs/base", version: 1 },
+							slots: { layout: "app/layout.tsx" },
+						}),
+						surfaceText(ensuredModuleTarget("web"), "layout", "web-layout"),
+						surfaceText(ensuredModuleTarget("admin"), "layout", "admin-layout"),
+					],
+				})),
+			};
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+			await rename(join(directory, "apps/web"), join(directory, "apps/site"));
+			await rename(
+				join(directory, "apps/admin"),
+				join(directory, "apps/dashboard"),
+			);
+
+			const plan = await Effect.runPromise(
+				planInstalledEffect(directory, { web: "nextjs" }, [], registry),
+			);
+
+			expect(
+				Object.values(plan.manifest.modules)
+					.map((module) => module.root)
+					.sort(),
+			).toEqual(["apps/dashboard", "apps/site"]);
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/site/app/layout.tsx")
+					?.content,
+			).toBe("web-layout");
+
+			expect(
+				plan.writes.find(
+					(write) => write.path === "apps/dashboard/app/layout.tsx",
+				)?.content,
+			).toBe("admin-layout");
+		});
+	});
+
+	it("keeps multi-app template keys on their roots during adoption", async () => {
+		await withTempDir("planner-multiple-web-apps", async (directory) => {
+			const keyProbe = defineAddon<TestConfig>({
+				id: "key-probe",
+				name: "Key Probe",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "single",
+				when: () => true,
+				contribute: () => [
+					leafTextFile(ensuredModuleTarget("web"), "key.txt", "primary-key\n"),
+				],
+			});
+
+			const baseRegistry = testRegistry([keyProbe]);
+			const registry: DefinitionRegistry<TestConfig> = {
+				...baseRegistry,
+				templates: baseRegistry.templates.map((template) => ({
+					...template,
+					contribute: () => [
+						ensureAppModule("web", "apps/web", {
+							framework: "nextjs",
+							template: { id: "nextjs/base", version: 1 },
+							slots: { layout: "app/layout.tsx" },
+							role: "primary",
+						}),
+						ensureAppModule("admin", "apps/admin", {
+							framework: "nextjs",
+							template: { id: "nextjs/base", version: 1 },
+							slots: { layout: "app/layout.tsx" },
+						}),
+						surfaceText(ensuredModuleTarget("web"), "layout", "web-layout"),
+						surfaceText(ensuredModuleTarget("admin"), "layout", "admin-layout"),
+					],
+				})),
+			};
+
+			for (const [id, root] of [
+				["aaaaa", "apps/admin"],
+				["bbbbb", "apps/web"],
+			] as const)
+				await writeJson(join(directory, root, "forge.json"), {
+					id,
+					type: "app",
+					framework: "nextjs",
+					template: { id: "nextjs/base", version: 1 },
+					slots: { layout: "app/layout.tsx" },
+				});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+
+			expect(Object.keys(plan.manifest.modules)).toEqual(["aaaaa", "bbbbb"]);
+			expect(plan.manifest.modules.bbbbb?.root).toBe("apps/web");
+			expect(
+				plan.writes.find((write) => write.path === "apps/web/key.txt")?.content,
+			).toBe("primary-key\n");
+
+			expect(
+				plan.writes.some((write) => write.path === "apps/admin/key.txt"),
+			).toBe(false);
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/web/app/layout.tsx")
+					?.content,
+			).toBe("web-layout");
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/admin/app/layout.tsx")
+					?.content,
+			).toBe("admin-layout");
+		});
+	});
+
+	it("selects the discovered primary role before a compatible earlier app", async () => {
+		await withTempDir("planner-primary-web-app", async (directory) => {
+			const addon = defineAddon<TestConfig>({
+				id: "integration",
+				name: "Integration",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "single",
+				compatibility: {
+					app: { frameworks: ["nextjs"], requiredSlots: ["layout"] },
+				},
+				when: () => true,
+				contribute: () => [
+					leafTextFile(selectedModuleTarget(), "integration.txt", "primary\n"),
+				],
+			});
+
+			const baseRegistry = testRegistry([addon]);
+			const registry: DefinitionRegistry<TestConfig> = {
+				...baseRegistry,
+				templates: baseRegistry.templates.map((template) => ({
+					...template,
+					contribute: () => [],
+				})),
+			};
+
+			await writeJson(join(directory, "apps/admin/forge.json"), {
+				id: "aaaaa",
+				type: "app",
+				framework: "nextjs",
+				template: { id: "nextjs/base", version: 1 },
+				slots: { layout: "app/layout.tsx" },
+			});
+
+			await writeJson(join(directory, "apps/web/forge.json"), {
+				id: "bbbbb",
+				type: "app",
+				framework: "nextjs",
+				template: { id: "nextjs/base", version: 1 },
+				slots: { layout: "app/layout.tsx" },
+				role: "primary",
+			});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+
+			expect(
+				plan.manifest.installs.find(
+					(install) => install.definitionId === "integration",
+				)?.targets,
+			).toEqual([{ kind: "module", moduleId: "bbbbb" }]);
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/web/integration.txt")
+					?.content,
+			).toBe("primary\n");
+
+			expect(
+				plan.writes.some(
+					(write) => write.path === "apps/admin/integration.txt",
+				),
+			).toBe(false);
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/web/forge.json")
+					?.content,
+			).toContain('"role": "primary"');
+		});
+	});
+
 	it("retargets adopted template contributions and preserves other targets", () => {
 		const adopted = {
 			framework: "nextjs",

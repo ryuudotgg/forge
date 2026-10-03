@@ -22,6 +22,11 @@ import type {
 import { rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+import {
+	type WebAppInstance,
+	webAppInstances,
+	webAppRenderConfig,
+} from "../../web-apps";
 
 const reactRouterSlots = {
 	layout: "app/root.tsx",
@@ -95,7 +100,10 @@ const reactRouterBaseTemplate: TemplateDefinition<
 		{ id: "ui", type: "addon" },
 	],
 	when: (config) => config.web === "react-router",
-	contribute: ({ config }) => buildContributions(config),
+	contribute: ({ config }) =>
+		webAppInstances(config)
+			.filter((instance) => instance.framework === "react-router")
+			.flatMap((instance) => buildContributions(config, instance)),
 });
 
 export const reactRouterBaseTemplateMetadata: FirstPartyTemplateMetadata = {
@@ -110,15 +118,16 @@ export const reactRouterBaseTemplateMetadata: FirstPartyTemplateMetadata = {
 	summary: "Base React Router template.",
 };
 
-function buildContributions(config: ForgeConfig) {
+function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
+	const renderConfig = webAppRenderConfig(config, instance);
 	const slug = config.slug ?? "my-app";
 	const projectName = config.name ?? slug;
 
 	const pm = resolvePackageManager(config);
 
 	const useTailwind = config.style === "tailwind";
-	const rpc = rpcDescriptor(config);
-	const usesAuth = config.authentication === "better-auth";
+	const rpc = rpcDescriptor(renderConfig);
+	const usesAuth = renderConfig.authentication === "better-auth";
 
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
@@ -139,7 +148,9 @@ function buildContributions(config: ForgeConfig) {
 		{
 			ROUTE_IMPORT: rpc !== undefined || usesAuth ? ", route" : "",
 			"// __TRPC_ROUTE__\n":
-				config.rpc !== undefined ? reactRouterRpcRoutes[config.rpc] : "",
+				renderConfig.rpc !== undefined
+					? reactRouterRpcRoutes[renderConfig.rpc]
+					: "",
 			"// __AUTH_ROUTE__\n": usesAuth
 				? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
 				: "",
@@ -157,7 +168,7 @@ function buildContributions(config: ForgeConfig) {
 	);
 
 	const webPackageJson: Record<string, unknown> = {
-		name: `@${slug}/web`,
+		name: instance.packageName,
 		version: "0.1.0",
 		private: true,
 		type: "module",
@@ -215,20 +226,23 @@ function buildContributions(config: ForgeConfig) {
 	];
 
 	return [
-		ensureAppModule("web", "apps/web", {
+		ensureAppModule(instance.key, instance.root, {
 			framework: "react-router",
 			template: { id: "react-router/base", version: 1 },
-			slots: reactRouterSlots,
+			slots: instance.primary
+				? reactRouterSlots
+				: { layout: reactRouterSlots.layout, page: reactRouterSlots.page },
+			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),
 
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"layout",
 			interpolate(readTemplate("frameworks/react-router/app/root.tsx"), vars),
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"page",
 			interpolate(
 				readTemplate("frameworks/react-router/app/routes/home.tsx"),
@@ -237,41 +251,61 @@ function buildContributions(config: ForgeConfig) {
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"frameworkConfig",
 			readTemplate("frameworks/react-router/react-router.config.ts"),
 		),
-		surfaceJson(ensuredModuleTarget("web"), "tsconfig", webTsconfig),
-		surfaceJson(ensuredModuleTarget("web"), "packageJson", webPackageJson),
-		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", appDeps),
-		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+		surfaceJson(ensuredModuleTarget(instance.key), "tsconfig", webTsconfig),
+		surfaceJson(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			webPackageJson,
+		),
+		surfaceDependencies(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			appDeps,
+		),
+		surfaceScripts(ensuredModuleTarget(instance.key), "packageJson", {
 			build: pmRun(pm, "with-env", "react-router build"),
-			dev: pmRun(pm, "with-env", "react-router dev"),
-			postinstall: pmRun(pm, "typegen"),
-			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
-			start: pmRun(
+			dev: pmRun(
 				pm,
 				"with-env",
-				"react-router-serve ./build/server/index.js",
+				instance.primary
+					? "react-router dev"
+					: `react-router dev --port ${instance.port}`,
 			),
+			postinstall: pmRun(pm, "typegen"),
+			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
+			start: instance.primary
+				? pmRun(pm, "with-env", "react-router-serve ./build/server/index.js")
+				: `dotenv -e ../../.env -v PORT=${instance.port} -- react-router-serve ./build/server/index.js`,
 			typecheck: "tsc --noEmit",
 			typegen: pmRun(pm, "with-env", "react-router typegen"),
 			"with-env": "dotenv -e ../../.env --",
 		}),
 
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"env.ts",
 			interpolate(
 				readTemplate("frameworks/react-router/env.ts"),
-				viteServerEnvMarkers(config),
+				viteServerEnvMarkers(renderConfig),
 			),
 		),
-		leafTextFile(ensuredModuleTarget("web"), "app/providers.tsx", providers),
-		leafTextFile(ensuredModuleTarget("web"), "app/routes.ts", routes),
-		leafTextFile(ensuredModuleTarget("web"), "vite.config.ts", viteConfig),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
+			"app/providers.tsx",
+			providers,
+		),
+		leafTextFile(ensuredModuleTarget(instance.key), "app/routes.ts", routes),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"vite.config.ts",
+			viteConfig,
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
 			"public/favicon.svg",
 			readTemplate("frameworks/react-router/public/favicon.svg"),
 		),

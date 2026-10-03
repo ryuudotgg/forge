@@ -1,16 +1,16 @@
-import type { ForgeConfig } from "./config";
+import type { ForgeConfig, WebFramework } from "./config";
+
+export const standaloneBackendDevPort = 3001;
+
+export function webDevPort(framework?: WebFramework): number {
+	return framework === "react-router" ? 5173 : 3000;
+}
 
 const standaloneBackendOrigins = new Map<string, string>([
-	["express", "http://localhost:3001"],
-	["fastify", "http://localhost:3001"],
-	["hono", "http://localhost:3001"],
+	["express", `http://localhost:${standaloneBackendDevPort}`],
+	["fastify", `http://localhost:${standaloneBackendDevPort}`],
+	["hono", `http://localhost:${standaloneBackendDevPort}`],
 ]);
-
-const webDevOrigins = new Map<string, string>([
-	["react-router", "http://localhost:5173"],
-]);
-
-const defaultWebOrigin = "http://localhost:3000";
 
 export function standaloneApiOrigin(config: ForgeConfig): string | undefined {
 	return config.backend === undefined
@@ -19,9 +19,7 @@ export function standaloneApiOrigin(config: ForgeConfig): string | undefined {
 }
 
 export function webDevOrigin(config: ForgeConfig): string {
-	return config.web === undefined
-		? defaultWebOrigin
-		: (webDevOrigins.get(config.web) ?? defaultWebOrigin);
+	return `http://localhost:${webDevPort(config.web)}`;
 }
 
 export function appOrigin(config: ForgeConfig): string {
@@ -30,7 +28,6 @@ export function appOrigin(config: ForgeConfig): string {
 
 export function viteServerEnvMarkers(config: ForgeConfig) {
 	const origin = standaloneApiOrigin(config);
-
 	return {
 		"  // __SERVER_ENV__\n  client: {},\n":
 			origin === undefined
@@ -41,7 +38,6 @@ export function viteServerEnvMarkers(config: ForgeConfig) {
 
 export function nextServerEnvMarkers(config: ForgeConfig) {
 	const origin = standaloneApiOrigin(config);
-
 	return {
 		"  // __SERVER_ENV__\n":
 			origin === undefined

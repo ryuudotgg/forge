@@ -17,6 +17,79 @@ function decodeMessages(result: ReturnType<typeof decodeConfig>) {
 }
 
 describe("assembleSchema", () => {
+	it("rejects duplicate secondary web app names", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [
+				{ name: "admin", framework: "nextjs" },
+				{ name: "admin", framework: "nextjs" },
+			],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"admin is used by more than one web app.",
+		);
+	});
+
+	it("rejects reserved secondary web app names", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [{ name: "web", framework: "nextjs" }],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"web is reserved. Pick another name for this web app.",
+		);
+	});
+
+	it("rejects a secondary framework different from the primary", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [{ name: "admin", framework: "react-router" }],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"admin uses React Router, but secondary web apps must use the primary web framework, Next.js.",
+		);
+	});
+
+	it("requires a primary framework for secondary web apps", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			webApps: [{ name: "admin", framework: "nextjs" }],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"Secondary web apps need a web framework.",
+		);
+	});
+
+	it("accepts secondary apps using the primary framework", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "tanstack-router",
+			webApps: [{ name: "admin", framework: "tanstack-router" }],
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
+	it("accepts an empty secondary list without a primary framework", () => {
+		expect(
+			Result.isSuccess(
+				decodeConfig({ name: "Acme", slug: "acme", webApps: [] }),
+			),
+		).toBe(true);
+	});
+
 	it.each(["admin", "polar"])("rejects %s without Better Auth", (plugin) => {
 		const result = decodeConfig({
 			name: "Acme",
