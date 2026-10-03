@@ -173,7 +173,7 @@ export async function loadManagedProject(
 ): Promise<ManagedProject> {
 	const absoluteProjectRoot = resolve(projectRoot);
 	const manifest = await runLifecycleEffect(
-		refuseUnknownLockfile(absoluteProjectRoot).pipe(
+		State.readLockfile(absoluteProjectRoot).pipe(
 			Effect.andThen(State.readManifest(absoluteProjectRoot)),
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),

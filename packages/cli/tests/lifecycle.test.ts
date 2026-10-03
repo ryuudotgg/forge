@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { type InstallRecord, ManifestSchema } from "@ryuujs/core";
 import * as generators from "@ryuujs/generators";
@@ -324,6 +324,35 @@ describe("lifecycle", () => {
 				);
 
 				expect(promptMocks.logWarn).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
+	it("refuses a managed project whose lockfile is corrupt", async () => {
+		await withTempDir("lifecycle-corrupt-lockfile", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				config: { slug: "acme" },
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			});
+
+			await writeFile(join(directory, ".forge/lock.json"), "{ not json");
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			try {
+				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					expect.stringContaining("Lockfile Parse Failed"),
+				);
 			} finally {
 				exit.mockRestore();
 			}
