@@ -115,7 +115,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("registry smoke", () => {
 
 			const result = await runForge(
 				workspace.projectRoot,
-				["add", registryId],
+				["add", registryId, "--yes"],
 				{
 					cliPath,
 					workspaceRoot: workspace.workspaceRoot,

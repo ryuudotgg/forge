@@ -1,4 +1,12 @@
-import { intro, isCancel, log, select, spinner, text } from "@clack/prompts";
+import {
+	confirm,
+	intro,
+	isCancel,
+	log,
+	select,
+	spinner,
+	text,
+} from "@clack/prompts";
 import {
 	type AddonDefinition,
 	addonDeclaresFramework,
@@ -20,6 +28,7 @@ import {
 } from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
+import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
@@ -28,6 +37,7 @@ import {
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "./lifecycle";
+import { resolveRegistryRelease } from "./registry-release";
 import { resolutionArguments } from "./resolution";
 
 function mergeInstallRecord(
@@ -366,11 +376,46 @@ async function selectRegistryAddon(
 	return String(selected);
 }
 
+async function confirmRegistryInstall(
+	projectRoot: string,
+	config: ForgeConfig,
+	registryId: string,
+) {
+	if (!isInteractiveLifecycleSession()) {
+		log.error(
+			`We won't install ${registryId} without asking first. Run this again with --yes to install it anyway.`,
+		);
+
+		process.exit(1);
+	}
+
+	const release = await resolveRegistryRelease(
+		projectRoot,
+		configuredPackageManager(config),
+		registryId,
+	);
+	const message =
+		release === undefined
+			? `We couldn't look up ${registryId}, so we can't show its version or publisher. Do you want to install it anyway?`
+			: release.publisher === undefined
+				? `${registryId} ${release.version} is a third-party package. Do you want to install it?`
+				: `${registryId} ${release.version} is a third-party package published by ${release.publisher}. Do you want to install it?`;
+
+	const accepted = await confirm({
+		message,
+		active: "Yes",
+		inactive: "No",
+	});
+
+	if (isCancel(accepted) || !accepted)
+		cancel(`We didn't install ${registryId}.`);
+}
+
 async function installRegistryPackage(
 	projectRoot: string,
 	config: ForgeConfig,
 	registryId: string,
-	noInstall: boolean,
+	options: { readonly noInstall: boolean; readonly yes: boolean },
 ) {
 	if (await hasProjectDevDependency(projectRoot, registryId)) return true;
 
@@ -380,13 +425,16 @@ async function installRegistryPackage(
 	);
 
 	const manualCommand = [operation.command, ...operation.args].join(" ");
-	if (noInstall) {
+	if (options.noInstall) {
 		log.error(
 			`We can't add ${registryId} without installing it. Run "${manualCommand}" inside the project, then try again.`,
 		);
 
 		process.exit(1);
 	}
+
+	if (!options.yes)
+		await confirmRegistryInstall(projectRoot, config, registryId);
 
 	const progress = spinner();
 	progress.start(`We're installing ${registryId}...`);
@@ -468,7 +516,10 @@ export async function runAdd(
 			project.projectRoot,
 			project.config satisfies ForgeConfig,
 			registryId,
-			values["no-install"] === true,
+			{
+				noInstall: values["no-install"] === true,
+				yes: values.yes === true,
+			},
 		);
 
 		const previousRegistry = loadedRegistry;

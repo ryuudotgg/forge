@@ -149,6 +149,7 @@ export {
 	packageManagerCommand,
 	packageManagerRemoveCommand,
 	packageManagers,
+	packageManagerViewCommand,
 	runtimeCommand,
 	runtimes,
 } from "./environment";

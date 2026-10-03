@@ -80,6 +80,7 @@ const packageManagerCommands: ReadonlyArray<
 
 const promptMocks = vi.hoisted(() => ({
 	cancel: vi.fn(),
+	confirm: vi.fn(),
 	intro: vi.fn(),
 	isCancel: vi.fn((_value: unknown) => false),
 	logError: vi.fn(),
@@ -102,8 +103,13 @@ const lifecycleMocks = vi.hoisted(() => ({
 	runPackageManagerOperation: vi.fn(),
 }));
 
+const releaseMocks = vi.hoisted(() => ({
+	resolveRegistryRelease: vi.fn(),
+}));
+
 vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
+	confirm: promptMocks.confirm,
 	intro: promptMocks.intro,
 	isCancel: promptMocks.isCancel,
 	log: {
@@ -124,6 +130,10 @@ vi.mock("../src/commands/lifecycle", () => ({
 	loadManagedProject: lifecycleMocks.loadManagedProject,
 	loadProjectRegistry: lifecycleMocks.loadProjectRegistry,
 	runPackageManagerOperation: lifecycleMocks.runPackageManagerOperation,
+}));
+
+vi.mock("../src/commands/registry-release", () => ({
+	resolveRegistryRelease: releaseMocks.resolveRegistryRelease,
 }));
 
 vi.mock("@ryuugg/generators", async (importOriginal) => {
@@ -279,7 +289,7 @@ describe("add command", () => {
 				},
 			});
 
-		await runAdd("@acme/forge-sentry", {});
+		await runAdd("@acme/forge-sentry", { yes: true });
 
 		expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
 			".",
@@ -331,7 +341,7 @@ describe("add command", () => {
 				.mockResolvedValueOnce(before)
 				.mockResolvedValueOnce(after);
 
-			await runAdd("@acme/forge-empty", {});
+			await runAdd("@acme/forge-empty", { yes: true });
 
 			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
 				".",
@@ -405,7 +415,7 @@ describe("add command", () => {
 			});
 		promptMocks.select.mockResolvedValue("@acme/replay");
 
-		await runAdd("@acme/forge-sentry", {});
+		await runAdd("@acme/forge-sentry", { yes: true });
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which addon do you want to add?",
@@ -515,7 +525,7 @@ describe("add command", () => {
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-sentry-tanstack", {});
+		await runAdd("@acme/forge-sentry-tanstack", { yes: true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -544,7 +554,7 @@ describe("add command", () => {
 		);
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 
-		await runAdd("@acme/forge-adapter", {});
+		await runAdd("@acme/forge-adapter", { yes: true });
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"@acme/forge-adapter is already part of this project.",
@@ -583,7 +593,7 @@ describe("add command", () => {
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 		promptMocks.select.mockResolvedValue(replay.id);
 
-		await runAdd("@acme/forge-observability", {});
+		await runAdd("@acme/forge-observability", { yes: true });
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which addon do you want to add?",
@@ -630,7 +640,7 @@ describe("add command", () => {
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 		promptMocks.select.mockResolvedValue(uncataloged.id);
 
-		await runAdd("@acme/forge-observability", {});
+		await runAdd("@acme/forge-observability", { yes: true });
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which addon do you want to add?",
@@ -708,7 +718,7 @@ describe("add command", () => {
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-sentry-router", {});
+		await runAdd("@acme/forge-sentry-router", { yes: true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -773,7 +783,7 @@ describe("add command", () => {
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-single-router", {});
+		await runAdd("@acme/forge-single-router", { yes: true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -836,7 +846,7 @@ describe("add command", () => {
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-mixed", {});
+		await runAdd("@acme/forge-mixed", { yes: true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -868,7 +878,7 @@ describe("add command", () => {
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-empty", {});
+		await runAdd("@acme/forge-empty", { yes: true });
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"@acme/forge-empty doesn't provide anything this project can use yet.",
@@ -919,7 +929,7 @@ describe("add command", () => {
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-sentry-web", {});
+		await runAdd("@acme/forge-sentry-web", { yes: true });
 
 		expect(promptMocks.logSuccess).toHaveBeenCalledTimes(1);
 		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
@@ -986,7 +996,7 @@ describe("add command", () => {
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-sentry-web", {});
+		await runAdd("@acme/forge-sentry-web", { yes: true });
 
 		expect(promptMocks.logSuccess).toHaveBeenCalledTimes(2);
 		expect(promptMocks.logSuccess).toHaveBeenNthCalledWith(
@@ -1045,7 +1055,9 @@ describe("add command", () => {
 		try {
 			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
 
-			await expect(runAdd("@acme/pkg@1.0.0", {})).rejects.toThrow("exit:1");
+			await expect(runAdd("@acme/pkg@1.0.0", { yes: true })).rejects.toThrow(
+				"exit:1",
+			);
 
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We can\'t add "@acme/pkg@1.0.0" with a version. Pass the bare package name "@acme/pkg" instead.',
@@ -1055,6 +1067,191 @@ describe("add command", () => {
 		} finally {
 			exit.mockRestore();
 		}
+	});
+
+	describe("registry consent", () => {
+		const exit = () =>
+			vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+		function interactiveSession(ci?: string) {
+			const stdin = process.stdin.isTTY;
+			const stdout = process.stdout.isTTY;
+			process.stdin.isTTY = true;
+			process.stdout.isTTY = true;
+			vi.stubEnv("CI", ci ?? "");
+
+			return () => {
+				process.stdin.isTTY = stdin;
+				process.stdout.isTTY = stdout;
+				vi.unstubAllEnvs();
+			};
+		}
+
+		function emptyRegistryProject() {
+			const before = loadDefinitionRegistry();
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({ config: { packageManager: "pnpm", slug: "acme" } }),
+			);
+			lifecycleMocks.loadProjectRegistry
+				.mockResolvedValueOnce(before)
+				.mockResolvedValueOnce(
+					registryFixture({ base: before, id: "@acme/forge-empty", units: [] }),
+				);
+		}
+
+		beforeEach(() => {
+			promptMocks.confirm.mockReset();
+			releaseMocks.resolveRegistryRelease.mockReset();
+			releaseMocks.resolveRegistryRelease.mockResolvedValue({
+				publisher: "acme-bot",
+				version: "2.3.4",
+			});
+		});
+
+		it("installs after the user accepts the id, version and publisher", async () => {
+			const restore = interactiveSession();
+			emptyRegistryProject();
+			promptMocks.confirm.mockResolvedValue(true);
+
+			try {
+				await runAdd("@acme/forge-empty", {});
+			} finally {
+				restore();
+			}
+
+			expect(releaseMocks.resolveRegistryRelease).toHaveBeenCalledWith(
+				".",
+				"pnpm",
+				"@acme/forge-empty",
+			);
+			expect(promptMocks.confirm).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message:
+						"@acme/forge-empty 2.3.4 is a third-party package published by acme-bot. Do you want to install it?",
+				}),
+			);
+			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
+				".",
+				{ args: ["add", "-D", "-w", "@acme/forge-empty"], command: "pnpm" },
+			);
+		});
+
+		it("still asks when the release lookup fails", async () => {
+			const restore = interactiveSession();
+			emptyRegistryProject();
+			releaseMocks.resolveRegistryRelease.mockResolvedValue(undefined);
+			promptMocks.confirm.mockResolvedValue(true);
+
+			try {
+				await runAdd("@acme/forge-empty", {});
+			} finally {
+				restore();
+			}
+
+			expect(promptMocks.confirm).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message:
+						"We couldn't look up @acme/forge-empty, so we can't show its version or publisher. Do you want to install it anyway?",
+				}),
+			);
+			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalled();
+		});
+
+		it("names the version alone when the registry records no publisher", async () => {
+			const restore = interactiveSession();
+			emptyRegistryProject();
+			releaseMocks.resolveRegistryRelease.mockResolvedValue({
+				publisher: undefined,
+				version: "2.3.4",
+			});
+			promptMocks.confirm.mockResolvedValue(true);
+
+			try {
+				await runAdd("@acme/forge-empty", {});
+			} finally {
+				restore();
+			}
+
+			expect(promptMocks.confirm).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message:
+						"@acme/forge-empty 2.3.4 is a third-party package. Do you want to install it?",
+				}),
+			);
+		});
+
+		it("exits zero without installing when the user declines", async () => {
+			const restore = interactiveSession();
+			const exitSpy = exit();
+			emptyRegistryProject();
+			promptMocks.confirm.mockResolvedValue(false);
+
+			try {
+				await expect(runAdd("@acme/forge-empty", {})).rejects.toThrow("exit:0");
+				expect(promptMocks.cancel).toHaveBeenCalledWith(
+					"We didn't install @acme/forge-empty.",
+				);
+				expect(
+					lifecycleMocks.runPackageManagerOperation,
+				).not.toHaveBeenCalled();
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			} finally {
+				exitSpy.mockRestore();
+				restore();
+			}
+		});
+
+		it("refuses under CI without --yes and names the flag", async () => {
+			const restore = interactiveSession("1");
+			const exitSpy = exit();
+			emptyRegistryProject();
+
+			try {
+				await expect(runAdd("@acme/forge-empty", {})).rejects.toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					expect.stringContaining("--yes"),
+				);
+				expect(promptMocks.confirm).not.toHaveBeenCalled();
+				expect(releaseMocks.resolveRegistryRelease).not.toHaveBeenCalled();
+				expect(
+					lifecycleMocks.runPackageManagerOperation,
+				).not.toHaveBeenCalled();
+			} finally {
+				exitSpy.mockRestore();
+				restore();
+			}
+		});
+
+		it("skips the prompt with --yes", async () => {
+			const restore = interactiveSession("1");
+			emptyRegistryProject();
+
+			try {
+				await runAdd("@acme/forge-empty", { yes: true });
+			} finally {
+				restore();
+			}
+
+			expect(promptMocks.confirm).not.toHaveBeenCalled();
+			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalled();
+		});
+
+		it("does not ask for a package the project already has", async () => {
+			const restore = interactiveSession();
+			emptyRegistryProject();
+			lifecycleMocks.hasProjectDevDependency.mockResolvedValue(true);
+
+			try {
+				await runAdd("@acme/forge-empty", {});
+			} finally {
+				restore();
+			}
+
+			expect(promptMocks.confirm).not.toHaveBeenCalled();
+			expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
+		});
 	});
 
 	it("honors --no-install with a manual command", async () => {
@@ -1088,7 +1285,9 @@ describe("add command", () => {
 			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
 			lifecycleMocks.runPackageManagerOperation.mockResolvedValue(false);
 
-			await expect(runAdd("@acme/forge-sentry", {})).rejects.toThrow("exit:1");
+			await expect(runAdd("@acme/forge-sentry", { yes: true })).rejects.toThrow(
+				"exit:1",
+			);
 
 			expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
 				"We couldn't install @acme/forge-sentry.",
@@ -1150,7 +1349,7 @@ describe("add command", () => {
 			},
 		});
 
-		await runAdd("@acme/forge-sentry", {});
+		await runAdd("@acme/forge-sentry", { yes: true });
 
 		expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(

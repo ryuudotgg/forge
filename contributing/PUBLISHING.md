@@ -1,6 +1,6 @@
 # Publishing a Registry Package
 
-A registry package is an npm package that adds addons, adapters, frameworks or templates to Forge. A project picks one up with `forge add @scope/name`, which installs it as a devDependency and records it in `.forge/manifest.json`.
+A registry package is an npm package that adds addons, adapters, frameworks or templates to Forge. A project picks one up with `forge add @scope/name`, which shows the latest version and its npm publisher, asks before installing, installs that exact version as a devDependency and records it in `.forge/manifest.json`. `--yes` skips the question and installs the package without a pinned version.
 
 This guide follows [`examples/registry-package`](../examples/registry-package), which teaches the first-party Vitest addon to work with Next.js. The registry smoke test installs that package on every run, so every code block below is copied from a package that is known to load.
 
