@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { checkRuntime, type EnvironmentCheck } from "@ryuujs/core";
