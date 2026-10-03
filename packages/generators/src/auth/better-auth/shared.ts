@@ -11,7 +11,11 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { hasSecondaryClients, standaloneApiOrigin } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
-import { authSocialProviders, authUsesPassword } from "../methods";
+import {
+	authSocialProviders,
+	authUsesPasskey,
+	authUsesPassword,
+} from "../methods";
 import {
 	authPluginBindings,
 	authPluginEnvEntries,
@@ -87,6 +91,9 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 	const standalone = standaloneApiOrigin(config) !== undefined;
 	const providers = authSocialProviders(config);
 	const pluginEnv = authPluginEnvEntries(config);
+	const secondaryPasskeys =
+		hasSecondaryClients(config) && authUsesPasskey(config);
+
 	return {
 		SLUG: slug,
 		PASSKEY_ORIGIN:
@@ -94,6 +101,9 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 		PASSKEY_ALLOWED_ORIGINS: hasSecondaryClients(config)
 			? "[relyingParty.origin, ...env.WEB_URLS]"
 			: "relyingParty.origin",
+		PASSKEY_RP_ID: secondaryPasskeys
+			? "env.PASSKEY_RP_ID ?? relyingParty.hostname"
+			: "relyingParty.hostname",
 		PASSKEY_NAME: JSON.stringify(config.name ?? slug),
 		DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 		DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
@@ -105,8 +115,8 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 				? `\ndeclare global {\n  interface ImportMetaEnv {\n    readonly ${clientEnvPrefix(config)}SERVER_URL: string;\n  }\n\n  interface ImportMeta {\n    readonly env: ImportMetaEnv;\n  }\n}\n`
 				: "",
 		[authClientDeclaration]: authClientCall(config, standalone),
-		"    // __WEB_URL_SCHEMA__\n": `${standalone ? "    WEB_URL: z.url(),\n" : ""}${hasSecondaryClients(config) ? '    WEB_URLS: z.string().transform((value) => value.split(",")),\n' : ""}`,
-		"    // __WEB_URL_RUNTIME__\n": `${standalone ? "    WEB_URL: process.env.WEB_URL,\n" : ""}${hasSecondaryClients(config) ? "    WEB_URLS: process.env.WEB_URLS,\n" : ""}`,
+		"    // __WEB_URL_SCHEMA__\n": `${standalone ? "    WEB_URL: z.url(),\n" : ""}${hasSecondaryClients(config) ? '    WEB_URLS: z.string().transform((value) => value.split(",")),\n' : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: z.string().trim().min(1).optional(),\n" : ""}`,
+		"    // __WEB_URL_RUNTIME__\n": `${standalone ? "    WEB_URL: process.env.WEB_URL,\n" : ""}${hasSecondaryClients(config) ? "    WEB_URLS: process.env.WEB_URLS,\n" : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: process.env.PASSKEY_RP_ID,\n" : ""}`,
 		"\n    // __SOCIAL_SCHEMA__\n": providers
 			.map(({ envStem }) =>
 				[

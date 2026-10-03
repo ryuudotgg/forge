@@ -223,12 +223,18 @@ async function withGeneratedServer(
 	generatedEnv: NodeJS.ProcessEnv,
 	serverOrigin: string,
 	exercise: (output: () => string) => Promise<void>,
+	host: "server" | "nextjs" = "server",
 ) {
 	const ambientEnv = { ...process.env };
 	delete ambientEnv.CI;
 
-	const server = spawn("node", ["dist/index.js"], {
-		cwd: join(projectRoot, "apps/server"),
+	const args =
+		host === "nextjs"
+			? ["node_modules/next/dist/bin/next", "start", "--port", "3000"]
+			: ["dist/index.js"];
+
+	const server = spawn("node", args, {
+		cwd: join(projectRoot, host === "nextjs" ? "apps/web" : "apps/server"),
 		env: { ...ambientEnv, ...generatedEnv },
 	});
 
@@ -271,6 +277,7 @@ async function expectCredentialedGeneratedServer(
 	options?: {
 		readonly clientOrigin?: string;
 		readonly emailAuth?: boolean;
+		readonly host?: "server" | "nextjs";
 		readonly passkey?: boolean;
 		readonly polar?: boolean;
 		readonly rpc?: "trpc" | "orpc";
@@ -282,14 +289,21 @@ async function expectCredentialedGeneratedServer(
 	const generatedEnv = await readGeneratedEnv(projectRoot);
 	const origin = options?.clientOrigin ?? generatedEnv.WEB_URL;
 	const serverOrigin = generatedEnv.APP_ORIGIN;
+	const credentials = options?.host === "nextjs" ? "include" : undefined;
+
 	if (origin === undefined || serverOrigin === undefined)
 		throw new Error(`Missing Generated Origins: ${projectRoot}`);
 
-	expect(generatedEnv.WEB_URL).toBe(
-		options?.webOrigin ?? "http://localhost:3000",
-	);
+	if (options?.host === "nextjs") {
+		expect(serverOrigin).toBe("http://localhost:3000");
+		expect(generatedEnv.WEB_URLS?.split(",")).toContain(origin);
+	} else {
+		expect(generatedEnv.WEB_URL).toBe(
+			options?.webOrigin ?? "http://localhost:3000",
+		);
 
-	expect(serverOrigin).toBe("http://localhost:3001");
+		expect(serverOrigin).toBe("http://localhost:3001");
+	}
 
 	if (options?.polar) {
 		expect(generatedEnv.POLAR_ACCESS_TOKEN).toBe("");
@@ -306,6 +320,7 @@ async function expectCredentialedGeneratedServer(
 		async (output) => {
 			if (rpc === "trpc") {
 				const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
+					credentials,
 					method: "OPTIONS",
 					headers: {
 						Origin: origin,
@@ -337,7 +352,14 @@ async function expectCredentialedGeneratedServer(
 				const actual = await fetch(
 					`${serverOrigin}/api/trpc/health?input=%7B%7D`,
 					{
-						headers: { Origin: origin, "x-trpc-source": "smoke" },
+						credentials,
+						headers: {
+							Origin: origin,
+							"x-trpc-source": "smoke",
+							...(options?.host === "nextjs"
+								? { "trpc-accept": "application/json" }
+								: {}),
+						},
 					},
 				);
 
@@ -346,10 +368,16 @@ async function expectCredentialedGeneratedServer(
 				expect(actual.headers.get("access-control-allow-credentials")).toBe(
 					"true",
 				);
+
+				if (options?.host === "nextjs")
+					expect(await actual.json()).toMatchObject({
+						result: { data: { json: { status: "ok" } } },
+					});
 			}
 
 			const email = "hono-smoke@example.com";
 			const signup = await fetch(`${serverOrigin}/api/auth/sign-up/email`, {
+				credentials,
 				body: JSON.stringify({
 					email,
 					name: "Hono Smoke",
@@ -423,6 +451,7 @@ async function expectCredentialedGeneratedServer(
 			}
 
 			const authSession = await fetch(`${serverOrigin}/api/auth/get-session`, {
+				credentials,
 				headers: { Cookie: cookie, Origin: origin },
 			});
 
@@ -481,6 +510,7 @@ async function expectCredentialedGeneratedServer(
 				200,
 			);
 		},
+		options?.host,
 	);
 
 	if (!options?.polar) return;
@@ -1331,6 +1361,10 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				});
 
 				await expectInstallBuildAndTypecheck(workspace, "pnpm");
+				await expectCredentialedGeneratedServer(workspace.projectRoot, {
+					clientOrigin: "http://localhost:3002",
+					host: "nextjs",
+				});
 			},
 		);
 	}, 600_000);

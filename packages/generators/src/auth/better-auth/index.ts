@@ -20,6 +20,7 @@ import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
 import {
 	appOrigin,
+	hasSecondaryClients,
 	secondaryClientOrigins,
 	standaloneApiOrigin,
 } from "../../origins";
@@ -27,7 +28,11 @@ import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { catalogRef } from "../../versions";
 import { webAppInstances } from "../../web-apps";
-import { authSocialProviders, authUsesEmail } from "../methods";
+import {
+	authSocialProviders,
+	authUsesEmail,
+	authUsesPasskey,
+} from "../methods";
 import {
 	authPluginEnvEntries,
 	authPluginFiles,
@@ -212,6 +217,24 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					renderBetterAuthTemplate(config, `packages/auth/${path}`),
 				),
 			),
+			...(hasSecondaryClients(config) && authUsesPasskey(config)
+				? [
+						leafTextFile(
+							ensuredModuleTarget("auth"),
+							"README.md",
+							[
+								"# Passkeys",
+								"",
+								"For apps on different subdomains, set `PASSKEY_RP_ID` in the root `.env` to their shared registrable parent domain. For `https://app.example.com` and `https://admin.example.com`, use `example.com` and include the secondary origin in `WEB_URLS`.",
+								"",
+								"Each app hostname must equal the RP ID or be its subdomain. Unrelated domains cannot share this RP ID. Leave `PASSKEY_RP_ID` empty to use the primary app hostname, including `localhost` during development.",
+								"",
+								"Choose the RP ID before registering passkeys. Existing passkeys remain bound to the RP ID used at registration.",
+								"",
+							].join("\n"),
+						),
+					]
+				: []),
 
 			surfaceLines(
 				projectTarget(),
@@ -223,6 +246,9 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					"",
 					envFileLine("APP_ORIGIN", origin),
 					...selfHostedOrigins,
+					...(hasSecondaryClients(config) && authUsesPasskey(config)
+						? [envFileLine("PASSKEY_RP_ID", "")]
+						: []),
 					...socialEnvLines,
 					...pluginEnvLines,
 				],
@@ -238,6 +264,9 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					"",
 					envFileLine("APP_ORIGIN", origin),
 					...selfHostedOrigins,
+					...(hasSecondaryClients(config) && authUsesPasskey(config)
+						? [envFileLine("PASSKEY_RP_ID", "")]
+						: []),
 					...socialEnvLines,
 					...pluginEnvLines,
 				],
