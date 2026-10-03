@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Contribution } from "@ryuujs/core";
+import type { Contribution } from "@ryuugg/core";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EmailProvider, ForgeConfig } from "../src/config";

@@ -10,10 +10,14 @@ export default defineConfig({
 	platform: "node",
 	target: "esnext",
 
+	clean: ["dist", "templates"],
 	dts: false,
 
 	minify: !isDev,
 	treeshake: true,
+
+	deps: { onlyBundle: false },
+	copy: { from: "../generators/templates", to: "." },
 
 	onSuccess: isDev ? "pnpm start" : undefined,
 });
