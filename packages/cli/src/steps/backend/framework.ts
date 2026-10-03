@@ -1,5 +1,5 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { backends, resolveApiHost } from "@ryuujs/generators";
+import { backends, resolveApiHost } from "@ryuugg/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {

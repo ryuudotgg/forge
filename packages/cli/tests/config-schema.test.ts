@@ -1,4 +1,4 @@
-import { formatSchemaError } from "@ryuujs/core";
+import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { assembleSchema } from "../src/config/schema";

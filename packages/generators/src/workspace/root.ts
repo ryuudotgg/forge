@@ -9,7 +9,7 @@ import {
 	surfaceDependencies,
 	surfaceJson,
 	surfaceScripts,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
 import { resolveDatabaseProvider } from "../data/providers";

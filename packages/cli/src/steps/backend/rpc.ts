@@ -5,7 +5,7 @@ import {
 	rpcConsumer,
 	rpcProviders,
 	webFrameworks,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { availableChoice, type Choices } from "../../utils/choices";

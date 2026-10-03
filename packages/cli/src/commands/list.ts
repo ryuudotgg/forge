@@ -5,7 +5,7 @@ import {
 	type LoadedDefinitionRegistry,
 	loadDefinitionRegistry,
 	matchQuery,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import color from "picocolors";
 import { loadDiscoveryRegistry } from "./lifecycle";
 

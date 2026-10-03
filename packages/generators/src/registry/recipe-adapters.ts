@@ -13,13 +13,13 @@ import type {
 	TemplateAssetDefinition,
 	TemplateMarker,
 	TemplateRecipeDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	defineAdapter,
 	leafTextFile,
 	renderRecipeAsset,
 	slotPath,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 
 type RecipeModuleTarget = EnsuredModuleTarget | ResolvedModuleTarget;
 

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
-import { Apply, CliVersion, State } from "@ryuujs/core";
+import { Apply, CliVersion, State } from "@ryuugg/core";
 import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModuleMappingProposal } from "../src/commands/adoption";

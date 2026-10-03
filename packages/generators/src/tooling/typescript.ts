@@ -4,7 +4,7 @@ import {
 	leafTextFile,
 	projectTarget,
 	surfaceJson,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import {
 	frameworksInPlay,

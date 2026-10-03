@@ -9,7 +9,7 @@ import {
 	deriveAddonFrameworks,
 	isAddonCompatibleWithModule,
 	RegistryDescriptorSchema,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {

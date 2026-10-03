@@ -8,7 +8,7 @@ import {
 	surfaceJson,
 	surfaceLines,
 	surfaceScripts,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { type ForgeConfig, hasAddon } from "../config";
 import { envFileLine } from "../data/providers";
 import { deps } from "../deps";

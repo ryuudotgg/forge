@@ -1,4 +1,4 @@
-import { uiLibraries } from "@ryuujs/generators";
+import { uiLibraries } from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import nativeStyleFrameworkStep from "../src/steps/style/native-framework";
 import uiLibraryStep from "../src/steps/style/ui-library";

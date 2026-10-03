@@ -1,11 +1,11 @@
 import { note } from "@clack/prompts";
-import { Planner, packageManagerCommand, runtimeCommand } from "@ryuujs/core";
+import { Planner, packageManagerCommand, runtimeCommand } from "@ryuugg/core";
 import {
 	backends,
 	type ForgeConfig,
 	listVisibleAddons,
 	loadDefinitionRegistry,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { Cause, Effect, Exit, Option } from "effect";
 import { runCliEffect } from "../runtime";
 import { defineStep, SKIP } from "./types";

@@ -10,7 +10,7 @@ import {
 	surfaceScripts,
 	surfaceText,
 	type TemplateDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";

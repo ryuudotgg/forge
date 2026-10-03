@@ -2,7 +2,7 @@ import { isCancel, log, multiselect } from "@clack/prompts";
 import {
 	type Platform,
 	platforms as platformChoices,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { choiceOptions, unsupportedMessage } from "../../utils/choices";

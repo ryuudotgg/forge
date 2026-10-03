@@ -4,7 +4,7 @@ import {
 	packageManagerCommand,
 	runtimeCommand,
 	runtimes,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
 

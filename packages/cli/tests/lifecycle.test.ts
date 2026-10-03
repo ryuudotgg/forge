@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { type InstallRecord, ManifestSchema } from "@ryuujs/core";
-import * as generators from "@ryuujs/generators";
+import { type InstallRecord, ManifestSchema } from "@ryuugg/core";
+import * as generators from "@ryuugg/generators";
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

@@ -6,7 +6,7 @@ import {
 	surfaceDependencies,
 	surfaceJson,
 	templateModuleTarget,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import type { FirstPartyAddonMetadata } from "../../registry/types";

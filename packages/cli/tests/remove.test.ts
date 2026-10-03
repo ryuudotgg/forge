@@ -1,10 +1,10 @@
-import { defineAdapter, defineAddon } from "@ryuujs/core";
+import { defineAdapter, defineAddon } from "@ryuugg/core";
 import {
 	type ForgeConfig,
 	type LoadedDefinitionRegistry,
 	loadDefinitionRegistry,
 	type RegistryUnit,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runRemove } from "../src/commands/remove";
 import {

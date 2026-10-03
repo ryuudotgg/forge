@@ -1,5 +1,5 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { linters } from "@ryuujs/generators";
+import { linters } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {

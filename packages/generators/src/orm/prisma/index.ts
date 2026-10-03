@@ -8,7 +8,7 @@ import {
 	surfaceJson,
 	surfaceLines,
 	surfaceScripts,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { authUsesPassword } from "../../auth/methods";
 import type { ForgeConfig } from "../../config";
 import {

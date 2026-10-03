@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { desktopFrameworks } from "@ryuujs/generators";
+import { desktopFrameworks } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";

@@ -1,4 +1,4 @@
-import { formatSchemaError } from "@ryuujs/core";
+import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { assembleSchema, type Config } from "./config/schema";
 import type { PartialConfig, Step } from "./steps/types";

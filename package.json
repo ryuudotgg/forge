@@ -11,6 +11,7 @@
 		"dev": "turbo watch dev --continue",
 		"postinstall": "pnpm check:ws",
 		"start": "turbo run start --continue",
+		"tegami": "node scripts/tegami.mts",
 		"test": "turbo run test --continue",
 		"test:unit": "turbo run test --filter='./packages/*'",
 		"test:coverage": "turbo run test:coverage --continue",
@@ -23,6 +24,7 @@
 		"@commitlint/types": "catalog:lint",
 		"lefthook": "catalog:dev",
 		"sherif": "catalog:lint",
+		"tegami": "catalog:release",
 		"turbo": "catalog:monorepo",
 		"typescript": "catalog:dev"
 	},

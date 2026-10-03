@@ -1,4 +1,4 @@
-import { renderRecipeAsset, validateTemplateRecipes } from "@ryuujs/core";
+import { renderRecipeAsset, validateTemplateRecipes } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import { builtins } from "../src";
 import { readTemplate } from "../src/template";

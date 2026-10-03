@@ -1,4 +1,4 @@
-import type { ApplyOptions, ResolutionPolicy } from "@ryuujs/core";
+import type { ApplyOptions, ResolutionPolicy } from "@ryuugg/core";
 
 export type ResolutionArguments = [] | [ApplyOptions];
 

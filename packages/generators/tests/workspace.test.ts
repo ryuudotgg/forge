@@ -8,7 +8,7 @@ import {
 	GeneratorError,
 	type ManagedSurfaceName,
 	runtimes,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 import { expoFramework } from "../src/frameworks/expo";

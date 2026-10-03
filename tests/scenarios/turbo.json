@@ -9,7 +9,7 @@
 			"dependsOn": ["build"]
 		},
 		"test": {
-			"dependsOn": ["build", "@ryuujs/forge#build"],
+			"dependsOn": ["build", "@ryuugg/forge#build"],
 			"env": ["FORGE_SMOKE"],
 			"outputs": []
 		}

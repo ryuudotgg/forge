@@ -14,7 +14,7 @@ import {
 const TEMPER = { branches: 40, lines: 50 };
 
 function report(lines: number, branches: number) {
-	return { branches, lines, name: "@ryuujs/core", temper: TEMPER };
+	return { branches, lines, name: "@ryuugg/core", temper: TEMPER };
 }
 
 describe("parseAddedLines", () => {
@@ -426,7 +426,7 @@ describe("render", () => {
 				"",
 				"| Package | Temper | Branches |",
 				"| --- | --- | --- |",
-				"| `@ryuujs/core` | 🔥 80.0% | 70.0% |",
+				"| `@ryuugg/core` | 🔥 80.0% | 70.0% |",
 				"",
 				"**Fresh Steel:** nothing to temper (this diff changes no measured lines).",
 			].join("\n"),
@@ -449,7 +449,7 @@ describe("render", () => {
 				"",
 				"| Package | Temper | Branches |",
 				"| --- | --- | --- |",
-				"| `@ryuujs/core` | 🔥 80.0% | 70.0% |",
+				"| `@ryuugg/core` | 🔥 80.0% | 70.0% |",
 				"| `@ryuujs/db` | 🧊 44.0% | 30.0% |",
 				"",
 				"**Fresh Steel:** 66.7% tempered with 1 brittle line in `a.ts:4`.",

@@ -6,7 +6,7 @@ import {
 	type InstallRecord,
 	isAddonCompatibleWithModule,
 	packageManagerAddDevCommand,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	type AddonCatalogEntry,
 	configWithInstall,
@@ -17,7 +17,7 @@ import {
 	matchQuery,
 	orms,
 	RegistryLoadError,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import {

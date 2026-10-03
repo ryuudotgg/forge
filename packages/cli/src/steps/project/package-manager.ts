@@ -1,5 +1,5 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { checkPackageManager, packageManagers } from "@ryuujs/core";
+import { checkPackageManager, packageManagers } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { runCliEffectValue } from "../../runtime";
 import { cancel } from "../../utils/cancel";

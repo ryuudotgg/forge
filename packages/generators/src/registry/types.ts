@@ -10,8 +10,8 @@ import type {
 	RegistryUnit,
 	TargetMode,
 	TemplateDefinition,
-} from "@ryuujs/core";
-import { addonDeclaresFramework, deriveAddonFrameworks } from "@ryuujs/core";
+} from "@ryuugg/core";
+import { addonDeclaresFramework, deriveAddonFrameworks } from "@ryuugg/core";
 import { Schema } from "effect";
 import type { ForgeConfig } from "../config";
 

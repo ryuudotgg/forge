@@ -1,4 +1,4 @@
-import { GeneratorError } from "@ryuujs/core";
+import { GeneratorError } from "@ryuugg/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { orchestrate } from "../src/orchestrator";
 import backendStep from "../src/steps/backend/framework";

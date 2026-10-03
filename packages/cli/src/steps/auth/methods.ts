@@ -1,5 +1,5 @@
 import { isCancel, log, multiselect } from "@clack/prompts";
-import { authMethods, resolveAuthMethods } from "@ryuujs/generators";
+import { authMethods, resolveAuthMethods } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { choiceOptions, unsupportedMessage } from "../../utils/choices";

@@ -1,4 +1,4 @@
-import { defineAddon, projectTarget, surfaceJson } from "@ryuujs/core";
+import { defineAddon, projectTarget, surfaceJson } from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { trustedBuildDependencies } from "./trusted-builds";

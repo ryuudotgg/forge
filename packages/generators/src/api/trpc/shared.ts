@@ -1,4 +1,4 @@
-import type { FrameworkDefinition } from "@ryuujs/core";
+import type { FrameworkDefinition } from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { interpolate, readTemplate } from "../../template";

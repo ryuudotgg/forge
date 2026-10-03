@@ -6,7 +6,7 @@ import {
 	ApplyError,
 	type ApplyPlan,
 	type LockfileArtifact,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Cause } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

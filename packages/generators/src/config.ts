@@ -1,4 +1,4 @@
-import type { PackageManager, Runtime } from "@ryuujs/core";
+import type { PackageManager, Runtime } from "@ryuugg/core";
 
 function defineChoices<const T extends Record<string, string>>(
 	definitions: T,

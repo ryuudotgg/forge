@@ -3,14 +3,14 @@ import type {
 	AddonDefinition,
 	Contribution,
 	FrameworkDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	defineFramework,
 	moduleCapabilities,
 	moduleTarget,
 	slotPath,
 	templateModuleTarget,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";

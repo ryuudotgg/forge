@@ -13,11 +13,11 @@ export interface TemperedPackage {
 }
 
 export const PACKAGES = {
-	"@ryuujs/core": {
+	"@ryuugg/core": {
 		directory: "packages/core",
 		temper: { branches: 80, lines: 90, perFileOverrides: {} },
 	},
-	"@ryuujs/forge": {
+	"@ryuugg/forge": {
 		directory: "packages/cli",
 		temper: {
 			branches: 80,
@@ -27,7 +27,7 @@ export const PACKAGES = {
 			},
 		},
 	},
-	"@ryuujs/generators": {
+	"@ryuugg/generators": {
 		directory: "packages/generators",
 		temper: { branches: 80, lines: 90, perFileOverrides: {} },
 	},

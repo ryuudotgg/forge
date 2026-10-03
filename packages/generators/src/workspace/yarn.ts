@@ -3,7 +3,7 @@ import {
 	leafTextFile,
 	projectTarget,
 	surfaceLines,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 

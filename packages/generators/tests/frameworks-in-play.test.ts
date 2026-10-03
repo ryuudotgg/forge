@@ -1,4 +1,4 @@
-import { defineFramework } from "@ryuujs/core";
+import { defineFramework } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import { expoFramework } from "../src/frameworks/expo";
 import {

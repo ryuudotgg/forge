@@ -1,4 +1,4 @@
-import * as generators from "@ryuujs/generators";
+import * as generators from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { version } from "../package.json" with { type: "json" };
 import introStep from "../src/steps/intro";

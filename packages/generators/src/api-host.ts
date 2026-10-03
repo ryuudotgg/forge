@@ -1,4 +1,4 @@
-import { type FrameworkDefinition, GeneratorError } from "@ryuujs/core";
+import { type FrameworkDefinition, GeneratorError } from "@ryuugg/core";
 import { type ForgeConfig, type RpcProvider, rpcProviders } from "./config";
 import { expressFramework } from "./frameworks/express";
 import { fastifyFramework } from "./frameworks/fastify";

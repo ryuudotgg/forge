@@ -6,8 +6,8 @@ import {
 	defineAddon,
 	type InstallRecord,
 	type Manifest,
-} from "@ryuujs/core";
-import type { ForgeConfig } from "@ryuujs/generators";
+} from "@ryuugg/core";
+import type { ForgeConfig } from "@ryuugg/generators";
 import type { ManagedProject } from "../src/commands/lifecycle";
 
 export async function withTempDir<T>(

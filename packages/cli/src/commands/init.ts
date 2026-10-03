@@ -27,14 +27,14 @@ import {
 	State,
 	type StateBundle,
 	SURFACE_MERGE_SEMANTICS_VERSION,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	type ForgeConfig,
 	loadDefinitionRegistry,
 	mobileAppFrameworkIds,
 	probeWorkspaceCommandVersions,
 	standaloneBackendIds,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { Effect, Exit, FileSystem, Option, Result, Schema } from "effect";
 import { orchestrate } from "../orchestrator";
 import { failureFromCause, runCliEffect, runCliEffectValue } from "../runtime";

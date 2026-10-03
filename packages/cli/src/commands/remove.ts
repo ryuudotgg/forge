@@ -10,7 +10,7 @@ import {
 	type InstallRecord,
 	isAddonCompatibleWithModule,
 	packageManagerRemoveCommand,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	type AddonCatalogEntry,
 	configWithoutInstall,
@@ -19,7 +19,7 @@ import {
 	type LoadedDefinitionRegistry,
 	loadAddonDefinition,
 	RegistryLoadError,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import {

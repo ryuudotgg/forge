@@ -28,15 +28,15 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup current dependencies
         uses: ./tooling/github/setup
 
       - name: Build current CLI
-        run: pnpm build --filter=@ryuujs/forge
+        run: pnpm build --filter=@ryuugg/forge
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: baseline
           ref: ${{ env.FORGE_N1_BASELINE }}
@@ -45,7 +45,7 @@ jobs:
         working-directory: baseline
         run: |
           pnpm install --frozen-lockfile
-          pnpm build --filter=@ryuujs/forge
+          pnpm build --filter=./packages/cli
 
       - name: Run N-1 Evolution Harness
         run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/n1-evolution.test.ts

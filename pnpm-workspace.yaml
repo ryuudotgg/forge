@@ -41,6 +41,9 @@ catalogs:
   monorepo:
     turbo: ^2.11.5
 
+  release:
+    tegami: 1.5.0
+
   # ===== NODE.JS ENVIRONMENT =====
   node:
     # CLI Framework

@@ -1,5 +1,5 @@
 import { log } from "@clack/prompts";
-import { platforms } from "@ryuujs/generators";
+import { platforms } from "@ryuugg/generators";
 import color from "picocolors";
 import { type OptionKey, options, sections } from "../cli";
 import { type SubcommandDef, subcommands } from "../commands/registry";

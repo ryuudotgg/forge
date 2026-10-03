@@ -3,7 +3,7 @@ import {
 	apiHostError,
 	authenticationProviders,
 	resolveApiHost,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {

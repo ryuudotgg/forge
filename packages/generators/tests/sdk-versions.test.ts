@@ -1,4 +1,4 @@
-import type { PackageManager } from "@ryuujs/core";
+import type { PackageManager } from "@ryuugg/core";
 import { describe, expect, it, vi } from "vitest";
 import { catalogEntries, catalogRef, versions } from "../src/versions";
 import { plannedProject } from "./planner-harness";

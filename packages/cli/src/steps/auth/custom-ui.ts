@@ -1,5 +1,5 @@
 import { confirm, isCancel } from "@clack/prompts";
-import { authenticationProviders } from "@ryuujs/generators";
+import { authenticationProviders } from "@ryuugg/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";

@@ -27,8 +27,8 @@ vi.mock("@clack/prompts", () => ({
 	text: promptMocks.text,
 }));
 
-vi.mock("@ryuujs/core", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/core")>();
+vi.mock("@ryuugg/core", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/core")>();
 
 	return {
 		...original,

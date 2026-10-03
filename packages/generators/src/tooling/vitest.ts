@@ -6,7 +6,7 @@ import {
 	surfaceDependencies,
 	surfaceJson,
 	surfaceScripts,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { type ForgeConfig, hasAddon } from "../config";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { readTemplate } from "../template";

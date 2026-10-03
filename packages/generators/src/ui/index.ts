@@ -5,7 +5,7 @@ import {
 	leafTextFile,
 	surfaceDependencies,
 	surfaceJson,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 import { pmDlx, resolvePackageManager } from "../pm";

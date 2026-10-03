@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { CatalogEntry } from "@ryuujs/generators";
-import { listCatalogEntries } from "@ryuujs/generators";
+import type { CatalogEntry } from "@ryuugg/generators";
+import { listCatalogEntries } from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadDiscoveryRegistry } from "../src/commands/lifecycle";
 import {

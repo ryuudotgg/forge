@@ -4,7 +4,7 @@ import {
 	type PackageManager,
 	packageManagerCommand,
 	Subprocess,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Cause, Exit, Option } from "effect";
 import { runCliEffect } from "../../runtime";
 import { cancel } from "../../utils/cancel";

@@ -43,9 +43,9 @@ const releasePackages: ReadonlyArray<{
 	readonly dir: string;
 	readonly name: string;
 }> = [
-	{ dir: "cli", name: "@ryuujs/forge" },
-	{ dir: "core", name: "@ryuujs/core" },
-	{ dir: "generators", name: "@ryuujs/generators" },
+	{ dir: "cli", name: "@ryuugg/forge" },
+	{ dir: "core", name: "@ryuugg/core" },
+	{ dir: "generators", name: "@ryuugg/generators" },
 ];
 
 async function readPackedManifest(
@@ -126,7 +126,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 				for (const [name, version] of Object.entries(
 					manifest.dependencies ?? {},
 				))
-					if (name.startsWith("@ryuujs/"))
+					if (name.startsWith("@ryuugg/"))
 						expect(
 							version,
 							`${manifest.name} must pin ${name} to its packed version`,
@@ -138,9 +138,9 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 				).toContain("package/dist/index.mjs");
 			}
 
-			const forge = packedPackage(packages, "@ryuujs/forge");
-			const core = packedPackage(packages, "@ryuujs/core");
-			const generators = packedPackage(packages, "@ryuujs/generators");
+			const forge = packedPackage(packages, "@ryuugg/forge");
+			const core = packedPackage(packages, "@ryuugg/core");
+			const generators = packedPackage(packages, "@ryuugg/generators");
 			expect(
 				generators.entries.some((entry) =>
 					entry.startsWith("package/templates/"),
@@ -156,7 +156,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 
 			await writeFile(
 				join(installRoot, "pnpm-workspace.yaml"),
-				`overrides:\n  "@ryuujs/core": ${JSON.stringify(`file:${core.tarballPath}`)}\n  "@ryuujs/generators": ${JSON.stringify(`file:${generators.tarballPath}`)}\n`,
+				`overrides:\n  "@ryuugg/core": ${JSON.stringify(`file:${core.tarballPath}`)}\n  "@ryuugg/generators": ${JSON.stringify(`file:${generators.tarballPath}`)}\n`,
 				"utf-8",
 			);
 
@@ -172,7 +172,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 			expect(install.exitCode, `${install.stdout}\n${install.stderr}`).toBe(0);
 
 			const installedForgeRoot = await realpath(
-				join(installRoot, "node_modules", "@ryuujs", "forge"),
+				join(installRoot, "node_modules", "@ryuugg", "forge"),
 			);
 
 			const forgeRequire = createRequire(
@@ -180,11 +180,11 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 			);
 
 			const installedCorePath = await realpath(
-				forgeRequire.resolve("@ryuujs/core"),
+				forgeRequire.resolve("@ryuugg/core"),
 			);
 
 			const installedGeneratorsPath = await realpath(
-				forgeRequire.resolve("@ryuujs/generators"),
+				forgeRequire.resolve("@ryuugg/generators"),
 			);
 
 			const generatorsRequire = createRequire(
@@ -192,7 +192,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("tarball release smoke", () => {
 			);
 
 			const generatorsCorePath = await realpath(
-				generatorsRequire.resolve("@ryuujs/core"),
+				generatorsRequire.resolve("@ryuugg/core"),
 			);
 
 			const realInstallRoot = await realpath(installRoot);

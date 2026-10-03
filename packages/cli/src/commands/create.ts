@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
-import { formatSchemaError } from "@ryuujs/core";
+import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { buildFlagOverrides } from "../cli";
 import { orchestrate } from "../orchestrator";

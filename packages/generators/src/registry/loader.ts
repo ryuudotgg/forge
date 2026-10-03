@@ -12,7 +12,7 @@ import {
 	RegistryError,
 	type TemplateDefinition,
 	type TemplateRef,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect, Result, Schema } from "effect";
 import type { ForgeConfig } from "../config";
 import { firstPartyCatalog, firstPartyRegistry } from "./first-party";
