@@ -12,6 +12,7 @@ import {
 	withScenarioWorkspace,
 	writeJson,
 } from "../utils/harness";
+import { installPackedForge, packPackage } from "../utils/packed";
 
 const effectVersion: string = createRequire(import.meta.url)(
 	"effect/package.json",
@@ -40,8 +41,13 @@ interface RegistryManifest {
 }
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("registry smoke", () => {
-	it("installs an adapter registry and applies its newly supported output", async () => {
+	it("installs an adapter registry through the packed CLI and applies its newly supported output", async () => {
 		await withScenarioWorkspace("smoke-registry", async (workspace) => {
+			const cliPath = await installPackedForge(
+				await packPackage("cli", workspace.workspaceRoot),
+				workspace.workspaceRoot,
+			);
+
 			await createProject(
 				workspace,
 				{
@@ -49,7 +55,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("registry smoke", () => {
 					packageManager: "pnpm",
 					web: "nextjs",
 				},
-				{ install: true },
+				{ cliPath, install: true },
 			);
 			const originalManifest = await readJson<RegistryManifest>(
 				join(workspace.projectRoot, ".forge/manifest.json"),
@@ -111,7 +117,7 @@ export default {
 			const result = await runForge(
 				workspace.projectRoot,
 				["add", "@fixture/forge-registry"],
-				{ workspaceRoot: workspace.workspaceRoot },
+				{ cliPath, workspaceRoot: workspace.workspaceRoot },
 			);
 
 			expect(result.stdout).toContain("Vitest now supports Next.js.");
@@ -154,7 +160,7 @@ export default {
 			await runForge(
 				workspace.projectRoot,
 				["remove", "@fixture/forge-registry"],
-				{ input: "y\r", workspaceRoot: workspace.workspaceRoot },
+				{ cliPath, input: "y\r", workspaceRoot: workspace.workspaceRoot },
 			);
 
 			await expect(
