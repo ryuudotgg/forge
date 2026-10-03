@@ -612,6 +612,7 @@ async function expectOrpcSession(
 
 async function expectSameOriginOrpcSession(
 	projectRoot: string,
+	sourceRoot: string,
 	origin: string,
 	cookie: string,
 	userId: string,
@@ -675,7 +676,10 @@ async function expectSameOriginOrpcSession(
 
 	await writeFile(
 		join(webRoot, "orpc-probe.ts"),
-		generatedOrpcClientProbe.replace("__CLIENT_IMPORT__", "./src/orpc/client"),
+		generatedOrpcClientProbe.replace(
+			"__CLIENT_IMPORT__",
+			`./${sourceRoot}/orpc/client`,
+		),
 	);
 
 	const result = await build({
@@ -759,7 +763,7 @@ async function expectSameOriginOrpcSession(
 	});
 }
 
-async function expectSelfHostedOrpc(projectRoot: string) {
+async function expectSelfHostedOrpc(projectRoot: string, sourceRoot: string) {
 	const reservation = createServer();
 
 	await new Promise<void>((resolveListen, rejectListen) => {
@@ -883,6 +887,7 @@ async function expectSelfHostedOrpc(projectRoot: string) {
 
 		await expectSameOriginOrpcSession(
 			projectRoot,
+			sourceRoot,
 			origin,
 			cookie,
 			session.user.id,
@@ -1297,31 +1302,41 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		600_000,
 	);
 
-	it("installs, builds, and typechecks TanStack Start as an oRPC self host", async () => {
-		await withScenarioWorkspace("smoke-orpc-self-start", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				authMethods: ["email-password"],
-				backend: "self",
-				database: "sqlite",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "orpc",
-				style: "tailwind",
-				web: "tanstack-start",
-			});
+	it.each([
+		{ web: "tanstack-start", sourceRoot: "src" },
+		{ web: "react-router", sourceRoot: "app" },
+	])(
+		"installs, builds, and typechecks $web as an oRPC self host",
+		async ({ web, sourceRoot }) => {
+			await withScenarioWorkspace(
+				`smoke-orpc-self-${web}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						authMethods: ["email-password"],
+						backend: "self",
+						database: "sqlite",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "orpc",
+						style: "tailwind",
+						web,
+					});
 
-			await writeFile(
-				join(workspace.projectRoot, "apps/web/src/routes/api/caller-probe.ts"),
-				`import "@tanstack/react-start";
+					const callerProbe =
+						web === "tanstack-start"
+							? `import "@tanstack/react-start";
 import { ORPCError } from "@orpc/server";
 import { createFileRoute } from "@tanstack/react-router";
+import { client } from "../../orpc/client";
 import { createServerCaller } from "../../orpc/server";
 
 export const Route = createFileRoute("/api/caller-probe")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        if (typeof client.health !== "function") throw new Error("Missing Browser Client");
+
         const caller = await createServerCaller(request);
 
         try {
@@ -1335,13 +1350,58 @@ export const Route = createFileRoute("/api/caller-probe")({
     },
   },
 });
-`,
-			);
+`
+							: `import { ORPCError } from "@orpc/server";
+import { client } from "../orpc/client";
+import { createServerCaller } from "../orpc/server";
 
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectSelfHostedOrpc(workspace.projectRoot);
-		});
-	}, 600_000);
+export async function loader({ request }: { request: Request }) {
+  if (typeof client.health !== "function") throw new Error("Missing Browser Client");
+
+  const caller = await createServerCaller(request);
+
+  try {
+    return Response.json({ health: await caller.health(), me: await caller.me() });
+  } catch (error) {
+    if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
+
+    throw error;
+  }
+}
+`;
+
+					await writeFile(
+						join(
+							workspace.projectRoot,
+							`apps/web/${sourceRoot}/routes/${web === "tanstack-start" ? "api/caller-probe.ts" : "api.caller-probe.ts"}`,
+						),
+						callerProbe,
+					);
+
+					if (web === "react-router") {
+						const routesPath = join(
+							workspace.projectRoot,
+							"apps/web/app/routes.ts",
+						);
+
+						const routes = await readFile(routesPath, "utf8");
+
+						await writeFile(
+							routesPath,
+							routes.replace(
+								"export default [",
+								'export default [\n  route("api/caller-probe", "routes/api.caller-probe.ts"),',
+							),
+						);
+					}
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectSelfHostedOrpc(workspace.projectRoot, sourceRoot);
+				},
+			);
+		},
+		600_000,
+	);
 
 	it.each(["nextjs", "tanstack-start"])(
 		"installs, builds, and typechecks %s as an oRPC Hono client",
