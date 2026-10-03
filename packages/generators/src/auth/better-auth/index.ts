@@ -21,12 +21,13 @@ import { deps } from "../../deps";
 import { appOrigin } from "../../origins";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
+import { catalogRef } from "../../versions";
 import { authSocialProviders } from "../methods";
 import {
 	authPluginEnvEntries,
+	authPluginFiles,
 	authPluginPackages,
 	authPluginsBlockDeclarations,
-	resolveAuthPlugins,
 } from "../plugins";
 import { renderBetterAuthTemplate } from "./shared";
 
@@ -122,7 +123,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					type: "dependencies",
 				},
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
-				{ ...deps.betterAuth, type: "dependencies" },
+				{ ...catalogRef("betterAuth", config), type: "dependencies" },
 				...authPluginPackages(config, "auth").map(
 					(dependency): Dependency => ({
 						...dependency,
@@ -152,15 +153,13 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				"src/client.ts",
 				renderBetterAuthTemplate(config, "packages/auth/src/client.ts"),
 			),
-			...(resolveAuthPlugins(config).includes("polar")
-				? [
-						leafTextFile(
-							ensuredModuleTarget("auth"),
-							"src/polar.ts",
-							renderBetterAuthTemplate(config, "packages/auth/src/polar.ts"),
-						),
-					]
-				: []),
+			...authPluginFiles(config).map((path) =>
+				leafTextFile(
+					ensuredModuleTarget("auth"),
+					path,
+					renderBetterAuthTemplate(config, `packages/auth/${path}`),
+				),
+			),
 
 			surfaceLines(
 				projectTarget(),

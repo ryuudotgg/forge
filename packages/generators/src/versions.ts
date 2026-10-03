@@ -1,5 +1,6 @@
 import expoNativeModules from "expo/bundledNativeModules.json";
 import expoPackage from "expo/package.json";
+import { authUsesPasskey } from "./auth/methods";
 import type { ForgeConfig, RpcProvider } from "./config";
 
 export type CatalogGroup =
@@ -17,6 +18,7 @@ export interface CatalogEntry {
 	readonly name: string;
 	readonly version: string;
 	readonly group: CatalogGroup;
+	readonly authMethod?: "passkey";
 }
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
@@ -367,6 +369,12 @@ export const versions = {
 		version: "^2.0.1",
 		group: "Framework",
 	},
+	betterAuthPasskey: {
+		name: "@better-auth/passkey",
+		version: "1.7.7",
+		group: "Framework",
+		authMethod: "passkey",
+	},
 	polarSdk: {
 		name: "@polar-sh/sdk",
 		version: "^1.0.2",
@@ -401,12 +409,20 @@ export const versions = {
 export type VersionKey = keyof typeof versions;
 
 function versionsFor(config: ForgeConfig) {
-	if (config.mobile !== "expo") return versions;
-
 	return {
 		...versions,
-		react: { ...versions.react, version: expoNativeModules.react },
-		reactDom: { ...versions.reactDom, version: expoNativeModules["react-dom"] },
+		...(authUsesPasskey(config)
+			? { betterAuth: { ...versions.betterAuth, version: "1.7.7" } }
+			: {}),
+		...(config.mobile === "expo"
+			? {
+					react: { ...versions.react, version: expoNativeModules.react },
+					reactDom: {
+						...versions.reactDom,
+						version: expoNativeModules["react-dom"],
+					},
+				}
+			: {}),
 	};
 }
 
@@ -437,6 +453,7 @@ export function catalogEntries(config: ForgeConfig): ReadonlyArray<{
 	const grouped = new Map<CatalogGroup, CatalogEntry[]>();
 	for (const entry of Object.values(versionsFor(config))) {
 		if ("rpc" in entry && entry.rpc !== config.rpc) continue;
+		if ("authMethod" in entry && !authUsesPasskey(config)) continue;
 
 		const list = grouped.get(entry.group) ?? [];
 		list.push(entry);

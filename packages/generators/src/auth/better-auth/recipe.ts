@@ -25,6 +25,7 @@ import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
 import {
 	authPluginBindings,
 	authPluginImports,
@@ -46,19 +47,22 @@ const betterAuthMarkers = {
 	SOCIAL_DECLARATION: marker.toggleLine("// __SOCIAL_DECLARATION__\n"),
 	SOCIAL_OPTION: marker.toggleLine("  // __SOCIAL_OPTION__\n\n"),
 	SOCIAL_FUNCTION: marker.toggleLine("// __SOCIAL_FUNCTION__\n\n"),
+	ADAPTER_SCHEMA_IMPORT: marker.toggleLine("__ADAPTER_SCHEMA_IMPORT__\n"),
+	ADAPTER_MODELS: marker.toggleLine("__ADAPTER_MODELS__\n"),
 } as const;
 
 const { CLIENT_PLUGIN_IMPORTS, CLIENT_PLUGINS, ...betterAuthServerMarkers } =
 	betterAuthMarkers;
 
-function betterAuthModuleDependencies(slug: string) {
+function betterAuthModuleDependencies(config: ForgeConfig) {
+	const slug = config.slug ?? "my-app";
 	return [
 		{
 			name: `@${slug}/auth`,
 			version: "workspace:*",
 			type: "dependencies" as const,
 		},
-		{ ...deps.betterAuth, type: "dependencies" as const },
+		{ ...catalogRef("betterAuth", config), type: "dependencies" as const },
 	];
 }
 
@@ -112,7 +116,7 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 		surfaceDependencies(
 			moduleTarget(module),
 			"packageJson",
-			betterAuthModuleDependencies(config.slug ?? "my-app"),
+			betterAuthModuleDependencies(config),
 		),
 		...expoAuthClientContributions(config),
 	],
@@ -160,7 +164,7 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 		surfaceDependencies(
 			moduleTarget(module),
 			"packageJson",
-			betterAuthModuleDependencies(config.slug ?? "my-app"),
+			betterAuthModuleDependencies(config),
 		),
 		...expoAuthClientContributions(config),
 	],
@@ -206,7 +210,7 @@ export const betterAuthFastifyAdapters = deriveRecipeAdapters({
 		surfaceDependencies(
 			moduleTarget(module),
 			"packageJson",
-			betterAuthModuleDependencies(config.slug ?? "my-app"),
+			betterAuthModuleDependencies(config),
 		),
 		...expoAuthClientContributions(config),
 	],
@@ -252,7 +256,7 @@ export const betterAuthExpressAdapters = deriveRecipeAdapters({
 		surfaceDependencies(
 			moduleTarget(module),
 			"packageJson",
-			betterAuthModuleDependencies(config.slug ?? "my-app"),
+			betterAuthModuleDependencies(config),
 		),
 		...expoAuthClientContributions(config),
 	],
@@ -278,7 +282,7 @@ export function expoAuthClientContributions(config: ForgeConfig) {
 	if (config.mobile !== "expo") return [];
 
 	const slug = config.slug ?? "my-app";
-	const plugins = authPluginBindings(config, "client");
+	const plugins = authPluginBindings(config, "expo");
 	const markers = {
 		SCHEME: expoScheme(slug),
 		SLUG: slug,
@@ -298,7 +302,7 @@ export function expoAuthClientContributions(config: ForgeConfig) {
 	return [
 		leafTextFile(target, rendered.destination, rendered.content),
 		surfaceDependencies(target, "packageJson", [
-			{ ...deps.betterAuth, type: "dependencies" },
+			{ ...catalogRef("betterAuth", config), type: "dependencies" },
 			{ ...deps.betterAuthExpo, type: "dependencies" },
 			...authPluginPackages(config, "expo").map(
 				(dependency): Dependency => ({

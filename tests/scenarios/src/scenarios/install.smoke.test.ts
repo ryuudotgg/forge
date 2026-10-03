@@ -14,6 +14,7 @@ import {
 	type ScenarioProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
+import { expectPasskeyCeremony } from "../utils/passkey";
 
 const postgresProviderCells = [
 	{ provider: "planetscale", transaction: "supported" },
@@ -113,7 +114,7 @@ async function readGeneratedEnv(projectRoot: string) {
 }
 
 const authPluginConfig = {
-	authMethods: ["email-password", "google"],
+	authMethods: ["email-password", "google", "passkey"],
 	authPlugins: ["username", "admin"],
 };
 
@@ -180,6 +181,26 @@ async function expectSchemaPush(projectRoot: string, env?: NodeJS.ProcessEnv) {
 	).toBe(0);
 }
 
+async function expectPasskeyInstallAndTypecheck(workspace: ScenarioProject) {
+	await writeFile(
+		join(workspace.projectRoot, "packages/auth/src/passkey-probe.ts"),
+		[
+			'import type { PasskeyOptions } from "@better-auth/passkey";',
+			'import { authClient } from "./client";',
+			"",
+			"export const signIn = authClient.signIn.passkey;",
+			"export const register = authClient.passkey.addPasskey;",
+			"export const options = {",
+			"  registration: { extensions: () => ({ credProps: true, prf: {} }) },",
+			"  authentication: { extensions: () => ({ credProps: true, prf: {} }) },",
+			"} satisfies PasskeyOptions;",
+			"",
+		].join("\n"),
+	);
+
+	await expectInstallAndTypecheck(workspace, "pnpm");
+}
+
 function postgresDatabaseEnv(name: string): NodeJS.ProcessEnv {
 	const url = smokeDatabaseOn(smokeDatabaseUrl(), name);
 	return { DATABASE_URL: url, DATABASE_DIRECT_URL: url };
@@ -240,6 +261,7 @@ async function withGeneratedServer(
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
+		readonly passkey?: boolean;
 		readonly polar?: boolean;
 		readonly rpc?: "trpc" | "orpc";
 		readonly username?: string;
@@ -333,6 +355,9 @@ async function expectCredentialedGeneratedServer(
 			const cookie = setCookie.split(";", 1)[0];
 			if (cookie === undefined)
 				throw new Error("Missing Cookie Value: Better Auth sign-up");
+
+			if (options?.passkey)
+				await expectPasskeyCeremony(serverOrigin, origin, cookie, output);
 
 			if (options?.polar) {
 				const checkout = await fetch(`${serverOrigin}/api/auth/checkout`, {
@@ -793,6 +818,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
+				authMethods: ["email-password", "google", "apple", "passkey"],
 				authPlugins: ["username", "admin", "polar"],
 				backend: "hono",
 				database: "sqlite",
@@ -807,6 +833,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 			await expectCredentialedGeneratedServer(workspace.projectRoot, {
+				passkey: true,
 				polar: true,
 				username: "hono_smoke",
 			});
@@ -938,7 +965,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				),
 			).toBe(true);
 
-			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectPasskeyInstallAndTypecheck(workspace);
 			await expectSchemaPush(
 				workspace.projectRoot,
 				postgresDatabaseEnv("forge_smoke_prisma"),
@@ -964,7 +991,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ install: true },
 			);
 
-			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectPasskeyInstallAndTypecheck(workspace);
 			await createSmokeDatabase(
 				workspace.projectRoot,
 				"postgresql",
@@ -996,7 +1023,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ install: true },
 			);
 
-			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectPasskeyInstallAndTypecheck(workspace);
 			await createSmokeDatabase(
 				workspace.projectRoot,
 				"mysql",
@@ -1030,7 +1057,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					{ install: true },
 				);
 
-				await expectInstallAndTypecheck(workspace, "pnpm");
+				await expectPasskeyInstallAndTypecheck(workspace);
 				await createSmokeDatabase(
 					workspace.projectRoot,
 					"mysql",
@@ -1062,7 +1089,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ install: true },
 			);
 
-			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectPasskeyInstallAndTypecheck(workspace);
 			await expectSchemaPush(
 				workspace.projectRoot,
 				mysqlDatabaseEnv("forge_smoke_prisma_mysql"),
@@ -1087,16 +1114,17 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ install: true },
 			);
 
-			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectPasskeyInstallAndTypecheck(workspace);
 			await expectSchemaPush(workspace.projectRoot);
 		});
 	}, 600_000);
 
-	it("installs and typechecks a drizzle sqlite project", async () => {
+	it("installs, typechecks, and pushes a drizzle sqlite project", async () => {
 		await withScenarioWorkspace("smoke-drizzle-sqlite", async (workspace) => {
 			await createProject(
 				workspace,
 				{
+					...authPluginConfig,
 					authentication: "better-auth",
 					database: "sqlite",
 					linter: "biome",
@@ -1109,8 +1137,37 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ install: true },
 			);
 
-			await expectInstallAndTypecheck(workspace, "pnpm");
+			await expectPasskeyInstallAndTypecheck(workspace);
+			await expectSchemaPush(workspace.projectRoot);
 		});
+	}, 600_000);
+
+	it("installs, typechecks, and pushes a prisma planetscale mysql passkey project", async () => {
+		await withScenarioWorkspace(
+			"smoke-prisma-planetscale-passkey",
+			async (workspace) => {
+				await createProject(
+					workspace,
+					{
+						...authPluginConfig,
+						authentication: "better-auth",
+						database: "mysql",
+						databaseProvider: "planetscale",
+						linter: "biome",
+						orm: "prisma",
+						packageManager: "pnpm",
+						web: "nextjs",
+					},
+					{ install: true },
+				);
+
+				await expectPasskeyInstallAndTypecheck(workspace);
+				await expectSchemaPush(
+					workspace.projectRoot,
+					mysqlDatabaseEnv("forge_smoke_prisma_mysql"),
+				);
+			},
+		);
 	}, 600_000);
 
 	for (const cell of postgresProviderCells) {

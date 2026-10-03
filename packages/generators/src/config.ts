@@ -69,6 +69,7 @@ export const authMethods = defineChoices({
 	"email-password": "Email and password",
 	google: "Google",
 	apple: "Apple",
+	passkey: "Passkey",
 });
 
 export type AuthMethod = keyof typeof authMethods.definitions;

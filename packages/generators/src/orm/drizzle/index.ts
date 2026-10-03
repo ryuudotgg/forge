@@ -10,7 +10,11 @@ import {
 	surfaceScripts,
 } from "@ryuugg/core";
 import { authUsesPassword } from "../../auth/methods";
-import { type AuthField, authPluginFields } from "../../auth/plugins";
+import {
+	type AuthField,
+	authPluginFields,
+	authPluginTables,
+} from "../../auth/plugins";
 import type { Database, ForgeConfig } from "../../config";
 import {
 	drizzleKitCredentials,
@@ -24,6 +28,11 @@ import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+import {
+	drizzleTableRelations,
+	drizzleUserRelations,
+	renderDrizzleAuthTables,
+} from "./auth-schema";
 
 const authColumnTypes: Record<Database, Record<AuthField["type"], string>> = {
 	postgresql: {
@@ -84,6 +93,7 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 		const usesCredentials = authUsesPassword(config);
 		const userFields = authPluginFields(config, "user");
 		const sessionFields = authPluginFields(config, "session");
+		const tables = authPluginTables(config);
 		// Each schema template nests its columns differently, so the marker
 		// carries the indentation and the leading newline keys them apart.
 		const passwordField = (indent: string) =>
@@ -91,6 +101,8 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 		const vars = {
 			SLUG: slug,
 			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
+			"__AUTH_USER_RELATIONS__\n": drizzleUserRelations(tables),
+			"__AUTH_TABLE_RELATIONS__\n": drizzleTableRelations(tables),
 			DATABASE_TYPE: provider.drizzle.databaseType,
 			DRIZZLE_DRIVER: provider.drizzle.driver,
 			ENV_RUNTIME: envRuntimeLines(provider.envVars),
@@ -240,8 +252,13 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 						leafTextFile(
 							ensuredModuleTarget("db"),
 							"src/schema/auth.ts",
-							render(
-								`packages/db/src/schema/${provider.drizzle.schemaTemplates.auth}.ts`,
+							renderDrizzleAuthTables(
+								render(
+									`packages/db/src/schema/${provider.drizzle.schemaTemplates.auth}.ts`,
+								),
+								tables,
+								provider.dialect,
+								provider.drizzle.schemaTemplates.auth !== "auth.planetscale",
 							),
 						),
 					]

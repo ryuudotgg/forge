@@ -22,6 +22,7 @@ model User {
 
   sessions Session[]
   accounts Account[]
+__AUTH_USER_RELATIONS__
 
   @@map("users")
 }
@@ -87,3 +88,4 @@ model Verification {
 
   @@map("verifications")
 }
+__AUTH_TABLES__
