@@ -232,7 +232,6 @@ function exportTarget(value: unknown): string | undefined {
 
 	for (const [condition, nested] of Object.entries(value)) {
 		if (condition === "import" || condition === "default") continue;
-
 		const target = exportTarget(nested);
 		if (target !== undefined) return target;
 	}
@@ -430,7 +429,8 @@ function refreshCatalog(
 	adapterSources: ReadonlyMap<string, string>,
 ): ReadonlyArray<CatalogEntry> {
 	return catalogEntries.map((entry) => {
-		if (entry.kind !== "addon") return entry;
+		if (entry.kind !== "addon" || !entry.available) return entry;
+
 		const addon = registry.addons.find(
 			(definition) => definition.id === entry.id,
 		);
@@ -659,6 +659,7 @@ export function loadAddonDefinition(id: string): LoadedAddonDefinition {
 export function loadDefinitionRegistry(
 	options: LoadDefinitionRegistryOptions,
 ): Promise<LoadedDefinitionRegistry>;
+
 export function loadDefinitionRegistry(): LoadedDefinitionRegistry;
 export function loadDefinitionRegistry(
 	options?: LoadDefinitionRegistryOptions,
@@ -724,7 +725,6 @@ export function findRemovalBlockers(
 
 	const dependents = installedIds.flatMap((installedId) => {
 		if (installedId === addonId) return [];
-
 		const installed = byId.get(installedId);
 		return installed && blocksRemoval(installed) ? [installed] : [];
 	});

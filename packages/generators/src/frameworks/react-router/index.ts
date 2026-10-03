@@ -33,6 +33,7 @@ const reactRouterSlots = {
 
 const reactRouterRpcRoutes: { readonly [Id in RpcProvider]: string } = {
 	trpc: '  route("api/trpc/*", "routes/api.trpc.$.ts"),\n',
+	orpc: '  route("api/orpc/*", "routes/api.orpc.$.ts"),\n',
 };
 
 export const reactRouterFramework: FrameworkDefinition<"react-router"> =

@@ -4,7 +4,10 @@ import { catalogEntries, catalogRef, versions } from "../src/versions";
 
 describe("catalogEntries", () => {
 	it("emits every pinned dependency exactly once", () => {
-		const flattened = catalogEntries({}).flatMap((group) => group.entries);
+		const flattened = catalogEntries({ rpc: "orpc" }).flatMap(
+			(group) => group.entries,
+		);
+
 		const names = flattened.map((entry) => entry.name).sort();
 		const expected = Object.values(versions)
 			.map((entry) => entry.name)
@@ -45,6 +48,17 @@ describe("catalogEntries", () => {
 
 		expect(new Set(names).size).toBe(names.length);
 	});
+
+	it.each([undefined, "trpc"] as const)(
+		"omits oRPC dependencies when rpc is %s",
+		(rpc) => {
+			expect(
+				catalogEntries({ rpc })
+					.flatMap((group) => group.entries)
+					.some((entry) => entry.name.startsWith("@orpc/")),
+			).toBe(false);
+		},
+	);
 });
 
 describe("catalogRef", () => {

@@ -19,16 +19,36 @@ vi.mock("@ryuugg/generators", async (importOriginal) => {
 		...original,
 		rpcProviders: {
 			...original.rpcProviders,
-			ids: ["trpc", "fake"],
+			ids: ["trpc", "orpc", "fake"],
 			availableIds: ["trpc"],
 			available: (id: string) => id === "trpc",
-			label: (id: "trpc" | "fake") =>
+			accepted: (id: string) => id === "trpc" || id === "orpc",
+			label: (id: "trpc" | "orpc" | "fake") =>
 				id === "fake" ? "Fake RPC" : original.rpcProviders.label(id),
 		},
 	};
 });
 
 describe("rpc step with an unavailable provider", () => {
+	it("accepts the preview provider from config without prompting", async () => {
+		expect(Schema.decodeUnknownSync(rpcSchema)("orpc")).toBe("orpc");
+		await expect(rpcStep.execute({ rpc: "orpc" }, false)).resolves.toBe("orpc");
+	});
+
+	it("requires an API host for preview oRPC on TanStack Router", () => {
+		expect(() =>
+			rpcStep.validate?.("orpc", { backend: "self", web: "tanstack-router" }),
+		).toThrow(expect.objectContaining({ reason: "api-host-required" }));
+	});
+
+	it("rejects preview oRPC on a Next.js self host", () => {
+		expect(() =>
+			rpcStep.validate?.("orpc", { backend: "self", web: "nextjs" }),
+		).toThrow(
+			expect.objectContaining({ reason: "framework-not-supported-yet" }),
+		);
+	});
+
 	it("leaves the unavailable provider out of the options", async () => {
 		promptMocks.select.mockResolvedValue("trpc");
 

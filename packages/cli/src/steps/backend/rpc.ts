@@ -1,18 +1,18 @@
 import { isCancel, select } from "@clack/prompts";
 import {
-	apiHostError,
 	resolveApiHost,
 	rpcConsumer,
+	rpcProviderError,
 	rpcProviders,
 	webFrameworks,
 } from "@ryuugg/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
-import { availableChoice, type Choices } from "../../utils/choices";
+import { acceptedChoice, type Choices } from "../../utils/choices";
 import { defineStep, SKIP, type Skip } from "../types";
 
 export const rpcSchema = Schema.Literals(rpcProviders.ids).pipe(
-	Schema.check(Schema.makeFilter(availableChoice(rpcProviders))),
+	Schema.check(Schema.makeFilter(acceptedChoice(rpcProviders))),
 );
 
 function rpcOptions<Id extends string>(
@@ -46,7 +46,7 @@ export default defineStep<typeof rpcSchema.Type>({
 		const id = rpcProviders.normalize(value);
 		if (id === undefined) return;
 
-		const failure = apiHostError(config, rpcConsumer(id));
+		const failure = rpcProviderError(config, id);
 		if (failure !== undefined) throw failure;
 	},
 
@@ -54,7 +54,6 @@ export default defineStep<typeof rpcSchema.Type>({
 		if (!interactive) {
 			const normalized = rpcProviders.normalize(config.rpc);
 			if (normalized) return normalized;
-
 			return SKIP;
 		}
 

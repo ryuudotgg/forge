@@ -1,4 +1,10 @@
 import { defineRegistry } from "@ryuugg/core";
+import orpc, { orpcMetadata } from "../api/orpc";
+import {
+	orpcHonoAdapters,
+	orpcHonoRecipe,
+	orpcWebRecipe,
+} from "../api/orpc/recipe";
 import trpc, { trpcMetadata } from "../api/trpc";
 import {
 	trpcAdapters,
@@ -115,6 +121,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		...betterAuthFastifyAdapters,
 		...betterAuthExpressAdapters,
 		...uiAdapters,
+		...orpcHonoAdapters,
 	],
 	frameworks: [
 		expoFramework,
@@ -155,12 +162,15 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		nativewind,
 		tailwind,
 		trpc,
+		orpc,
 		drizzle,
 		prisma,
 		betterAuth,
 		worker,
 	],
 	recipes: [
+		orpcHonoRecipe,
+		orpcWebRecipe,
 		trpcRecipe,
 		trpcExpoRecipe,
 		trpcHonoRecipe,
@@ -298,4 +308,7 @@ export const firstPartyCatalog = [
 		.map((id) =>
 			announcedCatalogEntry("addon", id, rpcProviders.label(id), "addon"),
 		),
+	...(rpcProviders.available("orpc")
+		? [addonCatalogEntry(orpc, orpcMetadata, firstPartyRegistry.adapters)]
+		: []),
 ] as const satisfies ReadonlyArray<CatalogEntry>;

@@ -68,6 +68,9 @@ export const deps = {
 	twAnimateCss: dep("twAnimateCss"),
 
 	trpcServer: dep("trpcServer"),
+	orpcClient: dep("orpcClient"),
+	orpcServer: dep("orpcServer"),
+	orpcTanstackQuery: dep("orpcTanstackQuery"),
 	trpcClient: dep("trpcClient"),
 	trpcReactQuery: dep("trpcReactQuery"),
 	tanstackReactQuery: dep("tanstackReactQuery"),

@@ -7,6 +7,7 @@ export {
 	apiHostFrameworks,
 	resolveApiHost,
 	rpcConsumer,
+	rpcProviderError,
 } from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
 export { resolveAuthMethods } from "./auth/methods";
