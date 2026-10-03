@@ -1,5 +1,5 @@
 import { type FrameworkDefinition, GeneratorError } from "@ryuujs/core";
-import type { ForgeConfig } from "./config";
+import { type ForgeConfig, type RpcProvider, rpcProviders } from "./config";
 import { expressFramework } from "./frameworks/express";
 import { fastifyFramework } from "./frameworks/fastify";
 import { honoFramework } from "./frameworks/hono";
@@ -23,19 +23,21 @@ export type ApiHost = "server" | "web";
 export interface ApiHostConsumer {
 	readonly id: string;
 	readonly name: string;
+	readonly slot: string;
 }
 
 export function resolveApiHost(
 	config: ForgeConfig,
+	slot: string,
 	frameworks: ReadonlyArray<FrameworkDefinition> = apiHostFrameworks,
 ): ApiHost | undefined {
 	const backend = frameworks.find((entry) => entry.id === config.backend);
-	if (backend?.slots.includes("trpc")) return "server";
+	if (backend?.slots.includes(slot)) return "server";
 	if (config.backend !== undefined && config.backend !== "self")
 		return undefined;
 
 	const web = frameworks.find((entry) => entry.id === config.web);
-	return web?.slots.includes("trpc") ? "web" : undefined;
+	return web?.slots.includes(slot) ? "web" : undefined;
 }
 
 export function apiHostFramework(config: ForgeConfig): string | undefined {
@@ -49,7 +51,8 @@ export function apiHostError(
 	consumer: ApiHostConsumer,
 	frameworks: ReadonlyArray<FrameworkDefinition> = apiHostFrameworks,
 ): GeneratorError | undefined {
-	if (resolveApiHost(config, frameworks) !== undefined) return undefined;
+	if (resolveApiHost(config, consumer.slot, frameworks) !== undefined)
+		return undefined;
 	if (
 		config.backend === undefined &&
 		config.web === undefined &&
@@ -65,4 +68,8 @@ export function apiHostError(
 		generatorName: consumer.name,
 		frameworkName: web?.name ?? "The selected web framework",
 	});
+}
+
+export function rpcConsumer(id: RpcProvider): ApiHostConsumer {
+	return { id, name: rpcProviders.label(id), slot: id };
 }

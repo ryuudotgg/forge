@@ -11,7 +11,7 @@ import {
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuujs/core";
-import type { ForgeConfig } from "../../config";
+import type { ForgeConfig, RpcProvider } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
 import { pmRun, resolvePackageManager } from "../../pm";
@@ -19,8 +19,21 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+
+const reactRouterSlots = {
+	layout: "app/root.tsx",
+	page: "app/routes/home.tsx",
+	api: "app/routes/api",
+	trpc: "app/routes/api.trpc.$.ts",
+	auth: "app/routes/api.auth.$.ts",
+};
+
+const reactRouterRpcRoutes: { readonly [Id in RpcProvider]: string } = {
+	trpc: '  route("api/trpc/*", "routes/api.trpc.$.ts"),\n',
+};
 
 export const reactRouterFramework: FrameworkDefinition<"react-router"> =
 	defineFramework({
@@ -31,7 +44,7 @@ export const reactRouterFramework: FrameworkDefinition<"react-router"> =
 		ignoreDirs: [".react-router/"],
 		name: "React Router",
 		sourceRoot: "app",
-		slots: ["layout", "page", "api", "trpc", "auth"],
+		slots: Object.keys(reactRouterSlots),
 		tsconfigPreset: {
 			name: "react-router",
 			content: {
@@ -103,7 +116,7 @@ function buildContributions(config: ForgeConfig) {
 	const pm = resolvePackageManager(config);
 
 	const useTailwind = config.style === "tailwind";
-	const usesTrpc = config.rpc === "trpc";
+	const rpc = rpcDescriptor(config);
 	const usesAuth = config.authentication === "better-auth";
 
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
@@ -111,20 +124,21 @@ function buildContributions(config: ForgeConfig) {
 	const providers = interpolate(
 		readTemplate("frameworks/react-router/app/providers.tsx"),
 		{
-			"// __TRPC_IMPORT__\n": usesTrpc
-				? 'import { TRPCReactProvider } from "@/trpc/react";\n'
-				: "",
-			"  // __TRPC_ENTRY__\n": usesTrpc ? "  trpc: TRPCReactProvider,\n" : "",
+			"// __TRPC_IMPORT__\n":
+				rpc !== undefined
+					? `import { ${rpc.client.component} } from "${rpc.client.module}";\n`
+					: "",
+			"  // __TRPC_ENTRY__\n":
+				rpc !== undefined ? `  ${config.rpc}: ${rpc.client.component},\n` : "",
 		},
 	);
 
 	const routes = interpolate(
 		readTemplate("frameworks/react-router/app/routes.ts"),
 		{
-			ROUTE_IMPORT: usesTrpc || usesAuth ? ", route" : "",
-			"// __TRPC_ROUTE__\n": usesTrpc
-				? '  route("api/trpc/*", "routes/api.trpc.$.ts"),\n'
-				: "",
+			ROUTE_IMPORT: rpc !== undefined || usesAuth ? ", route" : "",
+			"// __TRPC_ROUTE__\n":
+				config.rpc !== undefined ? reactRouterRpcRoutes[config.rpc] : "",
 			"// __AUTH_ROUTE__\n": usesAuth
 				? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
 				: "",
@@ -203,13 +217,7 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("web", "apps/web", {
 			framework: "react-router",
 			template: { id: "react-router/base", version: 1 },
-			slots: {
-				layout: "app/root.tsx",
-				page: "app/routes/home.tsx",
-				api: "app/routes/api",
-				trpc: "app/routes/api.trpc.$.ts",
-				auth: "app/routes/api.auth.$.ts",
-			},
+			slots: reactRouterSlots,
 		}),
 
 		surfaceText(

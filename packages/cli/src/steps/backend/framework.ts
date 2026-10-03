@@ -37,7 +37,7 @@ export default defineStep<typeof backendSchema.Type>({
 		}
 
 		const recommended =
-			resolveApiHost({ ...config, backend: "self" }) === "web"
+			resolveApiHost({ ...config, backend: "self" }, "api") === "web"
 				? "self"
 				: (backends.availableIds.find((id) => id !== "self") ?? "self");
 

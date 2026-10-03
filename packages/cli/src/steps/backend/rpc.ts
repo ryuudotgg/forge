@@ -2,14 +2,29 @@ import { isCancel, select } from "@clack/prompts";
 import {
 	apiHostError,
 	resolveApiHost,
+	rpcConsumer,
 	rpcProviders,
 	webFrameworks,
 } from "@ryuujs/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
+import { availableChoice, type Choices } from "../../utils/choices";
 import { defineStep, SKIP, type Skip } from "../types";
 
-export const rpcSchema = Schema.Literals(rpcProviders.ids);
+export const rpcSchema = Schema.Literals(rpcProviders.ids).pipe(
+	Schema.check(Schema.makeFilter(availableChoice(rpcProviders))),
+);
+
+function rpcOptions<Id extends string>(
+	providers: Choices<Id>,
+): Array<{ label: string; value: Id | "none" }> {
+	return [
+		...providers.ids
+			.filter((id) => providers.available(id))
+			.map((id) => ({ label: providers.label(id), value: id })),
+		{ label: "None", value: "none" },
+	];
+}
 
 export default defineStep<typeof rpcSchema.Type>({
 	id: "rpc",
@@ -22,10 +37,16 @@ export default defineStep<typeof rpcSchema.Type>({
 	shouldRun: (config) =>
 		config.backend !== "convex" &&
 		(config.rpc !== undefined ||
-			(!!config.backend && resolveApiHost(config) !== undefined)),
+			(!!config.backend &&
+				rpcProviders.availableIds.some(
+					(id) => resolveApiHost(config, rpcConsumer(id).slot) !== undefined,
+				))),
 
-	validate: (_value, config) => {
-		const failure = apiHostError(config, { id: "trpc", name: "tRPC" });
+	validate: (value, config) => {
+		const id = rpcProviders.normalize(value);
+		if (id === undefined) return;
+
+		const failure = apiHostError(config, rpcConsumer(id));
 		if (failure !== undefined) throw failure;
 	},
 
@@ -43,13 +64,7 @@ export default defineStep<typeof rpcSchema.Type>({
 			message: web
 				? `Do you want to use an RPC API with ${webFrameworks.label(web)}?`
 				: "Do you want to use an RPC API?",
-			options: [
-				...rpcProviders.ids.map((rpcProvider) => ({
-					label: rpcProviders.label(rpcProvider),
-					value: rpcProvider,
-				})),
-				{ label: "None", value: "none" as const },
-			],
+			options: rpcOptions(rpcProviders),
 		});
 
 		if (isCancel(rpc)) cancel();

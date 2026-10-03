@@ -40,6 +40,7 @@ function expectedTrpcClient(options: {
 		options.variant === "rsc"
 			? "api/trpc/rsc/react.tsx"
 			: "api/trpc/vite/react.tsx";
+
 	const serverUrl =
 		options.variant === "rsc"
 			? "env.NEXT_PUBLIC_SERVER_URL"
@@ -75,8 +76,10 @@ function expectedAuthClient(options: {
 		options.standalone && options.variant === "vite"
 			? "\ndeclare global {\n  interface ImportMetaEnv {\n    readonly VITE_SERVER_URL: string;\n  }\n\n  interface ImportMeta {\n    readonly env: ImportMetaEnv;\n  }\n}\n"
 			: "";
+
 	const declaration =
 		"export const authClient: ReturnType<typeof createAuthClient> =\n  createAuthClient(__CLIENT_OPTIONS__);\n";
+
 	const rendered = options.standalone
 		? `export const authClient: ReturnType<typeof createAuthClient> = createAuthClient(\n  {\n    baseURL: ${options.variant === "nextjs" ? "process.env.NEXT_PUBLIC_SERVER_URL" : "import.meta.env.VITE_SERVER_URL"},\n    fetchOptions: { credentials: "include" },\n  },\n);\n`
 		: "export const authClient: ReturnType<typeof createAuthClient> =\n  createAuthClient();\n";
@@ -98,21 +101,33 @@ describe("Hono backend", () => {
 		expect(
 			resolveApiHost(
 				{ backend: "hono", web: "tanstack-router" },
+				"trpc",
 				builtins.frameworks,
 			),
 		).toBe("server");
+
 		expect(
-			resolveApiHost({ backend: "self", web: "nextjs" }, builtins.frameworks),
+			resolveApiHost(
+				{ backend: "self", web: "nextjs" },
+				"trpc",
+				builtins.frameworks,
+			),
 		).toBe("web");
 
 		expect(
 			resolveApiHost(
 				{ backend: "self", web: "tanstack-router" },
+				"trpc",
 				builtins.frameworks,
 			),
 		).toBeUndefined();
+
 		expect(
-			resolveApiHost({ backend: "convex", web: "nextjs" }, builtins.frameworks),
+			resolveApiHost(
+				{ backend: "convex", web: "nextjs" },
+				"trpc",
+				builtins.frameworks,
+			),
 		).toBeUndefined();
 	});
 
@@ -120,27 +135,37 @@ describe("Hono backend", () => {
 		const config = { backend: "self", web: "tanstack-router" } as const;
 
 		expect(
-			apiHostError(config, { id: "trpc", name: "tRPC" }, builtins.frameworks)
-				?.message,
+			apiHostError(
+				config,
+				{ id: "trpc", name: "tRPC", slot: "trpc" },
+				builtins.frameworks,
+			)?.message,
 		).toBe(
 			"tRPC needs a backend. TanStack Router can't host it; add a backend framework.",
 		);
+
 		expect(
 			apiHostError(
 				config,
-				{ id: "better-auth", name: "Better Auth" },
+				{ id: "better-auth", name: "Better Auth", slot: "auth" },
 				builtins.frameworks,
 			)?.message,
 		).toBe(
 			"Better Auth needs a backend. TanStack Router can't host it; add a backend framework.",
 		);
+
 		expect(
-			apiHostError({}, { id: "trpc", name: "tRPC" }, builtins.frameworks),
+			apiHostError(
+				{},
+				{ id: "trpc", name: "tRPC", slot: "trpc" },
+				builtins.frameworks,
+			),
 		).toBeUndefined();
+
 		expect(
 			apiHostError(
 				{ backend: "convex" },
-				{ id: "trpc", name: "tRPC" },
+				{ id: "trpc", name: "tRPC", slot: "trpc" },
 				builtins.frameworks,
 			)?.message,
 		).toBe(
@@ -156,6 +181,7 @@ describe("Hono backend", () => {
 			sourceRoot: "src",
 			tsconfigPreset: { name: "hono" },
 		});
+
 		expect(honoFramework).not.toHaveProperty("configFile");
 	});
 
@@ -208,6 +234,7 @@ describe("Hono backend", () => {
 				slug: "acme",
 				web: "nextjs",
 			});
+
 			const app = writeContent(plan, "apps/server/src/app.ts");
 			expect(app).toBe(expectedHonoApp(usesTrpc, usesAuth));
 			expect(app).not.toMatch(markerPattern);
@@ -232,19 +259,23 @@ describe("Hono backend", () => {
 				slug: "acme",
 				web,
 			});
+
 			const expected = `WEB_URL="${origin}"`;
 			expect(writeContent(plan, ".env")).toContain(expected);
 			expect(writeContent(plan, ".env.example")).toContain(expected);
 			expect(writeContent(plan, "apps/server/env.ts")).toContain(
 				`WEB_URL: z.url().default("${origin}")`,
 			);
+
 			expect(writeContent(plan, "apps/server/env.ts")).not.toMatch(
 				markerPattern,
 			);
+
 			const webEnv = writeContent(plan, "apps/web/env.ts");
 			expect(webEnv).toContain(
 				`${serverUrl}: z.url().default("http://localhost:3001")`,
 			);
+
 			expect(webEnv).not.toMatch(markerPattern);
 		},
 	);
@@ -291,6 +322,7 @@ describe("Hono backend", () => {
 				slug: "acme",
 				web,
 			});
+
 			const standalone = backend === "hono";
 			const trpcClient = writeContent(plan, `apps/web/${trpcPath}`);
 			const authClient = writeContent(plan, "packages/auth/src/client.ts");
@@ -298,6 +330,7 @@ describe("Hono backend", () => {
 			expect(authClient).toBe(
 				expectedAuthClient({ standalone, variant: authVariant }),
 			);
+
 			expect(trpcClient).not.toMatch(markerPattern);
 			expect(authClient).not.toMatch(markerPattern);
 		},
@@ -322,12 +355,14 @@ describe("Hono backend", () => {
 		const serverEntry = Object.entries(plan.manifest.modules).find(
 			([, module]) => module.root === "apps/server",
 		);
+
 		const server = serverEntry?.[1];
 		const serverId = serverEntry?.[0];
 		expect(server).toMatchObject({ root: "apps/server" });
 		const marker = plan.writes.find(
 			(write) => write.path === "apps/server/forge.json",
 		);
+
 		expect(marker?.content).toContain('"framework": "hono"');
 		expect(marker?.content).toContain('"trpc": "src/routes/trpc.ts"');
 		expect(marker?.content).toContain('"auth": "src/routes/auth.ts"');
@@ -342,45 +377,56 @@ describe("Hono backend", () => {
 				"packages/auth/src/index.ts",
 			]),
 		);
+
 		expect(plan.writes.map((write) => write.path)).not.toContain(
 			"apps/web/src/trpc/server.ts",
 		);
+
 		const trpcClient = plan.writes.find(
 			(write) => write.path === "apps/web/src/trpc/react.tsx",
 		);
+
 		expect(trpcClient?.content).toContain('credentials: "include"');
 		const authClient = plan.writes.find(
 			(write) => write.path === "packages/auth/src/client.ts",
 		);
+
 		expect(authClient?.content).toContain("import.meta.env.VITE_SERVER_URL");
 		expect(authClient?.content).toContain('credentials: "include"');
 		const authIndex = plan.writes.find(
 			(write) => write.path === "packages/auth/src/index.ts",
 		);
+
 		expect(authIndex?.content).toContain("trustedOrigins: [env.WEB_URL]");
 		expect(authIndex?.content).toContain("emailAndPassword: { enabled: true }");
 		expect(writeContent(plan, ".env")).toContain(
 			'APP_ORIGIN="http://localhost:3001"',
 		);
+
 		const authSchema = plan.writes.find(
 			(write) => write.path === "packages/db/src/schema/auth.ts",
 		);
+
 		expect(authSchema?.content).toContain("password: text()");
 		expect(authSchema?.content).not.toMatch(markerPattern);
 		const authEnv = plan.writes.find(
 			(write) => write.path === "packages/auth/env.ts",
 		);
+
 		expect(authEnv?.content).toContain("WEB_URL: z.url()");
 		const trpcRoute = plan.writes.find(
 			(write) => write.path === "apps/server/src/routes/trpc.ts",
 		);
+
 		expect(trpcRoute?.content).toContain('import { cors } from "hono/cors"');
 		expect(trpcRoute?.content).toContain('"x-trpc-source"');
 		expect(trpcRoute?.content).toContain("credentials: true");
+
 		for (const id of ["trpc", "better-auth"]) {
 			const install = plan.manifest.installs.find(
 				(entry) => entry.definitionId === id,
 			);
+
 			expect(install?.targets).toEqual(
 				serverId ? [{ kind: "module", moduleId: serverId }] : [],
 			);
@@ -405,6 +451,7 @@ describe("Hono backend", () => {
 		expect(
 			plan.writes.some((write) => write.path.startsWith("apps/web/")),
 		).toBe(false);
+
 		expect(
 			Object.values(plan.manifest.modules).some(
 				(module) => module.root === "apps/web",

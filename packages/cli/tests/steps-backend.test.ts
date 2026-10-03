@@ -91,6 +91,7 @@ describe("backend step", () => {
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"We don't support Convex yet.",
 		);
+
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
@@ -123,6 +124,30 @@ describe("backend step", () => {
 });
 
 describe("rpc step", () => {
+	it("validates an RPC label like its canonical id", () => {
+		const config = rawConfig({
+			backend: "self",
+			web: "tanstack-router",
+			rpc: "tRPC",
+		});
+
+		for (const value of ["trpc", "tRPC"]) {
+			expect(() => rpcStep.validate?.(value, config)).toThrow(
+				"tRPC needs a backend. TanStack Router can't host it; add a backend framework.",
+			);
+
+			expect(() =>
+				rpcStep.validate?.(value, { backend: "hono" }),
+			).not.toThrow();
+		}
+
+		expect(config.rpc).toBe("tRPC");
+	});
+
+	it("ignores an unknown RPC value during validation", () => {
+		expect(() => rpcStep.validate?.("grpc", { mobile: "expo" })).not.toThrow();
+	});
+
 	beforeEach(() => {
 		promptMocks.cancel.mockReset();
 		promptMocks.isCancel.mockReset();
@@ -141,10 +166,12 @@ describe("rpc step", () => {
 		expect(rpcStep.shouldRun({ backend: "self", web: "tanstack-router" })).toBe(
 			false,
 		);
+
 		expect(rpcStep.shouldRun({ backend: "self", web: "nextjs" })).toBe(true);
 		expect(rpcStep.shouldRun({ backend: "self", web: "react-router" })).toBe(
 			true,
 		);
+
 		expect(rpcStep.shouldRun({ backend: "self", web: "tanstack-start" })).toBe(
 			true,
 		);
@@ -160,6 +187,7 @@ describe("rpc step", () => {
 			schema: null,
 			shouldRun: () => true,
 		};
+
 		const initialConfig = {
 			backend: "self" as const,
 			rpc: "trpc" as const,
@@ -175,6 +203,7 @@ describe("rpc step", () => {
 		).rejects.toThrow(
 			"tRPC needs a backend. TanStack Router can't host it; add a backend framework.",
 		);
+
 		expect(generate).not.toHaveBeenCalled();
 	});
 
@@ -196,6 +225,7 @@ describe("rpc step", () => {
 			generatorId: "trpc",
 			reason: "api-host-required",
 		});
+
 		expect(error).toHaveProperty(
 			"message",
 			"tRPC needs a backend. The selected web framework can't host it; add a backend framework.",

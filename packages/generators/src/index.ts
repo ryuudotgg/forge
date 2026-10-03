@@ -6,6 +6,7 @@ export {
 	apiHostFramework,
 	apiHostFrameworks,
 	resolveApiHost,
+	rpcConsumer,
 } from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
 export type {
@@ -138,6 +139,7 @@ export type {
 	RegistryPackageManifest,
 	RegistryUnit,
 } from "./registry/types";
+export { type RpcDescriptor, rpcDescriptor, rpcDescriptors } from "./rpc";
 export { default as shared } from "./shared";
 export { default as nativewind } from "./style/nativewind";
 export { default as tailwind } from "./style/tailwind";
