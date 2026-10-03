@@ -77,8 +77,10 @@ export const authMethods = defineChoices({
 export type AuthMethod = keyof typeof authMethods.definitions;
 
 export const authPlugins = defineChoices({
+	"two-factor": "Two-factor",
 	username: "Username",
 	admin: "Admin",
+	organization: "Organization",
 	polar: "Polar",
 });
 

@@ -41,6 +41,7 @@ describe("better auth", () => {
 			expect(auth).toContain(
 				'import { drizzleAdapter } from "better-auth/adapters/drizzle";',
 			);
+
 			expect(auth).toContain('import { db } from "@acme/db/client";');
 			expect(auth).toContain("database: drizzleAdapter(db, {");
 			expect(auth).toContain('provider: "pg",');
@@ -50,15 +51,19 @@ describe("better auth", () => {
 			expect(authSchema).toContain(
 				'import { index, snakeCase, text, timestamp } from "drizzle-orm/pg-core";',
 			);
+
 			expect(authSchema).toContain(
 				'export const sessions = snakeCase.table(\n  "sessions"',
 			);
+
 			expect(authSchema).toContain(
 				'export const accounts = snakeCase.table(\n  "accounts"',
 			);
+
 			expect(authSchema).toContain(
 				'.references(() => users.id, { onDelete: "cascade" })',
 			);
+
 			expect(authSchema).toContain("sessions_user_id_idx");
 			expect(authSchema).toContain("accounts_user_id_idx");
 
@@ -168,7 +173,7 @@ describe("better auth", () => {
 	] as const;
 
 	it.each(pluginVariants)(
-		"generates the username and admin plugins for $name",
+		"generates username, admin, two-factor and organization for $name",
 		async ({ name, config, user, session, columns }) => {
 			await withScenarioWorkspace(
 				`better-auth-plugins-${name.replaceAll(" ", "-")}`,
@@ -177,7 +182,7 @@ describe("better auth", () => {
 						...config,
 						authentication: "better-auth",
 						authMethods: ["email-password", "google"],
-						authPlugins: ["admin", "username"],
+						authPlugins: ["admin", "username", "two-factor", "organization"],
 						linter: "biome",
 						packageManager: "pnpm",
 						style: "tailwind",
@@ -194,23 +199,68 @@ describe("better auth", () => {
 						readText(session),
 					]);
 
+					expect(auth).toMatch(
+						/twoFactor\(\),\s+username\(\),\s+admin\(\),\s+organization\(\{/,
+					);
+
+					expect(auth).toContain("nextCookies()");
 					expect(auth).toContain(
-						'import { admin, username } from "better-auth/plugins";',
+						"async sendInvitationEmail({ id, email, organization })",
 					);
-					expect(auth).toContain(
-						"plugins: [username(), admin(), nextCookies()],",
-					);
-					expect(client).toContain(
-						'import { adminClient, usernameClient } from "better-auth/client/plugins";',
-					);
-					expect(client).toContain(
-						"plugins: [usernameClient(), adminClient()]",
-					);
+
+					expect(auth).toContain("console.log(`Invitation");
+
+					for (const plugin of [
+						"twoFactorClient",
+						"usernameClient",
+						"adminClient",
+						"organizationClient",
+					])
+						expect(client).toContain(`${plugin}()`);
 
 					const schemas = `${userSchema}\n${sessionSchema}`;
 					for (const column of columns)
 						if (typeof column === "string") expect(schemas).toContain(column);
 						else expect(schemas).toMatch(column);
+
+					if (config.orm === "drizzle") {
+						for (const table of [
+							"two_factors",
+							"organizations",
+							"members",
+							"invitations",
+						])
+							expect(sessionSchema).toContain(`export const ${table}`);
+
+						expect(userSchema).toContain("twoFactorEnabled:");
+						expect(sessionSchema).toContain("activeOrganizationId: text(),");
+						expect(sessionSchema).toContain('index("two_factors_secret_idx")');
+						expect(sessionSchema.includes('index("members_user_id_idx")')).toBe(
+							config.database !== "mysql" || name.includes("planetscale"),
+						);
+
+						const relations = await readText(
+							"packages/db/src/schema/relations.ts",
+						);
+
+						expect(relations).toContain("twoFactors: r.many.two_factors({");
+						expect(relations).toContain("from: r.organizations.id,");
+						expect(relations).toContain("inviter: r.one.users({");
+					} else {
+						for (const model of [
+							"TwoFactor",
+							"Organization",
+							"Member",
+							"Invitation",
+						])
+							expect(sessionSchema).toContain(`model ${model} {`);
+
+						expect(sessionSchema).toContain("twoFactors TwoFactor[]");
+						expect(sessionSchema).toContain("members Member[]");
+						expect(sessionSchema).toContain("invitations Invitation[]");
+						expect(sessionSchema).toContain("@@index([organizationId])");
+						expect(sessionSchema).not.toContain("slug String @unique @db.Text");
+					}
 
 					for (const text of [auth, client, userSchema, sessionSchema])
 						expect(text).not.toMatch(/__[A-Z_]+__/);

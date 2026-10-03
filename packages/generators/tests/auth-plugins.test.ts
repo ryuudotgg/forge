@@ -298,7 +298,14 @@ function expectPrismaFields(
 
 describe("auth plugins", () => {
 	it("exports choices, requirements and the unmet selections for the CLI", () => {
-		expect(authPlugins.ids).toEqual(["username", "admin", "polar"]);
+		expect(authPlugins.ids).toEqual([
+			"two-factor",
+			"username",
+			"admin",
+			"organization",
+			"polar",
+		]);
+
 		expect(authPlugins.label("username")).toBe("Username");
 		expect(authPlugins.label("admin")).toBe("Admin");
 		expect(authPluginRequirement("username")).toBe("email-password");

@@ -258,11 +258,65 @@ describe("auth plugins step", () => {
 			required: false,
 			initialValues: [],
 			options: [
+				{ label: "Two-factor", value: "two-factor" },
 				{ label: "Username", value: "username" },
 				{ label: "Admin", value: "admin" },
+				{ label: "Organization", value: "organization" },
 				{ label: "Polar", value: "polar" },
 			],
 		});
+	});
+
+	it("accepts both new plugins with passwords", async () => {
+		promptMocks.multiselect.mockResolvedValue(["two-factor", "organization"]);
+
+		await expect(
+			authPluginsStep.execute(
+				{ authentication: "better-auth", authMethods: ["email-password"] },
+				true,
+			),
+		).resolves.toEqual(["two-factor", "organization"]);
+
+		expect(promptMocks.logWarn).not.toHaveBeenCalled();
+	});
+
+	it("removes two-factor without passwords and retains organization", async () => {
+		promptMocks.multiselect
+			.mockResolvedValueOnce(["two-factor", "organization"])
+			.mockResolvedValueOnce(["organization"]);
+
+		await expect(
+			authPluginsStep.execute(
+				{ authentication: "better-auth", authMethods: ["google"] },
+				true,
+			),
+		).resolves.toEqual(["organization"]);
+
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"Two-factor needs this sign-in method: Email and password.",
+		);
+
+		expect(promptMocks.multiselect).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ initialValues: ["organization"] }),
+		);
+	});
+
+	it("cancels after rejecting two-factor without passwords", async () => {
+		promptMocks.multiselect
+			.mockResolvedValueOnce(["two-factor"])
+			.mockResolvedValueOnce(Symbol("cancel"));
+
+		promptMocks.isCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+		await expect(
+			authPluginsStep.execute(
+				{ authentication: "better-auth", authMethods: ["google"] },
+				true,
+			),
+		).rejects.toThrow("Cancelled");
+
+		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
 	});
 
 	it("accepts Polar without a sign-in method", async () => {
