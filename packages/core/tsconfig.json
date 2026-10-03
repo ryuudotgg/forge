@@ -1,5 +1,5 @@
 {
-	"extends": ["@ryuujs/tsconfig/base.json"],
+	"extends": ["@ryuugg/tsconfig/base.json"],
 	"compilerOptions": {
 		"plugins": [{ "name": "@effect/language-service" }],
 		"types": ["node"]

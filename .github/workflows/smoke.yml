@@ -97,24 +97,24 @@ jobs:
         run: pnpm build --filter=@ryuugg/forge
 
       - name: Smoke Test
-        run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/install.smoke.test.ts
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install.smoke.test.ts
         env:
           FORGE_SMOKE: "1"
           FORGE_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
 
       - name: Tarball Smoke
-        run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/tarball.smoke.test.ts
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/tarball.smoke.test.ts
         env:
           FORGE_SMOKE: "1"
 
       - name: Registry Smoke
-        run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/registry.smoke.test.ts
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/registry.smoke.test.ts
         env:
           FORGE_SMOKE: "1"
 
       - name: Multi-PM Smoke
         if: ${{ github.event_name != 'merge_group' }}
-        run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/multi-pm.smoke.test.ts
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/multi-pm.smoke.test.ts
         env:
           FORGE_SMOKE: "1"
 

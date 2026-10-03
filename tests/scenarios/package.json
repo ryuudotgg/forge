@@ -1,5 +1,5 @@
 {
-	"name": "@ryuujs/scenarios",
+	"name": "@ryuugg/scenarios",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -10,7 +10,7 @@
 	},
 	"devDependencies": {
 		"@ryuugg/core": "workspace:*",
-		"@ryuujs/tsconfig": "workspace:*",
+		"@ryuugg/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"effect": "catalog:effect",
 		"typescript": "catalog:dev",

@@ -437,7 +437,7 @@ describe("render", () => {
 		const cold = {
 			branches: 30,
 			lines: 44,
-			name: "@ryuujs/db",
+			name: "@ryuugg/db",
 			temper: TEMPER,
 		};
 
@@ -450,7 +450,7 @@ describe("render", () => {
 				"| Package | Temper | Branches |",
 				"| --- | --- | --- |",
 				"| `@ryuugg/core` | 🔥 80.0% | 70.0% |",
-				"| `@ryuujs/db` | 🧊 44.0% | 30.0% |",
+				"| `@ryuugg/db` | 🧊 44.0% | 30.0% |",
 				"",
 				"**Fresh Steel:** 66.7% tempered with 1 brittle line in `a.ts:4`.",
 			].join("\n"),

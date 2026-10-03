@@ -293,10 +293,10 @@ importers:
       '@ryuugg/generators':
         specifier: workspace:*
         version: link:../generators
-      '@ryuujs/temper':
+      '@ryuugg/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
-      '@ryuujs/tsconfig':
+      '@ryuugg/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript
       '@types/node':
@@ -336,10 +336,10 @@ importers:
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1)
-      '@ryuujs/temper':
+      '@ryuugg/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
-      '@ryuujs/tsconfig':
+      '@ryuugg/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript
       '@types/node':
@@ -373,10 +373,10 @@ importers:
       '@effect/tsgo':
         specifier: catalog:effect
         version: 0.46.1
-      '@ryuujs/temper':
+      '@ryuugg/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
-      '@ryuujs/tsconfig':
+      '@ryuugg/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript
       '@types/node':
@@ -403,7 +403,7 @@ importers:
       '@ryuugg/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@ryuujs/tsconfig':
+      '@ryuugg/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript
       '@types/node':
@@ -423,7 +423,7 @@ importers:
 
   tooling/temper:
     devDependencies:
-      '@ryuujs/tsconfig':
+      '@ryuugg/tsconfig':
         specifier: workspace:*
         version: link:../typescript
       '@types/node':

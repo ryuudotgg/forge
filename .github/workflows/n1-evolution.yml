@@ -48,7 +48,7 @@ jobs:
           pnpm build --filter=./packages/cli
 
       - name: Run N-1 Evolution Harness
-        run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/n1-evolution.test.ts
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/n1-evolution.test.ts
         env:
           FORGE_N1: "1"
           FORGE_N1_BASELINE_CLI: ${{ github.workspace }}/baseline/packages/cli/dist/index.mjs
