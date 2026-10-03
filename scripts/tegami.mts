@@ -22,7 +22,7 @@ function forge(): TegamiPlugin {
 		initCliDraft(draft) {
 			if (command === "version" && !draft.hasPending())
 				throw new Error(
-					"No Pending Change Files: add one under .tegami/ naming group:forge",
+					"No Pending Change Files: add one under .tegami/ naming @ryuugg/forge",
 				);
 		},
 		applyCliDraft() {
@@ -51,17 +51,9 @@ function releaseTitle(graph: PackageGraph) {
 }
 
 const paper = tegami({
-	groups: {
-		forge: { syncBump: true, syncGitTag: true },
-	},
 	npm: {
 		client: "pnpm",
 		trustedPublish: { provider: "github", workflow: "publish.yml" },
-	},
-	packages: {
-		"@ryuugg/core": { group: "forge" },
-		"@ryuugg/forge": { group: "forge" },
-		"@ryuugg/generators": { group: "forge" },
 	},
 	plugins: [
 		github({

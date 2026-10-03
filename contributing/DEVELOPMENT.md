@@ -125,14 +125,15 @@ any name, such as `.tegami/2026-10-03-yarn-linker.md`:
 ```markdown
 ---
 packages:
-  group:forge: minor
+  "@ryuugg/forge": minor
 ---
 
 ## Example note
 ```
 
-`group:forge` covers `@ryuugg/forge`, `@ryuugg/core` and
-`@ryuugg/generators`, which share one version and one `v` tag. Under 1.0
+`@ryuugg/forge` is the only published package. It bundles `@ryuugg/core`
+and `@ryuugg/generators`, which stay private, so a change to either is
+released by naming `@ryuugg/forge`. Each release gets one `v` tag. Under 1.0
 the bump follows the change, not the commit type: a new capability or a
 breaking change is a minor, extending or correcting existing behaviour is a
 patch. A major is a deliberate choice.
