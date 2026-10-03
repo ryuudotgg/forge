@@ -287,7 +287,11 @@ export function formatSchemaError(
 }
 
 export function formatSchemaIssues(error: Schema.SchemaError, input?: unknown) {
-	return formatSchemaError(error, input).map((issue) =>
+	return schemaIssueLines(formatSchemaError(error, input));
+}
+
+function schemaIssueLines(issues: ReadonlyArray<FormattedSchemaIssue>) {
+	return issues.map((issue) =>
 		issue.path.length > 0
 			? `${issue.path.join(".")}: ${issue.message}`
 			: issue.message,
@@ -320,13 +324,14 @@ export function decodeJsonString<
 	}).pipe(
 		Effect.flatMap((parsed) =>
 			Schema.decodeUnknownEffect(schema)(parsed, { errors: "all" }).pipe(
-				Effect.mapError((error) =>
-					options.onValidationError(
-						formatSchemaIssues(error, parsed),
+				Effect.mapError((error) => {
+					const structuredIssues = formatSchemaError(error, parsed);
+					return options.onValidationError(
+						schemaIssueLines(structuredIssues),
 						error,
-						formatSchemaError(error, parsed),
-					),
-				),
+						structuredIssues,
+					);
+				}),
 			),
 		),
 	);

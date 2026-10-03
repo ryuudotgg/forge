@@ -70,6 +70,17 @@ function readWorkspaceCommandVersions(
 	});
 }
 
+function refuseUnknownLockfile(projectRoot: string) {
+	return State.readLockfile(projectRoot).pipe(
+		Effect.asVoid,
+		Effect.catchTag("StateError", (error) =>
+			error.reason === "schema-version-unknown"
+				? Effect.fail(error)
+				: Effect.void,
+		),
+	);
+}
+
 function lifecycleUnavailableMessage() {
 	return "We couldn't find a Forge project here. The .forge directory is missing or incomplete.";
 }
@@ -162,8 +173,8 @@ export async function loadManagedProject(
 ): Promise<ManagedProject> {
 	const absoluteProjectRoot = resolve(projectRoot);
 	const manifest = await runLifecycleEffect(
-		State.readManifest(absoluteProjectRoot).pipe(
-			Effect.tap(() => State.readLockfile(absoluteProjectRoot)),
+		refuseUnknownLockfile(absoluteProjectRoot).pipe(
+			Effect.andThen(State.readManifest(absoluteProjectRoot)),
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),
@@ -277,16 +288,8 @@ function discoveryWarning(action: string, error: unknown) {
 export async function loadDiscoveryRegistry(projectRoot: string) {
 	const absoluteProjectRoot = resolve(projectRoot);
 	const manifestResult = await runCliEffectValue(
-		State.readManifest(absoluteProjectRoot).pipe(
-			Effect.tap(() =>
-				State.readLockfile(absoluteProjectRoot).pipe(
-					Effect.catchTag("StateError", (error) =>
-						error.reason === "schema-version-unknown"
-							? Effect.fail(error)
-							: Effect.void,
-					),
-				),
-			),
+		refuseUnknownLockfile(absoluteProjectRoot).pipe(
+			Effect.andThen(State.readManifest(absoluteProjectRoot)),
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),

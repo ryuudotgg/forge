@@ -287,6 +287,49 @@ describe("lifecycle", () => {
 		},
 	);
 
+	it("refuses an unknown lockfile version even when the manifest is unreadable", async () => {
+		await withTempDir("lifecycle-unknown-lockfile", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				schemaVersion: 1,
+				modules: null,
+			});
+
+			await writeJson(join(directory, ".forge/lock.json"), {
+				artifacts: {},
+				schemaVersion: 99,
+			});
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			try {
+				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+					"exit:1",
+				);
+
+				await expect(loadDiscoveryRegistry(directory)).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledTimes(2);
+				expect(promptMocks.logError).toHaveBeenNthCalledWith(
+					1,
+					"We can't read this project's metadata because it was saved by a different version of Forge.",
+				);
+
+				expect(promptMocks.logError).toHaveBeenNthCalledWith(
+					2,
+					"We can't read this project's metadata because it was saved by a different version of Forge.",
+				);
+
+				expect(promptMocks.logWarn).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
 	it("round-trips the manifest config instead of inferring it", async () => {
 		await withTempDir("lifecycle-roundtrip", async (directory) => {
 			await scaffoldWebModule(directory);
