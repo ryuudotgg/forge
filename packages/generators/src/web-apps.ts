@@ -69,6 +69,12 @@ export function webAppInstances(config: ForgeConfig): WebAppInstance[] {
 	return instances;
 }
 
+export function hasNextjsWebApp(config: ForgeConfig): boolean {
+	return webAppInstances(config).some(
+		(instance) => instance.framework === "nextjs",
+	);
+}
+
 export function webAppRenderConfig(
 	config: ForgeConfig,
 	instance: WebAppInstance,

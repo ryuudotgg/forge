@@ -279,6 +279,12 @@ export function buildAdoptionPlan(
 	proposals: ReadonlyArray<ModuleMappingProposal> = [],
 ) {
 	return Effect.gen(function* () {
+		if (config.webApps?.some((app) => app.framework !== config.web))
+			return yield* new InitPlanningError({
+				message:
+					"Mixed Framework Adoption Unsupported: secondary web apps must use the primary framework when adopting a project.",
+			});
+
 		const loadedRegistry = yield* Effect.sync(() => loadDefinitionRegistry());
 		const commandVersions = yield* probeWorkspaceCommandVersions(config);
 

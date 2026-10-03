@@ -91,12 +91,11 @@ describe("frameworksInPlay", () => {
 		]);
 	});
 
-	it("preserves framework order when collecting ignore directories", () => {
+	it("deduplicates ignore directories in framework order", () => {
 		expect(frameworkIgnoreDirs([web, backend])).toEqual([
 			".web/",
 			".shared/",
 			".backend/",
-			".shared/",
 		]);
 	});
 

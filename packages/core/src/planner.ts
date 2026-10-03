@@ -693,24 +693,31 @@ const makePlanner = Effect.gen(function* () {
 		const templates = registry.templates.filter((entry) => entry.when(config));
 		const templatesByCategory = new Map<
 			string,
-			TemplateDefinition<ConfigValue>[]
+			Map<string, TemplateDefinition<ConfigValue>[]>
 		>();
 
 		for (const template of templates) {
-			const category = templatesByCategory.get(template.category) ?? [];
-			category.push(template);
+			const category =
+				templatesByCategory.get(template.category) ??
+				new Map<string, TemplateDefinition<ConfigValue>[]>();
+
+			const matchingTemplates = category.get(template.framework) ?? [];
+			matchingTemplates.push(template);
+			category.set(template.framework, matchingTemplates);
 			templatesByCategory.set(template.category, category);
 		}
 
-		for (const [category, matchingTemplates] of templatesByCategory)
-			if (matchingTemplates.length > 1)
-				return Effect.fail(
-					new PlannerError({
-						path: "registry",
-						reason: "multiple-templates-selected",
-						category,
-					}),
-				);
+		for (const [category, frameworks] of templatesByCategory)
+			for (const [framework, matchingTemplates] of frameworks)
+				if (matchingTemplates.length > 1)
+					return Effect.fail(
+						new PlannerError({
+							path: "registry",
+							reason: "multiple-templates-selected",
+							category,
+							detail: `Multiple Templates Selected: ${framework} in ${category}: ${new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(matchingTemplates.map((template) => template.id))}`,
+						}),
+					);
 
 		const directAddons = registry.addons.filter((entry) => entry.when(config));
 		return Effect.succeed({

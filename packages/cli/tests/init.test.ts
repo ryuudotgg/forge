@@ -502,6 +502,41 @@ describe("init command", () => {
 		});
 	});
 
+	it("rejects mixed-framework adoption before writing metadata", async () => {
+		await withTempDir("init-mixed-frameworks", async (directory) => {
+			const error = await Effect.runPromise(
+				Effect.flip(
+					buildAdoptionPlanForTest(
+						directory,
+						{
+							...config,
+							web: "tanstack-start",
+							webApps: [{ name: "admin", framework: "nextjs" }],
+						},
+						[
+							{ kind: "web-app", root: "apps/web" },
+							{ kind: "web-app", root: "apps/admin" },
+						],
+						[],
+					),
+				),
+			);
+
+			expect(error.message).toBe(
+				"Mixed Framework Adoption Unsupported: secondary web apps must use the primary framework when adopting a project.",
+			);
+
+			await expect(access(join(directory, ".forge"))).rejects.toThrow();
+			await expect(
+				access(join(directory, "apps/web/forge.json")),
+			).rejects.toThrow();
+
+			await expect(
+				access(join(directory, "apps/admin/forge.json")),
+			).rejects.toThrow();
+		});
+	});
+
 	it("reports invalid mappings", async () => {
 		await withTempDir("init-invalid-mapping", async (directory) => {
 			await fixture(directory);
