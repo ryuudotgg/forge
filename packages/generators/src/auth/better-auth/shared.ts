@@ -11,6 +11,7 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { standaloneApiOrigin } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
+import { authSocialProviders, authUsesPassword } from "../methods";
 
 // Only one of the two call shapes fits the generated formatter's line budget,
 // so the whole declaration is the marker rather than just its argument.
@@ -56,7 +57,7 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";
 	const provider = resolveDatabaseProvider(config);
 	const standalone = standaloneApiOrigin(config) !== undefined;
-
+	const providers = authSocialProviders(config);
 	return {
 		SLUG: slug,
 		DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
@@ -70,7 +71,61 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 		"    // __WEB_URL_RUNTIME__\n": standalone
 			? "    WEB_URL: process.env.WEB_URL,\n"
 			: "",
+		"\n    // __SOCIAL_SCHEMA__\n": providers
+			.map(({ envStem }) =>
+				[
+					"",
+					`    ${envStem}_CLIENT_ID: z.string().trim().min(1).optional(),`,
+					`    ${envStem}_CLIENT_SECRET: z.string().trim().min(1).optional(),`,
+					"",
+				].join("\n"),
+			)
+			.join(""),
+		"\n    // __SOCIAL_RUNTIME__\n": providers
+			.map(({ envStem }) =>
+				[
+					"",
+					`    ${envStem}_CLIENT_ID: process.env.${envStem}_CLIENT_ID,`,
+					`    ${envStem}_CLIENT_SECRET: process.env.${envStem}_CLIENT_SECRET,`,
+					"",
+				].join("\n"),
+			)
+			.join(""),
 	};
+}
+
+function socialProvidersFunction(config: ForgeConfig): string {
+	const providers = authSocialProviders(config);
+	if (providers.length === 0) return "";
+
+	const declarations = providers.map(({ id, envStem }) =>
+		[
+			`  const ${id} =`,
+			`    env.${envStem}_CLIENT_ID && env.${envStem}_CLIENT_SECRET`,
+			"      ? {",
+			`          clientId: env.${envStem}_CLIENT_ID,`,
+			`          clientSecret: env.${envStem}_CLIENT_SECRET,`,
+			`          redirectURI: \`\${normalizeOrigin(env.APP_ORIGIN)}/api/auth/callback/${id}\`,`,
+			"        }",
+			"      : null;",
+			"",
+		].join("\n"),
+	);
+
+	return [
+		"function getSocialProviders() {",
+		declarations.join("\n"),
+		`  if (${providers.map(({ id }) => `!${id}`).join(" && ")}) return null;`,
+		"",
+		"  return {",
+		...[...providers]
+			.reverse()
+			.map(({ id }) => `    ...(${id} ? { ${id} } : {}),`),
+		"  };",
+		"}",
+		"",
+		"",
+	].join("\n");
 }
 
 export function betterAuthRecipeVars(
@@ -81,6 +136,7 @@ export function betterAuthRecipeVars(
 	const isNextjs = framework.id === "nextjs";
 	const isTanstackStart = framework.id === "tanstack-start";
 	const usesMobile = config.mobile === "expo";
+	const usesSocial = authSocialProviders(config).length > 0;
 	const cookieImports = [
 		usesMobile ? 'import { expo } from "@better-auth/expo";\n' : "",
 		isNextjs
@@ -115,10 +171,16 @@ export function betterAuthRecipeVars(
 			trustedOrigins.length > 0
 				? `  trustedOrigins: [${trustedOrigins.join(", ")}],\n`
 				: "",
-		EMAIL_PASSWORD:
-			standaloneApiOrigin(config) || usesMobile
-				? "  emailAndPassword: { enabled: true },\n"
-				: "",
+		EMAIL_PASSWORD: authUsesPassword(config)
+			? "  emailAndPassword: { enabled: true },\n"
+			: "",
+		SOCIAL_DECLARATION: usesSocial
+			? "const socialProviders = getSocialProviders();\n"
+			: "",
+		SOCIAL_OPTION: usesSocial
+			? "  ...(socialProviders ? { socialProviders } : {}),\n\n"
+			: "",
+		SOCIAL_FUNCTION: socialProvidersFunction(config),
 	};
 }
 

@@ -9,6 +9,7 @@ import {
 	surfaceLines,
 	surfaceScripts,
 } from "@ryuujs/core";
+import { authUsesPassword } from "../../auth/methods";
 import type { ForgeConfig } from "../../config";
 import {
 	drizzleKitCredentials,
@@ -18,7 +19,6 @@ import {
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { deps } from "../../deps";
-import { standaloneApiOrigin } from "../../origins";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
@@ -41,7 +41,7 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 		const provider = resolveDatabaseProvider(config);
 
 		const usesAuth = config.authentication === "better-auth";
-		const usesCredentials = standaloneApiOrigin(config) !== undefined;
+		const usesCredentials = authUsesPassword(config);
 		// Each schema template nests its columns differently, so the marker
 		// carries the indentation and the leading newline keys them apart.
 		const passwordField = (indent: string) =>

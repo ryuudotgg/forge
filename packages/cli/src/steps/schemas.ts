@@ -1,5 +1,6 @@
 export { addonsSchema as addons } from "./addons/select";
 export { authenticationCustomUISchema as authenticationCustomUI } from "./auth/custom-ui";
+export { authMethodsSchema as authMethods } from "./auth/methods";
 export { authenticationSchema as authentication } from "./auth/provider";
 export { backendSchema as backend } from "./backend/framework";
 export { rpcSchema as rpc } from "./backend/rpc";

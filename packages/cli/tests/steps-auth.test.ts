@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { orchestrate } from "../src/orchestrator";
+import { defaultPreset } from "../src/presets/default";
 import authenticationCustomUIStep from "../src/steps/auth/custom-ui";
+import authMethodsStep from "../src/steps/auth/methods";
 import authenticationStep from "../src/steps/auth/provider";
 import { type PartialConfig, SKIP, type Step } from "../src/steps/types";
 
@@ -9,6 +11,7 @@ const promptMocks = vi.hoisted(() => ({
 	confirm: vi.fn(),
 	isCancel: vi.fn(),
 	logWarn: vi.fn(),
+	multiselect: vi.fn(),
 	select: vi.fn(),
 }));
 
@@ -23,6 +26,7 @@ vi.mock("@clack/prompts", () => ({
 	confirm: promptMocks.confirm,
 	isCancel: promptMocks.isCancel,
 	log: { warn: promptMocks.logWarn },
+	multiselect: promptMocks.multiselect,
 	select: promptMocks.select,
 }));
 
@@ -32,6 +36,140 @@ function rawConfig(values: { [key: string]: unknown }): PartialConfig {
 	const config: PartialConfig = {};
 	return Object.assign(config, values);
 }
+
+describe("auth methods step", () => {
+	beforeEach(() => {
+		promptMocks.multiselect.mockReset();
+		promptMocks.isCancel.mockReset();
+		promptMocks.logWarn.mockReset();
+		cancelMocks.cancel.mockClear();
+		promptMocks.isCancel.mockReturnValue(false);
+	});
+
+	it("runs only for Better Auth", () => {
+		expect(authMethodsStep.shouldRun({ authentication: "better-auth" })).toBe(
+			true,
+		);
+
+		for (const authentication of ["authjs", "workos", "clerk", undefined])
+			expect(authMethodsStep.shouldRun(rawConfig({ authentication }))).toBe(
+				false,
+			);
+
+		expect(authMethodsStep).toMatchObject({
+			id: "authMethods",
+			configKey: "authMethods",
+			group: "auth",
+			dependencies: ["authentication"],
+		});
+	});
+
+	it("returns the selection and requires at least one method", async () => {
+		promptMocks.multiselect.mockResolvedValue(["email-password", "google"]);
+
+		await expect(authMethodsStep.execute({}, true)).resolves.toEqual([
+			"email-password",
+			"google",
+		]);
+
+		expect(promptMocks.multiselect).toHaveBeenCalledWith({
+			message: "How should people sign in?",
+			required: true,
+			initialValues: ["google", "apple"],
+			options: [
+				{ label: "Email and password", value: "email-password" },
+				{ label: "Google", value: "google" },
+				{ label: "Apple", value: "apple" },
+			],
+		});
+	});
+
+	it.each([
+		{ backend: "hono" },
+		{ backend: "self", web: "nextjs", mobile: "expo" },
+	])(
+		"defaults to passwords for standalone and Expo configs %j",
+		async (config) => {
+			promptMocks.multiselect.mockResolvedValue(["google"]);
+
+			await authMethodsStep.execute(rawConfig(config), true);
+
+			expect(promptMocks.multiselect).toHaveBeenCalledWith(
+				expect.objectContaining({
+					initialValues: ["email-password", "google", "apple"],
+				}),
+			);
+		},
+	);
+
+	it("defaults to social methods for a self-hosted web app", async () => {
+		promptMocks.multiselect.mockResolvedValue(["apple"]);
+
+		await authMethodsStep.execute({ backend: "self", web: "nextjs" }, true);
+
+		expect(promptMocks.multiselect).toHaveBeenCalledWith(
+			expect.objectContaining({
+				initialValues: ["google", "apple"],
+			}),
+		);
+	});
+
+	it.each([[], ["unknown"]].map((selection) => ({ selection })))(
+		"warns and retries an invalid selection $selection",
+		async ({ selection }) => {
+			promptMocks.multiselect
+				.mockResolvedValueOnce(selection)
+				.mockResolvedValueOnce(["apple"]);
+
+			await expect(authMethodsStep.execute({}, true)).resolves.toEqual([
+				"apple",
+			]);
+
+			expect(promptMocks.logWarn).toHaveBeenCalledWith(
+				"Choose at least one supported sign-in method.",
+			);
+
+			expect(promptMocks.multiselect).toHaveBeenCalledTimes(2);
+		},
+	);
+
+	it("cancels when interrupted", async () => {
+		promptMocks.multiselect.mockResolvedValue(Symbol("cancel"));
+		promptMocks.isCancel.mockReturnValueOnce(true);
+
+		await expect(authMethodsStep.execute({}, true)).rejects.toThrow(
+			"Cancelled",
+		);
+
+		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
+	});
+
+	it("skips non-interactively without a value", async () => {
+		await expect(authMethodsStep.execute({}, false)).resolves.toBe(SKIP);
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+	});
+
+	it("leaves the default preset on the legacy methods non-interactively", async () => {
+		const result = await orchestrate([authenticationStep, authMethodsStep], {
+			initialConfig: defaultPreset,
+			interactive: false,
+		});
+
+		expect(result.authMethods).toBeUndefined();
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+	});
+
+	it("rejects a preconfigured empty list at config decoding", async () => {
+		await expect(
+			orchestrate([authenticationStep, authMethodsStep], {
+				initialConfig: rawConfig({ ...defaultPreset, authMethods: [] }),
+				interactive: false,
+			}),
+		).rejects.toThrow("Invalid Configuration:");
+
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+	});
+});
 
 describe("authentication step", () => {
 	beforeEach(() => {

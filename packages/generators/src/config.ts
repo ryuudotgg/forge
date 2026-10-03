@@ -57,6 +57,14 @@ export const platforms = defineChoices(
 
 export type Platform = keyof typeof platforms.definitions;
 
+export const authMethods = defineChoices({
+	"email-password": "Email and password",
+	google: "Google",
+	apple: "Apple",
+});
+
+export type AuthMethod = keyof typeof authMethods.definitions;
+
 export const webFrameworks = defineChoices({
 	nextjs: "Next.js",
 	"react-router": "React Router",
@@ -242,6 +250,10 @@ export const addonConfigBindings: Readonly<
 	trpc: { rpc: "trpc" },
 };
 
+const addonDependentFields: Readonly<Record<string, ReadonlyArray<string>>> = {
+	"better-auth": ["authMethods"],
+};
+
 export function configWithInstall(
 	config: ForgeConfig,
 	addonId: string,
@@ -262,6 +274,8 @@ export function configWithoutInstall(
 	const next = { ...config };
 	for (const [field, value] of Object.entries(binding))
 		if (next[field] === value) delete next[field];
+
+	for (const field of addonDependentFields[addonId] ?? []) delete next[field];
 
 	return next;
 }
@@ -298,6 +312,7 @@ export interface ForgeConfig {
 	readonly rpc?: RpcProvider;
 	readonly orm?: Orm;
 	readonly authentication?: AuthenticationProvider;
+	readonly authMethods?: ReadonlyArray<AuthMethod>;
 	readonly database?: Database;
 	readonly databaseProvider?: DatabaseProvider;
 	readonly style?: StyleFramework;

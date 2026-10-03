@@ -1,5 +1,6 @@
 import addonSelect from "./addons/select";
 import authCustomUI from "./auth/custom-ui";
+import authMethods from "./auth/methods";
 import authProvider from "./auth/provider";
 import backendFramework from "./backend/framework";
 import rpc from "./backend/rpc";
@@ -50,6 +51,7 @@ export const steps: Step[] = [
 	databaseProvider,
 
 	authProvider,
+	authMethods,
 	authCustomUI,
 
 	webStyleFramework,

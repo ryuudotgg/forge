@@ -9,6 +9,7 @@ import {
 	surfaceLines,
 	surfaceScripts,
 } from "@ryuujs/core";
+import { authUsesPassword } from "../../auth/methods";
 import type { ForgeConfig } from "../../config";
 import {
 	envFileLine,
@@ -17,7 +18,6 @@ import {
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { deps } from "../../deps";
-import { standaloneApiOrigin } from "../../origins";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
@@ -50,10 +50,9 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			RELATION_MODE: emulatesRelations
 				? `\n  relationMode = "${provider.prisma.relationMode}"`
 				: "",
-			"  // __PASSWORD_FIELD__\n":
-				standaloneApiOrigin(config) === undefined
-					? ""
-					: "  password              String?__TEXT__\n",
+			"  // __PASSWORD_FIELD__\n": authUsesPassword(config)
+				? "  password              String?__TEXT__\n"
+				: "",
 			TEXT: provider.prisma.datasourceProvider === "mysql" ? " @db.Text" : "",
 			TIMESTAMPTZ:
 				provider.prisma.datasourceProvider === "postgresql"

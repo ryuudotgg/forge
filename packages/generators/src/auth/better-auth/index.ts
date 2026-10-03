@@ -20,6 +20,7 @@ import { deps } from "../../deps";
 import { appOrigin } from "../../origins";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
+import { authSocialProviders } from "../methods";
 import { renderBetterAuthTemplate } from "./shared";
 
 const betterAuthConsumer: ApiHostConsumer = {
@@ -62,6 +63,13 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 		const pm = resolvePackageManager(config);
 		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
 		const origin = appOrigin(config);
+		const socialEnvLines = authSocialProviders(config).flatMap(
+			({ envStem }) => [
+				"",
+				`${envStem}_CLIENT_ID=""`,
+				`${envStem}_CLIENT_SECRET=""`,
+			],
+		);
 
 		return [
 			ensurePackageModule("auth", "packages/auth", {
@@ -131,12 +139,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
 					envFileLine("APP_ORIGIN", origin),
-					"",
-					'AUTH_GOOGLE_CLIENT_ID=""',
-					'AUTH_GOOGLE_CLIENT_SECRET=""',
-					"",
-					'AUTH_APPLE_CLIENT_ID=""',
-					'AUTH_APPLE_CLIENT_SECRET=""',
+					...socialEnvLines,
 				],
 				{ section: "Better Auth" },
 			),
@@ -149,12 +152,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
 					envFileLine("APP_ORIGIN", origin),
-					"",
-					'AUTH_GOOGLE_CLIENT_ID=""',
-					'AUTH_GOOGLE_CLIENT_SECRET=""',
-					"",
-					'AUTH_APPLE_CLIENT_ID=""',
-					'AUTH_APPLE_CLIENT_SECRET=""',
+					...socialEnvLines,
 				],
 				{ section: "Better Auth" },
 			),
