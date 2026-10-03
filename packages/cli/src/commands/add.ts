@@ -13,6 +13,7 @@ import {
 	type DiscoveredModule,
 	type InstallRecord,
 	isAddonCompatibleWithModule,
+	type PackageManager,
 	packageManagerAddDevCommand,
 } from "@ryuugg/core";
 import {
@@ -378,7 +379,7 @@ async function selectRegistryAddon(
 
 async function confirmRegistryInstall(
 	projectRoot: string,
-	config: ForgeConfig,
+	packageManager: PackageManager,
 	registryId: string,
 ) {
 	if (!isInteractiveLifecycleSession()) {
@@ -391,9 +392,10 @@ async function confirmRegistryInstall(
 
 	const release = await resolveRegistryRelease(
 		projectRoot,
-		configuredPackageManager(config),
+		packageManager,
 		registryId,
 	);
+
 	const message =
 		release === undefined
 			? `We couldn't look up ${registryId}, so we can't show its version or publisher. Do you want to install it anyway?`
@@ -409,6 +411,17 @@ async function confirmRegistryInstall(
 
 	if (isCancel(accepted) || !accepted)
 		cancel(`We didn't install ${registryId}.`);
+
+	return release === undefined
+		? registryId
+		: `${registryId}@${release.version}`;
+}
+
+function shellCommand(operation: {
+	readonly args: ReadonlyArray<string>;
+	readonly command: string;
+}) {
+	return [operation.command, ...operation.args].join(" ");
 }
 
 async function installRegistryPackage(
@@ -419,13 +432,12 @@ async function installRegistryPackage(
 ) {
 	if (await hasProjectDevDependency(projectRoot, registryId)) return true;
 
-	const operation = packageManagerAddDevCommand(
-		configuredPackageManager(config),
-		registryId,
-	);
-
-	const manualCommand = [operation.command, ...operation.args].join(" ");
+	const packageManager = configuredPackageManager(config);
 	if (options.noInstall) {
+		const manualCommand = shellCommand(
+			packageManagerAddDevCommand(packageManager, registryId),
+		);
+
 		log.error(
 			`We can't add ${registryId} without installing it. Run "${manualCommand}" inside the project, then try again.`,
 		);
@@ -433,9 +445,11 @@ async function installRegistryPackage(
 		process.exit(1);
 	}
 
-	if (!options.yes)
-		await confirmRegistryInstall(projectRoot, config, registryId);
+	const packageSpec = options.yes
+		? registryId
+		: await confirmRegistryInstall(projectRoot, packageManager, registryId);
 
+	const operation = packageManagerAddDevCommand(packageManager, packageSpec);
 	const progress = spinner();
 	progress.start(`We're installing ${registryId}...`);
 
@@ -443,7 +457,7 @@ async function installRegistryPackage(
 	if (!installed) {
 		progress.stop(`We couldn't install ${registryId}.`);
 		log.warn(
-			`The install didn't finish, so run "${manualCommand}" yourself inside the project, then try again.`,
+			`The install didn't finish, so run "${shellCommand(operation)}" yourself inside the project, then try again.`,
 		);
 
 		process.exit(1);

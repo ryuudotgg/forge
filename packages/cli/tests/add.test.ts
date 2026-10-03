@@ -1134,7 +1134,10 @@ describe("add command", () => {
 			);
 			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
 				".",
-				{ args: ["add", "-D", "-w", "@acme/forge-empty"], command: "pnpm" },
+				{
+					args: ["add", "-D", "-w", "@acme/forge-empty@2.3.4"],
+					command: "pnpm",
+				},
 			);
 		});
 
@@ -1156,7 +1159,10 @@ describe("add command", () => {
 						"We couldn't look up @acme/forge-empty, so we can't show its version or publisher. Do you want to install it anyway?",
 				}),
 			);
-			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalled();
+			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
+				".",
+				{ args: ["add", "-D", "-w", "@acme/forge-empty"], command: "pnpm" },
+			);
 		});
 
 		it("names the version alone when the registry records no publisher", async () => {
@@ -1235,7 +1241,10 @@ describe("add command", () => {
 			}
 
 			expect(promptMocks.confirm).not.toHaveBeenCalled();
-			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalled();
+			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
+				".",
+				{ args: ["add", "-D", "-w", "@acme/forge-empty"], command: "pnpm" },
+			);
 		});
 
 		it("does not ask for a package the project already has", async () => {
