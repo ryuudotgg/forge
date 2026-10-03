@@ -81,6 +81,7 @@ describe("printHelp", () => {
 				"  forge add/remove/update options",
 				"        --keep-user                    Keep your values when resolving conflicts.",
 				"        --accept-forge                 Take Forge's values when resolving conflicts.",
+				"        --yes                          Install a new registry package without asking first.",
 				"",
 				"  Examples",
 				"    forge list auth",

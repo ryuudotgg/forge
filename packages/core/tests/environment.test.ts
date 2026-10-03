@@ -11,6 +11,7 @@ import {
 	packageManagerAddDevCommand,
 	packageManagerRemoveCommand,
 	packageManagers,
+	packageManagerViewCommand,
 	runtimeCommand,
 	Subprocess,
 	SubprocessError,
@@ -304,6 +305,63 @@ describe("environment", () => {
 			],
 			["Yarn", { command: "yarn", args: ["add", "-D", "@acme/forge-sentry"] }],
 			["Bun", { command: "bun", args: ["add", "-d", "@acme/forge-sentry"] }],
+		]);
+	});
+
+	it("maps every package manager to its latest release view command", () => {
+		expect(
+			Object.values(packageManagers).map(({ displayName }) => [
+				displayName,
+				packageManagerViewCommand(displayName, "@acme/forge-sentry"),
+			]),
+		).toEqual([
+			[
+				"pnpm",
+				{
+					command: "pnpm",
+					args: [
+						"view",
+						"@acme/forge-sentry@latest",
+						"version",
+						"_npmUser.name",
+						"--json",
+					],
+				},
+			],
+			[
+				"npm",
+				{
+					command: "npm",
+					args: [
+						"view",
+						"@acme/forge-sentry@latest",
+						"version",
+						"_npmUser.name",
+						"--json",
+					],
+				},
+			],
+			[
+				"Yarn",
+				{
+					command: "yarn",
+					args: [
+						"npm",
+						"info",
+						"@acme/forge-sentry@latest",
+						"--fields",
+						"version",
+						"--json",
+					],
+				},
+			],
+			[
+				"Bun",
+				{
+					command: "bun",
+					args: ["info", "@acme/forge-sentry@latest", "--json"],
+				},
+			],
 		]);
 	});
 

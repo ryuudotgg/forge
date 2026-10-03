@@ -119,7 +119,7 @@ export function printHelp() {
 			const desc =
 				"choices" in opt
 					? formatChoices(key, unavailable)
-					: color.dim(opt.description);
+					: color.dim(section.descriptions?.[key] ?? opt.description);
 
 			const row = `    ${flag}${padding}${desc}`;
 			lines.push(unavailable ? color.dim(row) : row);

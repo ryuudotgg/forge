@@ -60,6 +60,7 @@ export type OptionKey = keyof typeof options;
 interface CLISection {
 	title: string;
 	keys: OptionKey[];
+	descriptions?: Partial<Record<OptionKey, string>>;
 }
 
 export const options = {
@@ -286,7 +287,10 @@ export const sections: CLISection[] = [
 	},
 	{
 		title: "forge add/remove/update options",
-		keys: ["keep-user", "accept-forge"],
+		keys: ["keep-user", "accept-forge", "yes"],
+		descriptions: {
+			yes: "Install a new registry package without asking first.",
+		},
 	},
 ];
 

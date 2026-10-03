@@ -1,10 +1,19 @@
-import { intro, isCancel, log, select, spinner, text } from "@clack/prompts";
+import {
+	confirm,
+	intro,
+	isCancel,
+	log,
+	select,
+	spinner,
+	text,
+} from "@clack/prompts";
 import {
 	type AddonDefinition,
 	addonDeclaresFramework,
 	type DiscoveredModule,
 	type InstallRecord,
 	isAddonCompatibleWithModule,
+	type PackageManager,
 	packageManagerAddDevCommand,
 } from "@ryuugg/core";
 import {
@@ -20,6 +29,7 @@ import {
 } from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
+import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
@@ -28,6 +38,7 @@ import {
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "./lifecycle";
+import { resolveRegistryRelease } from "./registry-release";
 import { resolutionArguments } from "./resolution";
 
 function mergeInstallRecord(
@@ -366,21 +377,67 @@ async function selectRegistryAddon(
 	return String(selected);
 }
 
+async function confirmRegistryInstall(
+	projectRoot: string,
+	packageManager: PackageManager,
+	registryId: string,
+) {
+	if (!isInteractiveLifecycleSession()) {
+		log.error(
+			`We won't install ${registryId} without asking first. Run this again with --yes to install it anyway.`,
+		);
+
+		process.exit(1);
+	}
+
+	const release = await resolveRegistryRelease(
+		projectRoot,
+		packageManager,
+		registryId,
+	);
+
+	const message =
+		release === undefined
+			? `We couldn't look up ${registryId}, so we can't show its version or publisher. Do you want to install it anyway?`
+			: release.publisher === undefined
+				? `${registryId} ${release.version} is a third-party package. Do you want to install it?`
+				: `${registryId} ${release.version} is a third-party package published by ${release.publisher}. Do you want to install it?`;
+
+	const accepted = await confirm({
+		message,
+		active: "Yes",
+		inactive: "No",
+	});
+
+	if (isCancel(accepted) || !accepted)
+		cancel(`We didn't install ${registryId}.`);
+
+	return release === undefined
+		? registryId
+		: `${registryId}@${release.version}`;
+}
+
+function shellCommand(operation: {
+	readonly args: ReadonlyArray<string>;
+	readonly command: string;
+}) {
+	return [operation.command, ...operation.args].join(" ");
+}
+
 async function installRegistryPackage(
 	projectRoot: string,
 	config: ForgeConfig,
 	registryId: string,
-	noInstall: boolean,
+	options: { readonly noInstall: boolean; readonly yes: boolean },
 ) {
 	if (await hasProjectDevDependency(projectRoot, registryId)) return true;
 
-	const operation = packageManagerAddDevCommand(
-		configuredPackageManager(config),
-		registryId,
-	);
+	const packageManager = configuredPackageManager(config);
+	if (options.noInstall) {
+		const manualCommand = shellCommand(
+			packageManagerAddDevCommand(packageManager, registryId),
+		);
 
-	const manualCommand = [operation.command, ...operation.args].join(" ");
-	if (noInstall) {
 		log.error(
 			`We can't add ${registryId} without installing it. Run "${manualCommand}" inside the project, then try again.`,
 		);
@@ -388,6 +445,11 @@ async function installRegistryPackage(
 		process.exit(1);
 	}
 
+	const packageSpec = options.yes
+		? registryId
+		: await confirmRegistryInstall(projectRoot, packageManager, registryId);
+
+	const operation = packageManagerAddDevCommand(packageManager, packageSpec);
 	const progress = spinner();
 	progress.start(`We're installing ${registryId}...`);
 
@@ -395,7 +457,7 @@ async function installRegistryPackage(
 	if (!installed) {
 		progress.stop(`We couldn't install ${registryId}.`);
 		log.warn(
-			`The install didn't finish, so run "${manualCommand}" yourself inside the project, then try again.`,
+			`The install didn't finish, so run "${shellCommand(operation)}" yourself inside the project, then try again.`,
 		);
 
 		process.exit(1);
@@ -468,7 +530,10 @@ export async function runAdd(
 			project.projectRoot,
 			project.config satisfies ForgeConfig,
 			registryId,
-			values["no-install"] === true,
+			{
+				noInstall: values["no-install"] === true,
+				yes: values.yes === true,
+			},
 		);
 
 		const previousRegistry = loadedRegistry;

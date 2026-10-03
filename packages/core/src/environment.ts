@@ -77,6 +77,22 @@ export function packageManagerRemoveCommand(
 	};
 }
 
+export function packageManagerViewCommand(
+	pm: PackageManager,
+	packageId: string,
+) {
+	const command = packageManagerCommand(pm);
+	const spec = `${packageId}@latest`;
+	const args = {
+		pnpm: ["view", spec, "version", "_npmUser.name", "--json"],
+		npm: ["view", spec, "version", "_npmUser.name", "--json"],
+		yarn: ["npm", "info", spec, "--fields", "version", "--json"],
+		bun: ["info", spec, "--json"],
+	} satisfies Record<PackageManagerId, ReadonlyArray<string>>;
+
+	return { args: args[command], command };
+}
+
 export function isPackageManager(value: unknown): value is PackageManager {
 	return Object.values(packageManagers).some((pm) => pm.displayName === value);
 }
