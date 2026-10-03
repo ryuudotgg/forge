@@ -202,7 +202,7 @@ describe("secondary web apps step", () => {
 		]);
 
 		expect(promptMocks.confirm).toHaveBeenCalledWith({
-			message: "Mark admin as an API client? Wiring is not generated yet.",
+			message: "Mark admin as an API client?",
 			initialValue: false,
 		});
 

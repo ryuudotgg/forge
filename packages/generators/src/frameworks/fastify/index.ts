@@ -15,7 +15,13 @@ import {
 import type { ForgeConfig } from "../../config";
 import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
-import { standaloneApiOrigin, webDevOrigin } from "../../origins";
+import {
+	secondaryClientOrigins,
+	standaloneApiOrigin,
+	webDevOrigin,
+	webOriginsCors,
+	webOriginsEnvSchema,
+} from "../../origins";
 import { pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
@@ -108,6 +114,9 @@ function buildContributions(config: ForgeConfig) {
 	const serverOrigin = standaloneApiOrigin(config) ?? webOrigin;
 	const envLines = [
 		envFileLine("WEB_URL", webOrigin),
+		...(secondaryClientOrigins(config).length > 0
+			? [envFileLine("WEB_URLS", secondaryClientOrigins(config).join(","))]
+			: []),
 		envFileLine("VITE_SERVER_URL", serverOrigin),
 		envFileLine("NEXT_PUBLIC_SERVER_URL", serverOrigin),
 	];
@@ -186,7 +195,10 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("server"),
 			"src/app.ts",
-			interpolate(readTemplate("frameworks/fastify/src/app.ts"), vars),
+			webOriginsCors(
+				config,
+				interpolate(readTemplate("frameworks/fastify/src/app.ts"), vars),
+			),
 		),
 		leafTextFile(
 			ensuredModuleTarget("server"),
@@ -196,7 +208,10 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("server"),
 			"env.ts",
-			interpolate(readTemplate("frameworks/fastify/env.ts"), vars),
+			interpolate(readTemplate("frameworks/fastify/env.ts"), vars).replace(
+				`    WEB_URL: z.url().default("${webOrigin}"),\n`,
+				`    WEB_URL: z.url().default("${webOrigin}"),\n${webOriginsEnvSchema(config)}`,
+			),
 		),
 		leafTextFile(
 			ensuredModuleTarget("server"),

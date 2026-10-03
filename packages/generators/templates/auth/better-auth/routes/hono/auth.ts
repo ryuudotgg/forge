@@ -8,7 +8,7 @@ export const authRoutes = new Hono();
 authRoutes.use(
   "/api/auth/*",
   cors({
-    origin: env.WEB_URL,
+    origin: __WEB_ORIGINS__,
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["POST", "GET", "OPTIONS"],
     exposeHeaders: ["Content-Length"],

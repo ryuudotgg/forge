@@ -12,6 +12,7 @@ import {
 	surfaceDependencies,
 	variantAsset,
 } from "@ryuugg/core";
+import { selfHostedCorsRoute } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { expoFramework } from "../../frameworks/expo";
@@ -22,8 +23,10 @@ import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
+import { hasSecondaryClients } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
+import { webAppInstances } from "../../web-apps";
 import {
 	trpcRecipeMarkers,
 	trpcTemplateVars,
@@ -93,6 +96,10 @@ export const trpcAdapters = deriveRecipeAdapters({
 	requiredSlots: ["trpc"],
 	markers: (context: AdapterContext<ForgeConfig>) =>
 		trpcRecipeMarkers(context.config, context.framework, false),
+	content: (asset, content, { config, framework }) =>
+		asset._tag === "SlotAssetDefinition"
+			? selfHostedCorsRoute(config, framework.id, content)
+			: content,
 	target: (_asset, context) => moduleTarget(context.module),
 	after: ({ config, module }) => [
 		surfaceDependencies(
@@ -101,6 +108,8 @@ export const trpcAdapters = deriveRecipeAdapters({
 			trpcWebDependencies(config.slug ?? "my-app"),
 		),
 		...expoTrpcClientContributions(config),
+		...secondaryTrpcClients(config),
+		...secondaryTrpcDependencies(config),
 	],
 });
 
@@ -110,6 +119,7 @@ export const trpcHonoRecipe = defineTemplateRecipe({
 		SLUG: marker.required,
 		AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
 		AUTH_ARG: marker.toggleInline("/* __AUTH_ARG__ */ "),
+		WEB_ORIGINS: marker.required,
 	},
 	assets: [
 		slotAsset("trpc", {
@@ -123,19 +133,28 @@ export const trpcHonoAdapters = deriveRecipeAdapters({
 	frameworks: [honoFramework],
 	readTemplate,
 	requiredSlots: ["trpc"],
+	content: (_asset, content, { config }) =>
+		hasSecondaryClients(config)
+			? content.replace(
+					'allowHeaders: ["Content-Type", "Authorization", "x-trpc-source"],',
+					'allowHeaders: ["Content-Type", "Authorization", "x-trpc-source", "trpc-accept"],',
+				)
+			: content,
 	markers: ({ config }: AdapterContext<ForgeConfig>) => {
 		const values = trpcTemplateVars(config);
 		return {
 			SLUG: values.SLUG,
 			AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],
 			AUTH_ARG: values["/* __AUTH_ARG__ */ "],
+			WEB_ORIGINS: hasSecondaryClients(config)
+				? "[env.WEB_URL, ...env.WEB_URLS]"
+				: "env.WEB_URL",
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
 	before: ({ config }) => standaloneTrpcClient(config),
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
-
 		return [
 			surfaceDependencies(moduleTarget(module), "packageJson", [
 				{ name: `@${slug}/trpc`, version: "workspace:*", type: "dependencies" },
@@ -179,7 +198,6 @@ export const trpcFastifyAdapters = deriveRecipeAdapters({
 	before: ({ config }) => standaloneTrpcClient(config),
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
-
 		return [
 			surfaceDependencies(moduleTarget(module), "packageJson", [
 				{ name: `@${slug}/trpc`, version: "workspace:*", type: "dependencies" },
@@ -222,7 +240,6 @@ export const trpcExpressAdapters = deriveRecipeAdapters({
 	before: ({ config }) => standaloneTrpcClient(config),
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
-
 		return [
 			surfaceDependencies(moduleTarget(module), "packageJson", [
 				{ name: `@${slug}/trpc`, version: "workspace:*", type: "dependencies" },
@@ -271,7 +288,6 @@ export function expoTrpcClientContributions(config: ForgeConfig) {
 	});
 
 	const target = ensuredModuleTarget("mobile");
-
 	return [
 		leafTextFile(target, rendered.destination, rendered.content),
 		surfaceDependencies(target, "packageJson", [
@@ -290,7 +306,11 @@ export function expoTrpcClientContributions(config: ForgeConfig) {
 
 function standaloneTrpcClient(config: ForgeConfig) {
 	const webFramework = trpcWebFramework(config);
-	if (webFramework === undefined) return expoTrpcClientContributions(config);
+	if (webFramework === undefined)
+		return [
+			...expoTrpcClientContributions(config),
+			...secondaryTrpcClients(config),
+		];
 
 	const markers = trpcRecipeMarkers(config, webFramework, true);
 
@@ -314,11 +334,13 @@ function standaloneTrpcClient(config: ForgeConfig) {
 				);
 			}),
 		...expoTrpcClientContributions(config),
+		...secondaryTrpcClients(config),
 	];
 }
 
 function standaloneTrpcWebDependencies(config: ForgeConfig) {
-	if (trpcWebFramework(config) === undefined) return [];
+	if (trpcWebFramework(config) === undefined)
+		return secondaryTrpcDependencies(config);
 
 	return [
 		surfaceDependencies(
@@ -326,5 +348,50 @@ function standaloneTrpcWebDependencies(config: ForgeConfig) {
 			"packageJson",
 			trpcWebDependencies(config.slug ?? "my-app"),
 		),
+		...secondaryTrpcDependencies(config),
 	];
+}
+
+function secondaryTrpcClients(config: ForgeConfig) {
+	return webAppInstances(config)
+		.filter((instance) => instance.client === true)
+		.flatMap((instance) => {
+			const framework = trpcWebFrameworks.find(
+				(entry) => entry.id === instance.framework,
+			);
+
+			if (framework === undefined) return [];
+
+			const markers = trpcRecipeMarkers(config, framework, true);
+			return trpcRecipe.assets
+				.filter(
+					(asset) =>
+						asset._tag !== "SlotAssetDefinition" && asset.name !== "server",
+				)
+				.map((asset) => {
+					const rendered = renderRecipeAsset(trpcRecipe, asset, framework, {
+						markers,
+						readTemplate,
+						slots: {},
+					});
+
+					return leafTextFile(
+						ensuredModuleTarget(instance.key),
+						rendered.destination,
+						rendered.content,
+					);
+				});
+		});
+}
+
+function secondaryTrpcDependencies(config: ForgeConfig) {
+	return webAppInstances(config)
+		.filter((instance) => instance.client === true)
+		.map((instance) =>
+			surfaceDependencies(
+				ensuredModuleTarget(instance.key),
+				"packageJson",
+				trpcWebDependencies(config.slug ?? "my-app"),
+			),
+		);
 }

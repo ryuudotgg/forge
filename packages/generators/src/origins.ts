@@ -1,4 +1,5 @@
 import type { ForgeConfig, WebFramework } from "./config";
+import { webAppInstances } from "./web-apps";
 
 export const standaloneBackendDevPort = 3001;
 
@@ -22,12 +23,45 @@ export function webDevOrigin(config: ForgeConfig): string {
 	return `http://localhost:${webDevPort(config.web)}`;
 }
 
+export function hasSecondaryClients(config: ForgeConfig): boolean {
+	return webAppInstances(config).some((instance) => instance.client === true);
+}
+
+export function secondaryClientOrigins(config: ForgeConfig): string[] {
+	return webAppInstances(config)
+		.filter((instance) => instance.client === true)
+		.map((instance) => `http://localhost:${instance.port}`);
+}
+
+export function webOriginsEnvSchema(config: ForgeConfig): string {
+	return hasSecondaryClients(config)
+		? `    WEB_URLS: z.string().default("${secondaryClientOrigins(config).join(",")}").transform((value) => value.split(",")),\n`
+		: "";
+}
+
+export function webOriginsCors(config: ForgeConfig, content: string): string {
+	return hasSecondaryClients(config)
+		? content
+				.replace(
+					"origin: env.WEB_URL,",
+					"origin: [env.WEB_URL, ...env.WEB_URLS],",
+				)
+				.replace(
+					'allowedHeaders: ["Content-Type", "Authorization", "x-trpc-source"],',
+					'allowedHeaders: ["Content-Type", "Authorization", "x-trpc-source", "trpc-accept"],',
+				)
+		: content;
+}
+
 export function appOrigin(config: ForgeConfig): string {
 	return standaloneApiOrigin(config) ?? webDevOrigin(config);
 }
 
 export function viteServerEnvMarkers(config: ForgeConfig) {
-	const origin = standaloneApiOrigin(config);
+	const origin =
+		standaloneApiOrigin(config) ??
+		(hasSecondaryClients(config) ? webDevOrigin(config) : undefined);
+
 	return {
 		RUNTIME_ENV:
 			config.rpc === "orpc"
@@ -45,7 +79,10 @@ export function viteServerEnvMarkers(config: ForgeConfig) {
 }
 
 export function nextServerEnvMarkers(config: ForgeConfig) {
-	const origin = standaloneApiOrigin(config);
+	const origin =
+		standaloneApiOrigin(config) ??
+		(hasSecondaryClients(config) ? webDevOrigin(config) : undefined);
+
 	return {
 		"  // __SERVER_ENV__\n":
 			origin === undefined

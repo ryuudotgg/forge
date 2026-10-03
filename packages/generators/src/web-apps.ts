@@ -4,6 +4,7 @@ import { standaloneBackendDevPort, webDevPort } from "./origins";
 export interface WebAppConfig {
 	readonly name: string;
 	readonly framework: WebFramework;
+	readonly client?: boolean;
 }
 
 export const reservedWebAppNames = [
@@ -30,6 +31,7 @@ export interface WebAppInstance {
 	readonly framework: WebFramework;
 	readonly port: number;
 	readonly primary: boolean;
+	readonly client?: boolean;
 	readonly role?: "primary";
 }
 
@@ -63,6 +65,7 @@ export function webAppInstances(config: ForgeConfig): WebAppInstance[] {
 			framework: app.framework,
 			port,
 			primary: false,
+			...(app.client === true ? { client: true } : {}),
 		});
 	}
 
@@ -83,9 +86,10 @@ export function webAppRenderConfig(
 		? config
 		: {
 				...config,
-				backend: undefined,
-				rpc: undefined,
-				authentication: undefined,
+				backend: instance.client === true ? config.backend : undefined,
+				rpc: instance.client === true ? config.rpc : undefined,
+				authentication:
+					instance.client === true ? config.authentication : undefined,
 				orm: undefined,
 			};
 }

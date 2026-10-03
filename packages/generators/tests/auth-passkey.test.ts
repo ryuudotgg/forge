@@ -146,6 +146,33 @@ describe("passkey selection", () => {
 });
 
 describe("passkey generation", () => {
+	it.each(["hono", "self"] as const)(
+		"accepts secondary web origins with a %s host",
+		async (backend) => {
+			const plan = await plannedProject({
+				...baseConfig,
+				backend,
+				orm: "drizzle",
+				database: "sqlite",
+				webApps: [{ name: "admin", framework: "react-router", client: true }],
+			});
+
+			const options = writeContent(plan, "packages/auth/src/passkey.ts");
+
+			expect(options).toContain(
+				"origin: [relyingParty.origin, ...env.WEB_URLS]",
+			);
+
+			expect(writeContent(plan, "packages/auth/src/index.ts")).toContain(
+				"...env.WEB_URLS",
+			);
+
+			expect(writeContent(plan, "apps/admin/app/lib/auth-client.ts")).toContain(
+				"baseURL: env.VITE_SERVER_URL",
+			);
+		},
+	);
+
 	it.each(variants)(
 		"wires server, web and schema for $name",
 		async ({ config: variant }) => {

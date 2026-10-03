@@ -5,15 +5,22 @@ import {
 	ensuredModuleTarget,
 	type FrameworkDefinition,
 	leafTextFile,
+	projectTarget,
 	surfaceDependencies,
 	surfaceJson,
+	surfaceLines,
 	surfaceScripts,
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
+import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
-import { nextServerEnvMarkers } from "../../origins";
+import {
+	hasSecondaryClients,
+	nextServerEnvMarkers,
+	secondaryClientOrigins,
+} from "../../origins";
 import { pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
@@ -126,7 +133,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 	if (renderConfig.rpc !== undefined)
 		transpilePackages.push(`@${slug}/${config.rpc}`);
 
-	if (renderConfig.authentication === "better-auth")
+	if (instance.primary && renderConfig.authentication === "better-auth")
 		transpilePackages.push(`@${slug}/auth`);
 
 	const transpileList = transpilePackages
@@ -273,6 +280,45 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"app/providers.tsx",
 			providers,
 		),
+		...(instance.primary &&
+		(config.backend === undefined || config.backend === "self") &&
+		hasSecondaryClients(config)
+			? [
+					leafTextFile(
+						ensuredModuleTarget(instance.key),
+						"proxy.ts",
+						interpolate(readTemplate("frameworks/nextjs/proxy.ts"), {
+							WEB_ORIGINS: JSON.stringify(secondaryClientOrigins(config)),
+						}),
+					),
+					...(config.authentication === "better-auth"
+						? []
+						: [
+								surfaceLines(
+									projectTarget(),
+									"rootEnv",
+									[
+										envFileLine(
+											"WEB_URLS",
+											secondaryClientOrigins(config).join(","),
+										),
+									],
+									{ section: "Web clients" },
+								),
+								surfaceLines(
+									projectTarget(),
+									"rootEnvExample",
+									[
+										envFileLine(
+											"WEB_URLS",
+											secondaryClientOrigins(config).join(","),
+										),
+									],
+									{ section: "Web clients" },
+								),
+							]),
+				]
+			: []),
 	];
 }
 

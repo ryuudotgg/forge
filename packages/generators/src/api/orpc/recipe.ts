@@ -18,8 +18,10 @@ import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
+import { hasSecondaryClients } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
+import { webAppInstances } from "../../web-apps";
 import { orpcTemplateVars, renderOrpcTemplate } from "./shared";
 
 export const orpcWebRecipe = defineTemplateRecipe({
@@ -59,6 +61,7 @@ export const orpcHonoRecipe = defineTemplateRecipe({
 		SLUG: marker.required,
 		AUTH_IMPORT: marker.toggleLine("__AUTH_IMPORT__;\n"),
 		AUTH_ARG: marker.toggleInline("__AUTH_ARG__, "),
+		WEB_ORIGINS: marker.required,
 	},
 	assets: [
 		slotAsset("orpc", { variants: { hono: "api/orpc/routes/hono/orpc.ts" } }),
@@ -147,32 +150,38 @@ export const orpcHonoAdapters = deriveRecipeAdapters({
 			SLUG: values.SLUG,
 			AUTH_IMPORT: values["__AUTH_IMPORT__;\n"],
 			AUTH_ARG: values["__AUTH_ARG__, "],
+			WEB_ORIGINS: hasSecondaryClients(config)
+				? "[env.WEB_URL, ...env.WEB_URLS]"
+				: "env.WEB_URL",
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
 	before: ({ config }) => {
 		const framework = orpcWebFramework(config);
-		if (framework === undefined) return [];
+		if (framework === undefined) return secondaryOrpcClients(config);
 
-		return orpcWebRecipe.assets.map((asset) => {
-			const rendered = renderRecipeAsset(orpcWebRecipe, asset, framework, {
-				markers: {
-					SLUG: config.slug ?? "my-app",
-					ENV_IMPORT: framework.id === "nextjs" ? "../env" : "../../env",
-					SERVER_URL: `${framework.clientEnvPrefix ?? "VITE_"}SERVER_URL`,
-					CLIENT_DIRECTIVE:
-						framework.id === "nextjs" ? '"use client";\n\n' : "",
-				},
-				readTemplate,
-				slots: {},
-			});
+		return [
+			...orpcWebRecipe.assets.map((asset) => {
+				const rendered = renderRecipeAsset(orpcWebRecipe, asset, framework, {
+					markers: {
+						SLUG: config.slug ?? "my-app",
+						ENV_IMPORT: framework.id === "nextjs" ? "../env" : "../../env",
+						SERVER_URL: `${framework.clientEnvPrefix ?? "VITE_"}SERVER_URL`,
+						CLIENT_DIRECTIVE:
+							framework.id === "nextjs" ? '"use client";\n\n' : "",
+					},
+					readTemplate,
+					slots: {},
+				});
 
-			return leafTextFile(
-				ensuredModuleTarget("web"),
-				rendered.destination,
-				rendered.content,
-			);
-		});
+				return leafTextFile(
+					ensuredModuleTarget("web"),
+					rendered.destination,
+					rendered.content,
+				);
+			}),
+			...secondaryOrpcClients(config),
+		];
 	},
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
@@ -196,6 +205,54 @@ export const orpcHonoAdapters = deriveRecipeAdapters({
 						]),
 					]
 				: []),
+			...secondaryOrpcDependencies(config),
 		];
 	},
 });
+
+function secondaryOrpcClients(config: ForgeConfig) {
+	return webAppInstances(config)
+		.filter((instance) => instance.client === true)
+		.flatMap((instance) => {
+			const framework = orpcWebFrameworks.find(
+				(entry) => entry.id === instance.framework,
+			);
+
+			if (framework === undefined) return [];
+
+			return orpcWebRecipe.assets.map((asset) => {
+				const rendered = renderRecipeAsset(orpcWebRecipe, asset, framework, {
+					markers: {
+						SLUG: config.slug ?? "my-app",
+						ENV_IMPORT: framework.id === "nextjs" ? "../env" : "../../env",
+						SERVER_URL: `${framework.clientEnvPrefix ?? "VITE_"}SERVER_URL`,
+						CLIENT_DIRECTIVE:
+							framework.id === "nextjs" ? '"use client";\n\n' : "",
+					},
+					readTemplate,
+					slots: {},
+				});
+
+				return leafTextFile(
+					ensuredModuleTarget(instance.key),
+					rendered.destination,
+					rendered.content,
+				);
+			});
+		});
+}
+
+function secondaryOrpcDependencies(config: ForgeConfig) {
+	const slug = config.slug ?? "my-app";
+	return webAppInstances(config)
+		.filter((instance) => instance.client === true)
+		.map((instance) =>
+			surfaceDependencies(ensuredModuleTarget(instance.key), "packageJson", [
+				{ name: `@${slug}/orpc`, version: "workspace:*", type: "dependencies" },
+				{ ...deps.orpcClient, type: "dependencies" },
+				{ ...deps.orpcServer, type: "dependencies" },
+				{ ...deps.orpcTanstackQuery, type: "dependencies" },
+				{ ...deps.tanstackReactQuery, type: "dependencies" },
+			]),
+		);
+}

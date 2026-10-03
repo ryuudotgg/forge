@@ -18,10 +18,15 @@ import {
 import type { ForgeConfig } from "../../config";
 import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
-import { appOrigin } from "../../origins";
+import {
+	appOrigin,
+	secondaryClientOrigins,
+	standaloneApiOrigin,
+} from "../../origins";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { catalogRef } from "../../versions";
+import { webAppInstances } from "../../web-apps";
 import { authSocialProviders, authUsesEmail } from "../methods";
 import {
 	authPluginEnvEntries,
@@ -30,7 +35,7 @@ import {
 	authPluginsBlockDeclarations,
 	authSendsEmail,
 } from "../plugins";
-import { renderBetterAuthTemplate } from "./shared";
+import { renderBetterAuthTemplate, renderSecondaryAuthClient } from "./shared";
 
 const betterAuthConsumer: ApiHostConsumer = {
 	id: "better-auth",
@@ -88,6 +93,12 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 		const pluginEnvLines =
 			pluginEnv.length > 0
 				? ["", ...pluginEnv.map(({ name, example }) => `${name}=${example}`)]
+				: [];
+
+		const secondaryOrigins = secondaryClientOrigins(config);
+		const selfHostedOrigins =
+			secondaryOrigins.length > 0 && standaloneApiOrigin(config) === undefined
+				? [envFileLine("WEB_URLS", secondaryOrigins.join(","))]
 				: [];
 
 		return [
@@ -166,6 +177,34 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				"src/client.ts",
 				renderBetterAuthTemplate(config, "packages/auth/src/client.ts"),
 			),
+			...webAppInstances(config)
+				.filter((instance) => instance.client === true)
+				.flatMap((instance) => {
+					const sourceRoot =
+						instance.framework === "nextjs"
+							? ""
+							: instance.framework === "react-router"
+								? "app/"
+								: "src/";
+
+					const target = ensuredModuleTarget(instance.key);
+					return [
+						leafTextFile(
+							target,
+							`${sourceRoot}lib/auth-client.ts`,
+							renderSecondaryAuthClient(config, instance.framework),
+						),
+						surfaceDependencies(target, "packageJson", [
+							{ ...catalogRef("betterAuth", config), type: "dependencies" },
+							...authPluginPackages(config, "auth").map(
+								(dependency): Dependency => ({
+									...dependency,
+									type: "dependencies",
+								}),
+							),
+						]),
+					];
+				}),
 			...authPluginFiles(config).map((path) =>
 				leafTextFile(
 					ensuredModuleTarget("auth"),
@@ -183,6 +222,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
 					envFileLine("APP_ORIGIN", origin),
+					...selfHostedOrigins,
 					...socialEnvLines,
 					...pluginEnvLines,
 				],
@@ -197,6 +237,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
 					"",
 					envFileLine("APP_ORIGIN", origin),
+					...selfHostedOrigins,
 					...socialEnvLines,
 					...pluginEnvLines,
 				],

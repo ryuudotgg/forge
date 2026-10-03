@@ -11,6 +11,7 @@ import {
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuugg/core";
+import { selfHostedCorsContributions } from "../../client-cors";
 import type { ForgeConfig, RpcProvider } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
@@ -132,9 +133,10 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 	const rpc = rpcDescriptor(renderConfig);
 	const usesAuth = renderConfig.authentication === "better-auth";
 	const servesApiRoutes =
-		renderConfig.rpc !== "orpc" ||
-		renderConfig.backend === undefined ||
-		renderConfig.backend === "self";
+		instance.primary &&
+		(renderConfig.rpc !== "orpc" ||
+			renderConfig.backend === undefined ||
+			renderConfig.backend === "self");
 
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
@@ -329,6 +331,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"public/favicon.svg",
 			readTemplate("frameworks/react-router/public/favicon.svg"),
 		),
+		...selfHostedCorsContributions(config, instance),
 	];
 }
 

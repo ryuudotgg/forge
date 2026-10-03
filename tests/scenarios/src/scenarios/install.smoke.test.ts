@@ -269,6 +269,7 @@ async function withGeneratedServer(
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
+		readonly clientOrigin?: string;
 		readonly emailAuth?: boolean;
 		readonly passkey?: boolean;
 		readonly polar?: boolean;
@@ -279,12 +280,15 @@ async function expectCredentialedGeneratedServer(
 ) {
 	const rpc = options?.rpc ?? "trpc";
 	const generatedEnv = await readGeneratedEnv(projectRoot);
-	const origin = generatedEnv.WEB_URL;
+	const origin = options?.clientOrigin ?? generatedEnv.WEB_URL;
 	const serverOrigin = generatedEnv.APP_ORIGIN;
 	if (origin === undefined || serverOrigin === undefined)
 		throw new Error(`Missing Generated Origins: ${projectRoot}`);
 
-	expect(origin).toBe(options?.webOrigin ?? "http://localhost:3000");
+	expect(generatedEnv.WEB_URL).toBe(
+		options?.webOrigin ?? "http://localhost:3000",
+	);
+
 	expect(serverOrigin).toBe("http://localhost:3001");
 
 	if (options?.polar) {
@@ -305,7 +309,9 @@ async function expectCredentialedGeneratedServer(
 					method: "OPTIONS",
 					headers: {
 						Origin: origin,
-						"Access-Control-Request-Headers": "x-trpc-source",
+						"Access-Control-Request-Headers": options?.clientOrigin
+							? "x-trpc-source,trpc-accept"
+							: "x-trpc-source",
 						"Access-Control-Request-Method": "GET",
 					},
 				});
@@ -322,6 +328,11 @@ async function expectCredentialedGeneratedServer(
 				expect(preflight.headers.get("access-control-allow-headers")).toContain(
 					"x-trpc-source",
 				);
+
+				if (options?.clientOrigin)
+					expect(
+						preflight.headers.get("access-control-allow-headers"),
+					).toContain("trpc-accept");
 
 				const actual = await fetch(
 					`${serverOrigin}/api/trpc/health?input=%7B%7D`,
@@ -1264,6 +1275,59 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					linter: "biome",
 					packageManager: "pnpm",
 					webApps: [{ name: "admin", framework: "tanstack-router" }],
+				});
+
+				await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			},
+		);
+	}, 600_000);
+
+	it.each(["trpc", "orpc"] as const)(
+		"installs secondary %s clients and accepts their credentialed requests",
+		async (rpc) => {
+			await withScenarioWorkspace(
+				`smoke-secondary-client-${rpc}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						authMethods: ["email-password", "passkey"],
+						backend: "hono",
+						database: "sqlite",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc,
+						web: "tanstack-router",
+						webApps: [{ name: "admin", framework: "nextjs", client: true }],
+						style: "tailwind",
+					});
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						rpc,
+						clientOrigin: "http://localhost:3002",
+						passkey: true,
+					});
+				},
+			);
+		},
+		600_000,
+	);
+
+	it("installs self-hosted RPC and auth with a secondary client", async () => {
+		await withScenarioWorkspace(
+			"smoke-secondary-client-self",
+			async (workspace) => {
+				await createProject(workspace, {
+					authentication: "better-auth",
+					authMethods: ["email-password", "passkey"],
+					backend: "self",
+					database: "sqlite",
+					orm: "drizzle",
+					packageManager: "pnpm",
+					rpc: "trpc",
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+					style: "tailwind",
 				});
 
 				await expectInstallBuildAndTypecheck(workspace, "pnpm");

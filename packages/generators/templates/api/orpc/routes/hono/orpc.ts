@@ -11,7 +11,7 @@ export const orpcRoutes = new Hono();
 orpcRoutes.use(
   "/api/orpc/*",
   cors({
-    origin: env.WEB_URL,
+    origin: __WEB_ORIGINS__,
     allowHeaders: ["Content-Type", "x-csrf-token"],
     allowMethods: ["GET", "POST", "OPTIONS"],
     exposeHeaders: ["Content-Length"],

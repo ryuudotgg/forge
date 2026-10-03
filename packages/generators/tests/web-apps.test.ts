@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { stripTypeScriptTypes } from "node:module";
 import { dirname, join } from "node:path";
 import type { ProjectPlan } from "@ryuugg/core";
 import { Schema } from "effect";
@@ -162,6 +163,337 @@ describe("webAppInstances", () => {
 });
 
 describe("secondary web app planning", () => {
+	it("keeps the Hono tRPC allow list unchanged without clients", async () => {
+		const plan = await plannedProject({
+			slug: "acme",
+			web: "nextjs",
+			backend: "hono",
+			rpc: "trpc",
+		});
+
+		expect(contentAt(plan, "apps/server/src/routes/trpc.ts")).toContain(
+			'allowHeaders: ["Content-Type", "Authorization", "x-trpc-source"],',
+		);
+	});
+
+	it.each([
+		{
+			web: "react-router",
+			rpcRoute: "app/routes/api.trpc.$.ts",
+			authRoute: "app/routes/api.auth.$.ts",
+			cors: "app/lib/api-cors.ts",
+		},
+		{
+			web: "tanstack-start",
+			rpcRoute: "src/routes/api/trpc/$.ts",
+			authRoute: "src/routes/api/auth/$.ts",
+			cors: "src/lib/api-cors.ts",
+		},
+	] as const)(
+		"adds credentialed preflight to a self-hosted $web primary",
+		async ({ web, rpcRoute, authRoute, cors }) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web,
+				backend: "self",
+				rpc: "trpc",
+				authentication: "better-auth",
+				orm: "drizzle",
+				database: "sqlite",
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+			});
+
+			expect(contentAt(plan, `apps/web/${cors}`)).toContain(
+				'"Access-Control-Allow-Credentials": "true"',
+			);
+
+			expect(contentAt(plan, `apps/web/${cors}`)).toContain(
+				"x-csrf-token, trpc-accept",
+			);
+
+			const rpcContent = contentAt(plan, `apps/web/${rpcRoute}`);
+			expect(rpcContent).toContain(
+				web === "react-router"
+					? 'loader = (args: LoaderFunctionArgs) => args.request.method === "OPTIONS" ? preflight(args.request)'
+					: "preflight(request)",
+			);
+
+			if (web === "react-router")
+				expect(rpcContent).toContain(
+					'action = (args: ActionFunctionArgs) => args.request.method === "OPTIONS" ? preflight(args.request)',
+				);
+
+			expect(rpcContent).toContain(
+				web === "react-router" ? "withCors(args.request" : "withCors(request",
+			);
+
+			const authContent = contentAt(plan, `apps/web/${authRoute}`);
+			expect(authContent).toContain("preflight(request)");
+
+			if (web === "react-router")
+				expect(authContent.match(/preflight\(request\)/g)).toHaveLength(2);
+
+			expect(authContent).toContain("withCors(request");
+
+			expect(contentAt(plan, "apps/admin/lib/auth-client.ts")).toContain(
+				"NEXT_PUBLIC_SERVER_URL",
+			);
+		},
+	);
+
+	it.each([
+		{ rpc: "trpc", secondary: "react-router", root: "app/" },
+		{ rpc: "orpc", secondary: "tanstack-start", root: "src/" },
+	] as const)(
+		"wires $secondary to a Next.js primary with $rpc",
+		async ({ rpc, secondary, root }) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web: "nextjs",
+				backend: rpc === "orpc" ? "hono" : "self",
+				rpc,
+				authentication: "better-auth",
+				orm: "drizzle",
+				database: "sqlite",
+				webApps: [{ name: "admin", framework: secondary, client: true }],
+			});
+
+			expect(
+				contentAt(
+					plan,
+					`apps/admin/${root}${rpc}/${rpc === "trpc" ? "react.tsx" : "client.ts"}`,
+				),
+			).toContain("VITE_SERVER_URL");
+
+			expect(contentAt(plan, `apps/admin/${root}lib/auth-client.ts`)).toContain(
+				'import { env } from "../../env";',
+			);
+
+			expect(contentAt(plan, `apps/admin/${root}lib/auth-client.ts`)).toContain(
+				"baseURL: env.VITE_SERVER_URL",
+			);
+
+			expect(
+				contentAt(plan, `apps/admin/${root}lib/auth-client.ts`),
+			).not.toContain("interface ImportMetaEnv");
+
+			expect(contentAt(plan, `apps/admin/${root}providers.tsx`)).toContain(
+				rpc === "trpc" ? "TRPCReactProvider" : "ORPCReactProvider",
+			);
+
+			expect(
+				plan.writes.some((write) =>
+					write.path.startsWith(`apps/admin/${root}routes/api/`),
+				),
+			).toBe(false);
+		},
+	);
+
+	it.each(["trpc", "orpc"] as const)(
+		"wires an opted-in Next.js client to a Hono %s host",
+		async (rpc) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web: "tanstack-router",
+				backend: "hono",
+				rpc,
+				authentication: "better-auth",
+				orm: "drizzle",
+				database: "sqlite",
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+			});
+
+			expect(
+				contentAt(
+					plan,
+					`apps/admin/${rpc}/${rpc === "trpc" ? "react.tsx" : "client.ts"}`,
+				),
+			).toContain("NEXT_PUBLIC_SERVER_URL");
+
+			expect(contentAt(plan, "apps/admin/lib/auth-client.ts")).toContain(
+				'import { env } from "../env";',
+			);
+
+			expect(contentAt(plan, "apps/admin/lib/auth-client.ts")).toContain(
+				"baseURL: env.NEXT_PUBLIC_SERVER_URL",
+			);
+
+			expect(contentAt(plan, "apps/admin/app/providers.tsx")).toContain(
+				rpc === "trpc" ? "TRPCReactProvider" : "ORPCReactProvider",
+			);
+
+			expect(contentAt(plan, "apps/server/env.ts")).toContain(
+				'WEB_URLS: z.string().default("http://localhost:3002")',
+			);
+
+			expect(contentAt(plan, "packages/auth/src/index.ts")).toContain(
+				"...env.WEB_URLS",
+			);
+
+			expect(contentAt(plan, "apps/server/src/routes/auth.ts")).toContain(
+				"[env.WEB_URL, ...env.WEB_URLS]",
+			);
+
+			if (rpc === "trpc")
+				expect(contentAt(plan, "apps/server/src/routes/trpc.ts")).toContain(
+					'"x-trpc-source", "trpc-accept"',
+				);
+		},
+	);
+
+	it.each(["express", "fastify"] as const)(
+		"allows secondary tRPC streaming headers on %s",
+		async (backend) => {
+			const config: ForgeConfig = {
+				slug: "acme",
+				web: "nextjs",
+				backend,
+				rpc: "trpc",
+			};
+
+			const legacy = await plannedProject(config);
+
+			const client = await plannedProject({
+				...config,
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+			});
+
+			expect(contentAt(legacy, "apps/server/src/app.ts")).not.toContain(
+				"trpc-accept",
+			);
+
+			expect(contentAt(client, "apps/server/src/app.ts")).toContain(
+				'allowedHeaders: ["Content-Type", "Authorization", "x-trpc-source", "trpc-accept"],',
+			);
+		},
+	);
+
+	it("points a self-hosted secondary auth client at the primary origin", async () => {
+		const plan = await plannedProject({
+			slug: "acme",
+			web: "nextjs",
+			backend: "self",
+			authentication: "better-auth",
+			orm: "drizzle",
+			database: "sqlite",
+			webApps: [{ name: "admin", framework: "nextjs", client: true }],
+		});
+
+		expect(contentAt(plan, "apps/admin/env.ts")).toContain(
+			'NEXT_PUBLIC_SERVER_URL: z.url().default("http://localhost:3000")',
+		);
+
+		expect(contentAt(plan, "apps/admin/lib/auth-client.ts")).toContain(
+			"baseURL: env.NEXT_PUBLIC_SERVER_URL",
+		);
+
+		expect(contentAt(plan, "packages/auth/src/index.ts")).toContain(
+			"env.APP_ORIGIN, ...env.WEB_URLS",
+		);
+
+		expect(contentAt(plan, "apps/web/proxy.ts")).toContain(
+			'"Access-Control-Allow-Credentials": "true"',
+		);
+
+		expect(contentAt(plan, "apps/web/proxy.ts")).toContain(
+			'if (request.method === "OPTIONS")',
+		);
+
+		expect(contentAt(plan, "apps/web/proxy.ts")).toContain(
+			"x-csrf-token, trpc-accept",
+		);
+	});
+
+	it.each(["nextjs", "react-router", "tanstack-start"] as const)(
+		"adds CORS to an implicit self-hosted %s primary",
+		async (web) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web,
+				rpc: "trpc",
+				authentication: "better-auth",
+				orm: "drizzle",
+				database: "sqlite",
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+			});
+
+			const corsPath =
+				web === "nextjs"
+					? "proxy.ts"
+					: web === "react-router"
+						? "app/lib/api-cors.ts"
+						: "src/lib/api-cors.ts";
+
+			expect(contentAt(plan, `apps/web/${corsPath}`)).toContain("trpc-accept");
+
+			if (web === "react-router")
+				expect(contentAt(plan, "apps/web/app/routes/api.auth.$.ts")).toContain(
+					'if (request.method === "OPTIONS") return preflight(request);',
+				);
+		},
+	);
+
+	it("runs the generated CORS helper with tRPC preflight headers", async () => {
+		const plan = await plannedProject({
+			slug: "acme",
+			web: "react-router",
+			backend: "self",
+			rpc: "trpc",
+			webApps: [{ name: "admin", framework: "nextjs", client: true }],
+		});
+
+		const source = contentAt(plan, "apps/web/app/lib/api-cors.ts");
+		const exports: Record<string, unknown> = await import(
+			`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`
+		);
+
+		if (
+			typeof exports.preflight !== "function" ||
+			typeof exports.withCors !== "function"
+		)
+			throw new Error("Missing CORS Functions: generated helper");
+
+		const request = new Request("http://localhost:5173/api/trpc", {
+			method: "OPTIONS",
+			headers: {
+				Origin: "http://localhost:5174",
+				"Access-Control-Request-Headers": "trpc-accept, content-type",
+			},
+		});
+
+		const preflight: unknown = exports.preflight(request);
+		if (!(preflight instanceof Response))
+			throw new Error("Invalid CORS Response: preflight");
+
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get("Access-Control-Allow-Headers")).toContain(
+			"trpc-accept",
+		);
+
+		const result: unknown = await exports.withCors(
+			request,
+			new Response("ok", { headers: { Vary: "Accept-Encoding" } }),
+		);
+
+		if (!(result instanceof Response))
+			throw new Error("Invalid CORS Response: route");
+
+		expect(result.headers.get("Vary")).toBe("Accept-Encoding, Origin");
+		expect(result.headers.get("Access-Control-Allow-Origin")).toBe(
+			"http://localhost:5174",
+		);
+
+		const existing: unknown = await exports.withCors(
+			request,
+			new Response("ok", { headers: { Vary: "Accept-Encoding, Origin" } }),
+		);
+
+		if (!(existing instanceof Response))
+			throw new Error("Invalid CORS Response: existing vary");
+
+		expect(existing.headers.get("Vary")).toBe("Accept-Encoding, Origin");
+	});
+
 	it.each(
 		webFrameworks.ids.flatMap((primary) =>
 			webFrameworks.ids

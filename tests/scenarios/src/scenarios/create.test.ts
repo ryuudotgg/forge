@@ -26,6 +26,95 @@ async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 }
 
 describe("create", () => {
+	it("creates an opted-in admin with RPC and auth clients", async () => {
+		await withScenarioWorkspace(
+			"create-admin-api-client",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "tanstack-router",
+					backend: "hono",
+					rpc: "trpc",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				});
+
+				const readText = (path: string) =>
+					readFile(join(workspace.projectRoot, path), "utf8");
+
+				expect(await readText("apps/admin/trpc/react.tsx")).toContain(
+					"NEXT_PUBLIC_SERVER_URL",
+				);
+
+				expect(await readText("apps/admin/lib/auth-client.ts")).toContain(
+					"env.NEXT_PUBLIC_SERVER_URL",
+				);
+
+				expect(await readText("apps/admin/app/providers.tsx")).toContain(
+					"TRPCReactProvider",
+				);
+
+				expect(await readText("apps/server/src/routes/trpc.ts")).toContain(
+					"[env.WEB_URL, ...env.WEB_URLS]",
+				);
+
+				expect(await readText("apps/server/src/routes/auth.ts")).toContain(
+					"[env.WEB_URL, ...env.WEB_URLS]",
+				);
+
+				expect(await readText("packages/auth/src/index.ts")).toContain(
+					"...env.WEB_URLS",
+				);
+
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/admin/app/api")),
+				).toBe(false);
+			},
+		);
+	});
+
+	it("points a self-hosted admin auth client at the primary origin", async () => {
+		await withScenarioWorkspace(
+			"create-self-admin-client",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "nextjs",
+					backend: "self",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				});
+
+				const readText = (path: string) =>
+					readFile(join(workspace.projectRoot, path), "utf8");
+
+				expect(await readText("apps/admin/env.ts")).toContain(
+					'NEXT_PUBLIC_SERVER_URL: z.url().default("http://localhost:3000")',
+				);
+
+				expect(await readText("apps/admin/lib/auth-client.ts")).toContain(
+					"env.NEXT_PUBLIC_SERVER_URL",
+				);
+
+				expect(await readText("packages/auth/src/index.ts")).toContain(
+					"env.APP_ORIGIN, ...env.WEB_URLS",
+				);
+
+				expect(await readText("apps/web/proxy.ts")).toContain(
+					'"Access-Control-Allow-Credentials": "true"',
+				);
+
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/admin/app/api")),
+				).toBe(false);
+			},
+		);
+	});
+
 	it.each([
 		{ web: "nextjs", sourceRoot: "" },
 		{ web: "react-router", sourceRoot: "app/" },
@@ -144,6 +233,24 @@ describe("create", () => {
 					expect(admin.dependencies).not.toHaveProperty(name);
 
 				expect(await pathExists(join(adminRoot, "src/trpc"))).toBe(false);
+				expect(
+					await pathExists(join(adminRoot, "src/lib/auth-client.ts")),
+				).toBe(false);
+
+				expect(
+					await readFile(
+						join(workspace.projectRoot, "apps/server/env.ts"),
+						"utf8",
+					),
+				).not.toContain("WEB_URLS");
+
+				expect(
+					await readFile(
+						join(workspace.projectRoot, "packages/auth/src/index.ts"),
+						"utf8",
+					),
+				).not.toContain("WEB_URLS");
+
 				expect(await pathExists(join(webRoot, "src/trpc/react.tsx"))).toBe(
 					true,
 				);

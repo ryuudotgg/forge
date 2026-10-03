@@ -11,6 +11,7 @@ import {
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuugg/core";
+import { selfHostedCorsContributions } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
@@ -288,6 +289,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"src/routeTree.gen.ts",
 			readTemplate("frameworks/tanstack-start/src/routeTree.gen.ts"),
 		),
+		...selfHostedCorsContributions(config, instance),
 	];
 }
 

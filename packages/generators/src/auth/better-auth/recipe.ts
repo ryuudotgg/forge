@@ -14,6 +14,7 @@ import {
 	slotPath,
 	surfaceDependencies,
 } from "@ryuugg/core";
+import { selfHostedCorsRoute } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { expoFramework, expoScheme } from "../../frameworks/expo";
@@ -23,6 +24,7 @@ import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
+import { hasSecondaryClients } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
@@ -101,6 +103,10 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 
 		return betterAuthRecipeVars(context.config, context.framework);
 	},
+	content: (asset, content, { config, framework }) =>
+		asset._tag === "SlotAssetDefinition"
+			? selfHostedCorsRoute(config, framework.id, content)
+			: content,
 	include: (asset, { config }) =>
 		asset._tag === "SlotAssetDefinition" ||
 		asset.name === `index-${config.orm}`,
@@ -126,7 +132,7 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 // distinct keys here even though `path` below rewrites both to src/index.ts.
 export const betterAuthHonoRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthServerMarkers,
+	markers: { ...betterAuthServerMarkers, WEB_ORIGINS: marker.required },
 	assets: [
 		sharedAsset("index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -147,8 +153,12 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 	frameworks: [honoFramework],
 	readTemplate,
 	requiredSlots: ["auth"],
-	markers: ({ config }: AdapterContext<ForgeConfig>) =>
-		betterAuthRecipeVars(config, honoFramework),
+	markers: ({ config }: AdapterContext<ForgeConfig>) => ({
+		...betterAuthRecipeVars(config, honoFramework),
+		WEB_ORIGINS: hasSecondaryClients(config)
+			? "[env.WEB_URL, ...env.WEB_URLS]"
+			: "env.WEB_URL",
+	}),
 	include: (asset, { config }) =>
 		asset._tag === "SlotAssetDefinition" ||
 		asset.name === `index-${config.orm}`,
