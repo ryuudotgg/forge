@@ -81,7 +81,7 @@ jobs:
         uses: ./tooling/github/setup
 
       - name: Build CLI
-        run: pnpm build --filter=@ryuujs/forge
+        run: pnpm build --filter=@ryuugg/forge
 
       - name: Smoke Test
         run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/install.smoke.test.ts

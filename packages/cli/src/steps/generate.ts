@@ -1,12 +1,12 @@
 import { log } from "@clack/prompts";
-import { Apply, ApplyError, formatApplyError, Planner } from "@ryuujs/core";
+import { Apply, ApplyError, formatApplyError, Planner } from "@ryuugg/core";
 import {
 	authenticationProviders,
 	type ForgeConfig,
 	loadDefinitionRegistry,
 	orms,
 	probeWorkspaceCommandVersions,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { Effect } from "effect";
 import { runCliEffectValue } from "../runtime";
 import type { PartialConfig } from "./types";

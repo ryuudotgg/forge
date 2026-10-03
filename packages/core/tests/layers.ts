@@ -16,7 +16,7 @@ interface TestDirectoryService {
 export class TestDirectory extends Context.Service<
 	TestDirectory,
 	TestDirectoryService
->()("@ryuujs/core/tests/TestDirectory") {}
+>()("@ryuugg/core/tests/TestDirectory") {}
 
 function testDirectoryLayer(prefix: string) {
 	return Layer.effect(

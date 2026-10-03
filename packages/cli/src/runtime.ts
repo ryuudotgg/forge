@@ -1,6 +1,6 @@
 import { log } from "@clack/prompts";
 import { NodeServices } from "@effect/platform-node";
-import { CliVersion, CoreLive } from "@ryuujs/core";
+import { CliVersion, CoreLive } from "@ryuugg/core";
 import {
 	Cause,
 	type Effect,

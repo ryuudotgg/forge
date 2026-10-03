@@ -1,4 +1,4 @@
-import type { AdapterContext, Contribution } from "@ryuujs/core";
+import type { AdapterContext, Contribution } from "@ryuugg/core";
 import {
 	defineTemplateRecipe,
 	ensuredModuleTarget,
@@ -10,7 +10,7 @@ import {
 	sharedAsset,
 	surfaceDependencies,
 	surfaceJson,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 import { nextjsFramework } from "../frameworks/nextjs";

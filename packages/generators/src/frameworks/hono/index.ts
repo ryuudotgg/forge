@@ -11,7 +11,7 @@ import {
 	surfaceLines,
 	surfaceScripts,
 	type TemplateDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig, RpcProvider } from "../../config";
 import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";

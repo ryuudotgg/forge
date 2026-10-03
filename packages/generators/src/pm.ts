@@ -1,4 +1,4 @@
-import { type PackageManagerId, packageManagerCommand } from "@ryuujs/core";
+import { type PackageManagerId, packageManagerCommand } from "@ryuugg/core";
 import type { ForgeConfig } from "./config";
 
 export function resolvePackageManager(config: ForgeConfig): PackageManagerId {

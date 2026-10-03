@@ -3,7 +3,7 @@ import {
 	desktopFrameworks,
 	styleFrameworks,
 	webFrameworks,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {

@@ -4,7 +4,7 @@ import {
 	projectTarget,
 	surfaceDependencies,
 	surfaceScripts,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { type ForgeConfig, hasAddon } from "../config";
 import { deps } from "../deps";
 import { pmExec, pmRun, resolvePackageManager } from "../pm";

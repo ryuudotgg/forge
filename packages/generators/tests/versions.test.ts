@@ -1,4 +1,4 @@
-import { runtimes } from "@ryuujs/core";
+import { runtimes } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import { catalogEntries, catalogRef, versions } from "../src/versions";
 

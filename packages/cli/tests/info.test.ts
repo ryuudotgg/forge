@@ -1,5 +1,5 @@
-import type { CatalogEntry } from "@ryuujs/generators";
-import { getCatalogEntry, listCatalogEntries } from "@ryuujs/generators";
+import type { CatalogEntry } from "@ryuugg/generators";
+import { getCatalogEntry, listCatalogEntries } from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildInfoEnvelope,

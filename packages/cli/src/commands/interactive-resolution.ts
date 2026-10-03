@@ -6,7 +6,7 @@ import {
 	type ApplyResolution,
 	type ConflictResolution,
 	describeConflictValue,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import color from "picocolors";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";

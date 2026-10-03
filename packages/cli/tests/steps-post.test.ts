@@ -24,7 +24,7 @@ const subprocessMocks = vi.hoisted(() => ({
 	failCommit: false,
 	installDefect: vi.fn<() => Error | undefined>(),
 	installOutcome: vi.fn<() => "success" | "non-zero" | "timeout">(),
-	run: vi.fn<typeof import("@ryuujs/core").Subprocess.run>(),
+	run: vi.fn<typeof import("@ryuugg/core").Subprocess.run>(),
 	timeoutCommit: false,
 }));
 
@@ -44,8 +44,8 @@ vi.mock("@clack/prompts", () => ({
 
 vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 
-vi.mock("@ryuujs/core", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/core")>();
+vi.mock("@ryuugg/core", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/core")>();
 
 	subprocessMocks.run.mockImplementation((input) => {
 		if (input.command === "git") {

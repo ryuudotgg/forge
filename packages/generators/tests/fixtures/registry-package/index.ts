@@ -4,7 +4,7 @@ import {
 	defineAddon,
 	defineFramework,
 	defineTemplate,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig, RegistryPackageManifest } from "../../../src";
 
 const addon = defineAddon<ForgeConfig>({

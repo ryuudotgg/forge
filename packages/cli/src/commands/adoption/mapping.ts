@@ -3,12 +3,12 @@ import {
 	packageManagers,
 	type Runtime,
 	runtimes,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	databaseProviders,
 	databases,
 	type ForgeConfig,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { listAnd } from "../../utils/list";
 import type { CatalogEntry, PackageJson } from "./workspace";
 

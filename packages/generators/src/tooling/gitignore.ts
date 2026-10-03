@@ -1,4 +1,4 @@
-import { defineAddon, projectTarget, surfaceLines } from "@ryuujs/core";
+import { defineAddon, projectTarget, surfaceLines } from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import {
 	frameworkIgnoreDirs,

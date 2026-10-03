@@ -1,5 +1,5 @@
 import { confirm, isCancel, log, text } from "@clack/prompts";
-import { LONG_RUNNING_TIMEOUT_MS, Subprocess } from "@ryuujs/core";
+import { LONG_RUNNING_TIMEOUT_MS, Subprocess } from "@ryuugg/core";
 import { Cause, Effect, Exit, Option } from "effect";
 import { runCliEffect } from "../../runtime";
 import { cancel } from "../../utils/cancel";

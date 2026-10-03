@@ -1,4 +1,4 @@
-import type { PackageManagerId } from "@ryuujs/core";
+import type { PackageManagerId } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import {
 	pmDlx,

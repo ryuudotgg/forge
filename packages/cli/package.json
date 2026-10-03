@@ -1,5 +1,5 @@
 {
-	"name": "@ryuujs/forge",
+	"name": "@ryuugg/forge",
 	"version": "0.0.0",
 	"description": "An all-in-one starter for your next big thing.",
 	"keywords": [
@@ -45,8 +45,8 @@
 		"@clack/prompts": "catalog:node",
 		"@effect/platform-node": "catalog:effect",
 		"@effect/platform-node-shared": "catalog:effect",
-		"@ryuujs/core": "workspace:*",
-		"@ryuujs/generators": "workspace:*",
+		"@ryuugg/core": "workspace:*",
+		"@ryuugg/generators": "workspace:*",
 		"effect": "catalog:effect",
 		"picocolors": "catalog:node"
 	},

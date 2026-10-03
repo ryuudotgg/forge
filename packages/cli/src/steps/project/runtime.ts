@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { runtimes } from "@ryuujs/core";
+import { runtimes } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep } from "../types";

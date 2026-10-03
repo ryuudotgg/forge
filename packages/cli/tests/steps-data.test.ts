@@ -1,4 +1,4 @@
-import { databaseProviders, postgresProviderIdsFor } from "@ryuujs/generators";
+import { databaseProviders, postgresProviderIdsFor } from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import databaseStep from "../src/steps/data/database";
 import databaseProviderStep from "../src/steps/data/database-provider";

@@ -4,14 +4,14 @@ import {
 	type DiscoveredModule,
 	defineAdapter,
 	defineAddon,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	type ForgeConfig,
 	type LoadedDefinitionRegistry,
 	listVisibleAddons,
 	loadDefinitionRegistry,
 	type RegistryUnit,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAdd } from "../src/commands/add";
 import {
@@ -126,8 +126,8 @@ vi.mock("../src/commands/lifecycle", () => ({
 	runPackageManagerOperation: lifecycleMocks.runPackageManagerOperation,
 }));
 
-vi.mock("@ryuujs/generators", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/generators")>();
+vi.mock("@ryuugg/generators", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/generators")>();
 	const { multiTargetAddon, singleTargetAddon } = await import(
 		"./lifecycle-fixtures"
 	);

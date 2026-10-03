@@ -2,8 +2,8 @@ import { access, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { log } from "@clack/prompts";
 import { NodeServices } from "@effect/platform-node";
-import { Apply, CliVersion, CommandProbe, CoreLive, State } from "@ryuujs/core";
-import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
+import { Apply, CliVersion, CommandProbe, CoreLive, State } from "@ryuugg/core";
+import { type ForgeConfig, loadDefinitionRegistry } from "@ryuugg/generators";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {

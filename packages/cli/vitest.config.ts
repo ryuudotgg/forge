@@ -1,7 +1,7 @@
 import { PACKAGES } from "@ryuujs/temper/thresholds";
 import { defineConfig } from "vitest/config";
 
-const { perFileOverrides, ...thresholds } = PACKAGES["@ryuujs/forge"].temper;
+const { perFileOverrides, ...thresholds } = PACKAGES["@ryuugg/forge"].temper;
 
 export default defineConfig({
 	test: {

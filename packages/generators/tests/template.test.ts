@@ -7,7 +7,7 @@ import {
 	marker,
 	renderRecipeAsset,
 	sharedAsset,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import {
 	nextjsFramework,

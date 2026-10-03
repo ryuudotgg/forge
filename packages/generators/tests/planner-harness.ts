@@ -14,7 +14,7 @@ import {
 	readPersistedCommandVersions,
 	runtimeCommand,
 	State,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect, Layer } from "effect";
 import {
 	builtins,

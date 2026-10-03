@@ -55,6 +55,7 @@ pnpm dev
 - `pnpm clean:workspaces` - Clean **ALL** Dependencies and Build Artifacts
 - `pnpm dev` - Start a Development Server
 - `pnpm start` - Start Apps in Production
+- `pnpm tegami` - Draft a Change File
 - `pnpm test` - Run Tests
 - `pnpm test:unit` - Run Package Unit Tests
 - `pnpm test:coverage` - Run Tests With Coverage + Thresholds
@@ -113,6 +114,46 @@ To reproduce locally, run `pnpm test:coverage` and then
 `node tooling/temper/report.ts`; it prints the same report to stdout,
 including uncommitted changes (diffed against the merge base with
 `origin/main`).
+
+## Change files
+
+A pull request that changes something a user of the CLI or the published
+packages would notice adds one change file under `.tegami/`. Tests, CI and
+refactors need none. Draft it with `pnpm tegami` or write it by hand, under
+any name, such as `.tegami/2026-10-03-yarn-linker.md`:
+
+```markdown
+---
+packages:
+  group:forge: minor
+---
+
+## Example note
+```
+
+`group:forge` covers `@ryuugg/forge`, `@ryuugg/core` and
+`@ryuugg/generators`, which share one version and one `v` tag. Under 1.0
+the bump follows the change, not the commit type: a new capability or a
+breaking change is a minor, extending or correcting existing behaviour is a
+patch. A major is a deliberate choice.
+
+`pnpm tegami version --dry-run` previews the bump without writing anything.
+
+Releases are on hold until the framework and addon catalog is complete.
+Do not add a change file to `.tegami/` until the hold is lifted. The first
+one is the maintainer's call.
+
+### Cutting a release
+
+1. Run the Release workflow on `main`. It versions the pending change
+   files, opens the `chore: release x.y.z` pull request from
+   `tegami/version-packages` and requests review from the maintainer.
+2. Review and merge that pull request. It carries the bumped versions, the
+   changelogs and `.tegami/publish-lock.yaml`.
+3. Publishing runs from `main` in CI, never from a laptop.
+
+Never edit a `CHANGELOG.md`, the publish lock or a package version by hand.
+Tegami writes all three.
 
 ## Debugging
 

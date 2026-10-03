@@ -1,4 +1,4 @@
-import { defineRegistry } from "@ryuujs/core";
+import { defineRegistry } from "@ryuugg/core";
 import trpc, { trpcMetadata } from "../api/trpc";
 import {
 	trpcAdapters,

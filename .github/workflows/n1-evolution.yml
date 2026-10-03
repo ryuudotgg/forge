@@ -34,7 +34,7 @@ jobs:
         uses: ./tooling/github/setup
 
       - name: Build current CLI
-        run: pnpm build --filter=@ryuujs/forge
+        run: pnpm build --filter=@ryuugg/forge
 
       - uses: actions/checkout@v7
         with:
@@ -45,7 +45,7 @@ jobs:
         working-directory: baseline
         run: |
           pnpm install --frozen-lockfile
-          pnpm build --filter=@ryuujs/forge
+          pnpm build --filter=./packages/cli
 
       - name: Run N-1 Evolution Harness
         run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/n1-evolution.test.ts

@@ -38,11 +38,11 @@ Ryuu's Forge is a powerful CLI tool designed to kickstart your new project in ju
 Run Forge with your package manager of choice, no install required:
 
 ```bash
-pnpm dlx @ryuujs/forge
+pnpm dlx @ryuugg/forge
 # or
-npx @ryuujs/forge
+npx @ryuugg/forge
 # or
-bunx @ryuujs/forge
+bunx @ryuugg/forge
 ```
 
 `create` is the default command, so a bare invocation launches the interactive wizard and walks you through your framework, addons, and tooling.
@@ -66,12 +66,12 @@ Run `forge init` from an existing workspace to record its detected configuration
 Preview the adoption or reconcile immediately when you are ready:
 
 ```bash
-pnpm dlx @ryuujs/forge init --dry-run
-pnpm dlx @ryuujs/forge init
-pnpm dlx @ryuujs/forge update
+pnpm dlx @ryuugg/forge init --dry-run
+pnpm dlx @ryuugg/forge init
+pnpm dlx @ryuugg/forge update
 
 # Or adopt and reconcile in one command.
-pnpm dlx @ryuujs/forge init --reconcile
+pnpm dlx @ryuugg/forge init --reconcile
 ```
 
 The default flow is intentionally two steps: `forge init` records the current project, then `forge update` reconciles it with Forge's templates and addons. If conflicts surface in an interactive terminal, Forge guides you through each choice. You can also pass `--keep-user` or `--accept-forge` for one policy across the update.
@@ -81,7 +81,7 @@ The default flow is intentionally two steps: `forge init` records the current pr
 Skip the prompts by pointing Forge at a JSON config file:
 
 ```bash
-pnpm dlx @ryuujs/forge --config forge.json
+pnpm dlx @ryuugg/forge --config forge.json
 ```
 
 Pass `--no-install` to skip dependency installation and `--no-git` to skip Git initialization.

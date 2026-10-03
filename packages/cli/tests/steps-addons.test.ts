@@ -15,8 +15,8 @@ vi.mock("@clack/prompts", () => ({
 	multiselect: promptMocks.multiselect,
 }));
 
-vi.mock("@ryuujs/generators", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/generators")>();
+vi.mock("@ryuugg/generators", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/generators")>();
 
 	return {
 		...original,
@@ -25,8 +25,8 @@ vi.mock("@ryuujs/generators", async (importOriginal) => {
 });
 
 const generators =
-	await vi.importActual<typeof import("@ryuujs/generators")>(
-		"@ryuujs/generators",
+	await vi.importActual<typeof import("@ryuugg/generators")>(
+		"@ryuugg/generators",
 	);
 
 function rawConfig(entries: Record<string, unknown>): PartialConfig {

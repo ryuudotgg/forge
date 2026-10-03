@@ -13,8 +13,8 @@ vi.mock("@clack/prompts", () => ({
 	select: promptMocks.select,
 }));
 
-vi.mock("@ryuujs/generators", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/generators")>();
+vi.mock("@ryuugg/generators", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/generators")>();
 	return {
 		...original,
 		rpcProviders: {

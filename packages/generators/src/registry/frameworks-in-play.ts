@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { FrameworkDefinition } from "@ryuujs/core";
+import type { FrameworkDefinition } from "@ryuugg/core";
 import { type ForgeConfig, hasAddon } from "../config";
 import { standaloneBackendInPlay } from "./backends";
 import { mobileAppFrameworkInPlay } from "./mobiles";

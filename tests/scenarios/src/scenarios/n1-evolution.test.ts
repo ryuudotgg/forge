@@ -1,6 +1,6 @@
 import { appendFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { LockfileSchema, ManifestSchema } from "@ryuujs/core";
+import { LockfileSchema, ManifestSchema } from "@ryuugg/core";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {

@@ -12,7 +12,7 @@ import {
 	styleFrameworks,
 	uiLibraries,
 	webFrameworks,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import {
 	Context,
 	Effect,

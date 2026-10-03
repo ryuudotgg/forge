@@ -19,7 +19,7 @@ export interface UpdateCommandService {
 export class UpdateCommand extends Context.Service<
 	UpdateCommand,
 	UpdateCommandService
->()("@ryuujs/forge/UpdateCommand") {
+>()("@ryuugg/forge/UpdateCommand") {
 	static readonly Default = Layer.succeed(
 		UpdateCommand,
 		UpdateCommand.of({

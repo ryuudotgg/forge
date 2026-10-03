@@ -1,4 +1,4 @@
-import { GeneratorError } from "@ryuujs/core";
+import { GeneratorError } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import { expoFramework, type ForgeConfig } from "../src";
 import { expoScheme } from "../src/frameworks/expo";

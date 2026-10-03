@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export { interpolate } from "@ryuujs/core";
+export { interpolate } from "@ryuugg/core";
 
 const __filename = fileURLToPath(import.meta.url);
 

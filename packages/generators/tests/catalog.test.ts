@@ -1,4 +1,4 @@
-import { deriveAddonFrameworks } from "@ryuujs/core";
+import { deriveAddonFrameworks } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import {
 	authenticationProviders,

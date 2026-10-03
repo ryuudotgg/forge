@@ -1,6 +1,6 @@
 import { normalize } from "node:path";
 import { isCancel, log, text } from "@clack/prompts";
-import { formatSchemaError } from "@ryuujs/core";
+import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";

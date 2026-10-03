@@ -4,12 +4,12 @@ import {
 	defineAddon,
 	defineFramework,
 	type Manifest,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	type ForgeConfig,
 	loadDefinitionRegistry,
 	type RegistryPackageManifest,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { loadDiscoveryRegistry } from "../src/commands/lifecycle";
 import { writeJson } from "./lifecycle-fixtures";
 

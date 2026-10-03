@@ -5,7 +5,7 @@ import {
 	leafTextFile,
 	surfaceDependencies,
 	surfaceJson,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
 import { apiHostError, apiHostFramework, rpcConsumer } from "../../api-host";
 import type { ForgeConfig } from "../../config";

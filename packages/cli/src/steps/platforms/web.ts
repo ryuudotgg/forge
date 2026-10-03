@@ -1,5 +1,5 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { webFrameworks } from "@ryuujs/generators";
+import { webFrameworks } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {

@@ -7,8 +7,8 @@ import {
 	defineRegistry,
 	defineTemplate,
 	ensureAppModule,
-} from "@ryuujs/core";
-import * as generators from "@ryuujs/generators";
+} from "@ryuugg/core";
+import * as generators from "@ryuugg/generators";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import generateStep from "../src/steps/generate";

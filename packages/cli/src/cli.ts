@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
-import { packageManagers, runtimes } from "@ryuujs/core";
-import type { Platform } from "@ryuujs/generators";
+import { packageManagers, runtimes } from "@ryuugg/core";
+import type { Platform } from "@ryuugg/generators";
 import {
 	authenticationProviders,
 	backends,
@@ -15,7 +15,7 @@ import {
 	rpcProviders,
 	styleFrameworks,
 	webFrameworks,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import type { ParsedValues, SubcommandDef } from "./commands/registry";
 import type { PartialConfig } from "./steps/types";
 

@@ -20,7 +20,7 @@ import {
 	State,
 	StateError,
 	Subprocess,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	backends,
 	type ForgeConfig,
@@ -28,7 +28,7 @@ import {
 	loadDefinitionRegistry,
 	probeWorkspaceCommandVersions,
 	RegistryLoadError,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import { Effect, Exit, FileSystem, Result, Schema } from "effect";
 import {
 	type CliServices,

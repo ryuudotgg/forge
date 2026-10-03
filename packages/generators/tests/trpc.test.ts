@@ -1,5 +1,5 @@
-import type { AdapterModule, Contribution, SlotPath } from "@ryuujs/core";
-import { slotPath } from "@ryuujs/core";
+import type { AdapterModule, Contribution, SlotPath } from "@ryuugg/core";
+import { slotPath } from "@ryuugg/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";

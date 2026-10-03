@@ -1,4 +1,4 @@
-import type { AdapterContext } from "@ryuujs/core";
+import type { AdapterContext } from "@ryuugg/core";
 import {
 	defineTemplateRecipe,
 	ensuredModuleTarget,
@@ -11,7 +11,7 @@ import {
 	slotAsset,
 	surfaceDependencies,
 	variantAsset,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { expoFramework } from "../../frameworks/expo";

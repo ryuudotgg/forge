@@ -7,7 +7,7 @@ import {
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
 import {
 	type ApiHostConsumer,

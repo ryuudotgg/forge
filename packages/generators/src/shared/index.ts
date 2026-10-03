@@ -5,7 +5,7 @@ import {
 	leafTextFile,
 	surfaceDependencies,
 	surfaceJson,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { type ForgeConfig, hasAddon } from "../config";
 import { deps } from "../deps";
 import type { FirstPartyAddonMetadata } from "../registry/types";

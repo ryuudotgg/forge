@@ -7,7 +7,7 @@ import type {
 	ManagedJsonSurfaceContribution,
 	ManagedLinesSurfaceContribution,
 	ManagedScriptsSurfaceContribution,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src/config";
 import { nextjsFramework } from "../src/frameworks/nextjs";

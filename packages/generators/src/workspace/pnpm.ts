@@ -1,4 +1,4 @@
-import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
+import { defineAddon, leafTextFile, projectTarget } from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { catalogEntries } from "../versions";

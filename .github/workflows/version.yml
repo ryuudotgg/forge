@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: tegami-version-packages
+  cancel-in-progress: false
+
+env:
+  FORCE_COLOR: 3
+  DO_NOT_TRACK: true
+
+jobs:
+  version:
+    name: Version
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Set Git Identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Version Packages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pnpm tegami version
+
+      - name: Sign Version Commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ref="repos/$GITHUB_REPOSITORY/git/refs/heads/tegami/version-packages"
+          head=$(gh api "$ref" --jq .object.sha)
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$head" --jq .commit.verification.verified)" = true ]; then
+            exit 0
+          fi
+
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$head")
+          if [ "$(jq '.parents | length' <<< "$commit")" != 1 ]; then
+            echo "::error::Expected one version commit on tegami/version-packages, found a merge at $head"
+            exit 1
+          fi
+
+          signed=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" \
+            -f message="$(jq -r .message <<< "$commit")" \
+            -f tree="$(jq -r .tree.sha <<< "$commit")" \
+            -f "parents[]=$(jq -r '.parents[0].sha' <<< "$commit")" \
+            --jq .sha)
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$signed" --jq .commit.verification.verified)" != true ]; then
+            echo "::error::GitHub did not sign the recreated version commit $signed"
+            exit 1
+          fi
+
+          if [ "$(gh api "$ref" --jq .object.sha)" != "$head" ]; then
+            echo "::error::tegami/version-packages moved past $head while signing, press Release again"
+            exit 1
+          fi
+
+          gh api --method PATCH "$ref" -f sha="$signed" -F force=true > /dev/null
+
+      - name: Request Review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head tegami/version-packages --state open --json number --jq '.[0].number')
+          if [ -z "$number" ]; then
+            echo "::error::No open PR found for tegami/version-packages"
+            exit 1
+          fi
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$number/requested_reviewers" -f 'reviewers[]=ryuudotgg' > /dev/null
