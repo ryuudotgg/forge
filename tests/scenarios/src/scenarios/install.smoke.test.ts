@@ -490,6 +490,23 @@ async function expectCredentialedGeneratedServer(
 			);
 		},
 	);
+
+	await withGeneratedServer(
+		projectRoot,
+		{ ...generatedEnv, POLAR_ACCESS_TOKEN: "forge-smoke-token" },
+		serverOrigin,
+		async (output) => {
+			const checkout = await fetch(`${serverOrigin}/api/auth/checkout`, {
+				body: JSON.stringify({ products: ["forge-smoke"] }),
+				headers: { "Content-Type": "application/json" },
+				method: "POST",
+			});
+
+			expect(checkout.status, `${await checkout.text()}\n${output()}`).toBe(
+				401,
+			);
+		},
+	);
 }
 
 async function expectOrpcSession(
