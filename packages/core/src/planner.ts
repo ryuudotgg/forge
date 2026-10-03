@@ -166,42 +166,75 @@ export function retargetAdoptedContribution(
 	}
 }
 
-function retargetMovedPrimary(
+function isAppEnsure(
+	contribution: Contribution,
+): contribution is EnsureModuleContribution {
+	return (
+		contribution._tag === "EnsureModuleContribution" &&
+		contribution.module.type === "app"
+	);
+}
+
+function ensuredPackageName(
+	entry: EvaluationPhaseContract["evaluated"][number],
+	moduleKey: string,
+) {
+	for (const contribution of entry.contributions)
+		if (
+			contribution._tag === "ManagedJsonSurfaceContribution" &&
+			contribution.surface === "packageJson" &&
+			contribution.target._tag === "EnsuredModuleTarget" &&
+			contribution.target.moduleKey === moduleKey &&
+			typeof contribution.value.name === "string"
+		)
+			return contribution.value.name;
+
+	return undefined;
+}
+
+function retargetMovedApps(
 	entry: EvaluationPhaseContract["evaluated"][number],
 	modules: ReadonlyArray<DiscoveredModule>,
 ): EvaluationPhaseContract["evaluated"][number] {
-	const primary = entry.contributions.find(
-		(contribution) =>
-			contribution._tag === "EnsureModuleContribution" &&
-			contribution.module.type === "app" &&
-			contribution.module.role === "primary",
-	);
+	const ensures = entry.contributions.filter(isAppEnsure);
+	const ensuredRoots = new Set(ensures.map((ensure) => ensure.root));
 
-	if (primary?._tag !== "EnsureModuleContribution") return entry;
-	if (modules.some((module) => module.root === primary.root)) return entry;
-
-	const moved = modules.filter(
+	const candidates = modules.filter(
 		(module) =>
 			module.type === "app" &&
-			module.role === "primary" &&
 			module.template.id === entry.definitionId &&
-			module.template.version === primary.module.template.version,
+			!ensuredRoots.has(module.root),
 	);
 
-	const [module] = moved;
-	if (module === undefined || moved.length !== 1) return entry;
+	let contributions = entry.contributions;
+	for (const ensure of ensures) {
+		if (modules.some((module) => module.root === ensure.root)) continue;
 
-	return {
-		...entry,
-		contributions: entry.contributions.map((contribution) =>
+		const packageName = ensuredPackageName(entry, ensure.moduleKey);
+		const moved = candidates.filter(
+			(module) =>
+				module.template.version === ensure.module.template.version &&
+				((packageName !== undefined && module.packageName === packageName) ||
+					(ensure.module.type === "app" &&
+						ensure.module.role === "primary" &&
+						module.type === "app" &&
+						module.role === "primary")),
+		);
+
+		const [module] = moved;
+		if (module === undefined || moved.length !== 1) continue;
+
+		contributions = contributions.map((contribution) =>
 			retargetAdoptedContribution(
 				contribution,
-				primary.moduleKey,
+				ensure.moduleKey,
 				module,
-				primary.moduleKey,
+				ensure.moduleKey,
 			),
-		),
-	};
+		);
+	}
+
+	return { ...entry, contributions };
 }
 
 function expandAdoptedTemplateEvaluations<ConfigValue>(
@@ -218,13 +251,8 @@ function expandAdoptedTemplateEvaluations<ConfigValue>(
 	return evaluated.flatMap((entry) => {
 		if (!templateIds.has(entry.definitionId)) return [entry];
 
-		const appEnsures = entry.contributions.filter(
-			(contribution) =>
-				contribution._tag === "EnsureModuleContribution" &&
-				contribution.module.type === "app",
-		);
-
-		if (appEnsures.length > 1) return [retargetMovedPrimary(entry, modules)];
+		if (entry.contributions.filter(isAppEnsure).length > 1)
+			return [retargetMovedApps(entry, modules)];
 
 		const ensured = entry.contributions.find(
 			(contribution) => contribution._tag === "EnsureModuleContribution",

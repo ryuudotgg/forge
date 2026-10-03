@@ -41,6 +41,7 @@ import {
 	selectedModuleTarget,
 	slotPath,
 	surfaceDependencies,
+	surfaceJson,
 	surfaceText,
 	templateModuleTarget,
 } from "../src/index";
@@ -594,8 +595,63 @@ const adapterGuardUnsupportedRegistry = defineRegistry({
 });
 
 describe("planner", () => {
-	it("adopts a moved primary and a moved secondary of a multi-app template", async () => {
+	it("adopts every moved app of a multi-app template", async () => {
 		await withTempDir("planner-moved-web-apps", async (directory) => {
+			const apps = [
+				{ key: "web", root: "apps/web", moved: "apps/site" },
+				{ key: "admin", root: "apps/admin", moved: "apps/dashboard" },
+				{ key: "docs", root: "apps/docs", moved: "apps/handbook" },
+			] as const;
+
+			const baseRegistry = testRegistry([]);
+			const registry: DefinitionRegistry<TestConfig> = {
+				...baseRegistry,
+				templates: baseRegistry.templates.map((template) => ({
+					...template,
+					contribute: () =>
+						apps.flatMap(({ key, root }) => [
+							ensureAppModule(key, root, {
+								framework: "nextjs",
+								template: { id: "nextjs/base", version: 1 },
+								slots: { layout: "app/layout.tsx" },
+								...(key === "web" ? { role: "primary" as const } : {}),
+							}),
+							surfaceJson(ensuredModuleTarget(key), "packageJson", {
+								name: `@acme/${key}`,
+							}),
+							surfaceText(ensuredModuleTarget(key), "layout", `${key}-layout`),
+						]),
+				})),
+			};
+
+			const createPlan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+			for (const { root, moved } of apps)
+				await rename(join(directory, root), join(directory, moved));
+
+			const plan = await Effect.runPromise(
+				planInstalledEffect(directory, { web: "nextjs" }, [], registry),
+			);
+
+			expect(
+				Object.values(plan.manifest.modules)
+					.map((module) => module.root)
+					.sort(),
+			).toEqual(["apps/dashboard", "apps/handbook", "apps/site"]);
+
+			for (const { key, moved } of apps)
+				expect(
+					plan.writes.find((write) => write.path === `${moved}/app/layout.tsx`)
+						?.content,
+				).toBe(`${key}-layout`);
+		});
+	});
+
+	it("adopts a moved primary by its role when no package name is declared", async () => {
+		await withTempDir("planner-moved-primary-role", async (directory) => {
 			const baseRegistry = testRegistry([]);
 			const registry: DefinitionRegistry<TestConfig> = {
 				...baseRegistry,
@@ -625,10 +681,6 @@ describe("planner", () => {
 
 			await Effect.runPromise(applyPlanEffect(directory, createPlan));
 			await rename(join(directory, "apps/web"), join(directory, "apps/site"));
-			await rename(
-				join(directory, "apps/admin"),
-				join(directory, "apps/dashboard"),
-			);
 
 			const plan = await Effect.runPromise(
 				planInstalledEffect(directory, { web: "nextjs" }, [], registry),
@@ -638,18 +690,12 @@ describe("planner", () => {
 				Object.values(plan.manifest.modules)
 					.map((module) => module.root)
 					.sort(),
-			).toEqual(["apps/dashboard", "apps/site"]);
+			).toEqual(["apps/admin", "apps/site"]);
 
 			expect(
 				plan.writes.find((write) => write.path === "apps/site/app/layout.tsx")
 					?.content,
 			).toBe("web-layout");
-
-			expect(
-				plan.writes.find(
-					(write) => write.path === "apps/dashboard/app/layout.tsx",
-				)?.content,
-			).toBe("admin-layout");
 		});
 	});
 
