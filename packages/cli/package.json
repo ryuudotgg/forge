@@ -28,34 +28,33 @@
 	"type": "module",
 	"bin": "./dist/index.mjs",
 	"files": [
-		"dist"
+		"dist",
+		"templates"
 	],
 	"scripts": {
 		"build": "tsdown",
 		"check": "biome check",
-		"clean": "git clean -xdf .turbo .cache coverage dist node_modules",
+		"clean": "git clean -xdf .turbo .cache coverage dist node_modules templates",
 		"dev": "tsdown --watch",
 		"start": "node ./dist/index.mjs",
 		"test": "vitest run tests",
 		"test:coverage": "vitest run --coverage",
 		"typecheck": "tsc"
 	},
-	"dependencies": {
+	"devDependencies": {
 		"@clack/core": "catalog:node",
 		"@clack/prompts": "catalog:node",
 		"@effect/platform-node": "catalog:effect",
 		"@effect/platform-node-shared": "catalog:effect",
+		"@effect/vitest": "catalog:effect",
 		"@ryuugg/core": "workspace:*",
 		"@ryuugg/generators": "workspace:*",
-		"effect": "catalog:effect",
-		"picocolors": "catalog:node"
-	},
-	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
 		"@ryuugg/temper": "workspace:*",
 		"@ryuugg/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"@vitest/coverage-v8": "catalog:dev",
+		"effect": "catalog:effect",
+		"picocolors": "catalog:node",
 		"tsdown": "catalog:build",
 		"typescript": "catalog:dev",
 		"vitest": "catalog:dev"
