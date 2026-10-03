@@ -39,7 +39,7 @@ jobs:
           publish=false
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             if [ "$GITHUB_REF" = refs/heads/main ] && [ -f .tegami/publish-lock.yaml ]; then
-              locked=$(git log -1 --format=%H -- .tegami/publish-lock.yaml)
+              locked=$(git log -1 --first-parent --format=%H -- .tegami/publish-lock.yaml)
               if [ "$locked" = "$GITHUB_SHA" ]; then
                 publish=true
               else
