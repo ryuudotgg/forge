@@ -16,7 +16,7 @@ export type DrizzleDriver =
 	| "planetscale-serverless"
 	| "postgres-js";
 
-export type DrizzleClientTemplate = DrizzleDriver | "planetscale" | "turso";
+export type DrizzleClientTemplate = DrizzleDriver | "turso";
 
 export type DrizzleKitDialect = "mysql" | "postgresql" | "sqlite" | "turso";
 
@@ -149,6 +149,7 @@ const mysqlSchemaTemplates = {
 	users: "users.mysql",
 	auth: "auth.mysql",
 } as const;
+
 const sqliteSchemaTemplates = {
 	users: "users.sqlite",
 	auth: "auth.sqlite",
@@ -156,19 +157,6 @@ const sqliteSchemaTemplates = {
 
 const neonHttp = {
 	clientTemplate: "neon-http",
-	driver: "neon-http",
-	databaseType: "NeonHttpDatabase",
-	kitDialect: "postgresql",
-	kitCredentials: postgresKitCredentials,
-	schemaTemplates: postgresSchemaTemplates,
-	runtimeDeps: ["neonServerless"],
-	devDeps: ["pg", "typesPg"],
-} as const satisfies DrizzleSupport;
-
-// PlanetScale Postgres reuses the Neon serverless driver, but serves the
-// HTTP protocol on the database host itself instead of Neon's API gateway.
-const planetscaleHttp = {
-	clientTemplate: "planetscale",
 	driver: "neon-http",
 	databaseType: "NeonHttpDatabase",
 	kitDialect: "postgresql",
@@ -373,7 +361,7 @@ const postgresProfiles: Record<
 			directUrl:
 				"postgresql://user:password@host.psdb.cloud:5432/postgres?sslmode=verify-full",
 		}),
-		drizzle: planetscaleHttp,
+		drizzle: nodePostgres,
 		prisma: prismaPg,
 	},
 	neon: {

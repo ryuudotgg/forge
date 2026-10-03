@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -22,6 +22,7 @@ async function readGeneratedEnv(projectRoot: string) {
 		const value = match?.[2];
 		if (name !== undefined && value !== undefined) env[name] = value;
 	}
+
 	return env;
 }
 
@@ -31,12 +32,14 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 	const serverOrigin = generatedEnv.APP_ORIGIN;
 	if (origin === undefined || serverOrigin === undefined)
 		throw new Error(`Missing Generated Origins: ${projectRoot}`);
+
 	expect(origin).toBe("http://localhost:3000");
 	expect(serverOrigin).toBe("http://localhost:3001");
 
 	const push = await runCommand("pnpm", ["db:push"], {
 		cwd: join(projectRoot, "apps/web"),
 	});
+
 	expect(
 		push.exitCode,
 		`pnpm db:push failed with code ${push.exitCode}\n${push.stdout}\n${push.stderr}`,
@@ -49,10 +52,12 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 		cwd: join(projectRoot, "apps/server"),
 		env: { ...ambientEnv, ...generatedEnv },
 	});
+
 	let output = "";
 	const capture = (chunk: Buffer) => {
 		output += chunk.toString();
 	};
+
 	server.stdout.on("data", capture);
 	server.stderr.on("data", capture);
 	const exited = new Promise<void>((resolveExit) => {
@@ -72,6 +77,7 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 
 			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 		}
+
 		expect(ready, output).toBe(true);
 
 		const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
@@ -82,11 +88,13 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 				"Access-Control-Request-Method": "GET",
 			},
 		});
+
 		expect(preflight.status).toBe(204);
 		expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
 		expect(preflight.headers.get("access-control-allow-credentials")).toBe(
 			"true",
 		);
+
 		expect(preflight.headers.get("access-control-allow-headers")).toContain(
 			"x-trpc-source",
 		);
@@ -94,6 +102,7 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 		const actual = await fetch(`${serverOrigin}/api/trpc/health?input=%7B%7D`, {
 			headers: { Origin: origin, "x-trpc-source": "smoke" },
 		});
+
 		expect(actual.status).toBe(200);
 		expect(actual.headers.get("access-control-allow-origin")).toBe(origin);
 		expect(actual.headers.get("access-control-allow-credentials")).toBe("true");
@@ -108,14 +117,18 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 			headers: { "Content-Type": "application/json", Origin: origin },
 			method: "POST",
 		});
+
 		const signupBody = await signup.text();
 		expect(signup.status, `${signupBody}\n${output}`).toBe(200);
 		expect(signup.headers.get("access-control-allow-origin")).toBe(origin);
 		expect(signup.headers.get("access-control-allow-credentials")).toBe("true");
+
 		const setCookie = signup.headers.get("set-cookie");
 		expect(setCookie).toBeTruthy();
+
 		if (setCookie === null)
 			throw new Error("Missing Session Cookie: Better Auth sign-up");
+
 		const cookie = setCookie.split(";", 1)[0];
 		if (cookie === undefined)
 			throw new Error("Missing Cookie Value: Better Auth sign-up");
@@ -123,11 +136,13 @@ async function expectCredentialedGeneratedServer(projectRoot: string) {
 		const authSession = await fetch(`${serverOrigin}/api/auth/get-session`, {
 			headers: { Cookie: cookie, Origin: origin },
 		});
+
 		expect(authSession.status).toBe(200);
 		expect(authSession.headers.get("access-control-allow-origin")).toBe(origin);
 		expect(authSession.headers.get("access-control-allow-credentials")).toBe(
 			"true",
 		);
+
 		expect(await authSession.json()).toMatchObject({ user: { email } });
 	} finally {
 		if (server.exitCode === null) server.kill("SIGTERM");
@@ -148,10 +163,12 @@ async function expectDrainingWorker(projectRoot: string) {
 		cwd: join(projectRoot, "apps/worker"),
 		env: { ...ambientEnv, ...generatedEnv },
 	});
+
 	let output = "";
 	const capture = (chunk: Buffer) => {
 		output += chunk.toString();
 	};
+
 	worker.stdout.on("data", capture);
 	worker.stderr.on("data", capture);
 	const exited = new Promise<number | null>((resolveExit) => {
@@ -159,7 +176,6 @@ async function expectDrainingWorker(projectRoot: string) {
 	});
 
 	const origin = "http://localhost:8080";
-
 	try {
 		let ready = false;
 		for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -173,6 +189,7 @@ async function expectDrainingWorker(projectRoot: string) {
 
 			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 		}
+
 		expect(ready, output).toBe(true);
 
 		const unauthorized = await fetch(`${origin}/run`, { method: "POST" });
@@ -182,6 +199,7 @@ async function expectDrainingWorker(projectRoot: string) {
 			headers: { Authorization: `Bearer ${secret}` },
 			method: "POST",
 		});
+
 		expect(triggered.status, output).toBe(200);
 		expect(await triggered.json()).toEqual({ ok: true });
 
@@ -447,6 +465,44 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		});
 	}, 600_000);
 
+	it("installs and typechecks a transaction on a drizzle planetscale postgres project", async () => {
+		await withScenarioWorkspace(
+			"smoke-drizzle-planetscale-postgres",
+			async (workspace) => {
+				await createProject(
+					workspace,
+					{
+						authentication: "better-auth",
+						database: "postgresql",
+						databaseProvider: "planetscale",
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "trpc",
+						style: "tailwind",
+						web: "nextjs",
+					},
+					{ install: true },
+				);
+
+				await writeFile(
+					join(workspace.projectRoot, "packages/db/src/transaction.ts"),
+					`import { db } from "./client";
+
+export async function transactionProbe() {
+  return db.transaction(async (tx) => {
+    await tx.execute("select 1");
+    return tx.execute("select 2");
+  });
+}
+`,
+				);
+
+				await expectInstallAndTypecheck(workspace, "pnpm");
+			},
+		);
+	}, 600_000);
+
 	// Each framework addition gets one pnpm-only acceptance case; the
 	// package-manager matrix remains Next.js-only to keep smoke cost bounded.
 	it("installs, builds, and typechecks an Expo project", async () => {
@@ -469,6 +525,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			expect(
 				await pathExists(join(workspace.projectRoot, "apps/mobile/forge.json")),
 			).toBe(true);
+
 			await expectBundledNativeWindStyles(workspace);
 		});
 	}, 600_000);

@@ -13,9 +13,11 @@ describe("envFileLine", () => {
 		expect(envFileLine("DATABASE_URL", "postgres://localhost/db")).toBe(
 			'DATABASE_URL="postgres://localhost/db"',
 		);
+
 		expect(envFileLine("DATABASE_URL", 'ssl={"rejectUnauthorized":true}')).toBe(
 			`DATABASE_URL='ssl={"rejectUnauthorized":true}'`,
 		);
+
 		expect(envFileLine("DATABASE_URL", `pass"word'`)).toBe(
 			"DATABASE_URL=`pass\"word'`",
 		);
@@ -34,6 +36,7 @@ describe("resolveDatabaseProvider", () => {
 		expect(resolveDatabaseProvider({ database: "postgresql" })).toBe(
 			localPostgres,
 		);
+
 		expect(resolveDatabaseProvider({ database: "mysql" })).toBe(localMysql);
 		expect(resolveDatabaseProvider({ database: "sqlite" })).toBe(localSqlite);
 	});
@@ -42,9 +45,11 @@ describe("resolveDatabaseProvider", () => {
 		expect(resolveDatabaseProvider({ databaseProvider: "turso" })).toBe(
 			localPostgres,
 		);
+
 		expect(
 			resolveDatabaseProvider({ database: "sqlite", databaseProvider: "neon" }),
 		).toBe(localSqlite);
+
 		expect(
 			resolveDatabaseProvider({ database: "mysql", databaseProvider: "turso" }),
 		).toBe(localMysql);
@@ -55,13 +60,21 @@ describe("resolveDatabaseProvider", () => {
 			database: "postgresql",
 			databaseProvider: "planetscale",
 		});
+
 		const mysql = resolveDatabaseProvider({
 			database: "mysql",
 			databaseProvider: "planetscale",
 		});
 
 		expect(postgres.dialect).toBe("postgresql");
-		expect(postgres.drizzle.driver).toBe("neon-http");
+		expect(postgres.drizzle).toMatchObject({
+			clientTemplate: "node-postgres",
+			driver: "node-postgres",
+			runtimeDeps: ["pg"],
+		});
+
+		expect(postgres.drizzle.runtimeDeps).not.toContain("neonServerless");
+		expect(postgres.drizzle.devDeps).not.toContain("neonServerless");
 
 		expect(mysql.dialect).toBe("mysql");
 		expect(mysql.drizzle).toMatchObject({
@@ -70,6 +83,7 @@ describe("resolveDatabaseProvider", () => {
 			kitDialect: "mysql",
 			runtimeDeps: ["planetscaleDatabase"],
 		});
+
 		expect(mysql.prisma).toMatchObject({
 			clientTemplate: "planetscale",
 			datasourceProvider: "mysql",
@@ -89,12 +103,14 @@ describe("resolveDatabaseProvider", () => {
 			"TURSO_DATABASE_URL",
 			"TURSO_AUTH_TOKEN",
 		]);
+
 		expect(profile.drizzle).toMatchObject({
 			clientTemplate: "turso",
 			driver: "libsql",
 			kitDialect: "turso",
 			runtimeDeps: ["libsqlClient"],
 		});
+
 		expect(profile.prisma).toMatchObject({
 			clientTemplate: "libsql",
 			datasourceProvider: "sqlite",
@@ -108,6 +124,7 @@ describe("resolveDatabaseProvider", () => {
 			driver: "mysql2",
 			kitDialect: "mysql",
 		});
+
 		expect(localMysql.prisma).toMatchObject({
 			clientTemplate: "mariadb",
 			datasourceProvider: "mysql",
@@ -116,11 +133,13 @@ describe("resolveDatabaseProvider", () => {
 		expect(localSqlite.envVars.map(({ value }) => value)).toEqual([
 			"file:../../local.db",
 		]);
+
 		expect(localSqlite.drizzle).toMatchObject({
 			clientTemplate: "libsql",
 			driver: "libsql",
 			kitDialect: "sqlite",
 		});
+
 		expect(localSqlite.prisma).toMatchObject({
 			clientTemplate: "better-sqlite3",
 			datasourceProvider: "sqlite",
@@ -131,18 +150,24 @@ describe("resolveDatabaseProvider", () => {
 		expect(
 			resolveDatabaseProvider({ databaseProvider: "neon" }).drizzle.driver,
 		).toBe("neon-http");
+
 		expect(
 			resolveDatabaseProvider({ databaseProvider: "supabase" }).drizzle.driver,
 		).toBe("postgres-js");
+
 		expect(
 			resolveDatabaseProvider({ databaseProvider: "nile" }).drizzle.driver,
 		).toBe("node-postgres");
+
 		expect(
 			resolveDatabaseProvider({
 				database: "postgresql",
 				databaseProvider: "planetscale",
 			}).drizzle,
-		).toMatchObject({ clientTemplate: "planetscale", driver: "neon-http" });
+		).toMatchObject({
+			clientTemplate: "node-postgres",
+			driver: "node-postgres",
+		});
 	});
 
 	it("resolves the prisma adapter by provider", () => {
