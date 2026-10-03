@@ -5,7 +5,8 @@ import {
 	type ForgeConfig,
 } from "../config";
 import { deps } from "../deps";
-import { resolveAuthMethods } from "./methods";
+import { authUsesPasskey, resolveAuthMethods } from "./methods";
+import { type AuthTable, passkeyTable } from "./tables";
 
 export interface AuthField {
 	readonly name: string;
@@ -15,7 +16,8 @@ export interface AuthField {
 }
 
 type AuthModel = "user" | "session";
-type AuthPluginSide = "server" | "client";
+type AuthPluginSide = "server" | "client" | "expo";
+type AuthExtension = AuthPlugin | Extract<AuthMethod, "passkey">;
 type AuthPackageSide = "auth" | "expo";
 
 interface AuthPluginEnvEntry {
@@ -38,6 +40,9 @@ interface AuthPluginImport {
 interface AuthPluginDefinition {
 	readonly server: ReadonlyArray<AuthPluginImport>;
 	readonly client: ReadonlyArray<AuthPluginImport>;
+	readonly expo?: ReadonlyArray<AuthPluginImport>;
+	readonly tables?: ReadonlyArray<AuthTable>;
+	readonly files?: ReadonlyArray<string>;
 	readonly requires?: AuthMethod;
 	readonly fields: Partial<Record<AuthModel, ReadonlyArray<AuthField>>>;
 	readonly env?: ReadonlyArray<AuthPluginEnvEntry>;
@@ -48,6 +53,15 @@ interface AuthPluginDefinition {
 }
 
 const authPluginDefinitions = {
+	passkey: {
+		server: [{ module: "./passkey", name: "passkeyPlugin" }],
+		client: [{ module: "@better-auth/passkey/client", name: "passkeyClient" }],
+		expo: [],
+		fields: {},
+		tables: [passkeyTable],
+		files: ["src/passkey.ts"],
+		packages: { auth: [deps.betterAuthPasskey] },
+	},
 	username: {
 		server: [{ module: "better-auth/plugins", name: "username" }],
 		client: [{ module: "better-auth/client/plugins", name: "usernameClient" }],
@@ -73,6 +87,7 @@ const authPluginDefinitions = {
 		},
 	},
 	polar: {
+		files: ["src/polar.ts"],
 		server: [
 			{ module: "./polar", name: "polarPlugin" },
 			{ module: "./polar", name: "polarAvailability" },
@@ -105,7 +120,31 @@ const authPluginDefinitions = {
 			},
 		],
 	},
-} satisfies Record<AuthPlugin, AuthPluginDefinition>;
+} satisfies Record<AuthExtension, AuthPluginDefinition>;
+
+function activeAuthExtensions(
+	config: ForgeConfig,
+): ReadonlyArray<AuthExtension> {
+	const plugins = resolveAuthPlugins(config);
+	if (config.authentication !== "better-auth") return plugins;
+	return authUsesPasskey(config) ? ["passkey", ...plugins] : plugins;
+}
+
+export function authPluginTables(
+	config: ForgeConfig,
+): ReadonlyArray<AuthTable> {
+	return activeAuthExtensions(config).flatMap((extension) => {
+		const definition: AuthPluginDefinition = authPluginDefinitions[extension];
+		return definition.tables ?? [];
+	});
+}
+
+export function authPluginFiles(config: ForgeConfig): ReadonlyArray<string> {
+	return activeAuthExtensions(config).flatMap((extension) => {
+		const definition: AuthPluginDefinition = authPluginDefinitions[extension];
+		return definition.files ?? [];
+	});
+}
 
 function isAuthPluginList(value: unknown): value is ReadonlyArray<AuthPlugin> {
 	if (!Array.isArray(value)) return false;
@@ -173,9 +212,12 @@ export function authPluginBindings(
 	config: ForgeConfig,
 	side: AuthPluginSide,
 ): ReadonlyArray<AuthPluginImport> {
-	return resolveAuthPlugins(config).flatMap(
-		(plugin) => authPluginDefinitions[plugin][side],
-	);
+	return activeAuthExtensions(config).flatMap((extension) => {
+		const definition: AuthPluginDefinition = authPluginDefinitions[extension];
+		return side === "expo"
+			? (definition.expo ?? definition.client)
+			: definition[side];
+	});
 }
 
 export function authPluginsBlockDeclarations(config: ForgeConfig): boolean {
@@ -198,7 +240,7 @@ export function authPluginPackages(
 	config: ForgeConfig,
 	side: AuthPackageSide,
 ): ReadonlyArray<AuthPluginPackage> {
-	return resolveAuthPlugins(config).flatMap((plugin) => {
+	return activeAuthExtensions(config).flatMap((plugin) => {
 		const definition: AuthPluginDefinition = authPluginDefinitions[plugin];
 		return definition.packages?.[side] ?? [];
 	});

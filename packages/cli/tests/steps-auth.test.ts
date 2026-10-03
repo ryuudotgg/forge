@@ -82,6 +82,7 @@ describe("auth methods step", () => {
 				{ label: "Email and password", value: "email-password" },
 				{ label: "Google", value: "google" },
 				{ label: "Apple", value: "apple" },
+				{ label: "Passkey", value: "passkey" },
 			],
 		});
 	});

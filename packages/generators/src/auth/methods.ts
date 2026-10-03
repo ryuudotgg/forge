@@ -32,6 +32,13 @@ export function authUsesPassword(config: ForgeConfig): boolean {
 	return resolveAuthMethods(config).includes("email-password");
 }
 
+export function authUsesPasskey(config: ForgeConfig): boolean {
+	return (
+		config.authentication === "better-auth" &&
+		resolveAuthMethods(config).includes("passkey")
+	);
+}
+
 const socialProviders = [
 	{ id: "google", envStem: "AUTH_GOOGLE" },
 	{ id: "apple", envStem: "AUTH_APPLE" },

@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { catalogEntries, catalogRef, versions } from "../src/versions";
 
 describe("catalogEntries", () => {
-	it("emits every pinned dependency exactly once", () => {
-		const flattened = catalogEntries({ rpc: "orpc" }).flatMap(
-			(group) => group.entries,
-		);
+	it("emits every selected pinned dependency exactly once", () => {
+		const flattened = catalogEntries({
+			rpc: "orpc",
+			authentication: "better-auth",
+			authMethods: ["passkey"],
+		}).flatMap((group) => group.entries);
 
 		const names = flattened.map((entry) => entry.name).sort();
 		const expected = Object.values(versions)
@@ -14,6 +16,18 @@ describe("catalogEntries", () => {
 			.sort();
 
 		expect(names).toEqual(expected);
+	});
+
+	it("omits passkey and preserves Better Auth without selection", () => {
+		const entries = catalogEntries({}).flatMap((group) => group.entries);
+
+		expect(entries.some(({ name }) => name === "@better-auth/passkey")).toBe(
+			false,
+		);
+
+		expect(entries.find(({ name }) => name === "better-auth")?.version).toBe(
+			versions.betterAuth.version,
+		);
 	});
 
 	it("orders groups and alphabetizes entries within each group", () => {

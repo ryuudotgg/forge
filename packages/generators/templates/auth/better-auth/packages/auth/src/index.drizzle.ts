@@ -1,6 +1,6 @@
 import { env } from "@__SLUG__/auth/env";
 import { db } from "@__SLUG__/db/client";
-import { accounts, sessions, users, verifications } from "@__SLUG__/db/schema";
+__ADAPTER_SCHEMA_IMPORT__
 import type { BetterAuthOptions } from "better-auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -27,6 +27,7 @@ const config = {
       account: accounts,
       session: sessions,
       verification: verifications,
+__ADAPTER_MODELS__
     },
   }),
   // __EMAIL_PASSWORD__

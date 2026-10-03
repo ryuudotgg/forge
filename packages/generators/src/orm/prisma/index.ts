@@ -10,7 +10,11 @@ import {
 	surfaceScripts,
 } from "@ryuugg/core";
 import { authUsesPassword } from "../../auth/methods";
-import { type AuthField, authPluginFields } from "../../auth/plugins";
+import {
+	type AuthField,
+	authPluginFields,
+	authPluginTables,
+} from "../../auth/plugins";
 import type { ForgeConfig } from "../../config";
 import {
 	envFileLine,
@@ -24,6 +28,7 @@ import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+import { prismaUserRelations, renderPrismaAuthTables } from "./auth-schema";
 
 const authFieldTypes: Record<AuthField["type"], string> = {
 	string: "String?",
@@ -96,8 +101,14 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 		const usesAuth = config.authentication === "better-auth";
 		const envVars = provider.prisma.envVars ?? provider.envVars;
 		const emulatesRelations = provider.prisma.relationMode !== undefined;
+		const tables = authPluginTables(config);
 		const vars = {
 			SLUG: slug,
+			"__AUTH_USER_RELATIONS__\n": prismaUserRelations(tables),
+			"__AUTH_TABLES__\n": renderPrismaAuthTables(
+				tables,
+				provider.prisma.datasourceProvider,
+			),
 			DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 			ENV_RUNTIME: envRuntimeLines(envVars),
 			ENV_SERVER: envServerLines(envVars),

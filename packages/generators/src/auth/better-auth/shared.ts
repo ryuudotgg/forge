@@ -16,7 +16,9 @@ import {
 	authPluginBindings,
 	authPluginEnvEntries,
 	authPluginImports,
+	authPluginTables,
 } from "../plugins";
+import { authModels } from "../tables";
 
 // Only one of the two call shapes fits the generated formatter's line budget,
 // so the whole declaration is the marker rather than just its argument.
@@ -81,6 +83,9 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 	const pluginEnv = authPluginEnvEntries(config);
 	return {
 		SLUG: slug,
+		PASSKEY_ORIGIN:
+			standalone && config.web !== undefined ? "env.WEB_URL" : "env.APP_ORIGIN",
+		PASSKEY_NAME: JSON.stringify(config.name ?? slug),
 		DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 		DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
 		"// __CLIENT_PLUGIN_IMPORTS__\n": authPluginImports(
@@ -201,6 +206,24 @@ export function betterAuthRecipeVars(
 
 	return {
 		...values,
+		ADAPTER_SCHEMA_IMPORT:
+			authPluginTables(config).length === 0
+				? `import { accounts, sessions, users, verifications } from "@${values.SLUG}/db/schema";\n`
+				: authPluginImports([
+						...["accounts", "sessions", "users", "verifications"].map(
+							(name) => ({
+								module: `@${values.SLUG}/db/schema`,
+								name,
+							}),
+						),
+						...authPluginTables(config).map(({ model }) => ({
+							module: `@${values.SLUG}/db/schema`,
+							name: authModels[model].table,
+						})),
+					]),
+		ADAPTER_MODELS: authPluginTables(config)
+			.map(({ model }) => `      ${model}: ${authModels[model].table},\n`)
+			.join(""),
 		PLUGIN_IMPORTS: authPluginImports(
 			pluginImports.filter(({ module }) => !module.startsWith(".")),
 		),
