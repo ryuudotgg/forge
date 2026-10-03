@@ -74,6 +74,19 @@ jobs:
     permissions:
       contents: read
 
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -87,6 +100,7 @@ jobs:
         run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/install.smoke.test.ts
         env:
           FORGE_SMOKE: "1"
+          FORGE_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
 
       - name: Tarball Smoke
         run: pnpm --filter @ryuujs/scenarios exec vitest run src/scenarios/tarball.smoke.test.ts

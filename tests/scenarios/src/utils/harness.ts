@@ -116,7 +116,7 @@ export async function runCommand(
 
 		child.on("close", (code) => {
 			resolvePromise({
-				exitCode: code ?? 0,
+				exitCode: code ?? 1,
 				stderr,
 				stdout,
 			});
