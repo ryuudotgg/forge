@@ -14,14 +14,22 @@ import {
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { honoFramework } from "../../frameworks/hono";
+import { nextjsFramework } from "../../frameworks/nextjs";
+import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
+import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
 import { orpcTemplateVars } from "./shared";
 
 export const orpcWebRecipe = defineTemplateRecipe({
 	addon: "orpc",
-	markers: { SLUG: marker.required },
+	markers: {
+		SLUG: marker.required,
+		ENV_IMPORT: marker.required,
+		SERVER_URL: marker.required,
+		CLIENT_DIRECTIVE: marker.toggleLine("__CLIENT_DIRECTIVE__\n"),
+	},
 	assets: [
 		sharedAsset("client", {
 			template: "api/orpc/web/client.ts",
@@ -33,6 +41,17 @@ export const orpcWebRecipe = defineTemplateRecipe({
 		}),
 	],
 });
+
+const orpcWebFrameworks = [
+	nextjsFramework,
+	reactRouterFramework,
+	tanstackRouterFramework,
+	tanstackStartFramework,
+];
+
+function orpcWebFramework(config: ForgeConfig) {
+	return orpcWebFrameworks.find((framework) => framework.id === config.web);
+}
 
 export const orpcHonoRecipe = defineTemplateRecipe({
 	addon: "orpc",
@@ -61,19 +80,21 @@ export const orpcHonoAdapters = deriveRecipeAdapters({
 	},
 	target: (_asset, context) => moduleTarget(context.module),
 	before: ({ config }) => {
-		if (config.web !== "tanstack-router") return [];
+		const framework = orpcWebFramework(config);
+		if (framework === undefined) return [];
 
 		return orpcWebRecipe.assets.map((asset) => {
-			const rendered = renderRecipeAsset(
-				orpcWebRecipe,
-				asset,
-				tanstackRouterFramework,
-				{
-					markers: { SLUG: config.slug ?? "my-app" },
-					readTemplate,
-					slots: {},
+			const rendered = renderRecipeAsset(orpcWebRecipe, asset, framework, {
+				markers: {
+					SLUG: config.slug ?? "my-app",
+					ENV_IMPORT: framework.id === "nextjs" ? "../env" : "../../env",
+					SERVER_URL: `${framework.clientEnvPrefix ?? "VITE_"}SERVER_URL`,
+					CLIENT_DIRECTIVE:
+						framework.id === "nextjs" ? '"use client";\n\n' : "",
 				},
-			);
+				readTemplate,
+				slots: {},
+			});
 
 			return leafTextFile(
 				ensuredModuleTarget("web"),
@@ -89,7 +110,7 @@ export const orpcHonoAdapters = deriveRecipeAdapters({
 				{ name: `@${slug}/orpc`, version: "workspace:*", type: "dependencies" },
 				{ ...deps.orpcServer, type: "dependencies" },
 			]),
-			...(config.web === "tanstack-router"
+			...(orpcWebFramework(config) !== undefined
 				? [
 						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
 							{

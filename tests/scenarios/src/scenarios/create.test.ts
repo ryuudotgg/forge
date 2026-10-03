@@ -26,6 +26,40 @@ async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 }
 
 describe("create", () => {
+	it.each([
+		{ web: "nextjs", sourceRoot: "" },
+		{ web: "react-router", sourceRoot: "app/" },
+		{ web: "tanstack-start", sourceRoot: "src/" },
+	])("creates $web with an oRPC Hono client", async ({ web, sourceRoot }) => {
+		await withScenarioWorkspace(
+			`create-orpc-hono-${web}`,
+			async (workspace) => {
+				await createProject(workspace, {
+					backend: "hono",
+					packageManager: "pnpm",
+					rpc: "orpc",
+					web,
+				});
+
+				const client = await readFile(
+					join(workspace.projectRoot, `apps/web/${sourceRoot}orpc/client.ts`),
+					"utf8",
+				);
+
+				expect(client).toContain(
+					"export const client: RouterClient<AppRouter>",
+				);
+
+				expect(client).toContain("createTanstackQueryUtils(client)");
+				expect(
+					await pathExists(
+						join(workspace.projectRoot, `apps/web/${sourceRoot}orpc/react.tsx`),
+					),
+				).toBe(true);
+			},
+		);
+	});
+
 	it("creates a Next.js secondary app with a TanStack Router primary", async () => {
 		await withScenarioWorkspace(
 			"create-mixed-secondary-web-app",

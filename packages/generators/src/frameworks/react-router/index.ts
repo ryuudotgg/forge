@@ -19,7 +19,7 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
-import { rpcDescriptor } from "../../rpc";
+import { rpcDescriptor, rpcProviderTemplate } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
 import {
@@ -131,11 +131,21 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 	const useTailwind = config.style === "tailwind";
 	const rpc = rpcDescriptor(renderConfig);
 	const usesAuth = renderConfig.authentication === "better-auth";
+	const servesApiRoutes =
+		renderConfig.rpc !== "orpc" ||
+		renderConfig.backend === undefined ||
+		renderConfig.backend === "self";
 
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
+	const providersTemplate = readTemplate(
+		"frameworks/react-router/app/providers.tsx",
+	);
+
 	const providers = interpolate(
-		readTemplate("frameworks/react-router/app/providers.tsx"),
+		renderConfig.rpc === undefined
+			? providersTemplate
+			: rpcProviderTemplate(providersTemplate, renderConfig.rpc),
 		{
 			"// __TRPC_IMPORT__\n":
 				rpc !== undefined
@@ -149,14 +159,16 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 	const routes = interpolate(
 		readTemplate("frameworks/react-router/app/routes.ts"),
 		{
-			ROUTE_IMPORT: rpc !== undefined || usesAuth ? ", route" : "",
+			ROUTE_IMPORT:
+				servesApiRoutes && (rpc !== undefined || usesAuth) ? ", route" : "",
 			"// __TRPC_ROUTE__\n":
-				renderConfig.rpc !== undefined
+				renderConfig.rpc !== undefined && servesApiRoutes
 					? reactRouterRpcRoutes[renderConfig.rpc]
 					: "",
-			"// __AUTH_ROUTE__\n": usesAuth
-				? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
-				: "",
+			"// __AUTH_ROUTE__\n":
+				usesAuth && servesApiRoutes
+					? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
+					: "",
 		},
 	);
 

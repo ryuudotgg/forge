@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createContext, Script } from "node:vm";
+import { build } from "vite";
 import { describe, expect, it } from "vitest";
 import { expectEmailAuth } from "../utils/email-auth";
 import {
@@ -11,6 +13,7 @@ import {
 	type ForgeCommandResult,
 	forgeEnvironment,
 	pathExists,
+	readJson,
 	runCommand,
 	type ScenarioProject,
 	withScenarioWorkspace,
@@ -267,6 +270,7 @@ async function expectCredentialedGeneratedServer(
 		readonly polar?: boolean;
 		readonly rpc?: "trpc" | "orpc";
 		readonly username?: string;
+		readonly webOrigin?: string;
 	},
 ) {
 	const rpc = options?.rpc ?? "trpc";
@@ -276,7 +280,7 @@ async function expectCredentialedGeneratedServer(
 	if (origin === undefined || serverOrigin === undefined)
 		throw new Error(`Missing Generated Origins: ${projectRoot}`);
 
-	expect(origin).toBe("http://localhost:3000");
+	expect(origin).toBe(options?.webOrigin ?? "http://localhost:3000");
 	expect(serverOrigin).toBe("http://localhost:3001");
 
 	if (options?.polar) {
@@ -605,23 +609,17 @@ async function expectOrpcSession(
 	expect(anonymous.status).toBe(401);
 }
 
-const generatedOrpcClientProbe = `import { client } from "./src/orpc/client";
+const generatedOrpcClientProbe = `import { client } from "__CLIENT_IMPORT__";
 
-const cookie = process.env.SMOKE_COOKIE;
-const forward = globalThis.fetch;
-globalThis.fetch = (input, init) => {
-  const request = new Request(input, init);
-  if (cookie) request.headers.set("cookie", cookie);
-  return forward(request);
-};
+void (async () => {
+  const health = await client.health();
+  const me = await client.me().then(
+    (value) => ({ value }),
+    (error: { status?: number }) => ({ status: error.status }),
+  );
 
-const health = await client.health();
-const me = await client.me().then(
-  (value) => ({ value }),
-  (error: { status?: number }) => ({ status: error.status }),
-);
-
-console.log(JSON.stringify({ health, me }));
+  globalThis.reportResult({ health, me });
+})().catch(globalThis.reportError);
 `;
 
 async function expectGeneratedOrpcClient(
@@ -631,26 +629,117 @@ async function expectGeneratedOrpcClient(
 	userId: string,
 ) {
 	const webRoot = join(projectRoot, "apps/web");
-	await writeFile(join(webRoot, "orpc-probe.ts"), generatedOrpcClientProbe);
+	const manifest = await readJson<{ framework: string }>(
+		join(webRoot, "forge.json"),
+	);
 
-	const probe = async (sessionCookie: string) => {
-		const result = await runCommand(
-			join(projectRoot, "apps/server/node_modules/.bin/tsx"),
-			["orpc-probe.ts"],
-			{ cwd: webRoot, env: { ...generatedEnv, SMOKE_COOKIE: sessionCookie } },
-		);
+	const sourceRoot =
+		manifest.framework === "nextjs"
+			? ""
+			: manifest.framework === "react-router"
+				? "app/"
+				: "src/";
 
-		expect(
-			result.exitCode,
-			`generated oRPC client probe failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
-		).toBe(0);
+	await writeFile(
+		join(webRoot, "orpc-probe.ts"),
+		generatedOrpcClientProbe.replace(
+			"__CLIENT_IMPORT__",
+			`./${sourceRoot}orpc/client`,
+		),
+	);
 
-		const output: unknown = JSON.parse(
-			result.stdout.trim().split("\n").at(-1) ?? "",
-		);
+	const result = await build({
+		configFile: false,
+		root: webRoot,
+		logLevel: "error",
+		define: {
+			"import.meta.env.VITE_SERVER_URL": JSON.stringify(
+				generatedEnv.VITE_SERVER_URL,
+			),
+			...(manifest.framework === "nextjs"
+				? {
+						"process.env": "{}",
+						"process.env.NODE_ENV": '"production"',
+						"process.env.NEXT_PUBLIC_SERVER_URL": JSON.stringify(
+							generatedEnv.NEXT_PUBLIC_SERVER_URL,
+						),
+					}
+				: {}),
+		},
+		build: {
+			minify: false,
+			write: false,
+			lib: {
+				entry: join(webRoot, "orpc-probe.ts"),
+				name: "OrpcProbe",
+				formats: ["iife"],
+			},
+		},
+	});
 
-		return output;
-	};
+	const outputs = Array.isArray(result) ? result : [result];
+	const bundle = outputs
+		.flatMap((output) => ("output" in output ? output.output : []))
+		.find((output) => output.type === "chunk" && output.isEntry);
+
+	if (bundle?.type !== "chunk")
+		throw new Error("Missing Browser Client Bundle");
+
+	const probe = (sessionCookie: string) =>
+		new Promise<unknown>((resolveResult, rejectResult) => {
+			const context = createContext({
+				AbortController,
+				AbortSignal,
+				Blob,
+				DOMException,
+				File,
+				FormData,
+				Headers,
+				ReadableStream,
+				Request,
+				Response,
+				TextDecoder,
+				TextEncoder,
+				TransformStream,
+				URL,
+				URLSearchParams,
+				WritableStream,
+				atob,
+				btoa,
+				clearTimeout,
+				console,
+				crypto,
+				setTimeout,
+				reportResult: resolveResult,
+				reportError: rejectResult,
+				fetch: async (
+					input: Parameters<typeof fetch>[0],
+					init?: RequestInit,
+				) => {
+					const request = new Request(input, init);
+					expect(request.credentials).toBe("include");
+					request.headers.set("Origin", generatedEnv.WEB_URL ?? "");
+					if (sessionCookie) request.headers.set("Cookie", sessionCookie);
+
+					const response = await fetch(request);
+					expect(response.headers.get("access-control-allow-origin")).toBe(
+						generatedEnv.WEB_URL,
+					);
+
+					expect(response.headers.get("access-control-allow-credentials")).toBe(
+						"true",
+					);
+
+					return response;
+				},
+			});
+
+			new Script(
+				"globalThis.window = globalThis; globalThis.self = globalThis;",
+			).runInContext(context);
+
+			new Script(bundle.code).runInContext(context, { timeout: 5000 });
+		});
 
 	expect(await probe(cookie)).toEqual({
 		health: { status: "ok" },
@@ -892,26 +981,64 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		);
 	}, 600_000);
 
-	it("installs, builds, and typechecks TanStack Router with an oRPC Hono host", async () => {
-		await withScenarioWorkspace("smoke-orpc-hono-spa", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				backend: "hono",
-				database: "sqlite",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "orpc",
-				style: "tailwind",
-				web: "tanstack-router",
-			});
+	it.each(["tanstack-router", "react-router"])(
+		"installs, builds, and typechecks %s with an oRPC Hono host",
+		async (web) => {
+			await withScenarioWorkspace(
+				`smoke-orpc-hono-${web}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						backend: "hono",
+						database: "sqlite",
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "orpc",
+						style: "tailwind",
+						web,
+					});
 
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot, {
-				rpc: "orpc",
-			});
-		});
-	}, 600_000);
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						rpc: "orpc",
+						webOrigin:
+							web === "react-router"
+								? "http://localhost:5173"
+								: "http://localhost:3000",
+					});
+				},
+			);
+		},
+		600_000,
+	);
+
+	it.each(["nextjs", "tanstack-start"])(
+		"installs, builds, and typechecks %s as an oRPC Hono client",
+		async (web) => {
+			await withScenarioWorkspace(
+				`smoke-orpc-hono-${web}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						backend: "hono",
+						database: "sqlite",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "orpc",
+						style: "tailwind",
+						web,
+					});
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						rpc: "orpc",
+					});
+				},
+			);
+		},
+		600_000,
+	);
 
 	it("installs, builds, and typechecks Next.js with a Hono API host", async () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {

@@ -54,10 +54,10 @@ export const rpcDescriptors: { readonly [Id in RpcProvider]: RpcDescriptor } = {
 				fastify: false,
 			},
 			clients: {
-				nextjs: false,
-				"react-router": false,
+				nextjs: true,
+				"react-router": true,
 				"tanstack-router": true,
-				"tanstack-start": false,
+				"tanstack-start": true,
 				expo: false,
 			},
 		},

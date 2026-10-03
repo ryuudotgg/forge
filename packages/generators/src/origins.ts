@@ -29,6 +29,14 @@ export function appOrigin(config: ForgeConfig): string {
 export function viteServerEnvMarkers(config: ForgeConfig) {
 	const origin = standaloneApiOrigin(config);
 	return {
+		RUNTIME_ENV:
+			config.rpc === "orpc"
+				? '{ ...import.meta.env, ...(typeof process === "undefined" ? {} : process.env) }'
+				: "{ ...import.meta.env, ...process.env }",
+		SKIP_VALIDATION:
+			config.rpc === "orpc"
+				? 'typeof process !== "undefined" && (!!process.env.CI || shouldSkipValidation())'
+				: "!!process.env.CI || shouldSkipValidation()",
 		"  // __SERVER_ENV__\n  client: {},\n":
 			origin === undefined
 				? "  client: {},\n"
