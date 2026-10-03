@@ -21,7 +21,14 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
+
+const expressSlots = {
+	api: "src/routes",
+	trpc: "src/routes/trpc.ts",
+	auth: "src/routes/auth.ts",
+};
 
 export const expressFramework: FrameworkDefinition<"express"> = defineFramework(
 	{
@@ -30,7 +37,7 @@ export const expressFramework: FrameworkDefinition<"express"> = defineFramework(
 		ignoreDirs: [],
 		name: "Express",
 		sourceRoot: "src",
-		slots: ["api", "trpc", "auth"],
+		slots: Object.keys(expressSlots),
 		tsconfigPreset: {
 			name: "express",
 			content: {
@@ -94,8 +101,9 @@ export const expressBaseTemplateMetadata: FirstPartyTemplateMetadata = {
 function buildContributions(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";
 	const pm = resolvePackageManager(config);
-	const usesTrpc = config.rpc === "trpc";
+	const rpc = rpcDescriptor(config);
 	const usesAuth = config.authentication === "better-auth";
+
 	const webOrigin = webDevOrigin(config);
 	const serverOrigin = standaloneApiOrigin(config) ?? webOrigin;
 	const envLines = [
@@ -103,16 +111,19 @@ function buildContributions(config: ForgeConfig) {
 		envFileLine("VITE_SERVER_URL", serverOrigin),
 		envFileLine("NEXT_PUBLIC_SERVER_URL", serverOrigin),
 	];
+
 	const vars = {
 		SLUG: slug,
 		WEB_ORIGIN: webOrigin,
-		"// __TRPC_IMPORT__\n": usesTrpc
-			? 'import { registerTrpcRoutes } from "./routes/trpc.js";\n'
-			: "",
+		"// __TRPC_IMPORT__\n":
+			rpc !== undefined
+				? `import { ${rpc.routes.register} } from "${rpc.routes.module}";\n`
+				: "",
 		"// __AUTH_IMPORT__\n": usesAuth
 			? 'import { registerAuthRoutes } from "./routes/auth.js";\n'
 			: "",
-		"// __TRPC_ROUTE__\n": usesTrpc ? "registerTrpcRoutes(app);\n" : "",
+		"// __TRPC_ROUTE__\n":
+			rpc !== undefined ? `${rpc.routes.register}(app);\n` : "",
 		"// __AUTH_ROUTE__\n": usesAuth ? "registerAuthRoutes(app);\n" : "",
 	};
 
@@ -120,11 +131,7 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("server", "apps/server", {
 			framework: "express",
 			template: { id: "express/base", version: 1 },
-			slots: {
-				api: "src/routes",
-				trpc: "src/routes/trpc.ts",
-				auth: "src/routes/auth.ts",
-			},
+			slots: expressSlots,
 		}),
 		surfaceJson(ensuredModuleTarget("server"), "packageJson", {
 			name: `@${slug}/server`,

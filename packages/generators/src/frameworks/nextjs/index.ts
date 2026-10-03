@@ -19,8 +19,17 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+
+const nextjsSlots = {
+	layout: "app/layout.tsx",
+	page: "app/page.tsx",
+	api: "app/api",
+	trpc: "app/api/trpc/[trpc]/route.ts",
+	auth: "app/api/auth/[...all]/route.ts",
+};
 
 export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	id: "nextjs",
@@ -30,7 +39,7 @@ export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	ignoreDirs: [".next/"],
 	name: "Next.js",
 	sourceRoot: "",
-	slots: ["layout", "page", "api", "trpc", "auth"],
+	slots: Object.keys(nextjsSlots),
 	tsconfigPreset: {
 		name: "nextjs",
 		content: {
@@ -104,7 +113,8 @@ function buildContributions(config: ForgeConfig) {
 	const transpilePackages = [`@${slug}/ui`];
 
 	if (config.orm !== undefined) transpilePackages.push(`@${slug}/db`);
-	if (config.rpc === "trpc") transpilePackages.push(`@${slug}/trpc`);
+	if (config.rpc !== undefined)
+		transpilePackages.push(`@${slug}/${config.rpc}`);
 	if (config.authentication === "better-auth")
 		transpilePackages.push(`@${slug}/auth`);
 
@@ -174,16 +184,18 @@ function buildContributions(config: ForgeConfig) {
 		{ ...deps.typescript, type: "devDependencies" as const },
 	];
 
-	const usesTrpc = config.rpc === "trpc";
+	const rpc = rpcDescriptor(config);
 	const providers = interpolate(
 		readTemplate("frameworks/nextjs/app/providers.tsx"),
 		{
-			PROVIDER_IMPORTS: usesTrpc
-				? '\nimport { TRPCReactProvider } from "@/trpc/react";'
-				: "",
-			PROVIDER_CHILDREN: usesTrpc
-				? "<TRPCReactProvider>{children}</TRPCReactProvider>"
-				: "{children}",
+			PROVIDER_IMPORTS:
+				rpc !== undefined
+					? `\nimport { ${rpc.client.component} } from "${rpc.client.module}";`
+					: "",
+			PROVIDER_CHILDREN:
+				rpc !== undefined
+					? `<${rpc.client.component}>{children}</${rpc.client.component}>`
+					: "{children}",
 		},
 	);
 
@@ -191,13 +203,7 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("web", "apps/web", {
 			framework: "nextjs",
 			template: { id: "nextjs/base", version: 1 },
-			slots: {
-				layout: "app/layout.tsx",
-				page: "app/page.tsx",
-				api: "app/api",
-				trpc: "app/api/trpc/[trpc]/route.ts",
-				auth: "app/api/auth/[...all]/route.ts",
-			},
+			slots: nextjsSlots,
 		}),
 
 		surfaceText(

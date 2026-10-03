@@ -28,9 +28,11 @@ describe("Express backend", () => {
 		expect(
 			resolveApiHost(
 				{ backend: "express", web: "tanstack-router" },
+				"trpc",
 				builtins.frameworks,
 			),
 		).toBe("server");
+
 		expect(standaloneApiOrigin({ backend: "express" })).toBe(
 			"http://localhost:3001",
 		);
@@ -44,6 +46,7 @@ describe("Express backend", () => {
 			sourceRoot: "src",
 			tsconfigPreset: { name: "express" },
 		});
+
 		expect(expressFramework).not.toHaveProperty("configFile");
 	});
 
@@ -100,6 +103,7 @@ describe("Express backend", () => {
 			});
 
 			const app = writeContent(plan, "apps/server/src/app.ts");
+
 			expect(app).toContain('import cors from "cors"');
 			expect(app).toContain('import express from "express"');
 			expect(app).toContain("export const app: Express = express()");
@@ -109,6 +113,7 @@ describe("Express backend", () => {
 			expect(app.includes("registerTrpcRoutes(app);")).toBe(
 				combination.rpc === "trpc",
 			);
+
 			expect(app.includes("registerAuthRoutes(app);")).toBe(
 				combination.authentication === "better-auth",
 			);
@@ -118,10 +123,12 @@ describe("Express backend", () => {
 				expect(route).toContain("createExpressMiddleware");
 				expect(route).toContain('"/api/trpc"');
 				expect(route).toContain("headersFromRequest(req.headers)");
+
 				if (combination.authentication === "better-auth")
 					expect(route).toContain(
 						"auth,\n          headers: headersFromRequest(req.headers)",
 					);
+
 				expect(route).not.toMatch(markerPattern);
 			}
 
@@ -150,6 +157,7 @@ describe("Express backend", () => {
 			slug: "acme",
 			web: "nextjs",
 		};
+
 		const [express, hono] = await Promise.all([
 			plannedProject({ ...config, backend: "express" }),
 			plannedProject({ ...config, backend: "hono" }),
@@ -183,24 +191,29 @@ describe("Express backend", () => {
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"framework": "express"',
 		);
+
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"trpc": "src/routes/trpc.ts"',
 		);
+
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"auth": "src/routes/auth.ts"',
 		);
+
 		expect(Object.values(plan.manifest.modules)).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ root: "apps/server" }),
 			]),
 		);
+
 		expect(
 			plan.writes.some((write) => write.path.startsWith("apps/web/")),
 		).toBe(false);
+
 		expect(
 			apiHostError(
 				{ backend: "express" },
-				{ id: "trpc", name: "tRPC" },
+				{ id: "trpc", name: "tRPC", slot: "trpc" },
 				builtins.frameworks,
 			),
 		).toBeUndefined();

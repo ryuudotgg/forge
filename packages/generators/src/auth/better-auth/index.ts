@@ -25,6 +25,7 @@ import { renderBetterAuthTemplate } from "./shared";
 const betterAuthConsumer: ApiHostConsumer = {
 	id: "better-auth",
 	name: "Better Auth",
+	slot: "auth",
 };
 
 function generateAuthSecret() {

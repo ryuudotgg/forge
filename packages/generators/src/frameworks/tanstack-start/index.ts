@@ -19,8 +19,17 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+
+const tanstackStartSlots = {
+	layout: "src/routes/__root.tsx",
+	page: "src/routes/index.tsx",
+	api: "src/routes/api",
+	trpc: "src/routes/api/trpc/$.ts",
+	auth: "src/routes/api/auth/$.ts",
+};
 
 export const tanstackStartFramework: FrameworkDefinition<"tanstack-start"> =
 	defineFramework({
@@ -31,7 +40,7 @@ export const tanstackStartFramework: FrameworkDefinition<"tanstack-start"> =
 		ignoreDirs: [".tanstack/"],
 		name: "TanStack Start",
 		sourceRoot: "src",
-		slots: ["layout", "page", "api", "trpc", "auth"],
+		slots: Object.keys(tanstackStartSlots),
 		tsconfigPreset: {
 			name: "tanstack-start",
 			content: {
@@ -106,16 +115,19 @@ function buildContributions(config: ForgeConfig) {
 			: "",
 		"/* __TAILWIND_PLUGIN__ */ ": useTailwind ? "tailwindcss(), " : "",
 	};
-	const usesTrpc = config.rpc === "trpc";
+
+	const rpc = rpcDescriptor(config);
 
 	const providers = interpolate(
 		readTemplate("frameworks/tanstack-start/src/providers.tsx"),
 		{
 			SLUG: slug,
-			"// __TRPC_IMPORT__\n": usesTrpc
-				? 'import { TRPCReactProvider } from "@/trpc/react";\n'
-				: "",
-			"  // __TRPC_ENTRY__\n": usesTrpc ? "  trpc: TRPCReactProvider,\n" : "",
+			"// __TRPC_IMPORT__\n":
+				rpc !== undefined
+					? `import { ${rpc.client.component} } from "${rpc.client.module}";\n`
+					: "",
+			"  // __TRPC_ENTRY__\n":
+				rpc !== undefined ? `  ${config.rpc}: ${rpc.client.component},\n` : "",
 		},
 	);
 
@@ -176,13 +188,7 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("web", "apps/web", {
 			framework: "tanstack-start",
 			template: { id: "tanstack-start/base", version: 1 },
-			slots: {
-				layout: "src/routes/__root.tsx",
-				page: "src/routes/index.tsx",
-				api: "src/routes/api",
-				trpc: "src/routes/api/trpc/$.ts",
-				auth: "src/routes/api/auth/$.ts",
-			},
+			slots: tanstackStartSlots,
 		}),
 
 		surfaceText(

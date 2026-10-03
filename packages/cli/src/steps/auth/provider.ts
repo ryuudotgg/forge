@@ -30,12 +30,13 @@ const authenticationStep = defineStep<typeof authenticationSchema.Type>({
 		!!config.orm &&
 		config.backend !== "convex" &&
 		(config.authentication !== undefined ||
-			resolveApiHost(config) !== undefined),
+			resolveApiHost(config, "auth") !== undefined),
 
 	validate: (_value, config) => {
 		const failure = apiHostError(config, {
 			id: "better-auth",
 			name: "Better Auth",
+			slot: "auth",
 		});
 
 		if (failure !== undefined) throw failure;

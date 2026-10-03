@@ -19,8 +19,14 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+
+const tanstackRouterSlots = {
+	layout: "src/routes/__root.tsx",
+	page: "src/routes/index.tsx",
+};
 
 export const tanstackRouterFramework: FrameworkDefinition<"tanstack-router"> =
 	defineFramework({
@@ -31,7 +37,7 @@ export const tanstackRouterFramework: FrameworkDefinition<"tanstack-router"> =
 		ignoreDirs: [".tanstack/"],
 		name: "TanStack Router",
 		sourceRoot: "src",
-		slots: ["layout", "page"],
+		slots: Object.keys(tanstackRouterSlots),
 		tsconfigPreset: {
 			name: "tanstack-router",
 			content: {
@@ -106,15 +112,18 @@ function buildContributions(config: ForgeConfig) {
 			: "",
 		"/* __TAILWIND_PLUGIN__ */ ": useTailwind ? "tailwindcss(), " : "",
 	};
-	const usesTrpc = config.rpc === "trpc";
+
+	const rpc = rpcDescriptor(config);
 
 	const providers = interpolate(
 		readTemplate("frameworks/tanstack-router/src/providers.tsx"),
 		{
-			"// __TRPC_IMPORT__\n": usesTrpc
-				? 'import { TRPCReactProvider } from "@/trpc/react";\n'
-				: "",
-			"  // __TRPC_ENTRY__\n": usesTrpc ? "  trpc: TRPCReactProvider,\n" : "",
+			"// __TRPC_IMPORT__\n":
+				rpc !== undefined
+					? `import { ${rpc.client.component} } from "${rpc.client.module}";\n`
+					: "",
+			"  // __TRPC_ENTRY__\n":
+				rpc !== undefined ? `  ${config.rpc}: ${rpc.client.component},\n` : "",
 		},
 	);
 
@@ -175,10 +184,7 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("web", "apps/web", {
 			framework: "tanstack-router",
 			template: { id: "tanstack-router/base", version: 1 },
-			slots: {
-				layout: "src/routes/__root.tsx",
-				page: "src/routes/index.tsx",
-			},
+			slots: tanstackRouterSlots,
 		}),
 
 		surfaceText(

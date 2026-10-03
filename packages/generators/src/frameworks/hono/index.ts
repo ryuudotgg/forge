@@ -12,7 +12,7 @@ import {
 	surfaceScripts,
 	type TemplateDefinition,
 } from "@ryuujs/core";
-import type { ForgeConfig } from "../../config";
+import type { ForgeConfig, RpcProvider } from "../../config";
 import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
 import { standaloneApiOrigin, webDevOrigin } from "../../origins";
@@ -21,7 +21,18 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcDescriptors } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
+
+const honoSlots = {
+	api: "src/routes",
+	trpc: "src/routes/trpc.ts",
+	auth: "src/routes/auth.ts",
+};
+
+const honoRpcRoutes: { readonly [Id in RpcProvider]: string } = {
+	trpc: "trpcRoutes",
+};
 
 export const honoFramework: FrameworkDefinition<"hono"> = defineFramework({
 	id: "hono",
@@ -29,7 +40,7 @@ export const honoFramework: FrameworkDefinition<"hono"> = defineFramework({
 	ignoreDirs: [],
 	name: "Hono",
 	sourceRoot: "src",
-	slots: ["api", "trpc", "auth"],
+	slots: Object.keys(honoSlots),
 	tsconfigPreset: {
 		name: "hono",
 		content: {
@@ -89,8 +100,15 @@ export const honoBaseTemplateMetadata: FirstPartyTemplateMetadata = {
 function buildContributions(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";
 	const pm = resolvePackageManager(config);
-	const usesTrpc = config.rpc === "trpc";
+	const rpcRoutes =
+		config.rpc === undefined
+			? undefined
+			: {
+					module: rpcDescriptors[config.rpc].routes.module,
+					name: honoRpcRoutes[config.rpc],
+				};
 	const usesAuth = config.authentication === "better-auth";
+
 	const webOrigin = webDevOrigin(config);
 	const serverOrigin = standaloneApiOrigin(config) ?? webOrigin;
 	const envLines = [
@@ -98,16 +116,19 @@ function buildContributions(config: ForgeConfig) {
 		envFileLine("VITE_SERVER_URL", serverOrigin),
 		envFileLine("NEXT_PUBLIC_SERVER_URL", serverOrigin),
 	];
+
 	const vars = {
 		SLUG: slug,
 		WEB_ORIGIN: webOrigin,
-		"// __TRPC_IMPORT__\n": usesTrpc
-			? 'import { trpcRoutes } from "./routes/trpc.js";\n'
-			: "",
+		"// __TRPC_IMPORT__\n":
+			rpcRoutes !== undefined
+				? `import { ${rpcRoutes.name} } from "${rpcRoutes.module}";\n`
+				: "",
 		"// __AUTH_IMPORT__\n": usesAuth
 			? 'import { authRoutes } from "./routes/auth.js";\n'
 			: "",
-		"// __TRPC_ROUTE__\n": usesTrpc ? 'app.route("/", trpcRoutes);\n' : "",
+		"// __TRPC_ROUTE__\n":
+			rpcRoutes !== undefined ? `app.route("/", ${rpcRoutes.name});\n` : "",
 		"// __AUTH_ROUTE__\n": usesAuth ? 'app.route("/", authRoutes);\n' : "",
 	};
 
@@ -115,11 +136,7 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("server", "apps/server", {
 			framework: "hono",
 			template: { id: "hono/base", version: 1 },
-			slots: {
-				api: "src/routes",
-				trpc: "src/routes/trpc.ts",
-				auth: "src/routes/auth.ts",
-			},
+			slots: honoSlots,
 		}),
 		surfaceJson(ensuredModuleTarget("server"), "packageJson", {
 			name: `@${slug}/server`,

@@ -132,33 +132,7 @@ export const trpcHonoAdapters = deriveRecipeAdapters({
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
-	before: ({ config }) => {
-		const webFramework = trpcWebFramework(config);
-		if (webFramework === undefined) return expoTrpcClientContributions(config);
-
-		const markers = trpcRecipeMarkers(config, webFramework, true);
-
-		return [
-			...trpcRecipe.assets
-				.filter(
-					(asset) =>
-						asset._tag !== "SlotAssetDefinition" && asset.name !== "server",
-				)
-				.map((asset) => {
-					const rendered = renderRecipeAsset(trpcRecipe, asset, webFramework, {
-						markers,
-						readTemplate,
-						slots: {},
-					});
-					return leafTextFile(
-						ensuredModuleTarget("web"),
-						rendered.destination,
-						rendered.content,
-					);
-				}),
-			...expoTrpcClientContributions(config),
-		];
-	},
+	before: ({ config }) => standaloneTrpcClient(config),
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
 
@@ -168,15 +142,7 @@ export const trpcHonoAdapters = deriveRecipeAdapters({
 				{ ...deps.honoTrpcServer, type: "dependencies" },
 				{ ...deps.trpcServer, type: "dependencies" },
 			]),
-			...(trpcWebFramework(config) === undefined
-				? []
-				: [
-						surfaceDependencies(
-							ensuredModuleTarget("web"),
-							"packageJson",
-							trpcWebDependencies(slug),
-						),
-					]),
+			...standaloneTrpcWebDependencies(config),
 		];
 	},
 });
@@ -210,33 +176,7 @@ export const trpcFastifyAdapters = deriveRecipeAdapters({
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
-	before: ({ config }) => {
-		const webFramework = trpcWebFramework(config);
-		if (webFramework === undefined) return expoTrpcClientContributions(config);
-
-		const markers = trpcRecipeMarkers(config, webFramework, true);
-
-		return [
-			...trpcRecipe.assets
-				.filter(
-					(asset) =>
-						asset._tag !== "SlotAssetDefinition" && asset.name !== "server",
-				)
-				.map((asset) => {
-					const rendered = renderRecipeAsset(trpcRecipe, asset, webFramework, {
-						markers,
-						readTemplate,
-						slots: {},
-					});
-					return leafTextFile(
-						ensuredModuleTarget("web"),
-						rendered.destination,
-						rendered.content,
-					);
-				}),
-			...expoTrpcClientContributions(config),
-		];
-	},
+	before: ({ config }) => standaloneTrpcClient(config),
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
 
@@ -245,15 +185,7 @@ export const trpcFastifyAdapters = deriveRecipeAdapters({
 				{ name: `@${slug}/trpc`, version: "workspace:*", type: "dependencies" },
 				{ ...deps.trpcServer, type: "dependencies" },
 			]),
-			...(trpcWebFramework(config) === undefined
-				? []
-				: [
-						surfaceDependencies(
-							ensuredModuleTarget("web"),
-							"packageJson",
-							trpcWebDependencies(slug),
-						),
-					]),
+			...standaloneTrpcWebDependencies(config),
 		];
 	},
 });
@@ -287,33 +219,7 @@ export const trpcExpressAdapters = deriveRecipeAdapters({
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
-	before: ({ config }) => {
-		const webFramework = trpcWebFramework(config);
-		if (webFramework === undefined) return expoTrpcClientContributions(config);
-
-		const markers = trpcRecipeMarkers(config, webFramework, true);
-
-		return [
-			...trpcRecipe.assets
-				.filter(
-					(asset) =>
-						asset._tag !== "SlotAssetDefinition" && asset.name !== "server",
-				)
-				.map((asset) => {
-					const rendered = renderRecipeAsset(trpcRecipe, asset, webFramework, {
-						markers,
-						readTemplate,
-						slots: {},
-					});
-					return leafTextFile(
-						ensuredModuleTarget("web"),
-						rendered.destination,
-						rendered.content,
-					);
-				}),
-			...expoTrpcClientContributions(config),
-		];
-	},
+	before: ({ config }) => standaloneTrpcClient(config),
 	after: ({ config, module }) => {
 		const slug = config.slug ?? "my-app";
 
@@ -322,15 +228,7 @@ export const trpcExpressAdapters = deriveRecipeAdapters({
 				{ name: `@${slug}/trpc`, version: "workspace:*", type: "dependencies" },
 				{ ...deps.trpcServer, type: "dependencies" },
 			]),
-			...(trpcWebFramework(config) === undefined
-				? []
-				: [
-						surfaceDependencies(
-							ensuredModuleTarget("web"),
-							"packageJson",
-							trpcWebDependencies(slug),
-						),
-					]),
+			...standaloneTrpcWebDependencies(config),
 		];
 	},
 });
@@ -387,5 +285,46 @@ export function expoTrpcClientContributions(config: ForgeConfig) {
 			{ ...deps.tanstackReactQuery, type: "dependencies" },
 			{ ...deps.superjson, type: "dependencies" },
 		]),
+	];
+}
+
+function standaloneTrpcClient(config: ForgeConfig) {
+	const webFramework = trpcWebFramework(config);
+	if (webFramework === undefined) return expoTrpcClientContributions(config);
+
+	const markers = trpcRecipeMarkers(config, webFramework, true);
+
+	return [
+		...trpcRecipe.assets
+			.filter(
+				(asset) =>
+					asset._tag !== "SlotAssetDefinition" && asset.name !== "server",
+			)
+			.map((asset) => {
+				const rendered = renderRecipeAsset(trpcRecipe, asset, webFramework, {
+					markers,
+					readTemplate,
+					slots: {},
+				});
+
+				return leafTextFile(
+					ensuredModuleTarget("web"),
+					rendered.destination,
+					rendered.content,
+				);
+			}),
+		...expoTrpcClientContributions(config),
+	];
+}
+
+function standaloneTrpcWebDependencies(config: ForgeConfig) {
+	if (trpcWebFramework(config) === undefined) return [];
+
+	return [
+		surfaceDependencies(
+			ensuredModuleTarget("web"),
+			"packageJson",
+			trpcWebDependencies(config.slug ?? "my-app"),
+		),
 	];
 }

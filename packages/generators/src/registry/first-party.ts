@@ -30,6 +30,7 @@ import {
 	linters,
 	mobileFrameworks,
 	nativeStyleFrameworks,
+	rpcProviders,
 	styleFrameworks,
 	webFrameworks,
 } from "../config";
@@ -288,5 +289,10 @@ export const firstPartyCatalog = [
 		.filter((id) => !linters.available(id))
 		.map((id) =>
 			announcedCatalogEntry("addon", id, linters.label(id), "linter"),
+		),
+	...rpcProviders.ids
+		.filter((id) => !rpcProviders.available(id))
+		.map((id) =>
+			announcedCatalogEntry("addon", id, rpcProviders.label(id), "addon"),
 		),
 ] as const satisfies ReadonlyArray<CatalogEntry>;
