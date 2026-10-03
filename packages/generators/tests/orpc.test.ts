@@ -22,14 +22,6 @@ const unsupportedOrpcPairs: ReadonlyArray<{
 	config: ForgeConfig;
 }> = [
 	{ name: "Next.js self host", config: { backend: "self", web: "nextjs" } },
-	{
-		name: "React Router self host",
-		config: { backend: "self", web: "react-router" },
-	},
-	{
-		name: "TanStack Start self host",
-		config: { backend: "self", web: "tanstack-start" },
-	},
 	{ name: "Express host", config: { backend: "express" } },
 	{ name: "Fastify host", config: { backend: "fastify" } },
 	{
@@ -310,6 +302,178 @@ describe("oRPC web clients beside Hono", () => {
 							write.path.includes("api/orpc"),
 					),
 				).toBe(false);
+
+				for (const write of plan.writes)
+					expect(write.content, write.path).not.toMatch(/__[A-Z_]+__/);
+			}
+		},
+	);
+});
+
+describe("oRPC request hosts", () => {
+	it.each(["react-router", "tanstack-start"] satisfies ReadonlyArray<
+		ForgeConfig["web"]
+	>)(
+		"leaves $web legacy module slots and environment unchanged",
+		async (web) => {
+			for (const rpc of [undefined, "trpc"] satisfies ReadonlyArray<
+				ForgeConfig["rpc"]
+			>) {
+				const plan = await plannedProject({
+					...supportedConfig,
+					backend: "self",
+					web,
+					rpc,
+				});
+
+				const manifest = JSON.parse(writeContent(plan, "apps/web/forge.json"));
+
+				expect(manifest.slots).not.toHaveProperty("orpc");
+				expect(manifest.slots.trpc).toBe(
+					web === "react-router"
+						? "app/routes/api.trpc.$.ts"
+						: "src/routes/api/trpc/$.ts",
+				);
+
+				expect(writeContent(plan, "apps/web/env.ts")).not.toContain(
+					"VITE_SERVER_URL",
+				);
+
+				expect(plan.writes.some((write) => write.path.includes("/orpc/"))).toBe(
+					false,
+				);
+			}
+		},
+	);
+
+	it.each([
+		{
+			web: "react-router",
+			sourceRoot: "app",
+			route: "app/routes/api.orpc.$.ts",
+		},
+		{
+			web: "tanstack-start",
+			sourceRoot: "src",
+			route: "src/routes/api/orpc/$.ts",
+		},
+	] satisfies ReadonlyArray<{
+		web: ForgeConfig["web"];
+		sourceRoot: string;
+		route: string;
+	}>)(
+		"renders $web request routes and callers with auth on and off",
+		async ({ web, sourceRoot, route }) => {
+			for (const usesAuth of [false, true]) {
+				const plan = await plannedProject({
+					...supportedConfig,
+					backend: "self",
+					web,
+					...(usesAuth
+						? ({
+								authentication: "better-auth",
+								orm: "drizzle",
+								database: "sqlite",
+							} satisfies Partial<ForgeConfig>)
+						: {}),
+				});
+
+				const routeContent = writeContent(plan, `apps/web/${route}`);
+				const caller = writeContent(
+					plan,
+					`apps/web/${sourceRoot}/orpc/server.ts`,
+				);
+
+				const client = writeContent(
+					plan,
+					`apps/web/${sourceRoot}/orpc/client.ts`,
+				);
+
+				const providers = writeContent(
+					plan,
+					`apps/web/${sourceRoot}/providers.tsx`,
+				);
+
+				expect(routeContent).toContain('from "@orpc/server/fetch"');
+				expect(routeContent).toContain("SimpleCsrfProtectionHandlerPlugin");
+				expect(routeContent).toContain('prefix: "/api/orpc"');
+				expect(routeContent).toContain("if (matched) return response");
+				expect(routeContent).toContain(
+					'new Response("Not Found", { status: 404 })',
+				);
+
+				expect(routeContent).toContain("headers: request.headers");
+				expect(caller).toContain("createServerCaller(request: Request)");
+				expect(caller).toContain("createRouterClient(appRouter, { context })");
+				expect(caller).toContain("headers: request.headers");
+
+				for (const content of [routeContent, caller]) {
+					expect(content.includes('import { auth } from "@acme/auth"')).toBe(
+						usesAuth,
+					);
+
+					expect(content.includes("createORPCContext({ auth, headers:")).toBe(
+						usesAuth,
+					);
+				}
+
+				expect(client).toContain("RouterClient<AppRouter>");
+				expect(client).toContain(
+					'new URL("/api/orpc", window.location.origin)',
+				);
+
+				expect(client).toContain('credentials: "include"');
+				expect(client).toContain("SimpleCsrfProtectionLinkPlugin");
+				expect(writeContent(plan, "apps/web/env.ts")).not.toContain(
+					"VITE_SERVER_URL",
+				);
+
+				expect(
+					writeContent(plan, `apps/web/${sourceRoot}/orpc/react.tsx`),
+				).toContain("QueryClientProvider");
+
+				expect(providers).toContain("orpc: ORPCReactProvider");
+				expect(providers).toContain("dataProviders.orpc");
+				expect(providers).not.toContain("dataProviders.trpc");
+				expect(
+					JSON.parse(writeContent(plan, "apps/web/package.json")).dependencies,
+				).toMatchObject({
+					"@acme/orpc": "workspace:*",
+					"@orpc/client": "catalog:",
+					"@orpc/server": "catalog:",
+					"@orpc/tanstack-query": "catalog:",
+					"@tanstack/react-query": "catalog:",
+				});
+
+				expect(
+					JSON.parse(writeContent(plan, "apps/web/forge.json")),
+				).toMatchObject({
+					framework: web,
+					slots: { orpc: route },
+				});
+
+				expect(
+					Object.values(plan.manifest.modules).find(
+						(module) => module.root === "apps/web",
+					)?.definitionIds,
+				).toContain(`${web}/base`);
+
+				expect(
+					plan.writes.some((write) => write.path.startsWith("apps/server/")),
+				).toBe(false);
+
+				if (web === "react-router") {
+					expect(routeContent).toContain("export const loader");
+					expect(routeContent).toContain("export const action");
+					expect(writeContent(plan, "apps/web/app/routes.ts")).toContain(
+						'route("api/orpc/*", "routes/api.orpc.$.ts")',
+					);
+				} else {
+					expect(routeContent).toContain('import "@tanstack/react-start"');
+					expect(routeContent).toContain('createFileRoute("/api/orpc/$")');
+					expect(routeContent).toContain("GET: handler");
+					expect(routeContent).toContain("POST: handler");
+				}
 
 				for (const write of plan.writes)
 					expect(write.content, write.path).not.toMatch(/__[A-Z_]+__/);

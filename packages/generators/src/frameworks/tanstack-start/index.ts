@@ -45,7 +45,7 @@ export const tanstackStartFramework: FrameworkDefinition<"tanstack-start"> =
 		ignoreDirs: [".tanstack/"],
 		name: "TanStack Start",
 		sourceRoot: "src",
-		slots: Object.keys(tanstackStartSlots),
+		slots: [...Object.keys(tanstackStartSlots), "orpc"],
 		tsconfigPreset: {
 			name: "tanstack-start",
 			content: {
@@ -207,7 +207,12 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			framework: "tanstack-start",
 			template: { id: "tanstack-start/base", version: 1 },
 			slots: instance.primary
-				? tanstackStartSlots
+				? {
+						...tanstackStartSlots,
+						...(renderConfig.rpc === "orpc"
+							? { orpc: "src/routes/api/orpc/$.ts" }
+							: {}),
+					}
 				: { layout: tanstackStartSlots.layout, page: tanstackStartSlots.page },
 			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),

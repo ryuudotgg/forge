@@ -20,7 +20,7 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
-import { orpcTemplateVars } from "./shared";
+import { orpcTemplateVars, renderOrpcTemplate } from "./shared";
 
 export const orpcWebRecipe = defineTemplateRecipe({
 	addon: "orpc",
@@ -62,6 +62,77 @@ export const orpcHonoRecipe = defineTemplateRecipe({
 	},
 	assets: [
 		slotAsset("orpc", { variants: { hono: "api/orpc/routes/hono/orpc.ts" } }),
+	],
+});
+
+export const orpcRequestRecipe = defineTemplateRecipe({
+	addon: "orpc",
+	markers: {
+		SLUG: marker.required,
+		AUTH_IMPORT: marker.toggleLine("__AUTH_IMPORT__;\n"),
+		AUTH_ARG: marker.toggleInline("__AUTH_ARG__, "),
+	},
+	assets: [
+		sharedAsset("server", {
+			template: "api/orpc/request/server.ts",
+			destination: inSourceRoot("orpc/server.ts"),
+		}),
+		slotAsset("orpc", {
+			variants: {
+				"react-router": "api/orpc/routes/react-router/api.orpc.$.ts",
+				"tanstack-start": "api/orpc/routes/tanstack-start/$.ts",
+			},
+		}),
+	],
+});
+
+export const orpcRequestAdapters = deriveRecipeAdapters({
+	recipe: orpcRequestRecipe,
+	frameworks: [reactRouterFramework, tanstackStartFramework],
+	readTemplate,
+	requiredSlots: ["orpc"],
+	markers: ({ config }: AdapterContext<ForgeConfig>) => {
+		const values = orpcTemplateVars(config);
+		return {
+			SLUG: values.SLUG,
+			AUTH_IMPORT: values["__AUTH_IMPORT__;\n"],
+			AUTH_ARG: values["__AUTH_ARG__, "],
+		};
+	},
+	target: (_asset, context) => moduleTarget(context.module),
+	before: ({ config, framework, module }) =>
+		orpcWebRecipe.assets.map((asset) => {
+			const rendered = renderRecipeAsset(orpcWebRecipe, asset, framework, {
+				markers: {
+					SLUG: config.slug ?? "my-app",
+					ENV_IMPORT: "../../env",
+					SERVER_URL: "VITE_SERVER_URL",
+					CLIENT_DIRECTIVE: "",
+				},
+				readTemplate,
+				slots: {},
+			});
+
+			return leafTextFile(
+				moduleTarget(module),
+				rendered.destination,
+				asset.name === "client"
+					? renderOrpcTemplate(config, "request/client.ts")
+					: rendered.content,
+			);
+		}),
+	after: ({ config, module }) => [
+		surfaceDependencies(moduleTarget(module), "packageJson", [
+			{
+				name: `@${config.slug ?? "my-app"}/orpc`,
+				version: "workspace:*",
+				type: "dependencies",
+			},
+			{ ...deps.orpcClient, type: "dependencies" },
+			{ ...deps.orpcServer, type: "dependencies" },
+			{ ...deps.orpcTanstackQuery, type: "dependencies" },
+			{ ...deps.tanstackReactQuery, type: "dependencies" },
+		]),
 	],
 });
 

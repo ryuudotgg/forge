@@ -1,6 +1,14 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NodeServices } from "@effect/platform-node";
+import { CliVersion, CoreLive, Planner } from "@ryuugg/core";
+import {
+	builtins,
+	type ForgeConfig,
+	probeWorkspaceCommandVersions,
+} from "@ryuugg/generators";
+import { Effect, Layer } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runCreate } from "../src/commands/create";
 import { defaultPreset } from "../src/presets/default";
@@ -27,7 +35,6 @@ async function withTempDir<T>(
 	run: (directory: string) => Promise<T>,
 ) {
 	const directory = await mkdtemp(join(tmpdir(), `forge-${name}-`));
-
 	try {
 		return await run(directory);
 	} finally {
@@ -151,6 +158,64 @@ describe("create command", () => {
 		});
 	});
 
+	it.each([
+		{ web: "react-router", route: "app/routes/api.orpc.$.ts" },
+		{ web: "tanstack-start", route: "src/routes/api/orpc/$.ts" },
+	] satisfies ReadonlyArray<{ web: ForgeConfig["web"]; route: string }>)(
+		"plans the primary $web oRPC slot in the create manifest",
+		async ({ web, route }) => {
+			await withTempDir("create-orpc", async (directory) => {
+				const config: ForgeConfig = {
+					slug: "acme",
+					web,
+					backend: "self",
+					rpc: "orpc",
+					packageManager: "pnpm",
+				};
+
+				const layer = CoreLive.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+					Layer.provideMerge(NodeServices.layer),
+				);
+
+				const plan = await Effect.runPromise(
+					Effect.gen(function* () {
+						const versions = yield* probeWorkspaceCommandVersions(config);
+						const planner = yield* Planner;
+						return yield* planner.planCreate(
+							directory,
+							config,
+							builtins,
+							versions,
+						);
+					}).pipe(Effect.provide(layer)),
+				);
+
+				expect(
+					Object.values(plan.manifest.modules).find(
+						(module) => module.root === "apps/web",
+					),
+				).toMatchObject({
+					definitionIds: [`${web}/base`],
+				});
+
+				const moduleManifest = plan.writes.find(
+					(write) => write.path === "apps/web/forge.json",
+				);
+
+				if (moduleManifest === undefined)
+					throw new Error("Missing Module Manifest: apps/web");
+
+				expect(JSON.parse(moduleManifest.content)).toMatchObject({
+					framework: web,
+					slots: { orpc: route },
+				});
+			});
+		},
+	);
+
 	it("logs a helpful error when the preset is unknown", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(((
 			code?: string | number | null,
@@ -164,6 +229,7 @@ describe("create command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We couldn't find this preset. You can use: default.",
 			);
+
 			expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -189,6 +255,7 @@ describe("create command", () => {
 				expect(promptMocks.logError).toHaveBeenCalledWith(
 					`We couldn't read or parse the config file at "${configPath}".`,
 				);
+
 				expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
 			} finally {
 				exit.mockRestore();
@@ -213,6 +280,7 @@ describe("create command", () => {
 				expect(promptMocks.logError).toHaveBeenCalledWith(
 					`We couldn't read or parse the config file at "${configPath}".`,
 				);
+
 				expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
 			} finally {
 				exit.mockRestore();
@@ -239,6 +307,7 @@ describe("create command", () => {
 				expect(promptMocks.logError).toHaveBeenCalledWith(
 					"Your config file is invalid.\n  Expected { readonly [x: string]: unknown }, actual [1,2]",
 				);
+
 				expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
 			} finally {
 				exit.mockRestore();
