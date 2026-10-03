@@ -21,6 +21,7 @@ const TEMPLATE_DIR = join(
 	"..",
 	"templates",
 );
+
 const ROOT_DIR = join(TEMPLATE_DIR, "..", "..", "..");
 const GITHUB_TEMPLATE_DIR = join(TEMPLATE_DIR, "tooling", "github");
 
@@ -34,13 +35,11 @@ const REPOSITORY_SETUP_ACTION = join(
 
 const readActionMajors = (path: string) => {
 	const actions = new Map<string, string>();
-
 	for (const match of readFileSync(path, "utf-8").matchAll(
-		/^\s*- uses:\s+(?<depName>[\w.-]+\/[\w.-]+)@v(?<major>\d+)\s*$/gm,
+		/^\s*- uses:\s+(?<depName>[\w.-]+\/[\w.-]+)@(?:[0-9a-f]{40}\s+#\s+)?v(?<major>\d+)(?:\.\d+)*\s*$/gm,
 	)) {
 		const depName = match.groups?.depName;
 		const major = match.groups?.major;
-
 		if (depName && major) actions.set(depName, major);
 	}
 
@@ -70,10 +69,12 @@ describe("interpolate", () => {
 	it("matches recipe rendering byte-for-byte", () => {
 		const template =
 			"// __AUTH_IMPORT__\nexport const __SLUG__ = call(/* __AUTH_ARG__ */ input);\n";
+
 		const asset = sharedAsset("query-client", {
 			template: "api/trpc/web/query-client.ts",
 			destination: inSourceRoot("trpc/query-client.ts"),
 		});
+
 		const recipe = defineTemplateRecipe({
 			addon: "trpc",
 			markers: {
@@ -83,11 +84,13 @@ describe("interpolate", () => {
 			},
 			assets: [asset],
 		});
+
 		const legacyValues = {
 			SLUG: "acme",
 			"// __AUTH_IMPORT__\n": 'import { auth } from "@acme/auth";\n',
 			"/* __AUTH_ARG__ */ ": "auth, ",
 		};
+
 		const rendered = renderRecipeAsset(recipe, asset, nextjsFramework, {
 			markers: {
 				SLUG: legacyValues.SLUG,
@@ -152,6 +155,7 @@ describe("GitHub Actions templates", () => {
 					templateMajor,
 					`${templateName} uses ${actionName}`,
 				).toBeDefined();
+
 				expect(templateMajor, `${templateName} ${actionName}`).toBe(
 					repositoryMajor,
 				);
