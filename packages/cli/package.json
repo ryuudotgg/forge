@@ -52,8 +52,8 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
-		"@ryuujs/temper": "workspace:*",
-		"@ryuujs/tsconfig": "workspace:*",
+		"@ryuugg/temper": "workspace:*",
+		"@ryuugg/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"@vitest/coverage-v8": "catalog:dev",
 		"tsdown": "catalog:build",

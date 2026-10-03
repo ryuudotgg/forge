@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { emailProviders, resolveApiHost } from "@ryuujs/generators";
+import { emailProviders, resolveApiHost } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { choiceOptions } from "../../utils/choices";
