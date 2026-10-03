@@ -159,6 +159,12 @@ export { default as tailwind } from "./style/tailwind";
 export { default as gitignore } from "./tooling/gitignore";
 export { default as typescript } from "./tooling/typescript";
 export { default as ui } from "./ui";
+export {
+	reservedWebAppNames,
+	type WebAppConfig,
+	type WebAppInstance,
+	webAppInstances,
+} from "./web-apps";
 export { default as bun } from "./workspace/bun";
 export { probeWorkspaceCommandVersions } from "./workspace/command-versions";
 export { default as pnpm } from "./workspace/pnpm";

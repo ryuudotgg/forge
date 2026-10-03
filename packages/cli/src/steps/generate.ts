@@ -31,7 +31,9 @@ const generateStep = defineStep({
 		}
 
 		const projectRoot = String(config.path ?? ".");
-		const forgeConfig: ForgeConfig = config;
+		const { webApps, ...withoutWebApps } = config;
+		const forgeConfig: ForgeConfig =
+			Array.isArray(webApps) && webApps.length === 0 ? withoutWebApps : config;
 
 		try {
 			const loadedRegistry = await loadDefinitionRegistry();

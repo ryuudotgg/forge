@@ -60,6 +60,7 @@ export const AppConfigSchema = Schema.Struct({
 	id: ModuleIdSchema,
 	type: Schema.Literal("app"),
 	framework: Schema.String,
+	role: Schema.optional(Schema.Literal("primary")),
 	template: TemplateSchema,
 	slots: SlotsSchema,
 });
@@ -83,6 +84,7 @@ export const ConfigSchema = Schema.Union([
 	AppConfigSchema,
 	PackageConfigSchema,
 ]);
+
 export type Config = typeof ConfigSchema.Type;
 
 export type DiscoveredModule = Config & {
@@ -284,7 +286,6 @@ const makeConfigStore = Effect.gen(function* () {
 			Effect.gen(function* () {
 				const config = yield* read(moduleRoot);
 				const packageName = yield* maybeReadPackageName(fs, moduleRoot);
-
 				return {
 					...config,
 					root: normalizeRelativePath(projectRoot, moduleRoot),

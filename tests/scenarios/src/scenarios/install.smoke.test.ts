@@ -746,6 +746,28 @@ async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
 }
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
+	it("installs, builds, and typechecks secondary web apps with a Hono host", async () => {
+		await withScenarioWorkspace(
+			"smoke-secondary-web-app",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "tanstack-router",
+					backend: "hono",
+					rpc: "trpc",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					style: "tailwind",
+					linter: "biome",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "tanstack-router" }],
+				});
+
+				await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			},
+		);
+	}, 600_000);
+
 	it("installs, builds, and typechecks TanStack Router with an oRPC Hono host", async () => {
 		await withScenarioWorkspace("smoke-orpc-hono-spa", async (workspace) => {
 			await createProject(workspace, {

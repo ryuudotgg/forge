@@ -1,8 +1,10 @@
+import { Result, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import desktopStep from "../src/steps/platforms/desktop";
 import mobileStep from "../src/steps/platforms/mobile";
 import platformsStep from "../src/steps/platforms/select";
 import webStep from "../src/steps/platforms/web";
+import webAppsStep, { webAppsSchema } from "../src/steps/platforms/web-apps";
 import { type PartialConfig, SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
@@ -133,6 +135,48 @@ describe("platforms step", () => {
 		await expect(platformsStep.execute({}, true)).rejects.toThrow("Cancelled");
 
 		expect(cancelMocks.cancel).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("secondary web apps step", () => {
+	it("runs after web selection without prompting", async () => {
+		expect(webAppsStep.id).toBe("webApps");
+		expect(webAppsStep.group).toBe("platforms");
+		expect(webAppsStep.configKey).toBe("webApps");
+		expect(webAppsStep.dependencies).toEqual(["web"]);
+
+		expect(webAppsStep.shouldRun({})).toBe(false);
+		expect(webAppsStep.shouldRun({ platforms: ["mobile"] })).toBe(false);
+		expect(webAppsStep.shouldRun({ platforms: ["web"] })).toBe(true);
+
+		for (const interactive of [true, false])
+			await expect(webAppsStep.execute({}, interactive)).resolves.toBe(SKIP);
+
+		expect(promptMocks.select).not.toHaveBeenCalled();
+		expect(promptMocks.multiselect).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		[
+			{ name: "admin", framework: "nextjs" },
+			{ name: "admin", framework: "nextjs" },
+		],
+		[{ name: "web", framework: "nextjs" }],
+		[{ name: "Admin", framework: "nextjs" }],
+		[{ name: "2admin", framework: "nextjs" }],
+		[{ name: "admin_tools", framework: "nextjs" }],
+		[{ name: "admin", framework: "unknown" }],
+	])("rejects invalid secondary apps %j", (...apps) => {
+		expect(
+			Result.isFailure(Schema.decodeUnknownResult(webAppsSchema)(apps)),
+		).toBe(true);
+	});
+
+	it("accepts valid secondary apps and an empty list", () => {
+		for (const apps of [[], [{ name: "admin-tools", framework: "nextjs" }]])
+			expect(
+				Result.isSuccess(Schema.decodeUnknownResult(webAppsSchema)(apps)),
+			).toBe(true);
 	});
 });
 

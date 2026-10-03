@@ -1,4 +1,5 @@
 import type { PackageManager, Runtime } from "@ryuugg/core";
+import type { WebAppConfig } from "./web-apps";
 
 function defineChoices<const T extends Record<string, string>>(
 	definitions: T,
@@ -336,6 +337,7 @@ export interface ForgeConfig {
 	readonly linter?: Linter;
 	readonly platforms?: ReadonlyArray<Platform>;
 	readonly web?: WebFramework;
+	readonly webApps?: ReadonlyArray<WebAppConfig>;
 	readonly backend?: Backend;
 	readonly rpc?: RpcProvider;
 	readonly orm?: Orm;
