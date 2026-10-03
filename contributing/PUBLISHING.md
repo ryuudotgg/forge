@@ -31,25 +31,11 @@ The `version` field is required. Forge stores it in the manifest and compares it
 
 Every `contribute` function returns an Effect, so `effect` is a runtime dependency. The example pins the Effect version Forge is built with, and the smoke test fails when the two drift apart.
 
-The default export describes everything the package provides:
+The entry point, `index.mjs`, defines the units and exports the manifest that lists them:
 
 ```js
-export default {
-	apiVersion: 1,
-	adapters: [adapter],
-	catalog: [],
-};
-```
+import { Effect } from "effect";
 
-- `apiVersion` is the authoring API the package targets. This release of Forge accepts `1` and nothing else.
-- `catalog` is required, even when it is empty. It holds the entries `forge list` and `forge info` show for the addons, frameworks and templates the package defines. An adapter for an addon that already exists needs no entry.
-- `addons`, `adapters`, `frameworks` and `templates` are optional arrays of units.
-
-Addon, framework, template and catalog ids must be scoped as well, such as `@example/sentry`. Adapters have no id of their own: Forge keys them by the addon and framework they join.
-
-Units are plain objects tagged with `_tag`. This is the example's adapter:
-
-```js
 const adapter = {
 	_tag: "AdapterDefinition",
 	addon: "vitest",
@@ -69,9 +55,23 @@ const adapter = {
 			},
 		]),
 };
+
+export default {
+	apiVersion: 1,
+	adapters: [adapter],
+	catalog: [],
+};
 ```
 
-`addon` and `framework` must name units that are already registered, either first party or from a registry listed earlier in the project. `requiredSlots` lists the framework slots the adapter writes into. `contribute` receives the project config, the framework, the target module and its slots, and returns an Effect that yields a list of contributions. A `LeafTextFileContribution` writes one file inside the module. The full set of unit fields and contribution tags is defined in `packages/core/src/authoring.ts`.
+The default export describes everything the package provides:
+
+- `apiVersion` is the authoring API the package targets. This release of Forge accepts `1` and nothing else.
+- `catalog` is required, even when it is empty. It holds the entries `forge list` and `forge info` show for the addons, frameworks and templates the package defines. An adapter for an addon that already exists needs no entry.
+- `addons`, `adapters`, `frameworks` and `templates` are optional arrays of units.
+
+Addon, framework, template and catalog ids must be scoped as well, such as `@example/sentry`. Adapters have no id of their own: Forge keys them by the addon and framework they join.
+
+Units are plain objects tagged with `_tag`. In the example's adapter, `addon` and `framework` must name units that are already registered, either first party or from a registry listed earlier in the project. `requiredSlots` lists the framework slots the adapter writes into. `contribute` receives the project config, the framework, the target module and its slots, and returns an Effect that yields a list of contributions. A `LeafTextFileContribution` writes one file inside the module. The full set of unit fields and contribution tags is defined in `packages/core/src/authoring.ts`.
 
 ## Exports
 
