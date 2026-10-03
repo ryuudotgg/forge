@@ -5,6 +5,7 @@ import { Effect, FileSystem, Layer, PlatformError, Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	buildArtifactIndex,
+	CliVersion,
 	ConfigStore,
 	CoreLive,
 	type Lockfile,
@@ -22,7 +23,10 @@ import {
 	writeText,
 } from "./harness";
 
-const projectLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
+const projectLayer = CoreLive.pipe(
+	Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	Layer.provideMerge(NodeServices.layer),
+);
 
 async function stateLayerWithFileSystem(
 	transform: (fileSystem: FileSystem.FileSystem) => FileSystem.FileSystem,
@@ -30,12 +34,15 @@ async function stateLayerWithFileSystem(
 	const fileSystem = await Effect.runPromise(
 		FileSystem.FileSystem.pipe(Effect.provide(NodeFileSystem.layer)),
 	);
+
 	const fileSystemLayer = Layer.succeed(
 		FileSystem.FileSystem,
 		transform(fileSystem),
 	);
 
-	return State.Default.pipe(Layer.provide(fileSystemLayer));
+	return State.Default.pipe(
+		Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	).pipe(Layer.provide(fileSystemLayer));
 }
 
 function isManaged(directory: string) {
@@ -54,6 +61,77 @@ function fillModuleId(letterIndex: number) {
 }
 
 describe("project state", () => {
+	it("stamps every manifest write with the provided CLI version", async () => {
+		await withTempDir("state-cli-version", async (directory) => {
+			await Effect.runPromise(
+				State.writeManifest(directory, {
+					cliVersion: "older-cli",
+					config: {},
+					installs: [],
+					modules: {},
+				}).pipe(Effect.provide(projectLayer)),
+			);
+
+			expect(
+				await readJson(join(directory, ".forge/manifest.json")),
+			).toMatchObject({
+				cliVersion: "test-cli-version",
+				schemaVersion: 1,
+			});
+		});
+	});
+
+	it("reads a manifest without a CLI version without changing it", async () => {
+		await withTempDir("state-legacy-cli-version", async (directory) => {
+			const path = join(directory, ".forge/manifest.json");
+			await writeJson(path, {
+				schemaVersion: 1,
+				config: {},
+				installs: [],
+				modules: {},
+			});
+
+			const before = await readFile(path);
+
+			const manifest = await Effect.runPromise(
+				State.readManifest(directory).pipe(Effect.provide(projectLayer)),
+			);
+
+			expect(manifest.cliVersion).toBeUndefined();
+			expect(await readFile(path)).toEqual(before);
+		});
+	});
+
+	it("prioritizes unknown versions in either state bundle member", async () => {
+		await withTempDir("state-bundle-version", async (directory) => {
+			for (const member of ["manifest", "lockfile"]) {
+				await writeJson(join(directory, ".forge/state.json"), {
+					manifest: {
+						schemaVersion: member === "manifest" ? 99 : 1,
+						modules: null,
+					},
+					lockfile: {
+						schemaVersion: member === "lockfile" ? 99 : 1,
+						artifacts: null,
+					},
+				});
+
+				const error = await Effect.runPromise(
+					State.readStateBundle(directory).pipe(
+						Effect.flip,
+						Effect.provide(projectLayer),
+					),
+				);
+
+				expect(error).toMatchObject({
+					reason: "schema-version-unknown",
+					message:
+						"We can't read this project's metadata because it was saved by a different version of Forge.",
+				});
+			}
+		});
+	});
+
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
@@ -203,12 +281,17 @@ describe("project state", () => {
 				State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
 			);
 
-			expect(readManifest).toEqual(manifest);
+			expect(readManifest).toEqual({
+				...manifest,
+				cliVersion: "test-cli-version",
+			});
+
 			expect(readLockfile).toEqual(lockfile);
 
-			expect(await readJson(join(directory, ".forge/manifest.json"))).toEqual(
-				manifest,
-			);
+			expect(await readJson(join(directory, ".forge/manifest.json"))).toEqual({
+				...manifest,
+				cliVersion: "test-cli-version",
+			});
 
 			expect(await readJson(join(directory, ".forge/lock.json"))).toEqual(
 				lockfile,
@@ -263,6 +346,7 @@ describe("project state", () => {
 					},
 				},
 			};
+
 			await Effect.runPromise(
 				State.garbageCollectBases(directory, lockfile).pipe(
 					Effect.provide(projectLayer),
@@ -272,6 +356,7 @@ describe("project state", () => {
 			expect(await readdir(join(directory, ".forge/bases"))).toEqual([
 				keptHash,
 			]);
+
 			expect(
 				await readFile(join(directory, ".forge/bases", keptHash), "utf-8"),
 			).toBe("pure render\n");
@@ -286,12 +371,14 @@ describe("project state", () => {
 					Effect.provide(projectLayer),
 				),
 			);
+
 			await writeText(join(directory, ".forge/bases", hash), "corrupt\n");
 			const error = await Effect.runPromise(
 				Effect.flip(
 					State.readBase(directory, hash).pipe(Effect.provide(projectLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({ message: "Base Hash Mismatch" });
 		});
 	});
@@ -305,6 +392,7 @@ describe("project state", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				exists: (target) =>
@@ -319,6 +407,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("state-bundle-read-failed");
 			expect(error.message).toBe("State Bundle Read Failed");
@@ -342,6 +431,7 @@ describe("project state", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				exists: (target) =>
@@ -358,6 +448,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("manifest-read-failed");
 			expect(error.message).toBe("Manifest Read Failed");
@@ -381,6 +472,7 @@ describe("project state", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				exists: (target) =>
@@ -395,6 +487,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("manifest-read-failed");
 			expect(error.message).toBe("Manifest Read Failed");
@@ -418,6 +511,7 @@ describe("project state", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				exists: (target) =>
@@ -432,6 +526,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("lockfile-read-failed");
 			expect(error.message).toBe("Lockfile Read Failed");
@@ -461,6 +556,7 @@ describe("project state", () => {
 					pathOrDescriptor: path,
 					_tag: "PermissionDenied",
 				});
+
 				const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 					...fileSystem,
 					readFileString: (target, encoding) =>
@@ -468,17 +564,21 @@ describe("project state", () => {
 							? Effect.fail(cause)
 							: fileSystem.readFileString(target, encoding),
 				}));
+
 				const read =
 					relativePath === ".forge/state.json"
 						? State.readStateBundle(directory).pipe(Effect.asVoid)
 						: State.readLockfile(directory).pipe(Effect.asVoid);
+
 				const error = await Effect.runPromise(
 					Effect.flip(read.pipe(Effect.provide(failingLayer))),
 				);
 
 				expect(error._tag).toBe("StateError");
+
 				if (error._tag !== "StateError")
 					throw new Error("Expected State Error");
+
 				expect(error.reason).toBe(reason);
 				expect(error.cause).toBe(cause);
 			});
@@ -491,6 +591,7 @@ describe("project state", () => {
 				State.readBase(".", "not-a-hash").pipe(Effect.provide(projectLayer)),
 			),
 		);
+
 		const invalidWrite = await Effect.runPromise(
 			Effect.flip(
 				State.writeBase(".", "not-a-hash", "content").pipe(
@@ -498,6 +599,7 @@ describe("project state", () => {
 				),
 			),
 		);
+
 		const mismatchWrite = await Effect.runPromise(
 			Effect.flip(
 				State.writeBase(".", "a".repeat(64), "content").pipe(
@@ -522,6 +624,7 @@ describe("project state", () => {
 				pathOrDescriptor: bases,
 				_tag: "PermissionDenied",
 			});
+
 			const createLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				makeDirectory: (target, options) =>
@@ -529,6 +632,7 @@ describe("project state", () => {
 						? Effect.fail(createCause)
 						: fileSystem.makeDirectory(target, options),
 			}));
+
 			const createError = await Effect.runPromise(
 				Effect.flip(
 					State.writeBase(directory, hash, content).pipe(
@@ -546,6 +650,7 @@ describe("project state", () => {
 				pathOrDescriptor: bases,
 				_tag: "PermissionDenied",
 			});
+
 			const readLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				readDirectory: (target, options) =>
@@ -553,6 +658,7 @@ describe("project state", () => {
 						? Effect.fail(readCause)
 						: fileSystem.readDirectory(target, options),
 			}));
+
 			const readError = await Effect.runPromise(
 				Effect.flip(
 					State.garbageCollectBases(directory, { artifacts: {} }).pipe(
@@ -583,6 +689,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(error.reason).toBe("base-hash-failed");
 			expect(error.message).toBe("Base Hash Failed");
 			expect(error.cause).toBe(cause);
@@ -600,6 +707,7 @@ describe("project state", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				writeFileString: () => Effect.fail(cause),
@@ -615,6 +723,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(Schema.is(StateErrors)(error)).toBe(true);
 			expect(error.reason).toBe("base-write-failed");
 			expect(error.message).toBe("Base Write Failed");
@@ -639,6 +748,7 @@ describe("project state", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				exists: (target) =>
@@ -655,6 +765,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("base-read-failed");
 			expect(error.message).toBe("Base Read Failed");
@@ -678,6 +789,7 @@ describe("project state", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				exists: (target) =>
@@ -694,6 +806,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("base-directory-read-failed");
 			expect(error.message).toBe("Base Directory Read Failed");
@@ -740,6 +853,7 @@ describe("project state", () => {
 					pathOrDescriptor: path,
 					_tag: "PermissionDenied",
 				});
+
 				const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
 					...fileSystem,
 					exists: (target) =>
@@ -755,8 +869,10 @@ describe("project state", () => {
 				);
 
 				expect(error._tag).toBe("StateError");
+
 				if (error._tag !== "StateError")
 					throw new Error("Expected State Error");
+
 				expect(error.filePath).toBe(path);
 				expect(error.reason).toBe(reason);
 				expect(error.message).toBe(message);
@@ -786,6 +902,7 @@ describe("project state", () => {
 				_tag: "StateError",
 				filePath: join(directory, ".forge/manifest.json"),
 			});
+
 			expect(error.message).toMatch(/^Manifest Parse Failed: /);
 
 			const fallbackError = await Effect.runPromise(
@@ -800,6 +917,7 @@ describe("project state", () => {
 				_tag: "StateError",
 				filePath: join(directory, ".forge/manifest.json"),
 			});
+
 			expect(fallbackError.message).toMatch(/^Manifest Parse Failed: /);
 		});
 	});
@@ -817,6 +935,7 @@ describe("project state", () => {
 
 			expect(error._tag).toBe("StateError");
 			if (error._tag !== "StateError") throw new Error("Expected State Error");
+
 			expect(error.reason).toBe("manifest-read-failed");
 			expect(error.message).toBe("Manifest Read Failed");
 			expect(error.cause).toMatchObject({
@@ -858,7 +977,7 @@ describe("project state", () => {
 				await Effect.runPromise(
 					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
 				),
-			).toEqual(manifest);
+			).toEqual({ ...manifest, cliVersion: "test-cli-version" });
 		});
 	});
 
@@ -871,6 +990,7 @@ describe("project state", () => {
 			registryDescriptors: [],
 			schemaVersion: 1,
 		});
+
 		const lockfile = Schema.encodeSync(LockfileSchema)({
 			artifacts: {},
 			schemaVersion: 1,
@@ -884,6 +1004,7 @@ describe("project state", () => {
 			registryDescriptors: [],
 			schemaVersion: 1,
 		});
+
 		expect(lockfile).toEqual({ artifacts: {}, schemaVersion: 1 });
 	});
 
@@ -900,6 +1021,7 @@ describe("project state", () => {
 					State.readManifest(directory).pipe(Effect.provide(projectLayer)),
 				),
 			);
+
 			expect(error.message).toMatch(/^Invalid Manifest\n/);
 		});
 	});
@@ -942,32 +1064,34 @@ describe("project state", () => {
 			const versionMessage =
 				"We can't read this project's metadata because it was saved by a different version of Forge.";
 
-			for (const schemaVersion of [undefined, "garbage", 2]) {
+			for (const schemaVersion of [undefined, "garbage", 2, 99]) {
 				await writeJson(join(directory, ".forge/manifest.json"), {
 					modules: {},
 					schemaVersion,
 				});
+
 				const manifestError = await Effect.runPromise(
 					Effect.flip(
 						State.readManifest(directory).pipe(Effect.provide(projectLayer)),
 					),
 				);
-				expect(manifestError.message).toBe(
-					`Invalid Manifest\n  schemaVersion: ${versionMessage}`,
-				);
+
+				expect(manifestError.reason).toBe("schema-version-unknown");
+				expect(manifestError.message).toBe(versionMessage);
 
 				await writeJson(join(directory, ".forge/lock.json"), {
 					artifacts: {},
 					schemaVersion,
 				});
+
 				const lockfileError = await Effect.runPromise(
 					Effect.flip(
 						State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
 					),
 				);
-				expect(lockfileError.message).toBe(
-					`Invalid Lockfile\n  schemaVersion: ${versionMessage}`,
-				);
+
+				expect(lockfileError.reason).toBe("schema-version-unknown");
+				expect(lockfileError.message).toBe(versionMessage);
 			}
 		});
 	});
@@ -1001,6 +1125,7 @@ describe("project state", () => {
 				_tag: "StateError",
 				filePath: join(directory, ".forge/lock.json"),
 			});
+
 			expect(error.message).toMatch(/^Lockfile Parse Failed: /);
 		});
 	});

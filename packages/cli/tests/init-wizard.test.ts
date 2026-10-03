@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
-import { Apply, State } from "@ryuujs/core";
+import { Apply, CliVersion, State } from "@ryuujs/core";
 import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModuleMappingProposal } from "../src/commands/adoption";
@@ -17,10 +17,12 @@ async function webFixture(directory: string) {
 		name: "Acme Root",
 		private: true,
 	});
+
 	await writeText(
 		join(directory, "pnpm-workspace.yaml"),
 		"packages:\n  - 'apps/*'\n",
 	);
+
 	await writeJson(join(directory, "apps/web/package.json"), {
 		dependencies: { next: "^16.0.0", react: "^19.0.0" },
 		name: "@acme/web",
@@ -51,6 +53,7 @@ describe("init wizard", () => {
 	beforeEach(() => {
 		promptMocks.confirm.mockReset();
 		promptMocks.error.mockReset();
+
 		promptMocks.isCancel.mockReset();
 		promptMocks.isCancel.mockReturnValue(false);
 		promptMocks.multiselect.mockReset();
@@ -64,19 +67,59 @@ describe("init wizard", () => {
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(runInit({ yes: true }, directory)).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(promptMocks.error).toHaveBeenCalledWith(
 					'A ".forge" directory already exists here. You need to remove it before running forge init.',
 				);
+
 				expect(await readFile(junk, "utf-8")).toBe("keep me\n");
 			} finally {
 				exit.mockRestore();
 			}
 		});
 	});
+
+	it.each(["manifest.json", "lock.json", "state.json"])(
+		"refuses unknown versions in %s before adopting",
+		async (filename) => {
+			await withTempDir("init-unknown-version", async (directory) => {
+				const path = join(directory, ".forge", filename);
+				await writeJson(
+					path,
+					filename === "state.json"
+						? {
+								manifest: { schemaVersion: 1, modules: {} },
+								lockfile: { schemaVersion: 99, artifacts: {} },
+							}
+						: { schemaVersion: 99, modules: {}, artifacts: {} },
+				);
+
+				const before = await readFile(path);
+				const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+					throw new Error("exit:1");
+				});
+
+				try {
+					await expect(runInit({ yes: true }, directory)).rejects.toThrow(
+						"exit:1",
+					);
+
+					expect(promptMocks.error).toHaveBeenCalledExactlyOnceWith(
+						"We can't read this project's metadata because it was saved by a different version of Forge.",
+					);
+
+					expect(await readFile(path)).toEqual(before);
+				} finally {
+					exit.mockRestore();
+				}
+			});
+		},
+	);
 
 	it("explains how to recover an interrupted initial commit", async () => {
 		await withTempDir("init-stranded-state", async (directory) => {
@@ -98,9 +141,20 @@ describe("init wizard", () => {
 							: fileSystem.rename(oldPath, newPath),
 				})),
 			).pipe(Layer.provide(nodeLayer));
-			const failingLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
-				Layer.provide(fileSystemLayer),
-			);
+
+			const failingLayer = Layer.mergeAll(
+				Apply.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+			).pipe(Layer.provide(fileSystemLayer));
+
 			const applyError = await Effect.runPromise(
 				Effect.flip(
 					Apply.applyPlan(directory, {
@@ -111,17 +165,21 @@ describe("init wizard", () => {
 					}).pipe(Effect.provide(failingLayer)),
 				),
 			);
+
 			expect(applyError).toMatchObject({
 				message: "Atomic Lockfile Write Failed",
 				path: ".forge/lock.json",
 			});
+
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(runInit({ yes: true }, directory)).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(promptMocks.error).toHaveBeenCalledWith(
 					'A previous Forge adoption stopped before it finished. You need to delete the ".forge" directory, then run forge init again.',
 				);
@@ -160,13 +218,16 @@ describe("init wizard", () => {
 				slug: "acme",
 				web: "nextjs",
 			});
+
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(
 					runInit({ config: configPath }, directory),
 				).rejects.toThrow("exit:1");
+
 				expect(promptMocks.error).toHaveBeenCalledWith(
 					"We couldn't adopt this project. Forge cannot safely update these files:\napps/web/forge.json already exists and is not managed by Forge.\nMove or delete it, then run forge init again.",
 				);
@@ -180,6 +241,7 @@ describe("init wizard", () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new Error("cancelled");
 		});
+
 		try {
 			promptMocks.confirm.mockResolvedValue(true);
 			promptMocks.isCancel.mockReturnValueOnce(true);
@@ -227,6 +289,7 @@ describe("init wizard", () => {
 			initialValue: true,
 			message: "We detected packageManager as pnpm. Use it?",
 		});
+
 		expect(promptMocks.confirm).toHaveBeenNthCalledWith(2, {
 			initialValue: true,
 			message: "We detected runtime as Node.js. Use it?",
@@ -251,6 +314,7 @@ describe("init wizard", () => {
 		await expect(confirmMappings(proposals)).resolves.toEqual([
 			{ kind: "web-app", root: "apps/web" },
 		]);
+
 		expect(promptMocks.multiselect).toHaveBeenCalledWith({
 			initialValues: ["apps/web", "packages/db"],
 			message: "Which proposed module mappings do you want Forge to adopt?",

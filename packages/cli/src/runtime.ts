@@ -1,6 +1,6 @@
 import { log } from "@clack/prompts";
 import { NodeServices } from "@effect/platform-node";
-import { CoreLive } from "@ryuujs/core";
+import { CliVersion, CoreLive } from "@ryuujs/core";
 import {
 	Cause,
 	type Effect,
@@ -9,9 +9,11 @@ import {
 	ManagedRuntime,
 	Option,
 } from "effect";
+import { version } from "../package.json" with { type: "json" };
 import { AdoptionDetector } from "./commands/adoption";
 
 export const cliLayer = Layer.mergeAll(CoreLive, AdoptionDetector.Default).pipe(
+	Layer.provide(Layer.succeed(CliVersion, { version })),
 	Layer.provideMerge(NodeServices.layer),
 );
 
@@ -45,7 +47,6 @@ export async function runCliEffect<A, E>(
 	effect: Effect.Effect<A, E, CliServices>,
 ): Promise<Exit.Exit<A, E>> {
 	if (activeRuntime !== undefined) return activeRuntime.runPromiseExit(effect);
-
 	processRuntime ??= makeCliRuntime();
 	return processRuntime.runPromiseExit(effect);
 }

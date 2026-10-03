@@ -1,6 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { Context, Effect, FileSystem, Layer } from "effect";
 import {
+	CliVersion,
 	CommandProbe,
 	ConfigStore,
 	Environment,
@@ -23,7 +24,6 @@ function testDirectoryLayer(prefix: string) {
 		Effect.gen(function* () {
 			const fileSystem = yield* FileSystem.FileSystem;
 			const path = yield* fileSystem.makeTempDirectoryScoped({ prefix });
-
 			return { path };
 		}),
 	).pipe(Layer.provideMerge(NodeServices.layer));
@@ -39,7 +39,9 @@ function withTestDirectory<Service, Error>(
 export function stateLayerTest(prefix = "forge-state-test-") {
 	return withTestDirectory(
 		prefix,
-		State.Default.pipe(Layer.provide(NodeServices.layer)),
+		State.Default.pipe(
+			Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+		).pipe(Layer.provide(NodeServices.layer)),
 	);
 }
 
@@ -54,7 +56,6 @@ export function environmentLayerTest(prefix = "forge-environment-test-") {
 	const subprocess = Subprocess.Default.pipe(Layer.provide(NodeServices.layer));
 	const commandProbe = CommandProbe.Default.pipe(Layer.provide(subprocess));
 	const environment = Environment.Default.pipe(Layer.provide(commandProbe));
-
 	return withTestDirectory(prefix, environment);
 }
 

@@ -8,6 +8,7 @@ import {
 	sep,
 } from "node:path";
 import { Context, Effect, FileSystem, Layer, Result } from "effect";
+import { CliVersion } from "./cli-version";
 import { ApplyError, type ApplyRefusalReason, type StateError } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
@@ -253,7 +254,6 @@ function descriptorsCompatible(
 
 	const previousBase = previous.base;
 	const nextBase = next.base;
-
 	if (previousBase === undefined)
 		return (
 			nextBase === undefined ||
@@ -293,7 +293,6 @@ function movedModuleArtifactId(
 
 	const previousRoot = previous.modules[moduleId]?.root;
 	const nextRoot = current.modules[moduleId]?.root;
-
 	if (
 		nextRoot === undefined ||
 		previousRoot === undefined ||
@@ -318,8 +317,10 @@ function valueAtPath(
 	for (const segment of path) {
 		if (!isJsonObject(current) || !Object.hasOwn(current, segment))
 			return undefined;
+
 		current = current[segment];
 	}
+
 	return current;
 }
 
@@ -384,7 +385,6 @@ export function formatApplyError(
 ): string {
 	let report: string;
 	let classification = error.preflight;
-
 	if (
 		error.reason === "managed-file-modified" ||
 		error.reason === "unmanaged-file-exists"
@@ -411,6 +411,7 @@ export function formatApplyError(
 		!classification.hasUnmanagedRefusals
 	)
 		return report;
+
 	if (options.includeResolutionGuidance === false) return report;
 
 	const guidance: string[] = [];
@@ -447,6 +448,7 @@ function formatMergedJson(
 
 const makeApply = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem;
+	const cliVersion = yield* CliVersion;
 
 	const ensureContained = Effect.fn("Apply.ensureContained")(function* (
 		projectRoot: string,
@@ -454,7 +456,6 @@ const makeApply = Effect.gen(function* () {
 	) {
 		const rootPath = resolve(projectRoot);
 		const fullPath = resolve(rootPath, relativePath);
-
 		if (
 			isAbsolute(relativePath) ||
 			(fullPath !== rootPath && !fullPath.startsWith(`${rootPath}${sep}`))
@@ -673,6 +674,7 @@ const makeApply = Effect.gen(function* () {
 			if (request === undefined) return mergeResolution;
 
 			consumedResolutionLabels.add(label);
+
 			if (
 				conflict !== undefined &&
 				"expected" in request &&
@@ -705,7 +707,6 @@ const makeApply = Effect.gen(function* () {
 
 		const conflicts: ApplyConflict[] = [];
 		const refusals: ApplyRefusal[] = [];
-
 		for (const relativePath of plan.removals) {
 			const fullPath = yield* ensureContained(projectRoot, relativePath);
 			if (isUserOwnedEnv(relativePath)) continue;
@@ -801,6 +802,7 @@ const makeApply = Effect.gen(function* () {
 				previousArtifact,
 				baseDescriptor,
 			);
+
 			const residueResult = yield* Effect.result(
 				surfaceResidue(
 					baseDescriptor.mergeKind,
@@ -835,6 +837,7 @@ const makeApply = Effect.gen(function* () {
 
 		const policyReadHashes: PreflightPhaseContract["result"]["policyReadHashes"] =
 			new Map();
+
 		for (const file of plan.writes) {
 			const fullPath = yield* ensureContained(projectRoot, file.path);
 			if (!(yield* pathExists(fullPath, file.path))) {
@@ -968,6 +971,7 @@ const makeApply = Effect.gen(function* () {
 					managedArtifact,
 					previousBase,
 				);
+
 				if (storedBase === file.content) {
 					if (file.artifactId !== undefined && nextArtifact !== undefined)
 						committedArtifacts[file.artifactId] = {
@@ -1089,7 +1093,6 @@ const makeApply = Effect.gen(function* () {
 
 			const merged = mergedResult.success;
 			const discoveredConflicts: ApplyConflict[] = [];
-
 			if ("json" in merged)
 				for (const conflict of merged.conflicts)
 					discoveredConflicts.push({
@@ -1144,7 +1147,6 @@ const makeApply = Effect.gen(function* () {
 
 		const preflight = classifyPreflight(refusals, conflicts);
 		const refusal = refusals.length === 1 ? refusals[0] : undefined;
-
 		if (refusal !== undefined && conflicts.length === 0)
 			return yield* new ApplyError({
 				path: refusal.path,
@@ -1163,6 +1165,7 @@ const makeApply = Effect.gen(function* () {
 		const committedManifest = {
 			...plan.manifest,
 			schemaVersion: 1,
+			cliVersion: cliVersion.version,
 		} satisfies PreflightPhaseContract["result"]["committedManifest"];
 
 		const committedLockfile = {
@@ -1219,7 +1222,6 @@ const makeApply = Effect.gen(function* () {
 				for (const hash of bases.keys()) {
 					const baseRelative = `.forge/bases/${hash}`;
 					const destination = yield* ensureContained(projectRoot, baseRelative);
-
 					if (!(yield* pathExists(destination, baseRelative))) continue;
 
 					const existing = yield* readFile(destination, baseRelative);
@@ -1332,7 +1334,6 @@ const makeApply = Effect.gen(function* () {
 			State
 		> = Effect.gen(function* () {
 			const stagedWrites: StagingPhaseContract["result"]["writes"] = [];
-
 			for (const write of writesToApply)
 				stagedWrites.push({
 					path: write.path,
@@ -1340,7 +1341,6 @@ const makeApply = Effect.gen(function* () {
 				});
 
 			const stagedBases: StagingPhaseContract["result"]["bases"] = [];
-
 			for (const [hash, content] of bases)
 				stagedBases.push({
 					hash,
@@ -1541,6 +1541,7 @@ const makeApply = Effect.gen(function* () {
 				);
 
 				if (!removed) break;
+
 				directory = dirname(directory);
 			}
 		}

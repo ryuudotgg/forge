@@ -2,7 +2,7 @@ import { access, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { log } from "@clack/prompts";
 import { NodeServices } from "@effect/platform-node";
-import { Apply, CommandProbe, CoreLive, State } from "@ryuujs/core";
+import { Apply, CliVersion, CommandProbe, CoreLive, State } from "@ryuujs/core";
 import { type ForgeConfig, loadDefinitionRegistry } from "@ryuujs/generators";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -24,7 +24,10 @@ import {
 import { cliLayer, withCliRuntime } from "../src/runtime";
 import { withTempDir, writeJson, writeText } from "./lifecycle-fixtures";
 
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
+const coreLayer = CoreLive.pipe(
+	Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	Layer.provideMerge(NodeServices.layer),
+);
 
 function buildAdoptionPlanForTest(
 	...parameters: Parameters<typeof buildAdoptionPlan>
@@ -71,15 +74,18 @@ async function fixture(directory: string) {
 		private: true,
 		scripts: { user: "keep-me" },
 	});
+
 	await writeText(
 		join(directory, "pnpm-workspace.yaml"),
 		"packages:\n  - 'apps/*'\n  - 'packages/*'\n",
 	);
+
 	await writeJson(join(directory, "apps/web/package.json"), {
 		dependencies: { next: "^16.0.0", react: "^19.0.0" },
 		name: "@acme/web",
 		private: true,
 	});
+
 	await writeJson(join(directory, "packages/db/package.json"), {
 		dependencies: { "drizzle-orm": "1.0.0-rc.4" },
 		name: "@acme/db",
@@ -121,9 +127,11 @@ describe("init command", () => {
 		expect(adoptionOutro(false)).toBe(
 			"This project is now managed by Forge. Run forge update to reconcile it.",
 		);
+
 		expect(adoptionConflictGuidance()).toBe(
 			"If conflicts surface, we can guide you through them interactively, or you can run forge update with --keep-user or --accept-forge.",
 		);
+
 		expect(adoptionOutro(true)).toBe(
 			"This project is managed by Forge and reconciled.",
 		);
@@ -149,6 +157,7 @@ describe("init command", () => {
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				expect(() =>
 					readInitConfigFile(join(directory, "missing.json")),
@@ -158,6 +167,7 @@ describe("init command", () => {
 				await writeJson(invalid, {
 					modules: [{ kind: "unknown", root: "apps/web" }],
 				});
+
 				expect(() => readInitConfigFile(invalid)).toThrow("exit:1");
 			} finally {
 				exit.mockRestore();
@@ -170,6 +180,7 @@ describe("init command", () => {
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			const logError = vi.spyOn(log, "error").mockImplementation(() => {});
 			try {
 				const invalid = join(directory, "invalid.json");
@@ -199,6 +210,7 @@ describe("init command", () => {
 		const packageKinds: ReadonlyArray<
 			Exclude<ModuleKind, "backend-app" | "web-app">
 		> = ["db", "auth", "trpc", "ui"];
+
 		const packageAddons = {
 			auth: "better-auth",
 			db: "drizzle",
@@ -212,6 +224,7 @@ describe("init command", () => {
 			const addon = loaded.registry.addons.find(
 				(entry) => entry.id === packageAddons[kind],
 			);
+
 			if (addon === undefined) throw new Error(`Missing Addon: ${kind}`);
 
 			const result = addon.contribute({
@@ -222,6 +235,7 @@ describe("init command", () => {
 						: config,
 				frameworks: loaded.registry.frameworks,
 			});
+
 			if (result instanceof Promise || Effect.isEffect(result))
 				throw new Error(`Synchronous Contributions Expected: ${kind}`);
 
@@ -246,6 +260,7 @@ describe("init command", () => {
 			name: "Acme Platform",
 			slug: "acme-platform",
 		});
+
 		expect(defaultIdentity("/workspace/Fallback Project")).toEqual({
 			name: "fallback-projec",
 			slug: "fallback-projec",
@@ -278,6 +293,7 @@ describe("init command", () => {
 		expect(report).toMatch(/^Config:\s{2,}/);
 		expect(report).toContain("name=Acme");
 		expect(report).not.toContain(JSON.stringify(config));
+
 		expect(report).toContain("Project:       2 existing artifacts");
 		expect(report).toContain("apps/web:      web-app, 1 existing artifact");
 		expect(report).toContain("Write marker:  apps/web/forge.json");
@@ -294,10 +310,12 @@ describe("init command", () => {
 				join(directory, "package.json"),
 				"utf-8",
 			);
+
 			const beforeWeb = await readFile(
 				join(directory, "apps/web/package.json"),
 				"utf-8",
 			);
+
 			const beforeDb = await readFile(
 				join(directory, "packages/db/package.json"),
 				"utf-8",
@@ -347,14 +365,17 @@ describe("init command", () => {
 				"apps/web/forge.json",
 				"packages/db/forge.json",
 			]);
+
 			expect(plan.applyPlan.writes.map((write) => write.path)).toEqual(
 				plan.markerPaths,
 			);
+
 			expect(
 				Object.values(plan.manifest.modules)
 					.map((module) => module.root)
 					.sort(),
 			).toEqual(["apps/web", "packages/db"]);
+
 			expect(
 				plan.manifest.installs.find(
 					(install) => install.definitionId === "drizzle",
@@ -384,18 +405,22 @@ describe("init command", () => {
 					},
 				]),
 			);
+
 			expect(
 				Object.values(plan.applyPlan.lockfile.artifacts).some(
 					(artifact) => artifact.path === ".env",
 				),
 			).toBe(false);
+
 			const envExample = Object.entries(plan.applyPlan.lockfile.artifacts).find(
 				([, artifact]) => artifact.path === ".env.example",
 			);
+
 			expect(envExample?.[1].base?.origin).toBe("adopted");
 			expect(plan.applyPlan.baseContents?.[envExample?.[0] ?? "missing"]).toBe(
 				example,
 			);
+
 			expect(Object.values(plan.applyPlan.baseContents ?? {})).not.toContain(
 				secret,
 			);
@@ -409,12 +434,15 @@ describe("init command", () => {
 			expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
 				beforeRoot,
 			);
+
 			expect(
 				await readFile(join(directory, "apps/web/package.json"), "utf-8"),
 			).toBe(beforeWeb);
+
 			expect(
 				await readFile(join(directory, "packages/db/package.json"), "utf-8"),
 			).toBe(beforeDb);
+
 			expect(
 				await readFile(join(directory, "apps/web/forge.json"), "utf-8"),
 			).toContain('"type": "app"');
@@ -422,9 +450,11 @@ describe("init command", () => {
 			const lockfile = await Effect.runPromise(
 				State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
 			);
+
 			const webPackage = Object.values(lockfile.artifacts).find(
 				(artifact) => artifact.path === "apps/web/package.json",
 			);
+
 			expect(webPackage?.base?.hash).toBe(webPackage?.hash);
 			await expect(
 				Effect.runPromise(
@@ -466,6 +496,7 @@ describe("init command", () => {
 			const marker = plan.applyPlan.writes.find(
 				(write) => write.path === "apps/api/forge.json",
 			);
+
 			expect(marker?.content).toContain('"framework": "hono"');
 			expect(marker?.content).toContain('"trpc": "src/routes/trpc.ts"');
 		});
@@ -485,8 +516,10 @@ describe("init command", () => {
 					),
 				),
 			);
+
 			if (!(invalidMapping instanceof Error))
 				throw new Error("Expected an invalid mapping error");
+
 			expect(invalidMapping.message).toBe(
 				"Adoption Mapping Invalid: apps/web cannot be mapped as auth with this configuration.",
 			);
@@ -507,12 +540,14 @@ describe("init command", () => {
 						const bytes = ArrayBuffer.isView(data)
 							? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
 							: new Uint8Array(data);
+
 						return new TextDecoder().decode(bytes).includes("keep-me")
 							? Promise.reject(new Error("digest failed"))
 							: crypto.subtle.digest(...parameters);
 					},
 				},
 			});
+
 			try {
 				const hashingFailure = await Effect.runPromise(
 					Effect.flip(
@@ -527,8 +562,10 @@ describe("init command", () => {
 						),
 					),
 				);
+
 				if (!(hashingFailure instanceof Error))
 					throw new Error("Expected a content hashing error");
+
 				expect(hashingFailure.message).toBe(
 					"Content Hash Failed: package.json",
 				);
@@ -586,13 +623,16 @@ describe("init command", () => {
 			const ui = plan.manifest.installs.find(
 				(install) => install.definitionId === "ui",
 			);
+
 			const appIds = Object.entries(plan.manifest.modules).flatMap(
 				([id, module]) =>
 					module.root?.startsWith("apps/") === true ? [id] : [],
 			);
+
 			expect(ui?.targets).toEqual(
 				appIds.map((moduleId) => ({ kind: "module", moduleId })),
 			);
+
 			expect(
 				plan.manifest.installs
 					.flatMap((install) => install.versions ?? [])
@@ -624,6 +664,7 @@ describe("init command", () => {
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(
 					runInit({ config: configPath }, directory),
@@ -648,9 +689,11 @@ describe("init command", () => {
 				{ config: configPath, "keep-user": true, reconcile: true },
 				directory,
 			);
+
 			const packageJson = JSON.parse(
 				await readFile(join(directory, "package.json"), "utf-8"),
 			);
+
 			expect(packageJson.scripts.user).toBe("keep-me");
 			expect(packageJson.scripts.build).toBe("turbo run build");
 		});
@@ -668,12 +711,14 @@ describe("init command", () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new Error("exit:1");
 		});
+
 		try {
 			await withTempDir("init-detection-error", async (directory) => {
 				await writeText(
 					join(directory, "pnpm-workspace.yaml"),
 					"packages:\n  - 'apps/*'\n",
 				);
+
 				await writeText(join(directory, "apps/web/package.json"), "{broken");
 				await expect(runInit({ yes: true }, directory)).rejects.toThrow(
 					"exit:1",
@@ -687,6 +732,7 @@ describe("init command", () => {
 					...config,
 					modules: [{ kind: "web-app", root: "apps/missing" }],
 				});
+
 				await expect(
 					runInit({ config: unknownPath }, directory),
 				).rejects.toThrow("exit:1");
@@ -699,6 +745,7 @@ describe("init command", () => {
 						{ kind: "web-app", root: "apps/web" },
 					],
 				});
+
 				await expect(
 					runInit({ config: duplicatePath }, directory),
 				).rejects.toThrow("exit:1");
@@ -708,6 +755,7 @@ describe("init command", () => {
 					...config,
 					modules: [{ kind: "auth", root: "apps/web" }],
 				});
+
 				await expect(
 					runInit({ config: invalidPlanPath }, directory),
 				).rejects.toThrow("exit:1");
@@ -726,6 +774,7 @@ describe("init command", () => {
 				filePath,
 				message: `Adoption File Read Failed: ${filePath}`,
 			});
+
 			const detectorOverride = Layer.effect(
 				AdoptionDetector,
 				Effect.map(AdoptionDetector, (detector) => ({
@@ -733,9 +782,11 @@ describe("init command", () => {
 					rootPackageName: () => Effect.fail(failure),
 				})),
 			).pipe(Layer.provide(cliLayer));
+
 			const runtime = ManagedRuntime.make(
 				Layer.merge(cliLayer, detectorOverride),
 			);
+
 			const exit = vi
 				.spyOn(process, "exit")
 				.mockImplementation((code?: string | number | null): never => {
@@ -746,6 +797,7 @@ describe("init command", () => {
 				await expect(
 					withCliRuntime(() => runInit({ yes: true }, directory), runtime),
 				).rejects.toThrow("exit:1");
+
 				expect(exit).toHaveBeenCalledWith(1);
 			} finally {
 				exit.mockRestore();
@@ -761,6 +813,7 @@ describe("init command", () => {
 				name: "@acme/ui",
 				private: true,
 			});
+
 			const configPath = join(directory, "forge.init.json");
 			await writeJson(configPath, {
 				addons: [],
@@ -779,10 +832,12 @@ describe("init command", () => {
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(
 					runInit({ config: configPath }, directory),
 				).rejects.toThrow("exit:1");
+
 				expect(await exists(join(directory, ".forge"))).toBe(false);
 			} finally {
 				exit.mockRestore();
@@ -806,10 +861,12 @@ describe("init command", () => {
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(
 					runInit({ config: configPath }, directory),
 				).rejects.toThrow("exit:1");
+
 				expect(await exists(join(directory, ".forge/manifest.json"))).toBe(
 					false,
 				);

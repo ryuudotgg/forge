@@ -8,6 +8,7 @@ import {
 	ApplyError,
 	ApplyErrors,
 	type ApplyPlan,
+	CliVersion,
 	formatApplyError,
 	type LockfileArtifact,
 	State,
@@ -15,9 +16,14 @@ import {
 import { hashContent, withTempDir, writeText } from "./harness";
 
 const nodeLayer = NodeServices.layer;
-const coreLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
-	Layer.provide(nodeLayer),
-);
+const coreLayer = Layer.mergeAll(
+	Apply.Default.pipe(
+		Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	),
+	State.Default.pipe(
+		Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	),
+).pipe(Layer.provide(nodeLayer));
 
 function systemFailure(method: string, path: string) {
 	return Effect.fail(
@@ -37,9 +43,15 @@ function applyLayerWithFileSystem(
 		FileSystem.FileSystem,
 		Effect.map(FileSystem.FileSystem, transform),
 	).pipe(Layer.provide(nodeLayer));
-	return Layer.mergeAll(Apply.Default, State.Default).pipe(
-		Layer.provide(fileSystemLayer),
-	);
+
+	return Layer.mergeAll(
+		Apply.Default.pipe(
+			Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+		),
+		State.Default.pipe(
+			Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+		),
+	).pipe(Layer.provide(fileSystemLayer));
 }
 
 function emptyPlan(writes: ApplyPlan["writes"] = []): ApplyPlan {
@@ -167,19 +179,23 @@ describe("apply edge coverage", () => {
 					makeDirectory: (target, options) => {
 						if (point === "staging-root" && target.endsWith("/.forge"))
 							return systemFailure("makeDirectory", target);
+
 						if (
 							point === "staged-directory" &&
 							target.includes("/.forge/.staging-")
 						)
 							return systemFailure("makeDirectory", target);
+
 						if (
 							point === "destination-directory" &&
 							target.endsWith("/nested") &&
 							!target.includes("/.staging-")
 						)
 							return systemFailure("makeDirectory", target);
+
 						if (point === "base-directory" && target.endsWith("/.forge/bases"))
 							return systemFailure("makeDirectory", target);
+
 						return fileSystem.makeDirectory(target, options);
 					},
 					makeTempDirectory: (options) =>
@@ -189,26 +205,32 @@ describe("apply edge coverage", () => {
 					remove: (target, options) => {
 						if (point === "file-remove" && target.endsWith("/old.txt"))
 							return systemFailure("remove", target);
+
 						if (point === "publish" && target.endsWith("/.forge/state.json"))
 							return systemFailure("remove", target);
+
 						return fileSystem.remove(target, options);
 					},
 					rename: (oldPath, newPath) => {
 						if (point === "backup" && newPath.endsWith("/.forge/state.json"))
 							return systemFailure("rename", newPath);
+
 						if (
 							point === "atomic-file" &&
 							oldPath.includes("/.staging-") &&
 							newPath.endsWith("/nested/new.txt")
 						)
 							return systemFailure("rename", newPath);
+
 						if (
 							point === "manifest" &&
 							newPath.endsWith("/.forge/manifest.json")
 						)
 							return systemFailure("rename", newPath);
+
 						if (point === "lockfile" && newPath.endsWith("/.forge/lock.json"))
 							return systemFailure("rename", newPath);
+
 						return fileSystem.rename(oldPath, newPath);
 					},
 					writeFileString: (target, content, options) =>
@@ -216,6 +238,7 @@ describe("apply edge coverage", () => {
 							? systemFailure("writeFileString", target)
 							: fileSystem.writeFileString(target, content, options),
 				}));
+
 				const error = await Effect.runPromise(
 					Effect.flip(
 						Apply.applyPlan(directory, {
@@ -226,9 +249,12 @@ describe("apply edge coverage", () => {
 				);
 
 				expect(error.message).toBe(message);
+
 				if (!(error instanceof ApplyError))
 					throw new Error("Expected ApplyError");
+
 				expect(Schema.is(ApplyErrors)(error)).toBe(true);
+
 				if (path === ".forge/.staging-") expect(error.path).toContain(path);
 				else expect(error.path).toBe(path);
 			});
@@ -247,6 +273,7 @@ describe("apply edge coverage", () => {
 						? systemFailure("rename", newPath)
 						: fileSystem.rename(oldPath, newPath),
 			}));
+
 			const error = await Effect.runPromise(
 				Effect.flip(
 					Apply.applyPlan(directory, {
@@ -285,6 +312,7 @@ describe("apply edge coverage", () => {
 					emptyPlan([{ content: "committed\n", path: "committed.txt" }]),
 				).pipe(Effect.provide(cleanupFailingLayer)),
 			);
+
 			expect(await readFile(join(directory, "committed.txt"), "utf-8")).toBe(
 				"committed\n",
 			);
@@ -300,6 +328,7 @@ describe("apply edge coverage", () => {
 				...fileSystem,
 				makeTempDirectory: () => Effect.succeed(outside),
 			}));
+
 			const error = await Effect.runPromise(
 				Effect.flip(
 					Apply.applyPlan(
@@ -338,9 +367,11 @@ describe("apply edge coverage", () => {
 						stagingRealPaths++;
 						if (stagingRealPaths > 1) return Effect.succeed(outside);
 					}
+
 					return fileSystem.realPath(path);
 				},
 			}));
+
 			const error = await Effect.runPromise(
 				Effect.flip(
 					Apply.applyPlan(
@@ -351,8 +382,10 @@ describe("apply edge coverage", () => {
 			);
 
 			expect(error.message).toBe("Path Escapes Project Root");
+
 			if (!(error instanceof ApplyError))
 				throw new Error("Expected ApplyError");
+
 			expect(error.path).toContain(".forge/.staging-");
 			expect(error.path).toContain("/files/file.txt");
 		});
@@ -363,20 +396,24 @@ describe("apply edge coverage", () => {
 			"missing",
 			"mismatch",
 		];
-		for (const mode of modes) {
+
+		for (const mode of modes)
 			await withTempDir(`apply-base-${mode}`, async (directory) => {
 				const path = "surface.json";
 				const base = '{"managed":"base"}\n';
 				const current = '{"managed":"user"}\n';
 				const incoming = '{"managed":"forge"}\n';
+
 				const baseHash = await hashContent(base);
 				const incomingHash = await hashContent(incoming);
+
 				await writeText(join(directory, path), current);
 				await Effect.runPromise(
 					State.writeLockfile(directory, {
 						artifacts: { surface: surfaceArtifact(path, baseHash, "json") },
 					}).pipe(Effect.provide(coreLayer)),
 				);
+
 				if (mode === "mismatch")
 					await writeText(
 						join(directory, ".forge/bases", baseHash),
@@ -403,7 +440,6 @@ describe("apply edge coverage", () => {
 					path,
 				});
 			});
-		}
 	});
 
 	it("validates that every declared base has matching pure content", async () => {
@@ -419,6 +455,7 @@ describe("apply edge coverage", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(missing).toMatchObject({
 				message: "Managed Base Content Missing",
 				path: ".gitignore",
@@ -438,6 +475,7 @@ describe("apply edge coverage", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(mismatch).toMatchObject({
 				message: "Managed Base Hash Mismatch",
 				path: ".gitignore",
@@ -450,15 +488,19 @@ describe("apply edge coverage", () => {
 			const emptyPath = "empty.json";
 			const residuePath = "residue.json";
 			const envPath = ".env.example";
+
 			const jsonBase = '{"managed":true}\n';
 			const envBase = "MANAGED=forge\n";
+
 			const jsonHash = await hashContent(jsonBase);
 			const envHash = await hashContent(envBase);
+
 			await writeText(join(directory, emptyPath), '{ "managed": true }\n');
 			await writeText(
 				join(directory, residuePath),
 				'{"managed":true,"user":"kept"}\n',
 			);
+
 			await writeText(join(directory, envPath), "MANAGED=forge\nUSER=kept\n");
 			await Effect.runPromise(
 				Effect.gen(function* () {
@@ -480,12 +522,15 @@ describe("apply edge coverage", () => {
 					removals: [emptyPath, residuePath, envPath],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			await expect(
 				readFile(join(directory, emptyPath), "utf-8"),
 			).rejects.toThrow();
+
 			expect(await readFile(join(directory, residuePath), "utf-8")).toBe(
 				'{ "user": "kept" }\n',
 			);
+
 			expect(await readFile(join(directory, envPath), "utf-8")).toBe(
 				"USER=kept\n",
 			);
@@ -494,7 +539,7 @@ describe("apply edge coverage", () => {
 
 	it("distinguishes removal parse refusals from invalid managed bases", async () => {
 		const modes: ReadonlyArray<"base" | "current"> = ["base", "current"];
-		for (const mode of modes) {
+		for (const mode of modes)
 			await withTempDir(`apply-removal-parse-${mode}`, async (directory) => {
 				const path = "surface.json";
 				const base = mode === "base" ? "[]\n" : "{}\n";
@@ -518,6 +563,7 @@ describe("apply edge coverage", () => {
 						}).pipe(Effect.provide(coreLayer)),
 					),
 				);
+
 				if (mode === "base")
 					expect(error).toMatchObject({
 						message: "Managed JSON Parse Failed",
@@ -529,7 +575,6 @@ describe("apply edge coverage", () => {
 						path,
 					});
 			});
-		}
 	});
 
 	it("propagates invalid incoming managed JSON instead of a modification refusal", async () => {
@@ -538,8 +583,10 @@ describe("apply edge coverage", () => {
 			const base = '{"managed":"base"}\n';
 			const current = '{"managed":"user"}\n';
 			const incoming = "[]\n";
+
 			const baseHash = await hashContent(base);
 			const incomingHash = await hashContent(incoming);
+
 			await writeText(join(directory, path), current);
 			await Effect.runPromise(
 				Effect.gen(function* () {
@@ -564,6 +611,7 @@ describe("apply edge coverage", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({
 				message: "Managed JSON Parse Failed",
 				path,
@@ -581,12 +629,14 @@ describe("apply edge coverage", () => {
 				normal: "base",
 				"weird-key": "base",
 			});
+
 			const current = JSON.stringify({ long: userLong, "weird-key": "user" });
 			const incoming = JSON.stringify({
 				long: forgeLong,
 				normal: "forge",
 				"weird-key": "forge",
 			});
+
 			const baseHash = await hashContent(base);
 			const incomingHash = await hashContent(incoming);
 			await writeText(join(directory, path), current);
@@ -614,8 +664,10 @@ describe("apply edge coverage", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			const shorten = (value: string) =>
 				`${JSON.stringify(value).slice(0, 117)}...`;
+
 			const expected = [
 				"Forge cannot safely update these files:",
 				"loose.txt already exists and is not managed by Forge.",
@@ -645,11 +697,13 @@ describe("apply edge coverage", () => {
 		).toBe(
 			"Forge cannot safely update these files:\nloose.txt already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
 		);
+
 		expect(
 			formatApplyError(
 				new ApplyError({ path: "file.txt", reason: "file-read-failed" }),
 			),
 		).toBe("File Read Failed");
+
 		expect(
 			formatApplyError(
 				new ApplyError({
@@ -673,6 +727,7 @@ describe("apply edge coverage", () => {
 			const base = '{"value":"base"}\n';
 			const current =
 				'{"value":"already exists and is not managed by Forge."}\n';
+
 			const incoming = '{"value":"forge"}\n';
 			const baseHash = await hashContent(base);
 			const incomingHash = await hashContent(incoming);
@@ -700,12 +755,15 @@ describe("apply edge coverage", () => {
 					}).pipe(Effect.provide(coreLayer)),
 				),
 			);
+
 			if (!(error instanceof ApplyError))
 				throw new Error("Expected ApplyError");
+
 			const formatted = formatApplyError(error);
 			expect(formatted).toContain(
 				"Run again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
 			);
+
 			expect(formatted).not.toContain(
 				"--keep-user cannot resolve unmanaged files",
 			);
@@ -718,6 +776,7 @@ describe("apply edge coverage", () => {
 			const artifactId = "surface";
 			const base = '{"value":"base"}\n';
 			const baseHash = await hashContent(base);
+
 			const incoming = '{"value":"forge"}\n';
 			const incomingHash = await hashContent(incoming);
 			await Effect.runPromise(
@@ -732,11 +791,13 @@ describe("apply edge coverage", () => {
 					writes: [{ artifactId, content: base, path }],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			await writeText(join(directory, path), '{"value":"user"}\n');
 			const lockBefore = await readFile(
 				join(directory, ".forge/lock.json"),
 				"utf-8",
 			);
+
 			let injected = false;
 			const racingLayer = applyLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
@@ -745,6 +806,7 @@ describe("apply edge coverage", () => {
 						Effect.tap(() => {
 							if (injected || !target.endsWith("/state/lock.json"))
 								return Effect.void;
+
 							injected = true;
 							return fileSystem.writeFileString(
 								join(directory, path),
@@ -779,16 +841,20 @@ describe("apply edge coverage", () => {
 					).pipe(Effect.provide(racingLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({ message: "Managed File Modified", path });
 			expect(await readFile(join(directory, path), "utf-8")).toBe(
 				'{"value":"mid-run"}\n',
 			);
+
 			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
 				lockBefore,
 			);
+
 			await expect(
 				readFile(join(directory, "new.txt"), "utf-8"),
 			).rejects.toThrow();
+
 			await expect(
 				readFile(join(directory, ".forge/bases", incomingHash), "utf-8"),
 			).rejects.toThrow();
@@ -801,6 +867,7 @@ describe("apply edge coverage", () => {
 			const artifactId = "surface";
 			const base = '{"forge":"base","user":"base"}\n';
 			const baseHash = await hashContent(base);
+
 			const incoming = '{"forge":"next","user":"base"}\n';
 			const incomingHash = await hashContent(incoming);
 			await Effect.runPromise(
@@ -815,14 +882,17 @@ describe("apply edge coverage", () => {
 					writes: [{ artifactId, content: base, path }],
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			await writeText(
 				join(directory, path),
 				'{"forge":"base","user":"local"}\n',
 			);
+
 			const lockBefore = await readFile(
 				join(directory, ".forge/lock.json"),
 				"utf-8",
 			);
+
 			let injected = false;
 			const racingLayer = applyLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
@@ -831,6 +901,7 @@ describe("apply edge coverage", () => {
 						Effect.tap(() => {
 							if (injected || !target.endsWith("/state/lock.json"))
 								return Effect.void;
+
 							injected = true;
 							return fileSystem.writeFileString(
 								join(directory, path),
@@ -861,13 +932,16 @@ describe("apply edge coverage", () => {
 					).pipe(Effect.provide(racingLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({ message: "Managed File Modified", path });
 			expect(await readFile(join(directory, path), "utf-8")).toBe(
 				'{"forge":"mid-run","user":"mid-run"}\n',
 			);
+
 			expect(await readFile(join(directory, ".forge/lock.json"), "utf-8")).toBe(
 				lockBefore,
 			);
+
 			await expect(
 				readFile(join(directory, "new.txt"), "utf-8"),
 			).rejects.toThrow();
@@ -880,6 +954,7 @@ describe("apply edge coverage", () => {
 			const digest = vi
 				.spyOn(globalThis.crypto.subtle, "digest")
 				.mockRejectedValue(new Error("simulated digest failure"));
+
 			try {
 				const error = await Effect.runPromise(
 					Effect.flip(
@@ -889,6 +964,7 @@ describe("apply edge coverage", () => {
 						).pipe(Effect.provide(coreLayer)),
 					),
 				);
+
 				expect(error).toMatchObject({
 					message: "Content Hash Failed",
 					path: "content",
@@ -910,6 +986,7 @@ describe("apply edge coverage", () => {
 						? systemFailure("readFileString", target)
 						: fileSystem.readFileString(target, encoding),
 			}));
+
 			const error = await Effect.runPromise(
 				Effect.flip(
 					Apply.applyPlan(
@@ -918,6 +995,7 @@ describe("apply edge coverage", () => {
 					).pipe(Effect.provide(failingLayer)),
 				),
 			);
+
 			expect(error).toMatchObject({
 				message: "File Read Failed",
 				path: "existing.txt",
@@ -935,6 +1013,7 @@ describe("apply edge coverage", () => {
 				pathOrDescriptor: path,
 				_tag: "PermissionDenied",
 			});
+
 			const failingLayer = applyLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				exists: (target) =>
@@ -951,8 +1030,10 @@ describe("apply edge coverage", () => {
 			);
 
 			expect(error).toBeInstanceOf(ApplyError);
+
 			if (!(error instanceof ApplyError))
 				throw new Error("Expected ApplyError");
+
 			expect(error.path).toBe(relativePath);
 			expect(error.reason).toBe("file-read-failed");
 			expect(error.message).toBe("File Read Failed");
@@ -985,6 +1066,7 @@ describe("apply edge coverage", () => {
 					},
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			let targetChecks = 0;
 			const racingLayer = applyLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
@@ -993,6 +1075,7 @@ describe("apply edge coverage", () => {
 						targetChecks++;
 						if (targetChecks > 1) return Effect.succeed(false);
 					}
+
 					return fileSystem.exists(target);
 				},
 			}));
@@ -1003,6 +1086,7 @@ describe("apply edge coverage", () => {
 					removals: [relativePath],
 				}).pipe(Effect.provide(racingLayer)),
 			);
+
 			expect(await readFile(path, "utf-8")).toBe(content);
 		});
 	});
@@ -1024,6 +1108,7 @@ describe("apply edge coverage", () => {
 					},
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const noRealPathsLayer = applyLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				realPath: (target) => systemFailure("realPath", target),
@@ -1035,6 +1120,7 @@ describe("apply edge coverage", () => {
 					removals: [path],
 				}).pipe(Effect.provide(noRealPathsLayer)),
 			);
+
 			await expect(readFile(join(directory, path), "utf-8")).rejects.toThrow();
 		});
 	});
@@ -1058,6 +1144,7 @@ describe("apply edge coverage", () => {
 					},
 				}).pipe(Effect.provide(coreLayer)),
 			);
+
 			const ancestorFailureLayer = applyLayerWithFileSystem((fileSystem) => ({
 				...fileSystem,
 				realPath: (target) =>
@@ -1072,6 +1159,7 @@ describe("apply edge coverage", () => {
 					removals: [relativePath],
 				}).pipe(Effect.provide(ancestorFailureLayer)),
 			);
+
 			await expect(readFile(path, "utf-8")).rejects.toThrow();
 			expect(
 				await readFile(join(directory, ".forge/lock.json"), "utf-8"),

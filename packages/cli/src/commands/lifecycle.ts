@@ -18,6 +18,7 @@ import {
 	readPersistedCommandVersions,
 	runtimeCommand,
 	State,
+	StateError,
 	Subprocess,
 } from "@ryuujs/core";
 import {
@@ -69,6 +70,17 @@ function readWorkspaceCommandVersions(
 	});
 }
 
+function refuseUnknownLockfile(projectRoot: string) {
+	return State.readLockfile(projectRoot).pipe(
+		Effect.asVoid,
+		Effect.catchTag("StateError", (error) =>
+			error.reason === "schema-version-unknown"
+				? Effect.fail(error)
+				: Effect.void,
+		),
+	);
+}
+
 function lifecycleUnavailableMessage() {
 	return "We couldn't find a Forge project here. The .forge directory is missing or incomplete.";
 }
@@ -79,7 +91,6 @@ async function runLifecycleEffect<A, E extends { readonly message: string }>(
 ): Promise<A> {
 	const exit = await runCliEffect(effect);
 	if (Exit.isSuccess(exit)) return exit.value;
-
 	return reportLifecycleFailure(failureFromCause(exit.cause), failureMessage);
 }
 
@@ -87,8 +98,17 @@ function reportLifecycleFailure(
 	failure: { readonly message: string },
 	failureMessage: string,
 ): never {
+	if (
+		failure instanceof StateError &&
+		failure.reason === "schema-version-unknown"
+	) {
+		log.error(failure.message);
+		process.exit(1);
+	}
+
 	const detail =
 		failure instanceof ApplyError ? formatApplyError(failure) : failure.message;
+
 	log.error(
 		`${failureMessage} ${detail.endsWith(".") ? detail.slice(0, -1) : detail}.`,
 	);
@@ -153,7 +173,8 @@ export async function loadManagedProject(
 ): Promise<ManagedProject> {
 	const absoluteProjectRoot = resolve(projectRoot);
 	const manifest = await runLifecycleEffect(
-		State.readManifest(absoluteProjectRoot).pipe(
+		State.readLockfile(absoluteProjectRoot).pipe(
+			Effect.andThen(State.readManifest(absoluteProjectRoot)),
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),
@@ -181,7 +202,6 @@ export async function loadManagedProject(
 		backend === undefined ? manifest.config : { ...manifest.config, backend };
 
 	const normalizedManifest = { ...manifest, config };
-
 	return {
 		config,
 		manifest: normalizedManifest,
@@ -255,6 +275,7 @@ export async function loadProjectRegistry(
 			log.error(error.message);
 			process.exit(1);
 		}
+
 		throw error;
 	}
 }
@@ -267,7 +288,8 @@ function discoveryWarning(action: string, error: unknown) {
 export async function loadDiscoveryRegistry(projectRoot: string) {
 	const absoluteProjectRoot = resolve(projectRoot);
 	const manifestResult = await runCliEffectValue(
-		State.readManifest(absoluteProjectRoot).pipe(
+		refuseUnknownLockfile(absoluteProjectRoot).pipe(
+			Effect.andThen(State.readManifest(absoluteProjectRoot)),
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),
@@ -276,6 +298,9 @@ export async function loadDiscoveryRegistry(projectRoot: string) {
 	);
 
 	if (Result.isFailure(manifestResult)) {
+		if (manifestResult.failure.reason === "schema-version-unknown")
+			return reportLifecycleFailure(manifestResult.failure, "");
+
 		log.warn(
 			discoveryWarning(
 				"read this project's Forge metadata",

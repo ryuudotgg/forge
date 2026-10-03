@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type AddonDefinition,
 	Apply,
+	CliVersion,
 	CommandProbe,
 	ConfigStore,
 	CoreLive,
@@ -67,7 +68,10 @@ interface TestConfig extends Record<string, unknown> {
 	readonly web?: "nextjs" | "tanstack-start";
 }
 
-const coreLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
+const coreLayer = CoreLive.pipe(
+	Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	Layer.provideMerge(NodeServices.layer),
+);
 
 const decodePackageConfig = Schema.decodeSync(
 	Schema.fromJsonString(PackageConfigSchema),
@@ -126,13 +130,18 @@ function planInstalledWithDiscoveryEffect(
 			discover: () => Effect.succeed([...discovered]),
 		})),
 	).pipe(Layer.provide(ConfigStore.Default));
+
 	const plannerLayer = Planner.Default.pipe(
 		Layer.provide(
 			Layer.mergeAll(
 				CommandProbe.Default.pipe(Layer.provide(Subprocess.Default)),
 				syntheticConfigStore,
 				Renderer.Default,
-				State.Default,
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
 			),
 		),
 		Layer.provide(NodeServices.layer),
@@ -324,6 +333,7 @@ function templateDependencyRegistry(includeActiveAlternative: boolean) {
 		when: (config) => config.web === "nextjs",
 		contribute: () => [],
 	});
+
 	const tanstack = defineTemplate<TestConfig>({
 		id: "tanstack/base",
 		framework: "tanstack",
@@ -333,6 +343,7 @@ function templateDependencyRegistry(includeActiveAlternative: boolean) {
 		when: () => false,
 		contribute: () => [],
 	});
+
 	const rpc = defineAddon<TestConfig>({
 		id: "rpc",
 		name: "RPC",
@@ -592,6 +603,7 @@ describe("planner", () => {
 			template: { id: "nextjs/base", version: 1 },
 			type: "app",
 		} satisfies DiscoveredModule;
+
 		const adoptedTarget = ensuredModuleTarget("web");
 
 		expect(
@@ -642,6 +654,7 @@ describe("planner", () => {
 		).toMatchObject({
 			target: { _tag: "ResolvedModuleTarget", moduleId: "adopted-web" },
 		});
+
 		expect(
 			retargetAdoptedContribution(
 				moduleCapabilities(
@@ -668,6 +681,7 @@ describe("planner", () => {
 			section: "dependencies",
 			specifier: "1.0.0",
 		} satisfies NonNullable<InstallRecord["versions"]>[number];
+
 		const kit = {
 			name: "drizzle-kit",
 			root: "packages/db",
@@ -723,6 +737,7 @@ describe("planner", () => {
 					version: "2.0.0",
 				},
 			];
+
 			await Effect.runPromise(
 				State.writeManifest(directory, {
 					config: {},
@@ -781,6 +796,7 @@ describe("planner", () => {
 					throw new Error("definition exploded");
 				},
 			});
+
 			const registry = defineRegistry({
 				adapters: [],
 				frameworks: [],
@@ -791,6 +807,7 @@ describe("planner", () => {
 			const exit = await Effect.runPromiseExit(
 				planCreateEffect(directory, {}, registry),
 			);
+
 			const error = generatorFailure(exit);
 
 			expect(error).toBeDefined();
@@ -821,6 +838,7 @@ describe("planner", () => {
 						),
 					]),
 			});
+
 			const registry = defineRegistry({
 				adapters: [],
 				frameworks: [],
@@ -853,6 +871,7 @@ describe("planner", () => {
 					when: () => true,
 					contribute: () => Promise.reject(cause),
 				});
+
 				const registry = defineRegistry({
 					adapters: [],
 					frameworks: [],
@@ -863,11 +882,13 @@ describe("planner", () => {
 				const exit = await Effect.runPromiseExit(
 					planCreateEffect(directory, {}, registry),
 				);
+
 				const error = generatorFailure(exit);
 
 				expect(error).toBeDefined();
 				expect(error?.generatorId).toBe("rejecting-promise-addon");
 				expect(error?.reason).toBe("definition-failed");
+
 				expect(error?.detail).toBe("definition rejected");
 				expect(error?.cause).toBe(cause);
 				expect(error?.message).toBe("Definition Failed: definition rejected");
@@ -887,6 +908,7 @@ describe("planner", () => {
 				slots: ["layout"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "nextjs/base",
 				framework: "nextjs",
@@ -902,6 +924,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "throwing-adapter",
 				name: "Throwing Adapter",
@@ -912,6 +935,7 @@ describe("planner", () => {
 				when: () => true,
 				contribute: () => [],
 			});
+
 			const adapter = defineAdapter<TestConfig>({
 				addon: "throwing-adapter",
 				framework: "nextjs",
@@ -919,6 +943,7 @@ describe("planner", () => {
 					throw new Error("adapter exploded");
 				},
 			});
+
 			const registry = defineRegistry({
 				adapters: [adapter],
 				frameworks: [framework],
@@ -929,6 +954,7 @@ describe("planner", () => {
 			const exit = await Effect.runPromiseExit(
 				planCreateEffect(directory, {}, registry),
 			);
+
 			const error = generatorFailure(exit);
 
 			expect(error).toBeDefined();
@@ -1007,6 +1033,7 @@ describe("planner", () => {
 					(write) => moduleBucketId(write.target) === uiModuleId,
 				),
 			).toBe(false);
+
 			expect(
 				updatePlan.writes.some((write) => write.path === "apps/web/forge.json"),
 			).toBe(true);
@@ -1199,6 +1226,7 @@ describe("planner", () => {
 			expect(Object.keys(installedPlan.manifest.modules).sort()).toEqual(
 				Object.keys(createPlan.manifest.modules).sort(),
 			);
+
 			expect(installedPlan.removals).toEqual([]);
 		});
 	});
@@ -1258,6 +1286,7 @@ describe("planner", () => {
 					leafTextFile(projectTarget(), "duplicate.txt", "same\n"),
 				],
 			});
+
 			const registry = defineRegistry({
 				adapters: [],
 				addons: [duplicate],
@@ -1309,6 +1338,7 @@ describe("planner", () => {
 				"logs",
 				"metrics",
 			]);
+
 			expect(createConfig.slots).toEqual({
 				client: "src/client.ts",
 				provider: "src/provider.ts",
@@ -1329,9 +1359,11 @@ describe("planner", () => {
 			expect(removalPlan.manifest.modules[telemetryId]?.definitionIds).toEqual([
 				"logs",
 			]);
+
 			expect(removalPlan.removals).toEqual([
 				"packages/telemetry/src/metrics.ts",
 			]);
+
 			expect(
 				removalPlan.writes.some(
 					(write) => write.path === "packages/telemetry/src/logs.ts",
@@ -1386,16 +1418,19 @@ describe("planner", () => {
 			expect(updatePlan.manifest.modules[telemetryId]?.root).toBe(
 				"packages/observability",
 			);
+
 			expect(
 				updatePlan.writes.some(
 					(write) => write.path === "packages/observability/forge.json",
 				),
 			).toBe(true);
+
 			expect(
 				updatePlan.writes.some(
 					(write) => write.path === "packages/observability/src/logs.ts",
 				),
 			).toBe(true);
+
 			expect(
 				updatePlan.writes.some((write) =>
 					write.path.startsWith("packages/telemetry/"),
@@ -1432,6 +1467,7 @@ describe("planner", () => {
 					(write) => write.path === "apps/site/app/layout.tsx",
 				),
 			).toBe(true);
+
 			expect(
 				updatePlan.writes.some((write) => write.path.startsWith("apps/web/")),
 			).toBe(false);
@@ -1568,6 +1604,7 @@ describe("planner", () => {
 			expect(updatePlan.manifest.modules[auditId]?.root).toBe(
 				"packages/audit-renamed",
 			);
+
 			expect(updatePlan.manifest.modules[auditId]?.definitionIds).toEqual([
 				"audit",
 			]);
@@ -1626,6 +1663,7 @@ describe("planner", () => {
 				join(directory, "packages/one"),
 				join(directory, "packages/one-moved"),
 			);
+
 			await rename(
 				join(directory, "packages/two"),
 				join(directory, "packages/two-moved"),
@@ -1709,6 +1747,7 @@ describe("planner", () => {
 				join(directory, "packages/telemetry"),
 				join(directory, "packages/observability"),
 			);
+
 			await writeText(
 				join(directory, "packages/observability/src/logs.ts"),
 				"user edit\n",
@@ -1955,6 +1994,7 @@ describe("planner", () => {
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "nextjs/base",
 				framework: "nextjs",
@@ -1975,6 +2015,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "integration",
 				name: "Integration",
@@ -1985,6 +2026,7 @@ describe("planner", () => {
 				when: () => true,
 				contribute: () => [],
 			});
+
 			const adapter = defineAdapter<TestConfig>({
 				addon: "integration",
 				framework: "nextjs",
@@ -1997,6 +2039,7 @@ describe("planner", () => {
 					),
 				],
 			});
+
 			const filteredAddon = defineAddon<TestConfig>({
 				id: "filtered-integration",
 				name: "Filtered Integration",
@@ -2009,6 +2052,7 @@ describe("planner", () => {
 				when: () => true,
 				contribute: () => [],
 			});
+
 			const filteredAdapter = defineAdapter<TestConfig>({
 				addon: "filtered-integration",
 				framework: "nextjs",
@@ -2021,6 +2065,7 @@ describe("planner", () => {
 					),
 				],
 			});
+
 			const registry = defineRegistry({
 				adapters: [adapter, filteredAdapter],
 				frameworks: [framework],
@@ -2031,9 +2076,11 @@ describe("planner", () => {
 			const plan = await Effect.runPromise(
 				planCreateEffect(directory, { web: "nextjs" }, registry),
 			);
+
 			const adapterWrites = plan.writes.filter((write) =>
 				write.path.endsWith("/adapter.txt"),
 			);
+
 			const install = plan.manifest.installs.find(
 				(entry) => entry.definitionId === "integration",
 			);
@@ -2042,14 +2089,17 @@ describe("planner", () => {
 				"apps/first/adapter.txt",
 				"apps/second/adapter.txt",
 			]);
+
 			expect(adapterWrites.map((write) => write.content).sort()).toEqual([
 				"nextjs:apps/first:src/first.ts\n",
 				"nextjs:apps/second:src/second.ts\n",
 			]);
+
 			expect(install?.targets).toHaveLength(2);
 			expect(install?.targets.every((target) => target.kind === "module")).toBe(
 				true,
 			);
+
 			expect(
 				plan.writes.filter((write) => write.path.endsWith("/filtered.txt")),
 			).toEqual([
@@ -2058,6 +2108,7 @@ describe("planner", () => {
 					path: "apps/second/filtered.txt",
 				}),
 			]);
+
 			expect(
 				plan.manifest.installs.find(
 					(entry) => entry.definitionId === "filtered-integration",
@@ -2078,6 +2129,7 @@ describe("planner", () => {
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "solid" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "nextjs/base",
 				framework: "nextjs",
@@ -2093,6 +2145,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "integration",
 				name: "Integration",
@@ -2106,11 +2159,13 @@ describe("planner", () => {
 					leafTextFile(selectedModuleTarget(), "integration.txt", "generic\n"),
 				],
 			});
+
 			const adapter = defineAdapter<TestConfig>({
 				addon: "integration",
 				framework: "solid",
 				contribute: () => [],
 			});
+
 			const registry = defineRegistry({
 				adapters: [adapter],
 				frameworks: [adapterGuardNextjs, solid],
@@ -2141,6 +2196,7 @@ describe("planner", () => {
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "solid" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "solid/base",
 				framework: "solid",
@@ -2156,6 +2212,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "integration",
 				name: "Integration",
@@ -2169,6 +2226,7 @@ describe("planner", () => {
 					leafTextFile(selectedModuleTarget(), "integration.txt", "generic\n"),
 				],
 			});
+
 			const adapter = defineAdapter<TestConfig>({
 				addon: "integration",
 				framework: "solid",
@@ -2180,6 +2238,7 @@ describe("planner", () => {
 					),
 				],
 			});
+
 			const registry = defineRegistry({
 				adapters: [adapter],
 				frameworks: [solid],
@@ -2210,6 +2269,7 @@ describe("planner", () => {
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
+
 			const solid = defineFramework({
 				id: "solid",
 				configFile: "vite.config.ts",
@@ -2220,6 +2280,7 @@ describe("planner", () => {
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "solid" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "nextjs/base",
 				framework: "nextjs",
@@ -2250,6 +2311,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "integration",
 				name: "Integration",
@@ -2272,6 +2334,7 @@ describe("planner", () => {
 					leafTextFile(selectedModuleTarget(), "generic.txt", "generic\n"),
 				],
 			});
+
 			const adapter = defineAdapter<TestConfig>({
 				addon: "integration",
 				framework: "nextjs",
@@ -2283,19 +2346,23 @@ describe("planner", () => {
 					),
 				],
 			});
+
 			const registry = defineRegistry({
 				adapters: [adapter],
 				frameworks: [nextjs, solid],
 				templates: [template],
 				addons: [addon],
 			});
+
 			const summarize = async (dual: boolean) => {
 				const plan = await Effect.runPromise(
 					planCreateEffect(directory, { dual, web: "nextjs" }, registry),
 				);
+
 				const rootPackageJson = plan.writes.find(
 					(write) => write.path === "package.json",
 				);
+
 				const uiConfig = plan.writes.find(
 					(write) => write.path === "packages/ui/forge.json",
 				);
@@ -2324,6 +2391,7 @@ describe("planner", () => {
 				genericPaths: [],
 				hasProjectFile: true,
 			});
+
 			expect(await summarize(true)).toEqual({
 				capabilities: ["ui", "integration"],
 				dependency: "1.0.0",
@@ -2347,6 +2415,7 @@ describe("planner", () => {
 					slots: ["integration"],
 					tsconfigPreset: { content: {}, name: "solid" },
 				});
+
 				const template = defineTemplate<TestConfig>({
 					id: "nextjs/base",
 					framework: "nextjs",
@@ -2368,6 +2437,7 @@ describe("planner", () => {
 						}),
 					],
 				});
+
 				const addon = defineAddon<TestConfig>({
 					id: "integration",
 					name: "Integration",
@@ -2388,11 +2458,13 @@ describe("planner", () => {
 						),
 					],
 				});
+
 				const adapter = defineAdapter<TestConfig>({
 					addon: "integration",
 					framework: "solid",
 					contribute: () => [],
 				});
+
 				const registry = defineRegistry({
 					adapters: [adapter],
 					frameworks: [adapterGuardNextjs, solid],
@@ -2426,6 +2498,7 @@ describe("planner", () => {
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
+
 			const solidFramework = defineFramework({
 				id: "solid",
 				configFile: "vite.config.ts",
@@ -2436,6 +2509,7 @@ describe("planner", () => {
 				slots: ["integration"],
 				tsconfigPreset: { content: {}, name: "solid" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "nextjs/base",
 				framework: "nextjs",
@@ -2456,6 +2530,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "integration",
 				name: "Integration",
@@ -2469,6 +2544,7 @@ describe("planner", () => {
 					leafTextFile(selectedModuleTarget(), "integration.txt", "generic\n"),
 				],
 			});
+
 			const adapter = defineAdapter<TestConfig>({
 				addon: "integration",
 				framework: "nextjs",
@@ -2480,6 +2556,7 @@ describe("planner", () => {
 					),
 				],
 			});
+
 			const registry = defineRegistry({
 				adapters: [adapter],
 				frameworks: [framework, solidFramework],
@@ -2490,6 +2567,7 @@ describe("planner", () => {
 			const plan = await Effect.runPromise(
 				planCreateEffect(directory, { web: "nextjs" }, registry),
 			);
+
 			expect(
 				plan.writes
 					.filter((entry) => entry.path.endsWith("/integration.txt"))
@@ -2514,6 +2592,7 @@ describe("planner", () => {
 				slots: ["layout"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "nextjs/base",
 				framework: "nextjs",
@@ -2529,6 +2608,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "ui",
 				name: "UI",
@@ -2539,6 +2619,7 @@ describe("planner", () => {
 				when: (config) => config.ui === true,
 				contribute: () => [],
 			});
+
 			const adapter = defineAdapter<TestConfig>({
 				addon: "ui",
 				framework: "nextjs",
@@ -2559,6 +2640,7 @@ describe("planner", () => {
 					),
 				],
 			});
+
 			const registry = defineRegistry({
 				adapters: [adapter],
 				frameworks: [framework],
@@ -2569,6 +2651,7 @@ describe("planner", () => {
 			const createPlan = await Effect.runPromise(
 				planCreateEffect(directory, { ui: true, web: "nextjs" }, registry),
 			);
+
 			await Effect.runPromise(applyPlanEffect(directory, createPlan));
 			await rename(
 				join(directory, "packages/ui"),
@@ -2583,6 +2666,7 @@ describe("planner", () => {
 					registry,
 				),
 			);
+
 			const roots = Object.values(updatePlan.manifest.modules).map(
 				(record) => record.root,
 			);
@@ -2611,6 +2695,7 @@ describe("planner", () => {
 					slots: ["layout"],
 					tsconfigPreset: { content: {}, name: "nextjs" },
 				});
+
 				const template = defineTemplate<TestConfig>({
 					id: "nextjs/base",
 					framework: "nextjs",
@@ -2626,6 +2711,7 @@ describe("planner", () => {
 						}),
 					],
 				});
+
 				const addon = defineAddon<TestConfig>({
 					id: "ui",
 					name: "UI",
@@ -2643,6 +2729,7 @@ describe("planner", () => {
 						}),
 					],
 				});
+
 				const adapter = defineAdapter<TestConfig>({
 					addon: "ui",
 					framework: "nextjs",
@@ -2655,6 +2742,7 @@ describe("planner", () => {
 						}),
 					],
 				});
+
 				const registry = defineRegistry({
 					adapters: [adapter],
 					frameworks: [framework],
@@ -2665,6 +2753,7 @@ describe("planner", () => {
 				const createPlan = await Effect.runPromise(
 					planCreateEffect(directory, { ui: true, web: "nextjs" }, registry),
 				);
+
 				const uiId = moduleIdByRoot(
 					createPlan.manifest.modules,
 					"packages/ui-base",
@@ -2678,6 +2767,7 @@ describe("planner", () => {
 					join(directory, "packages/ui-base"),
 					join(directory, "packages/design-system"),
 				);
+
 				const renamedPlan = await Effect.runPromise(
 					planInstalledEffect(
 						directory,
@@ -2710,11 +2800,13 @@ describe("planner", () => {
 						registry,
 					),
 				);
+
 				const error = plannerFailure(exit);
 
 				expect(error?.message).toBe(
 					"Module Key Conflict: ui is claimed by packages/ui and packages/design-system",
 				);
+
 				expect(error?.path).toBe("packages/ui");
 			},
 		);
@@ -2734,6 +2826,7 @@ describe("planner", () => {
 					slots: ["integration"],
 					tsconfigPreset: { content: {}, name: "first" },
 				});
+
 				const secondFramework = defineFramework({
 					id: "second",
 					configFile: "second.config.ts",
@@ -2744,6 +2837,7 @@ describe("planner", () => {
 					slots: ["integration"],
 					tsconfigPreset: { content: {}, name: "second" },
 				});
+
 				const firstTemplate = defineTemplate<TestConfig>({
 					id: "first/base",
 					framework: "first",
@@ -2753,6 +2847,7 @@ describe("planner", () => {
 					when: () => false,
 					contribute: () => [],
 				});
+
 				const secondTemplate = defineTemplate<TestConfig>({
 					id: "second/base",
 					framework: "second",
@@ -2762,6 +2857,7 @@ describe("planner", () => {
 					when: () => false,
 					contribute: () => [],
 				});
+
 				const addon = defineAddon<TestConfig>({
 					id: "integration",
 					name: "Integration",
@@ -2772,6 +2868,7 @@ describe("planner", () => {
 					when: () => false,
 					contribute: () => [],
 				});
+
 				const adapter = defineAdapter<TestConfig>({
 					addon: "integration",
 					framework: "second",
@@ -2784,6 +2881,7 @@ describe("planner", () => {
 						),
 					],
 				});
+
 				const registry = defineRegistry({
 					adapters: [adapter],
 					frameworks: [firstFramework, secondFramework],
@@ -2798,6 +2896,7 @@ describe("planner", () => {
 					template: { id: "first/base", version: 1 },
 					slots: { integration: "src/integration.ts" },
 				});
+
 				await writeJson(join(directory, "apps/second/forge.json"), {
 					id: "bbbbb",
 					type: "app",
@@ -2839,6 +2938,7 @@ describe("planner", () => {
 			slots: ["integration"],
 			tsconfigPreset: { content: {}, name: "nextjs" },
 		});
+
 		const template = defineTemplate<TestConfig>({
 			id: "nextjs/base",
 			framework: "nextjs",
@@ -2848,6 +2948,7 @@ describe("planner", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const integration = defineAddon<TestConfig>({
 			id: "integration",
 			name: "Integration",
@@ -2858,6 +2959,7 @@ describe("planner", () => {
 			when: () => true,
 			contribute: () => [],
 		});
+
 		const parent = defineAddon<TestConfig>({
 			id: "parent",
 			name: "Parent",
@@ -2869,6 +2971,7 @@ describe("planner", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const adapter = defineAdapter<TestConfig>({
 			addon: "integration",
 			framework: "nextjs",
@@ -2881,12 +2984,14 @@ describe("planner", () => {
 				),
 			],
 		});
+
 		const registry = defineRegistry({
 			adapters: [adapter],
 			frameworks: [framework],
 			templates: [template],
 			addons: [integration, parent],
 		});
+
 		const moduleFixtures = [
 			{
 				id: "aaaaa",
@@ -2897,6 +3002,7 @@ describe("planner", () => {
 				root: "apps/zeta",
 			},
 		] as const;
+
 		const run = (
 			name: string,
 			fixtures: ReadonlyArray<(typeof moduleFixtures)[number]>,
@@ -2924,15 +3030,18 @@ describe("planner", () => {
 						registry,
 					),
 				);
+
 				const integrationInstall = plan.manifest.installs.find(
 					(install) => install.definitionId === "integration",
 				);
+
 				const targetRoots =
 					integrationInstall?.targets.flatMap((target) =>
 						target.kind === "module"
 							? [plan.manifest.modules[target.moduleId]?.root ?? ""]
 							: [],
 					) ?? [];
+
 				const adapterWrites = plan.writes
 					.filter((write) => write.path.endsWith("/adapter.txt"))
 					.map((write) => ({ content: write.content, path: write.path }));
@@ -2966,6 +3075,7 @@ describe("planner", () => {
 				slots: ["trpc"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
+
 			const tanstack = defineFramework({
 				id: "tanstack-start",
 				configFile: "vite.config.ts",
@@ -2976,6 +3086,7 @@ describe("planner", () => {
 				slots: ["trpc"],
 				tsconfigPreset: { content: {}, name: "tanstack-start" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "tanstack-start/base",
 				framework: "tanstack-start",
@@ -2991,6 +3102,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "trpc",
 				name: "tRPC",
@@ -3001,12 +3113,14 @@ describe("planner", () => {
 				when: () => true,
 				contribute: () => [],
 			});
+
 			const nextjsAdapter = defineAdapter<TestConfig>({
 				addon: "trpc",
 				framework: "nextjs",
 				requiredSlots: ["trpc"],
 				contribute: () => [],
 			});
+
 			const registry = defineRegistry({
 				adapters: [nextjsAdapter],
 				frameworks: [nextjs, tanstack],
@@ -3043,6 +3157,7 @@ describe("planner", () => {
 					adapterGuardRegistry,
 				),
 			);
+
 			const error = plannerFailure(exit);
 
 			expect(error?.message).toBe("Adapter Target Must Be Module");
@@ -3065,6 +3180,7 @@ describe("planner", () => {
 					adapterGuardRegistry,
 				),
 			);
+
 			const error = plannerFailure(exit);
 
 			expect(error?.message).toBe("Adapter Target App Missing");
@@ -3107,6 +3223,7 @@ describe("planner", () => {
 						],
 					),
 				);
+
 				const error = plannerFailure(exit);
 
 				expect(error?.message).toBe("Adapter Framework Missing");
@@ -3169,6 +3286,7 @@ describe("planner", () => {
 					template: { id: "nextjs/base", version: 1 },
 					slots: { integration: "src/integration.ts" },
 				});
+
 				const adapter = defineAdapter<TestConfig>({
 					addon: "integration",
 					framework: "nextjs",
@@ -3184,6 +3302,7 @@ describe("planner", () => {
 						];
 					},
 				});
+
 				const registry = defineRegistry({
 					adapters: [adapter],
 					frameworks: [adapterGuardNextjs],
@@ -3226,6 +3345,7 @@ describe("planner", () => {
 				slots: ["trpc"],
 				tsconfigPreset: { content: {}, name: "nextjs" },
 			});
+
 			const template = defineTemplate<TestConfig>({
 				id: "nextjs/base",
 				framework: "nextjs",
@@ -3241,6 +3361,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const addon = defineAddon<TestConfig>({
 				id: "trpc",
 				name: "tRPC",
@@ -3251,12 +3372,14 @@ describe("planner", () => {
 				when: () => true,
 				contribute: () => [],
 			});
+
 			const adapter = defineAdapter<TestConfig>({
 				addon: "trpc",
 				framework: "nextjs",
 				requiredSlots: ["trpc"],
 				contribute: () => [],
 			});
+
 			const registry = defineRegistry({
 				adapters: [adapter],
 				frameworks: [framework],
@@ -3286,6 +3409,7 @@ describe("planner", () => {
 				slots: ["layout"],
 				tsconfigPreset: { content: {}, name: "fake" },
 			});
+
 			const fakeTemplate = defineTemplate<TestConfig>({
 				id: "fake/base",
 				framework: "fake",
@@ -3301,6 +3425,7 @@ describe("planner", () => {
 					}),
 				],
 			});
+
 			const trpc = defineAddon<TestConfig>({
 				id: "trpc",
 				name: "tRPC",
@@ -3317,6 +3442,7 @@ describe("planner", () => {
 				when: (config) => config.rpc === "trpc",
 				contribute: () => [],
 			});
+
 			const registry = defineRegistry({
 				frameworks: [fakeFramework],
 				templates: [fakeTemplate],
@@ -3326,6 +3452,7 @@ describe("planner", () => {
 			const exit = await Effect.runPromiseExit(
 				planCreateEffect(directory, { rpc: "trpc", web: "nextjs" }, registry),
 			);
+
 			const error = generatorFailure(exit);
 
 			expect(error?.generatorId).toBe("trpc");
@@ -3481,6 +3608,7 @@ describe("planner", () => {
 					]),
 				],
 			});
+
 			const tailwind = defineAddon<TestConfig>({
 				id: "tailwind",
 				name: "Tailwind",
@@ -3492,6 +3620,7 @@ describe("planner", () => {
 				when: (config) => config.style === "tailwind",
 				contribute: () => [],
 			});
+
 			const drizzle = defineAddon<TestConfig>({
 				id: "drizzle",
 				name: "Drizzle",
@@ -3529,11 +3658,13 @@ describe("planner", () => {
 					];
 				},
 			});
+
 			const registry = defineRegistry({
 				frameworks: [],
 				templates: [],
 				addons: [drizzle, ui, tailwind],
 			});
+
 			const plannedConfig: TestConfig = {
 				database: "postgres",
 				orm: "a",
@@ -3543,6 +3674,7 @@ describe("planner", () => {
 			const createPlan = await Effect.runPromise(
 				planCreateEffect(directory, plannedConfig, registry),
 			);
+
 			const installedPlan = await Effect.runPromise(
 				planInstalledEffect(
 					directory,
@@ -3561,6 +3693,7 @@ describe("planner", () => {
 					"drizzle-orm",
 					"postgres",
 				]);
+
 				expect(plan.dependencyNames.tailwind).toEqual(["tailwindcss"]);
 				expect(new Set(plan.dependencyNames.unknown)).toEqual(new Set());
 			}
