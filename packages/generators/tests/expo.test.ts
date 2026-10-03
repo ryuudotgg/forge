@@ -431,12 +431,18 @@ describe("Expo mobile framework", () => {
 		expect(expoOnlyIndex).toContain("plugins: [expo()]");
 		expect(expoOnlyIndex).toContain('trustedOrigins: ["acme://"]');
 		expect(expoOnlyIndex).toContain("emailAndPassword: { enabled: true }");
+		expect(writeContent(expoOnly, "packages/db/src/schema/auth.ts")).toContain(
+			"password: text()",
+		);
 
 		const expoAndNextIndex = writeContent(
 			expoAndNext,
 			"packages/auth/src/index.ts",
 		);
 		expect(expoAndNextIndex).toContain("plugins: [expo(), nextCookies()]");
+		expect(
+			writeContent(expoAndNext, "packages/db/src/schema/auth.ts"),
+		).toContain("password: text()");
 
 		const standaloneIndex = writeContent(
 			standalone,

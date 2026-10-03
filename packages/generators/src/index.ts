@@ -9,6 +9,7 @@ export {
 	rpcConsumer,
 } from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
+export { resolveAuthMethods } from "./auth/methods";
 export type {
 	AddonCatalogEntry,
 	CatalogEntry,
@@ -24,6 +25,7 @@ export {
 } from "./catalog";
 export type {
 	AuthenticationProvider,
+	AuthMethod,
 	Backend,
 	Catalogs,
 	Database,
@@ -44,6 +46,7 @@ export type {
 export {
 	addonConfigBindings,
 	authenticationProviders,
+	authMethods,
 	backends,
 	catalogs,
 	configWithInstall,

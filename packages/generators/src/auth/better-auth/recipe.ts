@@ -34,6 +34,9 @@ const betterAuthMarkers = {
 	COOKIE_PLUGIN: marker.toggleLine("  // __COOKIE_PLUGIN__\n\n"),
 	TRUSTED_ORIGINS: marker.toggleLine("  // __TRUSTED_ORIGINS__\n"),
 	EMAIL_PASSWORD: marker.toggleLine("  // __EMAIL_PASSWORD__\n"),
+	SOCIAL_DECLARATION: marker.toggleLine("// __SOCIAL_DECLARATION__\n"),
+	SOCIAL_OPTION: marker.toggleLine("  // __SOCIAL_OPTION__\n\n"),
+	SOCIAL_FUNCTION: marker.toggleLine("// __SOCIAL_FUNCTION__\n\n"),
 } as const;
 
 function betterAuthModuleDependencies(slug: string) {

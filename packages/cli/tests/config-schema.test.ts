@@ -18,6 +18,44 @@ function decodeMessages(result: ReturnType<typeof decodeConfig>) {
 }
 
 describe("assembleSchema", () => {
+	it.each(
+		[[], ["unknown"], ["google", "unknown"]].map((authMethods) => ({
+			authMethods,
+		})),
+	)("rejects invalid auth methods $authMethods", ({ authMethods }) => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods,
+		});
+
+		expect(Result.isFailure(result)).toBe(true);
+	});
+
+	it("rejects methods without Better Auth", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authMethods: ["google"],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"Authentication methods need Better Auth.",
+		);
+	});
+
+	it("accepts methods with Better Auth", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods: ["email-password", "google", "apple"],
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
 	it("decodes a complete create config", () => {
 		const result = decodeConfig({
 			name: "Acme",

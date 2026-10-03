@@ -26,6 +26,12 @@ export function assembleSchema(steps: Step[]) {
 	return Schema.Struct(fields).pipe(
 		Schema.check(
 			Schema.makeFilter((data) => {
+				if (
+					data.authMethods !== undefined &&
+					data.authentication !== "better-auth"
+				)
+					return "Authentication methods need Better Auth.";
+
 				const platforms = Array.isArray(data.platforms)
 					? data.platforms
 					: undefined;

@@ -18,11 +18,7 @@ export const env = createEnv({
     APP_ORIGIN: z.url(),
     // __WEB_URL_SCHEMA__
 
-    AUTH_GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
-    AUTH_GOOGLE_CLIENT_SECRET: z.string().trim().min(1).optional(),
-
-    AUTH_APPLE_CLIENT_ID: z.string().trim().min(1).optional(),
-    AUTH_APPLE_CLIENT_SECRET: z.string().trim().min(1).optional(),
+    // __SOCIAL_SCHEMA__
   },
 
   runtimeEnvStrict: {
@@ -34,11 +30,7 @@ export const env = createEnv({
     APP_ORIGIN: process.env.APP_ORIGIN,
     // __WEB_URL_RUNTIME__
 
-    AUTH_GOOGLE_CLIENT_ID: process.env.AUTH_GOOGLE_CLIENT_ID,
-    AUTH_GOOGLE_CLIENT_SECRET: process.env.AUTH_GOOGLE_CLIENT_SECRET,
-
-    AUTH_APPLE_CLIENT_ID: process.env.AUTH_APPLE_CLIENT_ID,
-    AUTH_APPLE_CLIENT_SECRET: process.env.AUTH_APPLE_CLIENT_SECRET,
+    // __SOCIAL_RUNTIME__
   },
 
   emptyStringAsUndefined: true,
