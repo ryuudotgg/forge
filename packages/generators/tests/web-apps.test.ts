@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
+import { dirname, join } from "node:path";
 import type { ProjectPlan } from "@ryuugg/core";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
+	builtins,
 	type ForgeConfig,
 	reservedWebAppNames,
 	webAppInstances,
@@ -160,6 +162,140 @@ describe("webAppInstances", () => {
 });
 
 describe("secondary web app planning", () => {
+	it.each(
+		webFrameworks.ids.flatMap((primary) =>
+			webFrameworks.ids
+				.filter((secondary) => secondary !== primary)
+				.map((secondary) => ({ primary, secondary })),
+		),
+	)(
+		"plans $primary with a $secondary secondary app",
+		async ({ primary, secondary }) => {
+			const plan = await plannedProject({
+				name: "Acme",
+				slug: "acme",
+				web: primary,
+				backend: "hono",
+				rpc: "trpc",
+				authentication: "better-auth",
+				orm: "drizzle",
+				database: "sqlite",
+				style: "tailwind",
+				linter: "biome",
+				packageManager: "pnpm",
+				webApps: [{ name: "admin", framework: secondary }],
+			});
+
+			const roots = Object.values(plan.manifest.modules).map(
+				(module) => module.root,
+			);
+
+			const adminRoot = roots.find((root) => root?.endsWith("/admin"));
+			const webRoot = roots.find((root) => root?.endsWith("/web"));
+			const uiRoot = roots.find((root) => root?.endsWith("/ui"));
+			const tsconfigPackage = plan.writes.find(
+				(write) =>
+					write.path.endsWith("/package.json") &&
+					Schema.decodeSync(
+						Schema.fromJsonString(Schema.Struct({ name: Schema.String })),
+					)(write.content).name === "@acme/tsconfig",
+			);
+
+			if (
+				adminRoot === undefined ||
+				webRoot === undefined ||
+				uiRoot === undefined ||
+				tsconfigPackage === undefined
+			)
+				throw new Error("Missing Planned Module: mixed web apps");
+
+			const forgeJsonSchema = Schema.fromJsonString(
+				Schema.Struct({
+					framework: Schema.String,
+					template: Schema.Struct({ id: Schema.String }),
+				}),
+			);
+
+			const componentsSchema = Schema.fromJsonString(
+				Schema.Struct({ rsc: Schema.Boolean }),
+			);
+
+			const turboSchema = Schema.fromJsonString(
+				Schema.Struct({
+					tasks: Schema.Struct({
+						build: Schema.Struct({ outputs: Schema.Array(Schema.String) }),
+					}),
+				}),
+			);
+
+			for (const { root, framework } of [
+				{ root: adminRoot, framework: secondary },
+				{ root: webRoot, framework: primary },
+			]) {
+				expect(
+					Schema.decodeSync(forgeJsonSchema)(
+						contentAt(plan, join(root, "forge.json")),
+					),
+				).toMatchObject({
+					framework,
+					template: { id: `${framework}/base` },
+				});
+
+				const components = Schema.decodeSync(componentsSchema)(
+					contentAt(plan, join(root, "components.json")),
+				);
+
+				expect(components.rsc).toBe(framework === "nextjs");
+
+				const definition = builtins.frameworks.find(
+					(entry) => entry.id === framework,
+				);
+
+				if (definition === undefined)
+					throw new Error(`Missing Framework: ${framework}`);
+
+				expect(
+					Schema.decodeSync(Schema.fromJsonString(Schema.Unknown))(
+						contentAt(
+							plan,
+							join(
+								dirname(tsconfigPackage.path),
+								`${definition.tsconfigPreset.name}.json`,
+							),
+						),
+					),
+				).toEqual(definition.tsconfigPreset.content);
+
+				expect(
+					Schema.decodeSync(turboSchema)(contentAt(plan, "turbo.json")).tasks
+						.build.outputs,
+				).toEqual(expect.arrayContaining([...definition.buildOutputs]));
+			}
+
+			const uiComponents = Schema.decodeSync(componentsSchema)(
+				contentAt(plan, join(uiRoot, "components.json")),
+			);
+
+			expect(uiComponents.rsc).toBe(
+				primary === "nextjs" || secondary === "nextjs",
+			);
+
+			const admin = Schema.decodeSync(appPackageSchema)(
+				contentAt(plan, join(adminRoot, "package.json")),
+			);
+
+			for (const name of ["@acme/trpc", "@acme/auth", "@acme/db"])
+				expect(admin.dependencies).not.toHaveProperty(name);
+
+			const ignoreLines = contentAt(plan, ".gitignore").split("\n");
+			expect(ignoreLines.filter((line) => line === ".tanstack/")).toHaveLength(
+				primary.startsWith("tanstack-") || secondary.startsWith("tanstack-")
+					? 1
+					: 0,
+			);
+		},
+	);
+
 	it.each([
 		...webFrameworks.ids.map((web) => ({ web, backend: "hono" as const })),
 		...(["nextjs", "react-router", "tanstack-start"] as const).map((web) => ({

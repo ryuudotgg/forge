@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
 	access,
 	mkdir,
@@ -9,7 +10,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { expect } from "vitest";
 
 export const repoRoot = resolve(process.cwd(), "..", "..");
@@ -35,7 +36,6 @@ export interface ScenarioProject {
 
 export function forgeEnvironment(workspaceRoot: string): NodeJS.ProcessEnv {
 	const cacheRoot = join(workspaceRoot, ".cache");
-
 	return {
 		COREPACK_HOME:
 			process.env.COREPACK_HOME ??
@@ -57,7 +57,6 @@ export async function withScenarioWorkspace<T>(
 	);
 
 	const projectRoot = join(workspaceRoot, "project");
-
 	try {
 		await mkdir(projectRoot, { recursive: true });
 		return await run({ projectRoot, workspaceRoot });
@@ -162,7 +161,6 @@ export async function runForge(
 	},
 ) {
 	const result = await tryRunForge(cwd, args, options);
-
 	if (result.exitCode !== 0)
 		throw new Error(
 			`forge ${args.join(" ")} failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
@@ -182,14 +180,16 @@ export async function createProject(
 ) {
 	const configPath = join(workspace.workspaceRoot, "forge.config.json");
 
-	await writeJson(configPath, {
+	const createConfig = {
 		name: "acme",
 		path: "./project",
 		platforms: ["web"],
 		runtime: "Node.js",
 		slug: "acme",
 		...config,
-	});
+	};
+
+	await writeJson(configPath, createConfig);
 
 	await runForge(
 		workspace.workspaceRoot,
@@ -206,6 +206,16 @@ export async function createProject(
 			workspaceRoot: workspace.workspaceRoot,
 		},
 	);
+
+	const recordDirectory = process.env.FORGE_RECORD_CONFIGS;
+	if (recordDirectory)
+		await writeJson(
+			join(
+				recordDirectory,
+				`${basename(workspace.workspaceRoot)}-${randomUUID()}.json`,
+			),
+			createConfig,
+		);
 }
 
 export async function addAddon(

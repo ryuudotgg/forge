@@ -26,6 +26,43 @@ async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 }
 
 describe("create", () => {
+	it("creates a Next.js secondary app with a TanStack Router primary", async () => {
+		await withScenarioWorkspace(
+			"create-mixed-secondary-web-app",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "tanstack-router",
+					backend: "hono",
+					rpc: "trpc",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					style: "tailwind",
+					linter: "biome",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				});
+
+				const adminRoot = join(workspace.projectRoot, "apps/admin");
+				const admin = await readJson<{ scripts: { dev: string } }>(
+					join(adminRoot, "package.json"),
+				);
+
+				expect(await readJson(join(adminRoot, "forge.json"))).toHaveProperty(
+					"framework",
+					"nextjs",
+				);
+
+				expect(admin.scripts.dev).toBe("pnpm with-env next dev --port 3002");
+				expect(
+					await readJson(
+						join(workspace.projectRoot, "packages/ui/components.json"),
+					),
+				).toHaveProperty("rsc", true);
+			},
+		);
+	});
+
 	it("creates a secondary web app without primary API wiring", async () => {
 		await withScenarioWorkspace(
 			"create-secondary-web-app",

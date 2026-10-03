@@ -122,7 +122,6 @@ describe("planner defensive failures", () => {
 			const second = defineTemplate<FailureConfig>({
 				...first,
 				id: "second/base",
-				framework: "second",
 				name: "Second",
 			});
 
@@ -137,6 +136,45 @@ describe("planner defensive failures", () => {
 
 			expect(error.reason).toBe("multiple-templates-selected");
 			expect(error.category).toBe("web");
+			expect(error.detail).toBe(
+				"Multiple Templates Selected: first in web: first/base and second/base",
+			);
+		});
+	});
+
+	it("selects different frameworks in one template category", async () => {
+		await withTempDir("planner-mixed-templates", async (directory) => {
+			const first = defineTemplate<FailureConfig>({
+				id: "first/base",
+				framework: "first",
+				name: "First",
+				version: 1,
+				category: "web",
+				when: () => true,
+				contribute: vi.fn(() => []),
+			});
+
+			const second = defineTemplate<FailureConfig>({
+				...first,
+				id: "second/base",
+				framework: "second",
+				name: "Second",
+				contribute: vi.fn(() => []),
+			});
+
+			await Effect.runPromise(
+				plan(
+					directory,
+					defineRegistry({
+						addons: [],
+						frameworks: [],
+						templates: [first, second],
+					}),
+				),
+			);
+
+			expect(first.contribute).toHaveBeenCalledOnce();
+			expect(second.contribute).toHaveBeenCalledOnce();
 		});
 	});
 

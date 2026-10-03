@@ -99,7 +99,10 @@ const reactRouterBaseTemplate: TemplateDefinition<
 		{ id: "typescript", type: "addon" },
 		{ id: "ui", type: "addon" },
 	],
-	when: (config) => config.web === "react-router",
+	when: (config) =>
+		webAppInstances(config).some(
+			(instance) => instance.framework === "react-router",
+		),
 	contribute: ({ config }) =>
 		webAppInstances(config)
 			.filter((instance) => instance.framework === "react-router")

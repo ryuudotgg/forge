@@ -46,7 +46,7 @@ describe("assembleSchema", () => {
 		);
 	});
 
-	it("rejects a secondary framework different from the primary", () => {
+	it("accepts a secondary framework different from the primary", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
@@ -54,9 +54,7 @@ describe("assembleSchema", () => {
 			webApps: [{ name: "admin", framework: "react-router" }],
 		});
 
-		expect(decodeMessages(result)).toContain(
-			"admin uses React Router, but secondary web apps must use the primary web framework, Next.js.",
-		);
+		expect(Result.isSuccess(result)).toBe(true);
 	});
 
 	it("requires a primary framework for secondary web apps", () => {

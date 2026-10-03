@@ -17,7 +17,6 @@ function formatLine(label: string, value: string) {
 function summaryCommandVersions(config: ForgeConfig) {
 	const runtime = runtimeCommand(config.runtime ?? "Node.js");
 	const packageManager = packageManagerCommand(config.packageManager ?? "pnpm");
-
 	return { node: "0", [packageManager]: "0", [runtime]: "0" };
 }
 
@@ -35,7 +34,10 @@ const summaryStep = defineStep({
 		const forgeConfig: ForgeConfig = config;
 		const loadedRegistry = await loadDefinitionRegistry();
 		const template = loadedRegistry.registry.templates.find(
-			(entry) => entry.category === "web" && entry.when(forgeConfig),
+			(entry) =>
+				entry.category === "web" &&
+				entry.framework === forgeConfig.web &&
+				entry.when(forgeConfig),
 		);
 
 		const framework = template

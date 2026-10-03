@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { FrameworkDefinition } from "@ryuugg/core";
 import { type ForgeConfig, hasAddon } from "../config";
+import { webAppInstances } from "../web-apps";
 import { standaloneBackendInPlay } from "./backends";
 import { mobileAppFrameworkInPlay } from "./mobiles";
 
@@ -10,7 +11,6 @@ function frameworkFor(
 ) {
 	const framework = frameworks.find((entry) => entry.id === id);
 	if (!framework) throw new Error(`Framework Definition Missing: ${id}`);
-
 	return framework;
 }
 
@@ -20,7 +20,7 @@ export function frameworksInPlay(
 ): ReadonlyArray<FrameworkDefinition> {
 	const ids = new Set(
 		[
-			config.web,
+			...webAppInstances(config).map((instance) => instance.framework),
 			standaloneBackendInPlay(config),
 			hasAddon(config, "worker") ? "hono" : undefined,
 			mobileAppFrameworkInPlay(config),
@@ -41,7 +41,7 @@ export function frameworkBuildOutputs(
 export function frameworkIgnoreDirs(
 	frameworks: ReadonlyArray<FrameworkDefinition>,
 ): ReadonlyArray<string> {
-	return frameworks.flatMap((framework) => framework.ignoreDirs);
+	return [...new Set(frameworks.flatMap((framework) => framework.ignoreDirs))];
 }
 
 export function frameworkTsconfigPresets(

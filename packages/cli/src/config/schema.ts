@@ -1,4 +1,4 @@
-import { unmetAuthPluginRequirements, webFrameworks } from "@ryuugg/generators";
+import { unmetAuthPluginRequirements } from "@ryuugg/generators";
 import { Effect, Schema } from "effect";
 import { authPluginRequirementMessage } from "../steps/auth/plugins";
 import * as schemas from "../steps/schemas";
@@ -41,14 +41,9 @@ export function assembleSchema(steps: Step[]) {
 	return Schema.Struct(fields).pipe(
 		Schema.check(
 			Schema.makeFilter((data) => {
-				if (Schema.is(webAppsConfigSchema)(data)) {
+				if (Schema.is(webAppsConfigSchema)(data))
 					if (data.web === undefined && data.webApps.length !== 0)
 						return "Secondary web apps need a web framework.";
-
-					for (const app of data.webApps)
-						if (data.web !== undefined && app.framework !== data.web)
-							return `${app.name} uses ${webFrameworks.label(app.framework)}, but secondary web apps must use the primary web framework, ${webFrameworks.label(data.web)}.`;
-				}
 
 				if (
 					data.authMethods !== undefined &&

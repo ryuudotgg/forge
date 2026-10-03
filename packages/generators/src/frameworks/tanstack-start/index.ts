@@ -91,7 +91,10 @@ const tanstackStartBaseTemplate: TemplateDefinition<
 		{ id: "typescript", type: "addon" },
 		{ id: "ui", type: "addon" },
 	],
-	when: (config) => config.web === "tanstack-start",
+	when: (config) =>
+		webAppInstances(config).some(
+			(instance) => instance.framework === "tanstack-start",
+		),
 	contribute: ({ config }) =>
 		webAppInstances(config)
 			.filter((instance) => instance.framework === "tanstack-start")
