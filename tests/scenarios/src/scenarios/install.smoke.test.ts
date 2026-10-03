@@ -6,12 +6,97 @@ import {
 	createProject,
 	expectInstallAndTypecheck,
 	expectInstallBuildAndTypecheck,
+	type ForgeCommandResult,
 	forgeEnvironment,
 	pathExists,
 	runCommand,
 	type ScenarioProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
+
+const postgresProviderCells = [
+	{ provider: "planetscale", transaction: "supported" },
+	{ provider: "neon", transaction: "unsupported" },
+	{ provider: "nile", transaction: "supported" },
+	{ provider: "supabase", transaction: "supported" },
+	{ provider: "prisma-postgres", transaction: "supported" },
+] as const satisfies ReadonlyArray<{
+	readonly provider: string;
+	readonly transaction: "supported" | "unsupported";
+}>;
+
+const transactionProbeSource = `import { db } from "@acme/db/client";
+import { sql } from "drizzle-orm";
+import { integer, pgTable, text } from "drizzle-orm/pg-core";
+
+const probe = pgTable("forge_smoke", {
+  id: integer().primaryKey(),
+  label: text().notNull(),
+});
+
+const rows = await db.transaction(async (tx) => {
+  await tx.execute(
+    sql\`create temporary table forge_smoke (id integer primary key, label text not null) on commit drop\`,
+  );
+
+  await tx.insert(probe).values({ id: 1, label: "forge" });
+  return tx.select().from(probe);
+});
+
+if (rows[0]?.label !== "forge")
+  throw new Error(\`Transaction Probe Mismatch: \${JSON.stringify(rows)}\`);
+
+process.exit(0);
+`;
+
+// Generated schema files use extensionless imports, which Node type stripping cannot resolve.
+const typeScriptResolveHookSource = `import { registerHooks } from "node:module";
+import { extname } from "node:path";
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (!specifier.startsWith(".") || extname(specifier) !== "")
+      return nextResolve(specifier, context);
+
+    for (const candidate of [\`\${specifier}.ts\`, \`\${specifier}/index.ts\`]) {
+      try {
+        return nextResolve(candidate, context);
+      } catch {}
+    }
+
+    return nextResolve(specifier, context);
+  },
+});
+`;
+
+function smokeDatabaseUrl() {
+	const url = process.env.FORGE_SMOKE_DATABASE_URL;
+	if (url === undefined)
+		throw new Error("Missing Smoke Database: FORGE_SMOKE_DATABASE_URL");
+
+	return url;
+}
+
+async function runTransactionProbe(
+	workspace: ScenarioProject,
+	url: string,
+): Promise<ForgeCommandResult> {
+	const hookPath = join(workspace.workspaceRoot, "ts-resolve.mjs");
+	await writeFile(hookPath, typeScriptResolveHookSource);
+
+	return await runCommand(
+		"node",
+		["--import", hookPath, "src/transaction-probe.ts"],
+		{
+			cwd: join(workspace.projectRoot, "packages/db"),
+			env: {
+				...forgeEnvironment(workspace.workspaceRoot),
+				DATABASE_URL: url,
+				DATABASE_DIRECT_URL: url,
+			},
+		},
+	);
+}
 
 async function readGeneratedEnv(projectRoot: string) {
 	const content = await readFile(join(projectRoot, ".env"), "utf-8");
@@ -468,43 +553,62 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		});
 	}, 600_000);
 
-	it("installs and typechecks a transaction on a drizzle planetscale postgres project", async () => {
-		await withScenarioWorkspace(
-			"smoke-drizzle-planetscale-postgres",
-			async (workspace) => {
-				await createProject(
-					workspace,
-					{
-						authentication: "better-auth",
-						database: "postgresql",
-						databaseProvider: "planetscale",
-						linter: "biome",
-						orm: "drizzle",
-						packageManager: "pnpm",
-						rpc: "trpc",
-						style: "tailwind",
-						web: "nextjs",
-					},
-					{ install: true },
-				);
+	for (const cell of postgresProviderCells) {
+		const transactionTitle = {
+			supported: "runs a transaction probe",
+			unsupported: "confirms the known transaction limitation",
+		}[cell.transaction];
 
-				await writeFile(
-					join(workspace.projectRoot, "packages/db/src/transaction.ts"),
-					`import { db } from "./client";
+		it(`installs, typechecks, and ${transactionTitle} on drizzle with ${cell.provider} postgres`, async () => {
+			await withScenarioWorkspace(
+				`smoke-drizzle-${cell.provider}`,
+				async (workspace) => {
+					const url = smokeDatabaseUrl();
 
-export async function transactionProbe() {
-  return db.transaction(async (tx) => {
-    await tx.execute("select 1");
-    return tx.execute("select 2");
-  });
-}
-`,
-				);
+					await createProject(
+						workspace,
+						{
+							authentication: "better-auth",
+							database: "postgresql",
+							databaseProvider: cell.provider,
+							linter: "biome",
+							orm: "drizzle",
+							packageManager: "pnpm",
+							rpc: "trpc",
+							style: "tailwind",
+							web: "nextjs",
+						},
+						{ install: true },
+					);
 
-				await expectInstallAndTypecheck(workspace, "pnpm");
-			},
-		);
-	}, 600_000);
+					await writeFile(
+						join(workspace.projectRoot, "packages/db/src/transaction-probe.ts"),
+						transactionProbeSource,
+					);
+
+					await expectInstallAndTypecheck(workspace, "pnpm");
+
+					const probe = await runTransactionProbe(workspace, url);
+					switch (cell.transaction) {
+						case "supported":
+							expect(probe.exitCode, `${probe.stdout}\n${probe.stderr}`).toBe(
+								0,
+							);
+
+							break;
+
+						case "unsupported":
+							expect(probe.exitCode, probe.stderr).not.toBe(0);
+							expect(probe.stderr).toContain(
+								"No transactions support in neon-http driver",
+							);
+
+							break;
+					}
+				},
+			);
+		}, 600_000);
+	}
 
 	// Each framework addition gets one pnpm-only acceptance case; the
 	// package-manager matrix remains Next.js-only to keep smoke cost bounded.
