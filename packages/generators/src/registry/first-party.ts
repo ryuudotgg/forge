@@ -1,12 +1,12 @@
 import { defineRegistry } from "@ryuugg/core";
 import orpc, { orpcMetadata } from "../api/orpc";
 import {
-	orpcHonoAdapters,
-	orpcHonoRecipe,
 	orpcNextjsAdapters,
 	orpcNextjsRecipe,
 	orpcRequestAdapters,
 	orpcRequestRecipe,
+	orpcStandaloneAdapters,
+	orpcStandaloneRecipe,
 	orpcWebRecipe,
 } from "../api/orpc/recipe";
 import trpc, { trpcMetadata } from "../api/trpc";
@@ -125,8 +125,8 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		...betterAuthFastifyAdapters,
 		...betterAuthExpressAdapters,
 		...uiAdapters,
-		...orpcHonoAdapters,
 		...orpcNextjsAdapters,
+		...orpcStandaloneAdapters,
 		...orpcRequestAdapters,
 	],
 	frameworks: [
@@ -175,8 +175,8 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		worker,
 	],
 	recipes: [
-		orpcHonoRecipe,
 		orpcNextjsRecipe,
+		orpcStandaloneRecipe,
 		orpcRequestRecipe,
 		orpcWebRecipe,
 		trpcRecipe,

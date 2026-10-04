@@ -21,8 +21,6 @@ const unsupportedOrpcPairs: ReadonlyArray<{
 	name: string;
 	config: ForgeConfig;
 }> = [
-	{ name: "Express host", config: { backend: "express" } },
-	{ name: "Fastify host", config: { backend: "fastify" } },
 	{
 		name: "Expo client",
 		config: { mobile: "expo", platforms: ["web", "mobile"] },
@@ -197,6 +195,175 @@ describe("oRPC on Hono with TanStack Router", () => {
 			});
 		},
 	);
+});
+
+describe("oRPC on Express and Fastify", () => {
+	it.each([
+		{ backend: "express", entrypoint: "node" },
+		{ backend: "fastify", entrypoint: "fastify" },
+	] satisfies ReadonlyArray<{
+		backend: ForgeConfig["backend"];
+		entrypoint: string;
+	}>)(
+		"renders $backend with and without auth",
+		async ({ backend, entrypoint }) => {
+			for (const usesAuth of [false, true]) {
+				const plan = await plannedProject({
+					...supportedConfig,
+					backend,
+					...(usesAuth
+						? ({
+								authentication: "better-auth",
+								orm: "drizzle",
+								database: "sqlite",
+							} satisfies Partial<ForgeConfig>)
+						: {}),
+				});
+
+				expect(
+					JSON.parse(writeContent(plan, "apps/server/forge.json")),
+				).toMatchObject({
+					framework: backend,
+					slots: { orpc: "src/routes/orpc.ts" },
+				});
+
+				const app = writeContent(plan, "apps/server/src/app.ts");
+				expect(app).toContain(
+					'import { registerOrpcRoutes } from "./routes/orpc.js"',
+				);
+
+				expect(app).toContain("registerOrpcRoutes(app);");
+				expect(app).toContain('"x-csrf-token"');
+				expect(app).not.toContain("x-trpc-source");
+				expect(app).not.toContain("registerTrpcRoutes");
+
+				expect(app).toContain("credentials: true");
+				expect(app.includes("registerAuthRoutes(app);")).toBe(usesAuth);
+
+				const route = writeContent(plan, "apps/server/src/routes/orpc.ts");
+				expect(route).toContain(
+					`import { RPCHandler } from "@orpc/server/${entrypoint}"`,
+				);
+
+				expect(route).toContain("new RPCHandler(appRouter");
+				expect(route).toContain("SimpleCsrfProtectionHandlerPlugin");
+				expect(route).toContain('prefix: "/api/orpc"');
+
+				expect(route).toContain("headers: headersFromRequest(request.headers)");
+				expect(route).toContain("const result = new Headers()");
+				expect(route).toContain("Object.entries(headers)");
+				expect(route).toContain("if (value === undefined) continue");
+
+				expect(route).toContain("Array.isArray(value)");
+				expect(route).toContain("result.append(name, item)");
+				expect(route).toContain("result.set(name, value)");
+				expect(route).toContain("return result;");
+				expect(route.includes('import { auth } from "@acme/auth"')).toBe(
+					usesAuth,
+				);
+
+				expect(route).toMatch(
+					usesAuth
+						? /createORPCContext\(\{\s*auth,\s*headers:/
+						: /createORPCContext\(\{\s*headers:/,
+				);
+
+				if (backend === "express") {
+					expect(route).toContain("app.use(async (request, response, next)");
+					expect(route).toContain("handler.handle(request, response");
+					expect(route).toContain("if (!matched) next()");
+				} else {
+					expect(route).toContain('method: ["GET", "POST"]');
+					expect(route).toContain('url: "/api/orpc/*"');
+					expect(route).toContain("handler.handle(request, reply");
+					expect(route).toContain("if (!matched) reply.callNotFound()");
+				}
+
+				const server = JSON.parse(
+					writeContent(plan, "apps/server/package.json"),
+				);
+
+				expect(server.dependencies).toMatchObject({
+					"@acme/orpc": "workspace:*",
+					"@orpc/server": "catalog:",
+				});
+
+				expect(server.dependencies).not.toHaveProperty("@acme/trpc");
+				expect(server.dependencies).not.toHaveProperty("@trpc/server");
+
+				const rpc = JSON.parse(
+					writeContent(plan, "packages/orpc/package.json"),
+				);
+
+				expect(rpc).toMatchObject({
+					name: "@acme/orpc",
+					exports: { ".": "./src/index.ts" },
+					dependencies: { "@orpc/server": "catalog:" },
+				});
+
+				expect(rpc.dependencies["@acme/auth"]).toBe(
+					usesAuth ? "workspace:*" : undefined,
+				);
+
+				expect(rpc.dependencies["@acme/db"]).toBe(
+					usesAuth ? "workspace:*" : undefined,
+				);
+
+				const client = writeContent(plan, "apps/web/src/orpc/client.ts");
+				expect(client).toContain('import type { AppRouter } from "@acme/orpc"');
+				expect(client).toContain("RouterClient<AppRouter>");
+				expect(client).toContain(`\`\${env.VITE_SERVER_URL}/api/orpc\``);
+
+				expect(client).toContain('credentials: "include"');
+				expect(client).toContain("SimpleCsrfProtectionLinkPlugin");
+				expect(client).toContain("createTanstackQueryUtils(client)");
+
+				const web = JSON.parse(writeContent(plan, "apps/web/package.json"));
+
+				expect(web.dependencies).toMatchObject({
+					"@acme/orpc": "workspace:*",
+					"@orpc/client": "catalog:",
+					"@orpc/server": "catalog:",
+					"@orpc/tanstack-query": "catalog:",
+					"@tanstack/react-query": "catalog:",
+				});
+
+				const providers = writeContent(plan, "apps/web/src/providers.tsx");
+				expect(providers).toContain("orpc: ORPCReactProvider");
+				expect(providers).toContain("dataProviders.orpc");
+				expect(providers).not.toContain("dataProviders.trpc");
+				expect(writeContent(plan, "apps/web/src/orpc/react.tsx")).toContain(
+					"QueryClientProvider",
+				);
+
+				for (const write of plan.writes)
+					expect(write.content, write.path).not.toMatch(/__[A-Z_]+__/);
+			}
+		},
+	);
+
+	it.each(["express", "fastify"] satisfies ReadonlyArray<
+		ForgeConfig["backend"]
+	>)("preserves $backend tRPC and no RPC output", async (backend) => {
+		for (const rpc of [undefined, "trpc"] satisfies ReadonlyArray<
+			ForgeConfig["rpc"]
+		>) {
+			const plan = await plannedProject({ ...supportedConfig, backend, rpc });
+
+			const app = writeContent(plan, "apps/server/src/app.ts");
+			expect(app).toContain('"x-trpc-source"');
+			expect(app).not.toContain("x-csrf-token");
+			expect(app).not.toContain("registerOrpcRoutes");
+			expect(app.includes("registerTrpcRoutes(app);")).toBe(rpc === "trpc");
+			expect(
+				JSON.parse(writeContent(plan, "apps/server/forge.json")).slots,
+			).not.toHaveProperty("orpc");
+
+			expect(plan.writes.some((write) => write.path.includes("/orpc/"))).toBe(
+				false,
+			);
+		}
+	});
 });
 
 describe("oRPC web clients beside Hono", () => {
@@ -695,13 +862,12 @@ describe("oRPC request hosts", () => {
 });
 
 describe("rpcProviderError", () => {
-	it("names the unsupported host before the client", () => {
-		expect(
-			rpcProviderError({ backend: "express", web: "nextjs" }, "orpc"),
-		).toMatchObject({
-			reason: "framework-not-supported-yet",
-			frameworkName: "Express",
-		});
+	it.each<ForgeConfig>([
+		{ backend: "express", web: "nextjs" },
+		{ backend: "fastify", web: "nextjs" },
+		{ backend: "self", web: "nextjs" },
+	])("accepts supported oRPC hosts with Next.js: %j", (config) => {
+		expect(rpcProviderError(config, "orpc")).toBeUndefined();
 	});
 
 	it("requires an API host for a TanStack Router self host", () => {

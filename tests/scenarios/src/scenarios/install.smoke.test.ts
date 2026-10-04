@@ -588,6 +588,32 @@ async function expectCredentialedGeneratedServer(
 	);
 }
 
+async function expectUnrelatedOrpcRequests(projectRoot: string) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const serverOrigin = generatedEnv.APP_ORIGIN;
+	if (serverOrigin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	await withGeneratedServer(
+		projectRoot,
+		generatedEnv,
+		serverOrigin,
+		async () => {
+			const headers = { "x-context-probe": "fail", "x-csrf-token": "probe" };
+			for (const path of ["/missing", "/api/orpc-other/health", "/api/orpc"]) {
+				const response = await fetch(`${serverOrigin}${path}`, { headers });
+				expect(response.status, path).toBe(404);
+			}
+
+			const response = await fetch(`${serverOrigin}/api/orpc/health`, {
+				headers,
+			});
+
+			expect(response.status).toBe(500);
+		},
+	);
+}
+
 async function expectOrpcSession(
 	serverOrigin: string,
 	origin: string,
@@ -1570,6 +1596,56 @@ export async function GET() {
 			);
 		});
 	}, 600_000);
+
+	it.each(["express", "fastify"])(
+		"installs, builds, and typechecks TanStack Router with an oRPC %s host",
+		async (backend) => {
+			await withScenarioWorkspace(
+				`smoke-orpc-${backend}-spa`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						backend,
+						database: "sqlite",
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "orpc",
+						style: "tailwind",
+						web: "tanstack-router",
+					});
+
+					if (backend === "express") {
+						const contextPath = join(
+							workspace.projectRoot,
+							"packages/orpc/src/orpc.ts",
+						);
+
+						const context = await readFile(contextPath, "utf8");
+						expect(context).toContain("): Promise<Context> {");
+
+						await writeFile(
+							contextPath,
+							context.replace(
+								"): Promise<Context> {",
+								`): Promise<Context> {
+  if (opts.headers.get("x-context-probe") === "fail") throw new Error("Context Probe Failed");`,
+							),
+						);
+					}
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						rpc: "orpc",
+					});
+
+					if (backend === "express")
+						await expectUnrelatedOrpcRequests(workspace.projectRoot);
+				},
+			);
+		},
+		600_000,
+	);
 
 	it.each([
 		{ web: "tanstack-start", sourceRoot: "src", secondary: false },
