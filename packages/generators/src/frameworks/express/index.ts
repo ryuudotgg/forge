@@ -43,7 +43,7 @@ export const expressFramework: FrameworkDefinition<"express"> = defineFramework(
 		ignoreDirs: [],
 		name: "Express",
 		sourceRoot: "src",
-		slots: Object.keys(expressSlots),
+		slots: [...Object.keys(expressSlots), "orpc"],
 		tsconfigPreset: {
 			name: "express",
 			content: {
@@ -140,7 +140,10 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("server", "apps/server", {
 			framework: "express",
 			template: { id: "express/base", version: 1 },
-			slots: expressSlots,
+			slots:
+				config.rpc === "orpc"
+					? { ...expressSlots, orpc: "src/routes/orpc.ts" }
+					: expressSlots,
 		}),
 		surfaceJson(ensuredModuleTarget("server"), "packageJson", {
 			name: `@${slug}/server`,
@@ -199,7 +202,13 @@ function buildContributions(config: ForgeConfig) {
 			"src/app.ts",
 			webOriginsCors(
 				config,
-				interpolate(readTemplate("frameworks/express/src/app.ts"), vars),
+				interpolate(
+					readTemplate("frameworks/express/src/app.ts"),
+					vars,
+				).replace(
+					'"x-trpc-source"',
+					config.rpc === "orpc" ? '"x-csrf-token"' : '"x-trpc-source"',
+				),
 			),
 		),
 		leafTextFile(
