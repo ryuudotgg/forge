@@ -108,6 +108,10 @@ export const options = {
 		description: "A name for the project.",
 		configKey: "name",
 	},
+	client: {
+		type: "boolean",
+		description: "Mark the new secondary web app as an API client.",
+	},
 
 	path: {
 		type: "string",
@@ -294,8 +298,9 @@ export const sections: CLISection[] = [
 	},
 	{
 		title: "forge add/remove/update options",
-		keys: ["keep-user", "accept-forge", "yes"],
+		keys: ["keep-user", "accept-forge", "yes", "name", "client"],
 		descriptions: {
+			name: "Name the secondary web app to add.",
 			yes: "Install a new registry package without asking first.",
 		},
 	},

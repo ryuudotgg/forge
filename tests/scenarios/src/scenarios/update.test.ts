@@ -5,6 +5,7 @@ import {
 	createProject,
 	pathExists,
 	readJson,
+	runCommand,
 	tryRunForge,
 	updateProject,
 	withScenarioWorkspace,
@@ -12,6 +13,57 @@ import {
 } from "../utils/harness";
 
 describe("update", () => {
+	it("leaves a two-app project clean with keep-user", async () => {
+		await withScenarioWorkspace("update-web-apps-clean", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "tanstack-router",
+				webApps: [{ name: "site", framework: "nextjs" }],
+			});
+
+			const options = { cwd: workspace.projectRoot };
+			const init = await runCommand("git", ["init", "-q"], options);
+			expect(init.exitCode).toBe(0);
+			const add = await runCommand("git", ["add", "."], options);
+			expect(add.exitCode).toBe(0);
+			const commit = await runCommand(
+				"git",
+				[
+					"-c",
+					"user.name=Forge",
+					"-c",
+					"user.email=forge@example.com",
+					"-c",
+					"commit.gpgsign=false",
+					"-c",
+					"core.hooksPath=/dev/null",
+					"commit",
+					"-qm",
+					"fixture",
+				],
+				options,
+			);
+
+			expect(commit.exitCode, commit.stdout + commit.stderr).toBe(0);
+
+			const update = await tryRunForge(
+				workspace.projectRoot,
+				["update", "--keep-user"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(update.exitCode, update.stdout + update.stderr).toBe(0);
+			const status = await runCommand(
+				"git",
+				["status", "--porcelain"],
+				options,
+			);
+
+			expect(status.exitCode).toBe(0);
+			expect(status.stdout).toBe("");
+		});
+	}, 240_000);
+
 	it("keeps declined base-less surface renders durable", async () => {
 		await withScenarioWorkspace("update-keep-user-page", async (workspace) => {
 			await createProject(workspace, {
@@ -29,6 +81,7 @@ describe("update", () => {
 				["update", "--keep-user"],
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
+
 			expect(keepUser.exitCode).toBe(0);
 			expect(await readFile(pagePath, "utf-8")).toBe(userContent);
 
@@ -41,12 +94,16 @@ describe("update", () => {
 					}
 				>;
 			}>(join(workspace.projectRoot, ".forge/lock.json"));
+
 			const pageArtifact = Object.values(lockfile.artifacts).find(
 				(artifact) => artifact.path === "apps/web/app/page.tsx",
 			);
+
 			expect(pageArtifact?.base).toMatchObject({ mergeKind: "opaque" });
+
 			if (pageArtifact?.base === undefined)
 				throw new Error("Page Base Not Recorded");
+
 			expect(
 				await readFile(
 					join(workspace.projectRoot, ".forge/bases", pageArtifact.base.hash),
@@ -58,6 +115,7 @@ describe("update", () => {
 			const plain = await tryRunForge(workspace.projectRoot, ["update"], {
 				workspaceRoot: workspace.workspaceRoot,
 			});
+
 			const after = await stat(pagePath, { bigint: true });
 
 			expect(plain.exitCode).toBe(0);
@@ -85,10 +143,12 @@ describe("update", () => {
 				workspace.projectRoot,
 				"apps/web/app/layout.tsx",
 			);
+
 			const movedLayoutPath = join(
 				workspace.projectRoot,
 				"apps/web/app/(site)/layout.tsx",
 			);
+
 			const originalLayout = await readFile(originalLayoutPath, "utf-8");
 
 			const configPath = join(workspace.projectRoot, "apps/web/forge.json");
@@ -165,6 +225,7 @@ describe("update", () => {
 			expect(result.stdout + result.stderr).toContain(
 				"We couldn't plan this change. Definition Dependency Inactive.",
 			);
+
 			expect(result.stdout + result.stderr).not.toContain("FiberFailure");
 		});
 	}, 240_000);

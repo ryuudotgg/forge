@@ -124,6 +124,17 @@ export function retargetAdoptedContribution(
 						...contribution,
 						moduleKey: instanceModuleKey,
 						root: module.root,
+						module:
+							contribution.module.type === "app" && module.type === "app"
+								? {
+										...contribution.module,
+										role:
+											module.role ??
+											(module.root === contribution.root
+												? contribution.module.role
+												: undefined),
+									}
+								: contribution.module,
 					}
 				: contribution;
 
@@ -248,10 +259,22 @@ function expandAdoptedTemplateEvaluations<ConfigValue>(
 		registry.templates.map((template) => template.id),
 	);
 
+	const hasPrimaryInstance = evaluated.some((entry) =>
+		entry.contributions.some(
+			(contribution) =>
+				isAppEnsure(contribution) &&
+				contribution.module.type === "app" &&
+				contribution.module.role === "primary",
+		),
+	);
+
 	return evaluated.flatMap((entry) => {
 		if (!templateIds.has(entry.definitionId)) return [entry];
 
-		if (entry.contributions.filter(isAppEnsure).length > 1)
+		if (
+			hasPrimaryInstance ||
+			entry.contributions.filter(isAppEnsure).length > 1
+		)
 			return [retargetMovedApps(entry, modules)];
 
 		const ensured = entry.contributions.find(
@@ -260,12 +283,20 @@ function expandAdoptedTemplateEvaluations<ConfigValue>(
 
 		if (ensured?.module.type !== "app") return [entry];
 
-		const matchingModules = modules.filter(
-			(module) =>
-				module.type === "app" &&
-				module.template.id === entry.definitionId &&
-				module.template.version === ensured.module.template.version,
-		);
+		const matchingModules = modules
+			.filter(
+				(module) =>
+					module.type === "app" &&
+					module.template.id === entry.definitionId &&
+					module.template.version === ensured.module.template.version,
+			)
+			.sort(
+				(left, right) =>
+					Number(right.type === "app" && right.role === "primary") -
+						Number(left.type === "app" && left.role === "primary") ||
+					Number(right.root === ensured.root) -
+						Number(left.root === ensured.root),
+			);
 
 		if (matchingModules.length === 0) return [entry];
 
@@ -324,6 +355,7 @@ export interface ProjectPlan {
 	readonly dependencyNames: Readonly<Record<string, ReadonlyArray<string>>>;
 	readonly lockfile: Lockfile;
 	readonly manifest: Manifest;
+	readonly removalRootRelocations?: Readonly<Record<string, string>>;
 	readonly removals: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedFile>;
 }
@@ -402,6 +434,7 @@ function collectDependencyNames<ConfigValue>(
 export interface InstalledPlanningSeed {
 	readonly modules: ReadonlyArray<DiscoveredModule>;
 	readonly records: Manifest["modules"];
+	readonly removalRootRelocations?: ProjectPlan["removalRootRelocations"];
 }
 
 function templateMatchesId(templateId: string, moduleTemplateId: string) {
@@ -924,7 +957,17 @@ const makePlanner = Effect.gen(function* () {
 			evaluated.map((entry) => entry.definitionId),
 		);
 
-		const initialModules = discovered.flatMap((module) => {
+		const previousOrder = new Map(
+			Object.keys(existingModules).map((id, index) => [id, index]),
+		);
+
+		const orderedDiscovered = [...discovered].sort(
+			(left, right) =>
+				(previousOrder.get(left.id) ?? previousOrder.size) -
+				(previousOrder.get(right.id) ?? previousOrder.size),
+		);
+
+		const initialModules = orderedDiscovered.flatMap((module) => {
 			const existing = existingModules[module.id];
 			const definitionIds = existing?.definitionIds ?? [];
 			const keepDiscovered =
@@ -1444,14 +1487,21 @@ const makePlanner = Effect.gen(function* () {
 								(install) => install.definitionId === addon.id,
 							),
 						),
-						templates: registry.templates.filter((template) =>
-							discovered.some(
-								(module) =>
-									module.type === "app" &&
-									module.framework === template.framework &&
-									templateMatchesId(template.id, module.template.id) &&
-									module.template.version === template.version,
-							),
+						templates: registry.templates.filter(
+							(template) =>
+								(template.when(intent.config) &&
+									!discovered.some(
+										(module) =>
+											module.type === "app" &&
+											module.framework === template.framework,
+									)) ||
+								discovered.some(
+									(module) =>
+										module.type === "app" &&
+										module.framework === template.framework &&
+										templateMatchesId(template.id, module.template.id) &&
+										module.template.version === template.version,
+								),
 						),
 					};
 
@@ -1534,6 +1584,7 @@ const makePlanner = Effect.gen(function* () {
 			evaluated,
 		);
 
+		const discoveredIds = new Set(discovered.map((module) => module.id));
 		const baseInstalls =
 			intent._tag === "Create"
 				? selection.directAddons.map((addon) => ({
@@ -1546,7 +1597,26 @@ const makePlanner = Effect.gen(function* () {
 							registry.adapters,
 						),
 					}))
-				: intent.installs;
+				: intent.installs.map((install) => {
+						const addon = registry.addons.find(
+							(entry) => entry.id === install.definitionId,
+						);
+
+						if (addon?.targetMode !== "multiple") return install;
+
+						const newTargets = buildTargetCandidates(
+							addon,
+							intent.config,
+							mergedModules,
+							registry.frameworks,
+							registry.adapters,
+						).filter(
+							(target) =>
+								target.kind === "module" && !discoveredIds.has(target.moduleId),
+						);
+
+						return { ...install, targets: [...install.targets, ...newTargets] };
+					});
 
 		const evaluatedDefinitionIds = new Set(
 			evaluated.map((entry) => entry.definitionId),
@@ -1727,6 +1797,9 @@ const makePlanner = Effect.gen(function* () {
 			dependencyNames,
 			lockfile,
 			manifest,
+			...(seed?.removalRootRelocations === undefined
+				? {}
+				: { removalRootRelocations: seed.removalRootRelocations }),
 			removals,
 			writes,
 		} satisfies ProjectPlan;

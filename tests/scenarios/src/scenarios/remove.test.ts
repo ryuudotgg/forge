@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,6 +17,121 @@ interface PackageJson {
 }
 
 describe("remove", () => {
+	it("removes an addon before a same-named secondary app", async () => {
+		await withScenarioWorkspace(
+			"remove-app-addon-collision",
+			async (workspace) => {
+				await createProject(workspace, {
+					packageManager: "pnpm",
+					web: "nextjs",
+					linter: "biome",
+					webApps: [{ name: "biome", framework: "nextjs" }],
+				});
+
+				await removeAddon(workspace.projectRoot, "biome");
+
+				const manifest = await readJson<{
+					config: { linter?: string; webApps: ReadonlyArray<{ name: string }> };
+				}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+				expect(manifest.config.linter).toBeUndefined();
+				expect(manifest.config.webApps).toEqual([
+					{ name: "biome", framework: "nextjs" },
+				]);
+
+				expect(
+					await pathExists(
+						join(workspace.projectRoot, "apps/biome/forge.json"),
+					),
+				).toBe(true);
+
+				await removeAddon(workspace.projectRoot, "apps/biome");
+
+				expect(
+					await pathExists(
+						join(workspace.projectRoot, "apps/biome/forge.json"),
+					),
+				).toBe(false);
+			},
+		);
+	}, 120_000);
+
+	it("removes a secondary at its moved root", async () => {
+		await withScenarioWorkspace("remove-moved-web-app", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			});
+
+			const movedRoot = join(workspace.projectRoot, "apps/dashboard");
+			await rename(join(workspace.projectRoot, "apps/admin"), movedRoot);
+			await writeFile(join(movedRoot, "notes.txt"), "Keep my notes.\n");
+			await removeAddon(workspace.projectRoot, "admin");
+
+			expect(await pathExists(join(movedRoot, "forge.json"))).toBe(false);
+			expect(await readFile(join(movedRoot, "notes.txt"), "utf-8")).toBe(
+				"Keep my notes.\n",
+			);
+
+			const update = await tryRunForge(
+				workspace.projectRoot,
+				["update", "--keep-user", "--no-install"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(update.exitCode, update.stdout + update.stderr).toBe(0);
+
+			expect(await pathExists(join(movedRoot, "forge.json"))).toBe(false);
+			expect(await pathExists(join(workspace.projectRoot, "apps/admin"))).toBe(
+				false,
+			);
+		});
+	}, 120_000);
+
+	it.each(["nextjs", "tanstack-router"])(
+		"removes a %s secondary without recreating it on update",
+		async (framework) => {
+			await withScenarioWorkspace("remove-web-app", async (workspace) => {
+				await createProject(workspace, {
+					packageManager: "pnpm",
+					web: "tanstack-router",
+					webApps: [{ name: "site", framework }],
+				});
+
+				const userFile = join(workspace.projectRoot, "apps/site/notes.txt");
+				await writeFile(userFile, "Keep my notes.\n");
+
+				const primary = await tryRunForge(
+					workspace.projectRoot,
+					["remove", "web", "--yes", "--no-install"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(primary.exitCode).toBe(1);
+				expect(primary.stdout + primary.stderr).toContain("primary web app");
+				await removeAddon(workspace.projectRoot, "site");
+
+				const update = await tryRunForge(
+					workspace.projectRoot,
+					["update", "--keep-user", "--no-install"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(update.exitCode, update.stdout + update.stderr).toBe(0);
+				expect(await readFile(userFile, "utf-8")).toBe("Keep my notes.\n");
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/site/forge.json")),
+				).toBe(false);
+
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/web/forge.json")),
+				).toBe(true);
+			});
+		},
+		120_000,
+	);
+
 	it("removes a single-target addon cleanly", async () => {
 		await withScenarioWorkspace("remove", async (workspace) => {
 			await createProject(workspace, {
@@ -46,6 +161,7 @@ describe("remove", () => {
 			expect(
 				manifest.installs.some((entry) => entry.definitionId === "biome"),
 			).toBe(false);
+
 			expect(manifest.config.linter).toBe(undefined);
 
 			expect(await pathExists(join(workspace.projectRoot, "biome.json"))).toBe(
@@ -160,6 +276,7 @@ describe("remove", () => {
 			expect(
 				await pathExists(join(workspace.projectRoot, "packages/auth")),
 			).toBe(false);
+
 			expect(schema).toContain("datasource db");
 			expect(schema).toContain("model User {");
 			expect(schema).not.toContain("model Session {");

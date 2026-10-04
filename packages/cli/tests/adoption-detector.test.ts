@@ -126,6 +126,7 @@ async function parseFailure<A, E>(
 	const exit = await Effect.runPromiseExit(effect.pipe(Effect.provide(layer)));
 	if (Exit.isSuccess(exit))
 		throw new Error("Expected adoption detection to fail");
+
 	const failure = Cause.findErrorOption(exit.cause);
 	if (Option.isNone(failure)) throw new Error("Expected a typed failure");
 	return failure.value;
@@ -149,11 +150,13 @@ describe("AdoptionDetector", () => {
 					AdoptionDetector.enumerate(root),
 					layer,
 				);
+
 				expect(failure).toBeInstanceOf(AdoptionFileReadError);
 				expect(failure).toMatchObject({
 					filePath: target,
 					message: `Adoption File Read Failed: ${target}`,
 				});
+
 				expect(failure.detail).toContain(detail);
 			});
 		},
@@ -179,11 +182,13 @@ describe("AdoptionDetector", () => {
 						AdoptionDetector.enumerate(root),
 						layer,
 					);
+
 					expect(failure).toBeInstanceOf(AdoptionFileReadError);
 					expect(failure).toMatchObject({
 						filePath: target,
 						message: `Adoption File Read Failed: ${target}`,
 					});
+
 					expect(failure.detail).toContain(detail);
 				},
 			);
@@ -209,11 +214,13 @@ describe("AdoptionDetector", () => {
 						AdoptionDetector.enumerate(root),
 						layer,
 					);
+
 					expect(failure).toBeInstanceOf(AdoptionFileReadError);
 					expect(failure).toMatchObject({
 						filePath: root,
 						message: `Adoption Directory Read Failed: ${root}`,
 					});
+
 					expect(failure.detail).toContain(detail);
 				},
 			);
@@ -242,6 +249,7 @@ describe("AdoptionDetector", () => {
 					const roots = await Effect.runPromise(
 						AdoptionDetector.enumerate(root).pipe(Effect.provide(layer)),
 					);
+
 					expect(roots).toEqual([]);
 				},
 			);
@@ -270,6 +278,7 @@ describe("AdoptionDetector", () => {
 					const roots = await Effect.runPromise(
 						AdoptionDetector.enumerate(root).pipe(Effect.provide(layer)),
 					);
+
 					expect(roots).toEqual([]);
 				},
 			);
@@ -295,11 +304,13 @@ describe("AdoptionDetector", () => {
 						AdoptionDetector.enumerate(root),
 						layer,
 					);
+
 					expect(failure).toBeInstanceOf(AdoptionFileReadError);
 					expect(failure).toMatchObject({
 						filePath: root,
 						message: `Adoption Directory Read Failed: ${root}`,
 					});
+
 					expect(failure.detail).toContain(detail);
 				},
 			);
@@ -322,11 +333,13 @@ describe("AdoptionDetector", () => {
 					AdoptionDetector.detect(root),
 					layer,
 				);
+
 				expect(failure).toBeInstanceOf(AdoptionFileReadError);
 				expect(failure).toMatchObject({
 					filePath: root,
 					message: `Adoption Directory Read Failed: ${root}`,
 				});
+
 				expect(failure.detail).toContain(detail);
 			});
 		},
@@ -410,7 +423,9 @@ describe("AdoptionDetector", () => {
 					style: "tailwind",
 					uiLibrary: "base-ui",
 					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs" }],
 				});
+
 				expect(result.tooling).toEqual({ turbo: true });
 				expect(result.modules).toEqual([
 					{
@@ -455,15 +470,18 @@ describe("AdoptionDetector", () => {
 						root: "packages/ui",
 					},
 				]);
+
 				const dbVersions = result.versions.find(
 					(entry) => entry.root === "packages/db",
 				);
+
 				expect(dbVersions?.dependencies).toContainEqual({
 					name: "drizzle-orm",
 					section: "dependencies",
 					specifier: "catalog:",
 					version: "1.0.0-rc.4",
 				});
+
 				expect(result.versions.map((entry) => entry.root)).not.toContain(
 					"packages/shared",
 				);
@@ -490,6 +508,7 @@ describe("AdoptionDetector", () => {
 					packageManager: "pnpm",
 					runtime: "Node.js",
 				});
+
 				expect(result.modules).toEqual([]);
 				expect(result.tooling).toEqual({ turbo: true });
 			},
@@ -518,6 +537,7 @@ describe("AdoptionDetector", () => {
 				expect(result.catalogEntries).toEqual([
 					{ catalog: "framework", name: "next", version: "^16.0.0" },
 				]);
+
 				expect(result.versions[0]?.dependencies[0]?.version).toBe("^16.0.0");
 			},
 		);
@@ -588,6 +608,7 @@ describe("AdoptionDetector", () => {
 				"",
 			].join("\n"),
 		};
+
 		for (const name of [
 			"analytics",
 			"config",
@@ -607,10 +628,12 @@ describe("AdoptionDetector", () => {
 			expect(
 				result.modules.find((module) => module.root === "apps/api"),
 			).toMatchObject({ proposal: "backend-app" });
+
 			expect(result.modules).toHaveLength(15);
 			expect(
 				result.modules.filter((module) => module.proposal === "unadopted"),
 			).toHaveLength(9);
+
 			expect(result.config).toMatchObject({
 				authentication: "better-auth",
 				catalogs: "scoped",
@@ -621,6 +644,7 @@ describe("AdoptionDetector", () => {
 				uiLibrary: "radix",
 				web: "tanstack-start",
 			});
+
 			expect(result.config).not.toHaveProperty("databaseProvider");
 			expect(
 				result.versions
@@ -933,6 +957,7 @@ describe("AdoptionDetector", () => {
 				const unreadable = join(root, "secrets");
 				await mkdir(unreadable);
 				await chmod(unreadable, 0o000);
+
 				try {
 					expect(await enumerate(root)).toEqual(["packages/ui"]);
 				} finally {
@@ -975,6 +1000,7 @@ describe("AdoptionDetector", () => {
 					AdoptionDetector.enumerate(root),
 					detectorLayerWithScanBounds({ visitedDirectories: 2 }),
 				);
+
 				expect(failure).toBeInstanceOf(AdoptionTraversalLimitError);
 				expect(failure.message).toBe(
 					"We stopped scanning because your workspace patterns cover too many directories. You can narrow your workspace patterns and try again.",
@@ -991,11 +1017,13 @@ describe("AdoptionDetector", () => {
 				const outside = await mkdtemp(
 					join(tmpdir(), "forge-adoption-outside-"),
 				);
+
 				try {
 					const linkedPackage = join(root, "apps/link/package.json");
 					await writeFixture(outside, {
 						"package.json": json({ dependencies: { next: "^16" } }),
 					});
+
 					await mkdir(join(root, "apps"), { recursive: true });
 					await symlink(outside, join(root, "apps/link"), "dir");
 					const link = join(root, "apps/link");
@@ -1018,9 +1046,11 @@ describe("AdoptionDetector", () => {
 							AdoptionDetector.enumerate(root).pipe(Effect.provide(layer)),
 						),
 					).toEqual([]);
+
 					const result = await Effect.runPromise(
 						AdoptionDetector.detect(root).pipe(Effect.provide(layer)),
 					);
+
 					expect(result.modules).toEqual([]);
 					expect(stats).toEqual([]);
 					expect(reads).toEqual([]);
@@ -1069,12 +1099,39 @@ describe("AdoptionDetector", () => {
 				await Effect.runPromise(
 					AdoptionDetector.detect(root).pipe(Effect.provide(layer)),
 				);
+
 				expect(counts.get(join(root, "pnpm-workspace.yaml"))).toBe(1);
 				expect(counts.get(join(root, "package.json"))).toBe(1);
 				expect(counts.get(join(root, "apps/web/package.json"))).toBe(1);
 			},
 		);
 	});
+
+	it.each(["next", "react-router"])(
+		"selects apps/web as primary beside an admin using %s",
+		async (dependency) => {
+			await withFixture(
+				"multiple-web-apps",
+				{
+					"apps/admin/package.json": json({
+						dependencies: { [dependency]: "^1" },
+					}),
+					"apps/web/package.json": json({ dependencies: { next: "^16" } }),
+					"package.json": json({ workspaces: ["apps/*"] }),
+				},
+				async (root) => {
+					const result = await detect(root);
+					expect(result.config.web).toBe("nextjs");
+					expect(result.config.webApps).toEqual([
+						{
+							name: "admin",
+							framework: dependency === "next" ? "nextjs" : "react-router",
+						},
+					]);
+				},
+			);
+		},
+	);
 
 	it("leaves ambiguous and absent signals undefined", async () => {
 		await withFixture(
@@ -1096,6 +1153,7 @@ describe("AdoptionDetector", () => {
 					database: "postgresql",
 					linter: "biome",
 				});
+
 				expect(result.tooling).toEqual({});
 				expect(
 					result.modules.find((module) => module.root === "packages/db"),
@@ -1260,6 +1318,7 @@ describe("AdoptionDetector", () => {
 					platforms: ["web"],
 					web: "react-router",
 				});
+
 				expect(result.modules).toEqual([
 					{
 						evidence: "found react-router in its dependencies",
@@ -1295,6 +1354,7 @@ describe("AdoptionDetector", () => {
 					platforms: ["web"],
 					web: "tanstack-router",
 				});
+
 				expect(result.modules).toEqual([
 					{
 						evidence: "found @tanstack/react-router in its dependencies",
@@ -1322,6 +1382,7 @@ describe("AdoptionDetector", () => {
 					platforms: ["web"],
 					web: "nextjs",
 				});
+
 				expect(result.modules).toEqual([
 					{
 						evidence: "found next in its dependencies",
@@ -1358,6 +1419,7 @@ describe("AdoptionDetector", () => {
 					platforms: ["web"],
 					web: "nextjs",
 				});
+
 				expect(result.modules).toEqual([
 					{
 						evidence: "found next in its dependencies",
@@ -1387,6 +1449,7 @@ describe("AdoptionDetector", () => {
 					platforms: ["web"],
 					web: "tanstack-start",
 				});
+
 				expect(result.modules).toEqual([
 					{
 						evidence: "found @tanstack/react-start in its dependencies",

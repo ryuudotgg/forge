@@ -8,6 +8,7 @@ import {
 	ConfigStore,
 	type DiscoveredModule,
 	formatApplyError,
+	type InstalledPlanningSeed,
 	type InstallRecord,
 	isPackageManager,
 	LONG_RUNNING_TIMEOUT_MS,
@@ -333,6 +334,7 @@ export async function applyInstalledPlan(
 	providedCommandVersions?: Readonly<Record<string, string>>,
 	registryIds?: ReadonlyArray<string>,
 	options: ApplyOptions = {},
+	seed?: InstalledPlanningSeed,
 ) {
 	const loadedRegistry = await loadProjectRegistry(
 		projectRoot,
@@ -357,6 +359,7 @@ export async function applyInstalledPlan(
 				commandVersions,
 				loadedRegistry.descriptors,
 				registryIds,
+				seed,
 			);
 		}),
 		"We couldn't plan this change.",
@@ -367,6 +370,9 @@ export async function applyInstalledPlan(
 		{
 			lockfile: plan.lockfile,
 			manifest: plan.manifest,
+			...(plan.removalRootRelocations === undefined
+				? {}
+				: { removalRootRelocations: plan.removalRootRelocations }),
 			removals: plan.removals,
 			writes: plan.writes.map((write) => ({
 				artifactId: write.artifactId,

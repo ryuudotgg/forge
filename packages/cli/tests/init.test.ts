@@ -502,19 +502,251 @@ describe("init command", () => {
 		});
 	});
 
-	it("rejects mixed-framework adoption before writing metadata", async () => {
+	it("adopts mixed frameworks with each matching template", async () => {
 		await withTempDir("init-mixed-frameworks", async (directory) => {
+			const plan = await Effect.runPromise(
+				buildAdoptionPlanForTest(
+					directory,
+					{
+						...config,
+						web: "tanstack-start",
+						webApps: [{ name: "admin", framework: "nextjs" }],
+					},
+					[
+						{ kind: "web-app", root: "apps/web" },
+						{ kind: "web-app", root: "apps/admin" },
+					],
+					[],
+				),
+			);
+
+			expect(
+				plan.applyPlan.writes.find(
+					(write) => write.path === "apps/web/forge.json",
+				)?.content,
+			).toContain('"framework": "tanstack-start"');
+
+			expect(
+				plan.applyPlan.writes.find(
+					(write) => write.path === "apps/admin/forge.json",
+				)?.content,
+			).toContain('"framework": "nextjs"');
+		});
+	});
+
+	it("adopts alphabetical siblings while keeping addons on apps/web", async () => {
+		await withTempDir("init-primary-web", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "apps/admin/package.json"), {
+				dependencies: { next: "16.0.0" },
+			});
+
+			const beforeAdmin = await readFile(
+				join(directory, "apps/admin/package.json"),
+				"utf-8",
+			);
+
+			const beforeWeb = await readFile(
+				join(directory, "apps/web/package.json"),
+				"utf-8",
+			);
+
+			const plan = await Effect.runPromise(
+				buildAdoptionPlanForTest(
+					directory,
+					{ ...config, orm: undefined, rpc: "trpc" },
+					[
+						{ kind: "web-app", root: "apps/admin" },
+						{ kind: "web-app", root: "apps/web" },
+					],
+					[],
+				),
+			);
+
+			const web = Object.entries(plan.manifest.modules).find(
+				([, module]) => module.root === "apps/web",
+			);
+
+			expect(
+				Object.values(plan.manifest.modules)
+					.map((module) => module.root)
+					.sort(),
+			).toEqual(["apps/admin", "apps/web"]);
+
+			expect(
+				plan.applyPlan.writes.find(
+					(write) => write.path === "apps/web/forge.json",
+				)?.content,
+			).toContain('"role": "primary"');
+
+			expect(
+				plan.applyPlan.writes.find(
+					(write) => write.path === "apps/admin/forge.json",
+				)?.content,
+			).not.toContain('"role": "primary"');
+
+			expect(
+				plan.manifest.installs.find(
+					(install) => install.definitionId === "trpc",
+				)?.targets,
+			).toEqual([{ kind: "module", moduleId: web?.[0] }]);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, plan.applyPlan).pipe(
+					Effect.provide(coreLayer),
+				),
+			);
+
+			expect(
+				await readFile(join(directory, "apps/admin/package.json"), "utf-8"),
+			).toBe(beforeAdmin);
+
+			expect(
+				await readFile(join(directory, "apps/web/package.json"), "utf-8"),
+			).toBe(beforeWeb);
+
+			expect(
+				await readFile(join(directory, "apps/web/forge.json"), "utf-8"),
+			).toContain('"role": "primary"');
+		});
+	});
+
+	it("does not recreate a rejected detected secondary", async () => {
+		await withTempDir("init-rejected-secondary", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "apps/admin/package.json"), {
+				dependencies: { "react-router": "7.0.0" },
+			});
+
+			const plan = await Effect.runPromise(
+				buildAdoptionPlanForTest(
+					directory,
+					{
+						...config,
+						orm: undefined,
+						webApps: [{ name: "admin", framework: "react-router" }],
+					},
+					[{ kind: "web-app", root: "apps/web" }],
+					[],
+					[
+						{
+							root: "apps/admin",
+							proposal: "web-app",
+							evidence: "react-router",
+						},
+						{ root: "apps/web", proposal: "web-app", evidence: "next" },
+					],
+				),
+			);
+
+			expect(plan.manifest.config.webApps).toEqual([]);
+			expect(
+				Object.values(plan.manifest.modules).map((module) => module.root),
+			).toEqual(["apps/web"]);
+
+			expect(
+				plan.manifest.installs.map((install) => install.definitionId),
+			).not.toContain("react-router");
+
+			expect(
+				Object.values(plan.applyPlan.lockfile.artifacts).some((artifact) =>
+					artifact.path.startsWith("apps/admin/"),
+				),
+			).toBe(false);
+		});
+	});
+
+	it("promotes a confirmed secondary with its actual framework", async () => {
+		await withTempDir("init-promoted-secondary", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "apps/admin/package.json"), {
+				dependencies: { "react-router": "7.0.0" },
+			});
+
+			const plan = await Effect.runPromise(
+				buildAdoptionPlanForTest(
+					directory,
+					{
+						...config,
+						orm: undefined,
+						webApps: [{ name: "admin", framework: "react-router" }],
+					},
+					[{ kind: "web-app", root: "apps/admin" }],
+					[],
+				),
+			);
+
+			expect(plan.manifest.config.web).toBe("react-router");
+			expect(plan.manifest.config.webApps).toEqual([]);
+			expect(plan.markerPaths).toEqual(["apps/admin/forge.json"]);
+			expect(
+				plan.applyPlan.writes.find(
+					(write) => write.path === "apps/admin/forge.json",
+				)?.content,
+			).toContain('"framework": "react-router"');
+		});
+	});
+
+	it("adopts same-framework secondaries outside the generated layout", async () => {
+		await withTempDir("init-secondary-layout", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "sites/admin/package.json"), {
+				dependencies: { next: "16.0.0" },
+			});
+
+			const plan = await Effect.runPromise(
+				buildAdoptionPlanForTest(
+					directory,
+					{
+						...config,
+						orm: undefined,
+						webApps: [{ name: "admin", framework: "nextjs" }],
+					},
+					[
+						{ kind: "web-app", root: "apps/web" },
+						{ kind: "web-app", root: "sites/admin" },
+					],
+					[],
+				),
+			);
+
+			expect(plan.manifest.config.webApps).toEqual([
+				{ name: "admin", framework: "nextjs" },
+			]);
+
+			expect(plan.markerPaths.sort()).toEqual([
+				"apps/web/forge.json",
+				"sites/admin/forge.json",
+			]);
+
+			expect(
+				plan.applyPlan.writes.find(
+					(write) => write.path === "sites/admin/forge.json",
+				)?.content,
+			).toContain('"framework": "nextjs"');
+
+			expect(
+				Object.values(plan.applyPlan.lockfile.artifacts).some((artifact) =>
+					artifact.path.startsWith("apps/admin/"),
+				),
+			).toBe(false);
+		});
+	});
+
+	it("rejects ambiguous secondary identities across layouts", async () => {
+		await withTempDir("init-ambiguous-secondary", async (directory) => {
 			const error = await Effect.runPromise(
 				Effect.flip(
 					buildAdoptionPlanForTest(
 						directory,
 						{
 							...config,
-							web: "tanstack-start",
+							orm: undefined,
 							webApps: [{ name: "admin", framework: "nextjs" }],
 						},
 						[
 							{ kind: "web-app", root: "apps/web" },
+							{ kind: "web-app", root: "sites/admin" },
 							{ kind: "web-app", root: "apps/admin" },
 						],
 						[],
@@ -523,17 +755,43 @@ describe("init command", () => {
 			);
 
 			expect(error.message).toBe(
-				"Mixed Framework Adoption Unsupported: secondary web apps must use the primary framework when adopting a project.",
+				"Adoption Mapping Invalid: secondary web app names are ambiguous across confirmed roots.",
+			);
+		});
+	});
+
+	it("preserves a moved single primary app", async () => {
+		await withTempDir("init-moved-primary", async (directory) => {
+			await writeJson(join(directory, "package.json"), {
+				name: "acme",
+				workspaces: ["apps/*"],
+			});
+
+			await writeJson(join(directory, "apps/site/package.json"), {
+				dependencies: { next: "16.0.0" },
+			});
+
+			const plan = await Effect.runPromise(
+				buildAdoptionPlanForTest(
+					directory,
+					{ ...config, orm: undefined, rpc: "trpc" },
+					[{ kind: "web-app", root: "apps/site" }],
+					[],
+				),
 			);
 
-			await expect(access(join(directory, ".forge"))).rejects.toThrow();
-			await expect(
-				access(join(directory, "apps/web/forge.json")),
-			).rejects.toThrow();
+			expect(plan.markerPaths).toEqual(["apps/site/forge.json"]);
+			expect(
+				Object.values(plan.applyPlan.lockfile.artifacts).some((artifact) =>
+					artifact.path.startsWith("apps/web/"),
+				),
+			).toBe(false);
 
-			await expect(
-				access(join(directory, "apps/admin/forge.json")),
-			).rejects.toThrow();
+			expect(
+				plan.manifest.installs.find(
+					(install) => install.definitionId === "trpc",
+				)?.targets,
+			).toHaveLength(1);
 		});
 	});
 
@@ -664,8 +922,11 @@ describe("init command", () => {
 					module.root?.startsWith("apps/") === true ? [id] : [],
 			);
 
+			expect(ui?.targets).toHaveLength(appIds.length);
 			expect(ui?.targets).toEqual(
-				appIds.map((moduleId) => ({ kind: "module", moduleId })),
+				expect.arrayContaining(
+					appIds.map((moduleId) => ({ kind: "module", moduleId })),
+				),
 			);
 
 			expect(

@@ -31,6 +31,28 @@ function parse(args: string[]) {
 }
 
 describe("CLI argument parsing", () => {
+	it("accepts named secondary web app flags", () => {
+		const { values, positionals } = parse([
+			"add",
+			"nextjs",
+			"--name",
+			"site",
+			"--client",
+			"--yes",
+			"--no-install",
+		]);
+
+		expect(positionals).toEqual(["add", "nextjs"]);
+		expect(values).toMatchObject({
+			name: "site",
+			client: true,
+			yes: true,
+			"no-install": true,
+		});
+
+		expect(buildFlagOverrides(values)).toEqual({ name: "site" });
+	});
+
 	it("accepts repeatable web flags without changing other flags", () => {
 		const { values } = parse([
 			"--web",

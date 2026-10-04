@@ -253,17 +253,42 @@ export function contentHashError(path: string) {
 	return new InitPlanningError({ message: `Content Hash Failed: ${path}` });
 }
 
+function configuredWebApp(config: ForgeConfig, root: string) {
+	const matches = config.webApps?.filter((app) => app.name === basename(root));
+	return matches?.length === 1 ? matches[0] : undefined;
+}
+
 function modulePrototype(
 	kind: ModuleKind,
 	modules: InstalledPlanningSeed["modules"],
+	root: string,
+	config: ForgeConfig,
+	primaryRoot: string | undefined,
 ) {
-	if (kind === "web-app")
-		return modules.find(
+	if (kind === "web-app") {
+		const configured = configuredWebApp(config, root);
+		const framework = root === primaryRoot ? config.web : configured?.framework;
+
+		const prototypeRoot =
+			root === primaryRoot
+				? "apps/web"
+				: configured === undefined
+					? root
+					: `apps/${configured.name}`;
+
+		const matches = modules.filter(
 			(module) =>
 				module.type === "app" &&
 				!standaloneBackendIds.has(module.framework) &&
-				!mobileAppFrameworkIds.has(module.framework),
+				!mobileAppFrameworkIds.has(module.framework) &&
+				(framework === undefined || module.framework === framework),
 		);
+
+		return (
+			matches.find((module) => module.root === prototypeRoot) ??
+			(root !== primaryRoot && matches.length === 1 ? matches[0] : undefined)
+		);
+	}
 
 	if (kind === "backend-app")
 		return modules.find(
@@ -278,17 +303,53 @@ function modulePrototype(
 
 export function buildAdoptionPlan(
 	projectRoot: string,
-	config: ForgeConfig,
+	inputConfig: ForgeConfig,
 	confirmedModules: ReadonlyArray<ConfirmedModule>,
 	versions: ReadonlyArray<AdoptedModuleVersions>,
 	proposals: ReadonlyArray<ModuleMappingProposal> = [],
 ) {
 	return Effect.gen(function* () {
-		if (config.webApps?.some((app) => app.framework !== config.web))
+		const webMappings = confirmedModules.filter(
+			(module) => module.kind === "web-app",
+		);
+
+		const primaryRoot = (
+			webMappings.find((module) => module.root === "apps/web") ??
+			webMappings.find(
+				(module) => configuredWebApp(inputConfig, module.root) === undefined,
+			) ??
+			webMappings[0]
+		)?.root;
+
+		const primaryFramework =
+			primaryRoot === undefined || primaryRoot === "apps/web"
+				? inputConfig.web
+				: (configuredWebApp(inputConfig, primaryRoot)?.framework ??
+					inputConfig.web);
+
+		const webApps = webMappings.flatMap((module) => {
+			if (module.root === primaryRoot) return [];
+
+			const configured = configuredWebApp(inputConfig, module.root);
+			if (configured !== undefined) return [configured];
+			if (inputConfig.web === undefined) return [];
+
+			return [{ name: basename(module.root), framework: inputConfig.web }];
+		});
+
+		if (new Set(webApps.map((app) => app.name)).size !== webApps.length)
 			return yield* new InitPlanningError({
 				message:
-					"Mixed Framework Adoption Unsupported: secondary web apps must use the primary framework when adopting a project.",
+					"Adoption Mapping Invalid: secondary web app names are ambiguous across confirmed roots.",
 			});
+
+		const config: ForgeConfig = {
+			...inputConfig,
+			web: primaryFramework,
+			...(inputConfig.webApps === undefined && webApps.length === 0
+				? {}
+				: { webApps }),
+		};
 
 		const loadedRegistry = yield* Effect.sync(() => loadDefinitionRegistry());
 		const commandVersions = yield* probeWorkspaceCommandVersions(config);
@@ -335,7 +396,14 @@ export function buildAdoptionPlan(
 			)
 				continue;
 
-			const prototype = modulePrototype(proposal.proposal, prototypes);
+			const prototype = modulePrototype(
+				proposal.proposal,
+				prototypes,
+				proposal.root,
+				config,
+				primaryRoot,
+			);
+
 			if (prototype?.root !== proposal.root) continue;
 
 			return yield* new InitPlanningError({
@@ -352,7 +420,14 @@ export function buildAdoptionPlan(
 
 		const prototypeIdByAdoptedId = new Map<string, string>();
 		for (const mapping of confirmedModules) {
-			const prototype = modulePrototype(mapping.kind, prototypes);
+			const prototype = modulePrototype(
+				mapping.kind,
+				prototypes,
+				mapping.root,
+				config,
+				primaryRoot,
+			);
+
 			if (prototype === undefined)
 				return yield* new InitPlanningError({
 					message: `Adoption Mapping Invalid: ${mapping.root} cannot be mapped as ${mapping.kind} with this configuration.`,

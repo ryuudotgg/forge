@@ -66,7 +66,6 @@ interface LockfileSnapshot {
 async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 	const entries = await readdir(join(root, prefix), { withFileTypes: true });
 	const files: string[] = [];
-
 	for (const entry of entries) {
 		if (entry.name === ".forge") continue;
 
@@ -89,9 +88,7 @@ function sortInstalls<Install extends { readonly definitionId: string }>(
 
 function moduleRoot(manifest: ManifestSnapshot, moduleId: string) {
 	const root = manifest.modules[moduleId]?.root;
-
 	if (root === undefined) throw new Error(`Module Root Not Found: ${moduleId}`);
-
 	return root;
 }
 
@@ -181,12 +178,14 @@ async function expectMatchingProjects(
 	expect(artifactPaths(actualLockfile)).toEqual(
 		artifactPaths(expectedLockfile),
 	);
+
 	if (options.skippedUserEnv) {
 		expect(
 			Object.values(actualLockfile.artifacts).some(
 				(artifact) => artifact.path === ".env",
 			),
 		).toBe(false);
+
 		expect(
 			Object.values(expectedLockfile.artifacts).some(
 				(artifact) => artifact.path === ".env",
@@ -196,6 +195,58 @@ async function expectMatchingProjects(
 }
 
 describe("add", () => {
+	it.each([
+		{ framework: "nextjs", client: false },
+		{ framework: "tanstack-router", client: false },
+		{ framework: "nextjs", client: true },
+	])(
+		"adds a named $framework app (client: $client) matching creation",
+		async ({ framework, client }) => {
+			await withScenarioWorkspace(
+				`add-web-app-${framework}`,
+				async (workspace) => {
+					const config = {
+						packageManager: "pnpm",
+						web: "tanstack-router",
+						style: "tailwind",
+						...(client ? { backend: "hono", rpc: "trpc" } : {}),
+					};
+
+					await createProject(workspace, config);
+
+					await runForge(
+						workspace.projectRoot,
+						[
+							"add",
+							framework,
+							"--name",
+							"site",
+							"--yes",
+							"--no-install",
+							...(client ? ["--client"] : []),
+						],
+						{ workspaceRoot: workspace.workspaceRoot },
+					);
+
+					await createProject(workspace, {
+						...config,
+						path: "./expected",
+						webApps: [
+							{ name: "site", framework, ...(client ? { client } : {}) },
+						],
+					});
+
+					await expectMatchingProjects(
+						workspace.projectRoot,
+						join(workspace.workspaceRoot, "expected"),
+						{ skippedUserEnv: client },
+					);
+				},
+			);
+		},
+		240_000,
+	);
+
 	it("preserves edited mergeable surfaces while adding adapter contributions", async () => {
 		await withScenarioWorkspace("add-edited-surfaces", async (workspace) => {
 			await createProject(workspace, {
@@ -204,15 +255,19 @@ describe("add", () => {
 				packageManager: "pnpm",
 				web: "nextjs",
 			});
+
 			const lockfile = await readJson<LockfileSnapshot>(
 				join(workspace.projectRoot, ".forge/lock.json"),
 			);
+
 			const envArtifact = Object.values(lockfile.artifacts).find(
 				(artifact) => artifact.path === ".env",
 			);
+
 			const envExampleArtifact = Object.values(lockfile.artifacts).find(
 				(artifact) => artifact.path === ".env.example",
 			);
+
 			expect(envArtifact?.base).toBeUndefined();
 			expect(envExampleArtifact?.base).toMatchObject({ mergeKind: "env" });
 
@@ -220,6 +275,7 @@ describe("add", () => {
 			const packageJson = await readJson<AppPackageJson>(packagePath);
 			const dev = packageJson.scripts?.dev;
 			if (dev === undefined) throw new Error("Missing Dev Script");
+
 			await writeFile(
 				packagePath,
 				`${JSON.stringify(
@@ -246,11 +302,14 @@ describe("add", () => {
 			await addAddon(workspace.projectRoot, "better-auth");
 
 			const mergedPackage = await readJson<AppPackageJson>(packagePath);
+
 			expect(mergedPackage.scripts?.dev).toBe(`${dev} --user-edit`);
 			expect(mergedPackage.dependencies).toHaveProperty("better-auth");
 			expect(mergedPackage.dependencies).toHaveProperty("@acme/auth");
 			expect(await readFile(gitignorePath, "utf-8")).toContain("user-cache/");
+
 			const mergedEnvExample = await readFile(envExamplePath, "utf-8");
+
 			expect(mergedEnvExample).toContain("DATABASE_URL=user-value");
 			expect(mergedEnvExample).toContain("AUTH_SECRET=");
 		});
@@ -262,6 +321,7 @@ describe("add", () => {
 				packageManager: "pnpm",
 				web: "nextjs",
 			});
+
 			const packagePath = join(workspace.projectRoot, "apps/web/package.json");
 			const packageJson = await readJson<AppPackageJson>(packagePath);
 			const userPackage = `${JSON.stringify(
@@ -275,6 +335,7 @@ describe("add", () => {
 				null,
 				2,
 			)}\n`;
+
 			await writeFile(packagePath, userPackage);
 			const manifestPath = join(workspace.projectRoot, ".forge/manifest.json");
 			const lockfilePath = join(workspace.projectRoot, ".forge/lock.json");
@@ -290,12 +351,14 @@ describe("add", () => {
 					workspaceRoot: workspace.workspaceRoot,
 				},
 			);
+
 			const output = result.stdout + result.stderr;
 			expect(result.exitCode).toBe(1);
 			expect(output).toContain("Semantic merge conflicts were found:");
 			expect(output).toContain(
 				'apps/web/package.json -> scripts["db:generate"]:',
 			);
+
 			expect(output).toContain('base was missing, user has "user command"');
 			expect(output).toContain("Resolve each conflict, then run Forge again.");
 			expect(await readFile(packagePath, "utf-8")).toBe(userPackage);
@@ -310,10 +373,12 @@ describe("add", () => {
 				["add", "prisma", "--accept-forge"],
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
+
 			const resolvedPackage = await readJson<AppPackageJson>(packagePath);
 			expect(resolvedPackage.scripts?.["db:generate"]).toBe(
 				"pnpm --filter @acme/db run generate",
 			);
+
 			expect(await pathExists(join(workspace.projectRoot, "packages/db"))).toBe(
 				true,
 			);
@@ -331,6 +396,7 @@ describe("add", () => {
 				workspace.projectRoot,
 				"packages/ui/forge.json",
 			);
+
 			const uiPackageJsonPath = join(
 				workspace.projectRoot,
 				"packages/ui/package.json",
@@ -362,10 +428,12 @@ describe("add", () => {
 				"tailwind",
 				"ui",
 			]);
+
 			expect(uiPackageAfter.devDependencies?.tailwindcss).toBe("catalog:");
 			expect(uiPackageAfter.devDependencies?.["@tailwindcss/postcss"]).toBe(
 				"catalog:",
 			);
+
 			expect(uiPackageAfter.devDependencies?.shadcn).toBe("catalog:");
 			expect(uiPackageAfter.dependencies?.["tw-animate-css"]).toBe("catalog:");
 		});
@@ -440,6 +508,7 @@ describe("add", () => {
 			expect(auth).toContain(
 				'import { prismaAdapter } from "better-auth/adapters/prisma";',
 			);
+
 			expect(schema).toContain("model Session {");
 			expect(manifest.config.authentication).toBe("better-auth");
 
@@ -483,6 +552,7 @@ describe("add", () => {
 					join(workspace.projectRoot, "packages/db/drizzle.config.ts"),
 				),
 			).toBe(true);
+
 			expect(
 				await pathExists(
 					join(workspace.projectRoot, "packages/db/prisma.config.ts"),
@@ -526,6 +596,7 @@ describe("add", () => {
 			const uiConfig = await readJson<UiModuleConfig>(
 				join(workspace.projectRoot, "packages/ui/forge.json"),
 			);
+
 			const uiPackageJson = await readJson<UiPackageJson>(
 				join(workspace.projectRoot, "packages/ui/package.json"),
 			);
@@ -535,6 +606,7 @@ describe("add", () => {
 				"tailwind",
 				"ui",
 			]);
+
 			expect(uiPackageJson.devDependencies?.tailwindcss).toBe("catalog:");
 		});
 	}, 240_000);

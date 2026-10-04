@@ -207,6 +207,57 @@ describe("apply", () => {
 		});
 	});
 
+	it.each([false, true])(
+		"checks original ownership when removing a relocated file (modified: %s)",
+		async (modified) => {
+			await withTempDir("apply-relocated-removal", async (directory) => {
+				const previousPath = "apps/admin/index.ts";
+				const currentPath = "apps/dashboard/index.ts";
+				const generatedContent = "export const generated = true;\n";
+				const currentContent = modified ? "Keep my code.\n" : generatedContent;
+
+				await writeText(join(directory, currentPath), currentContent);
+				await writeText(
+					join(directory, "apps/dashboard/notes.txt"),
+					"Keep notes.\n",
+				);
+
+				await Effect.runPromise(
+					State.writeLockfile(directory, {
+						artifacts: {
+							"project:file:app": {
+								definitionIds: ["test"],
+								hash: await hashContent(generatedContent),
+								kind: "file",
+								path: previousPath,
+							},
+						},
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const result = await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							removalRootRelocations: { "apps/admin": "apps/dashboard" },
+							removals: [previousPath],
+							writes: [],
+						},
+						{ resolutionPolicy: "keep-user" },
+					).pipe(Effect.provide(coreLayer), Effect.result),
+				);
+
+				expect(result._tag).toBe(modified ? "Failure" : "Success");
+				expect(await pathExists(join(directory, currentPath))).toBe(modified);
+				expect(
+					await readFile(join(directory, "apps/dashboard/notes.txt"), "utf-8"),
+				).toBe("Keep notes.\n");
+			});
+		},
+	);
+
 	it("creates a missing project root for contained writes", async () => {
 		await withTempDir("apply-create-root", async (scratch) => {
 			const projectRoot = join(scratch, "project");

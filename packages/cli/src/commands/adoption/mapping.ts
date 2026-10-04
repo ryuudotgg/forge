@@ -8,6 +8,8 @@ import {
 	databaseProviders,
 	databases,
 	type ForgeConfig,
+	type WebFramework,
+	webFrameworks,
 } from "@ryuugg/generators";
 import { listAnd } from "../../utils/list";
 import type { CatalogEntry, PackageJson } from "./workspace";
@@ -132,6 +134,27 @@ export function oneDetected<T>(
 ): T | undefined {
 	const detected = new Set(values.filter((value) => value !== undefined));
 	return detected.size === 1 ? detected.values().next().value : undefined;
+}
+
+export function webFrameworkFromPackage(
+	packageJson: PackageJson,
+	hasTanstackRouterConfig: boolean,
+): WebFramework | undefined {
+	const dependencies = dependencyNames(packageJson);
+	return oneDetected([
+		dependencies.has("next") ? webFrameworks.normalize("nextjs") : undefined,
+		dependencies.has("react-router")
+			? webFrameworks.normalize("react-router")
+			: undefined,
+		dependencies.has("@tanstack/react-start")
+			? webFrameworks.normalize("tanstack-start")
+			: undefined,
+		hasTanstackRouterConfig &&
+		!dependencies.has("@tanstack/react-start") &&
+		hasTanstackRouterApplicationDependencies(packageJson)
+			? webFrameworks.normalize("tanstack-router")
+			: undefined,
+	]);
 }
 
 export function packageManagerFromLockfiles(
@@ -381,6 +404,7 @@ export function envNames(rawFiles: ReadonlyArray<string>): ReadonlySet<string> {
 			const match = line.match(
 				/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/,
 			);
+
 			return match?.[1] === undefined ? [] : [match[1]];
 		}),
 	);

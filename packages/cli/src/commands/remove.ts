@@ -19,9 +19,11 @@ import {
 	type LoadedDefinitionRegistry,
 	loadAddonDefinition,
 	RegistryLoadError,
+	webFrameworks,
 } from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
+import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
@@ -285,6 +287,147 @@ async function promptForInstalledAddonId(
 	return String(selectedAddon);
 }
 
+function secondaryAppModules(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	app: NonNullable<ForgeConfig["webApps"]>[number],
+) {
+	const root = `apps/${app.name}`;
+	return project.modules.filter(
+		(module) =>
+			module.type === "app" &&
+			module.framework === app.framework &&
+			(module.root === root ||
+				module.packageName === `@${project.config.slug}/${app.name}` ||
+				project.manifest.modules[module.id]?.root === root),
+	);
+}
+
+async function removeWebApp(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	requestedId: string,
+	values: Record<string, string | boolean | string[] | undefined>,
+) {
+	const config: ForgeConfig = project.config;
+	const apps = config.webApps ?? [];
+	const primary = project.modules.find(
+		(module) =>
+			module.root === "apps/web" ||
+			(module.type === "app" && module.role === "primary"),
+	);
+
+	if (
+		requestedId === "web" ||
+		requestedId === "primary" ||
+		requestedId === "apps/web" ||
+		(primary !== undefined && requestedId === primary.id)
+	) {
+		log.error("We can't remove the primary web app.");
+		process.exit(1);
+	}
+
+	let selectedApp = apps.find((app) => {
+		const modules = secondaryAppModules(project, app);
+		return (
+			requestedId === app.name ||
+			requestedId === `apps/${app.name}` ||
+			modules.some((module) => requestedId === module.id)
+		);
+	});
+
+	if (
+		selectedApp === undefined &&
+		webFrameworks.ids.some((id) => id === requestedId)
+	) {
+		const matchingApps = apps.filter((app) => app.framework === requestedId);
+
+		if (project.config.web === requestedId) {
+			log.error(
+				"We can't remove the primary web app. Pass a secondary app name instead.",
+			);
+
+			process.exit(1);
+		}
+
+		if (matchingApps.length === 1) selectedApp = matchingApps[0];
+		else if (matchingApps.length > 1) {
+			if (values.yes === true || !isInteractiveLifecycleSession()) {
+				log.error("Pass the name of the secondary web app you want to remove.");
+				process.exit(1);
+			}
+
+			const result = await select({
+				message: "Which web app do you want to remove?",
+				options: matchingApps.map((app) => ({
+					label: app.name,
+					value: app.name,
+				})),
+			});
+
+			if (isCancel(result)) cancel();
+			selectedApp = matchingApps.find((app) => app.name === result);
+		}
+	}
+
+	if (selectedApp === undefined) return false;
+
+	const removedModules = secondaryAppModules(project, selectedApp);
+	if (removedModules.length !== 1) {
+		log.error(
+			`We can't identify one managed web app named "${selectedApp.name}".`,
+		);
+
+		process.exit(1);
+	}
+
+	const removedRoots = new Set(removedModules.map((module) => module.root));
+
+	if (
+		removedModules.some(
+			(module) => module.type === "app" && module.role === "primary",
+		)
+	) {
+		log.error("We can't remove the primary web app.");
+		process.exit(1);
+	}
+
+	const removedIds = removedModules.map((module) => module.id);
+	const removalRootRelocations = Object.fromEntries(
+		removedModules.flatMap((module) => {
+			const previousRoot = project.manifest.modules[module.id]?.root;
+			return previousRoot === undefined || previousRoot === module.root
+				? []
+				: [[previousRoot, module.root]];
+		}),
+	);
+
+	const nextInstalls = project.manifest.installs
+		.map((install) => removeTargets(install, removedIds))
+		.filter((install): install is InstallRecord => install !== undefined);
+
+	await applyInstalledPlan(
+		project.projectRoot,
+		{
+			...project.config,
+			webApps: apps.filter((app) => app.name !== selectedApp.name),
+		},
+		nextInstalls,
+		undefined,
+		project.manifest.registries,
+		resolutionArguments(values)[0] ?? {},
+		{
+			modules: project.modules.filter(
+				(module) => !removedRoots.has(module.root),
+			),
+			records: project.manifest.modules,
+			...(Object.keys(removalRootRelocations).length === 0
+				? {}
+				: { removalRootRelocations }),
+		},
+	);
+
+	return true;
+}
+
 export async function runRemove(
 	addonId: string | undefined,
 	values: Record<string, string | boolean | string[] | undefined>,
@@ -295,6 +438,16 @@ export async function runRemove(
 		project.projectRoot,
 		project.manifest.registries ?? [],
 	);
+
+	if (
+		addonId !== undefined &&
+		!loadedRegistry.registry.addons.some((addon) => addon.id === addonId) &&
+		!loadedRegistry.descriptors.some(
+			(descriptor) => descriptor.id === addonId,
+		) &&
+		(await removeWebApp(project, addonId, values))
+	)
+		return;
 
 	const resolvedAddonId =
 		addonId ??

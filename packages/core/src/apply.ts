@@ -43,6 +43,7 @@ export interface ApplyPlan {
 	readonly baseContents?: Readonly<Record<string, string>>;
 	readonly lockfile: LockfileInput;
 	readonly manifest: ManifestInput;
+	readonly removalRootRelocations?: Readonly<Record<string, string>>;
 	readonly removals: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedWrite>;
 }
@@ -707,12 +708,21 @@ const makeApply = Effect.gen(function* () {
 
 		const conflicts: ApplyConflict[] = [];
 		const refusals: ApplyRefusal[] = [];
-		for (const relativePath of plan.removals) {
+		for (const plannedPath of plan.removals) {
+			const relocation = Object.entries(plan.removalRootRelocations ?? {}).find(
+				([previousRoot]) => plannedPath.startsWith(`${previousRoot}/`),
+			);
+
+			const relativePath =
+				relocation === undefined
+					? plannedPath
+					: `${relocation[1]}${plannedPath.slice(relocation[0].length)}`;
+
 			const fullPath = yield* ensureContained(projectRoot, relativePath);
 			if (isUserOwnedEnv(relativePath)) continue;
 			if (!(yield* pathExists(fullPath, relativePath))) continue;
 
-			const previousArtifact = previousArtifacts.get(relativePath);
+			const previousArtifact = previousArtifacts.get(plannedPath);
 			if (previousArtifact === undefined) {
 				if (resolutionPolicy === "accept-forge") {
 					removalsToApply.push(relativePath);
