@@ -56,11 +56,11 @@ catalogs:
 
   # ===== EFFECT =====
   effect:
-    effect: 4.0.0-rc.117
-    "@effect/platform-node": 4.0.0-rc.117
-    "@effect/platform-node-shared": 4.0.0-rc.117
+    effect: 4.0.0
+    "@effect/platform-node": 4.0.0
+    "@effect/platform-node-shared": 4.0.0
     "@effect/tsgo": ^0.46.1
-    "@effect/vitest": 4.0.0-rc.117
+    "@effect/vitest": 4.0.0
 
 nodeLinker: hoisted
 linkWorkspacePackages: true
