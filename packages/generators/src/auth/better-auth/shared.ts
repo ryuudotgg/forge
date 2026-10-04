@@ -115,7 +115,7 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 				? `\ndeclare global {\n  interface ImportMetaEnv {\n    readonly ${clientEnvPrefix(config)}SERVER_URL: string;\n  }\n\n  interface ImportMeta {\n    readonly env: ImportMetaEnv;\n  }\n}\n`
 				: "",
 		[authClientDeclaration]: authClientCall(config, standalone),
-		"    // __WEB_URL_SCHEMA__\n": `${standalone ? "    WEB_URL: z.url(),\n" : ""}${hasSecondaryClients(config) ? '    WEB_URLS: z.string().transform((value) => value.split(",")),\n' : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: z.string().trim().min(1).optional(),\n" : ""}`,
+		"    // __WEB_URL_SCHEMA__\n": `${standalone ? "    WEB_URL: z.url(),\n" : ""}${hasSecondaryClients(config) ? '    WEB_URLS: z.string().transform((value) => value.split(",").map((origin) => origin.trim()).filter(Boolean)),\n' : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: z.string().trim().min(1).optional(),\n" : ""}`,
 		"    // __WEB_URL_RUNTIME__\n": `${standalone ? "    WEB_URL: process.env.WEB_URL,\n" : ""}${hasSecondaryClients(config) ? "    WEB_URLS: process.env.WEB_URLS,\n" : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: process.env.PASSKEY_RP_ID,\n" : ""}`,
 		"\n    // __SOCIAL_SCHEMA__\n": providers
 			.map(({ envStem }) =>

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 const defaultOrigins = __WEB_ORIGINS__;
 export function proxy(request: NextRequest) {
   const origin = request.headers.get("origin");
-  const allowedOrigins = process.env.WEB_URLS?.split(",") ?? defaultOrigins;
+  const allowedOrigins = process.env.WEB_URLS?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? defaultOrigins;
   if (origin === null || !allowedOrigins.includes(origin)) return NextResponse.next();
 
   const headers = new Headers({

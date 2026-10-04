@@ -3,7 +3,7 @@ import { stripTypeScriptTypes } from "node:module";
 import { dirname, join } from "node:path";
 import type { ProjectPlan } from "@ryuugg/core";
 import { Schema } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	builtins,
 	type ForgeConfig,
@@ -12,6 +12,8 @@ import {
 	webFrameworks,
 } from "../src";
 import { plannedProject } from "./planner-harness";
+
+afterEach(() => vi.unstubAllEnvs());
 
 const appPackageSchema = Schema.fromJsonString(
 	Schema.Struct({
@@ -536,6 +538,39 @@ describe("secondary web app planning", () => {
 			throw new Error("Invalid CORS Response: existing vary");
 
 		expect(existing.headers.get("Vary")).toBe("Accept-Encoding, Origin");
+	});
+
+	it("normalizes configured origins in the generated CORS helper", async () => {
+		vi.stubEnv("WEB_URLS", " http://localhost:5174, , ");
+
+		const plan = await plannedProject({
+			web: "react-router",
+			backend: "self",
+			rpc: "trpc",
+			webApps: [{ name: "admin", framework: "nextjs", client: true }],
+		});
+
+		const source = contentAt(plan, "apps/web/app/lib/api-cors.ts");
+		const exports: Record<string, unknown> = await import(
+			`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`
+		);
+
+		if (typeof exports.preflight !== "function")
+			throw new Error("Missing CORS Function: generated preflight");
+
+		for (const origin of ["http://localhost:5174", ""]) {
+			const response: unknown = exports.preflight(
+				new Request("http://localhost:5173/api/trpc", {
+					method: "OPTIONS",
+					headers: { Origin: origin },
+				}),
+			);
+
+			if (!(response instanceof Response))
+				throw new Error("Invalid CORS Response: normalized preflight");
+
+			expect(response.status).toBe(origin === "" ? 403 : 204);
+		}
 	});
 
 	it.each(

@@ -1,7 +1,7 @@
 const defaultOrigins = __WEB_ORIGINS__;
 function headersFor(request: Request) {
   const origin = request.headers.get("origin");
-  const allowedOrigins = process.env.WEB_URLS?.split(",") ?? defaultOrigins;
+  const allowedOrigins = process.env.WEB_URLS?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? defaultOrigins;
   if (origin === null || !allowedOrigins.includes(origin)) return null;
 
   return new Headers({

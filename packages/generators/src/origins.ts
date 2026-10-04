@@ -35,7 +35,7 @@ export function secondaryClientOrigins(config: ForgeConfig): string[] {
 
 export function webOriginsEnvSchema(config: ForgeConfig): string {
 	return hasSecondaryClients(config)
-		? `    WEB_URLS: z.string().default("${secondaryClientOrigins(config).join(",")}").transform((value) => value.split(",")),\n`
+		? `    WEB_URLS: z.string().default("${secondaryClientOrigins(config).join(",")}").transform((value) => value.split(",").map((origin) => origin.trim()).filter(Boolean)),\n`
 		: "";
 }
 
