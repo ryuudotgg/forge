@@ -862,13 +862,12 @@ describe("oRPC request hosts", () => {
 });
 
 describe("rpcProviderError", () => {
-	it("names the unsupported host before the client", () => {
-		expect(
-			rpcProviderError({ backend: "self", web: "nextjs" }, "orpc"),
-		).toMatchObject({
-			reason: "framework-not-supported-yet",
-			frameworkName: "Next.js",
-		});
+	it.each<ForgeConfig>([
+		{ backend: "express", web: "nextjs" },
+		{ backend: "fastify", web: "nextjs" },
+		{ backend: "self", web: "nextjs" },
+	])("accepts supported oRPC hosts with Next.js: %j", (config) => {
+		expect(rpcProviderError(config, "orpc")).toBeUndefined();
 	});
 
 	it("requires an API host for a TanStack Router self host", () => {
