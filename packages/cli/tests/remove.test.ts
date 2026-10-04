@@ -182,6 +182,166 @@ describe("remove command", () => {
 		},
 	);
 
+	it.each([
+		{ root: "sites/admin", recordedRoot: undefined },
+		{ root: "sites/admin", recordedRoot: "sites/admin" },
+		{ root: "sites/dashboard", recordedRoot: "sites/admin" },
+		{ root: "sites/dashboard", recordedRoot: "apps/admin" },
+	])(
+		"removes an adopted secondary at $root with recorded root $recordedRoot",
+		async ({ root, recordedRoot }) => {
+			const adoptedModule = {
+				...adminModule,
+				packageName: "@company/control-panel",
+				root,
+			};
+
+			const baseProject = managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				},
+				modules: [appModule, adoptedModule],
+			});
+
+			const project = {
+				...baseProject,
+				manifest: {
+					...baseProject.manifest,
+					modules:
+						recordedRoot === undefined
+							? {}
+							: {
+									[adoptedModule.id]: {
+										root: recordedRoot,
+										definitionIds: [],
+									},
+								},
+				},
+			};
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runRemove("admin", { yes: true });
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{ web: "nextjs", webApps: [] },
+				[],
+				undefined,
+				undefined,
+				{},
+				{
+					modules: [appModule],
+					records: project.manifest.modules,
+					...(recordedRoot === undefined || recordedRoot === root
+						? {}
+						: { removalRootRelocations: { [recordedRoot]: root } }),
+				},
+			);
+		},
+	);
+
+	it("refuses ambiguous adopted secondary roots", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		const project = managedProject({
+			config: {
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			},
+			modules: [
+				appModule,
+				{
+					...adminModule,
+					root: "sites/admin",
+					packageName: "@company/control",
+				},
+				{
+					...adminModule,
+					id: "other",
+					root: "tools/admin",
+					packageName: "@company/other",
+				},
+			],
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+		try {
+			await expect(runRemove("admin", { yes: true })).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'We can\'t identify one managed web app named "admin".',
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("removes a secondary app named primary", async () => {
+		const project = managedProject({
+			config: {
+				web: "nextjs",
+				webApps: [{ name: "primary", framework: "nextjs" }],
+			},
+			modules: [
+				appModule,
+				{ ...adminModule, root: "apps/primary", packageName: "@acme/primary" },
+			],
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+		await runRemove("primary", { yes: true });
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			project.projectRoot,
+			{ web: "nextjs", webApps: [] },
+			[],
+			undefined,
+			undefined,
+			{},
+			{ modules: [appModule], records: project.manifest.modules },
+		);
+	});
+
+	it("protects the actual primary when a secondary is named primary", async () => {
+		if (appModule.type !== "app") throw new Error("Expected an app fixture");
+
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "primary", framework: "nextjs" }],
+				},
+				modules: [{ ...appModule, id: "primary", role: "primary" }],
+			}),
+		);
+
+		try {
+			await expect(runRemove("primary", { yes: true })).rejects.toThrow(
+				"exit:1",
+			);
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't remove the primary web app.",
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
 	it.each(["web", "primary", "apps/web", appModule.id, "nextjs"])(
 		"refuses to remove primary web app by %s",
 		async (requestedId) => {

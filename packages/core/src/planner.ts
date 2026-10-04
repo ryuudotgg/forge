@@ -1604,13 +1604,36 @@ const makePlanner = Effect.gen(function* () {
 
 						if (addon?.targetMode !== "multiple") return install;
 
-						const newTargets = buildTargetCandidates(
+						const candidates = buildTargetCandidates(
 							addon,
 							intent.config,
 							mergedModules,
 							registry.frameworks,
 							registry.adapters,
-						).filter(
+						);
+
+						const installedIds = new Set(
+							install.targets.flatMap((target) =>
+								target.kind === "module" ? [target.moduleId] : [],
+							),
+						);
+
+						const existingTargets = candidates.filter(
+							(target) =>
+								target.kind === "module" && discoveredIds.has(target.moduleId),
+						);
+
+						if (
+							existingTargets.length === 0 ||
+							existingTargets.some(
+								(target) =>
+									target.kind === "module" &&
+									!installedIds.has(target.moduleId),
+							)
+						)
+							return install;
+
+						const newTargets = candidates.filter(
 							(target) =>
 								target.kind === "module" && !discoveredIds.has(target.moduleId),
 						);

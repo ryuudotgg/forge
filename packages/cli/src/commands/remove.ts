@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import {
 	confirm,
 	intro,
@@ -298,7 +299,9 @@ function secondaryAppModules(
 			module.framework === app.framework &&
 			(module.root === root ||
 				module.packageName === `@${project.config.slug}/${app.name}` ||
-				project.manifest.modules[module.id]?.root === root),
+				project.manifest.modules[module.id]?.root === root ||
+				basename(project.manifest.modules[module.id]?.root ?? module.root) ===
+					app.name),
 	);
 }
 
@@ -317,7 +320,8 @@ async function removeWebApp(
 
 	if (
 		requestedId === "web" ||
-		requestedId === "primary" ||
+		(requestedId === "primary" &&
+			!apps.some((app) => app.name === requestedId)) ||
 		requestedId === "apps/web" ||
 		(primary !== undefined && requestedId === primary.id)
 	) {
