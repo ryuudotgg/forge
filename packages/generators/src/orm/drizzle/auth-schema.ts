@@ -19,7 +19,8 @@ function drizzleColumn(
 			break;
 		case "text":
 			value =
-				dialect === "mysql" && column.index !== undefined
+				dialect === "mysql" &&
+				(column.index !== undefined || column.default !== undefined)
 					? `varchar(${sqlName ? `${sqlName}, ` : ""}{ length: 255 })`
 					: `text(${sqlName})`;
 			break;
@@ -46,7 +47,16 @@ function drizzleColumn(
 
 	const unique =
 		column.type === "text" && column.index === "unique" ? ".unique()" : "";
-	return `    ${column.name}: ${value}${required}${unique},`;
+	const defaultValue =
+		column.type === "reference" || column.default === undefined
+			? ""
+			: column.type === "date"
+				? dialect === "sqlite"
+					? ".default(unixepochMs)"
+					: ".defaultNow()"
+				: `.default(${JSON.stringify(column.default)})`;
+
+	return `    ${column.name}: ${value}${required}${unique}${defaultValue},`;
 }
 
 function drizzleIndexes(
@@ -153,6 +163,17 @@ export function drizzleTableRelations(
 	return tables
 		.map((table) => {
 			const source = authModels[table.model].table;
+			const inverse = tables.flatMap((other) =>
+				other.columns.flatMap((column) => {
+					if (column.type !== "reference" || column.target !== table.model)
+						return [];
+
+					const target = authModels[other.model].table;
+					return [
+						`    ${column.inverse}: r.many.${target}({\n      from: r.${source}.id,\n      to: r.${target}.${column.name},\n    }),`,
+					];
+				}),
+			);
 			const relations = table.columns.flatMap((column) => {
 				if (column.type !== "reference") return [];
 
@@ -162,7 +183,7 @@ export function drizzleTableRelations(
 				];
 			});
 
-			return `\n  ${source}: {\n${relations.join("\n")}\n  },\n`;
+			return `\n  ${source}: {\n${[...relations, ...inverse].join("\n")}\n  },\n`;
 		})
 		.join("");
 }

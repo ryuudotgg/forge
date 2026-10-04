@@ -11,16 +11,13 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { standaloneApiOrigin } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
-import {
-	authSocialProviders,
-	authUsesEmail,
-	authUsesPassword,
-} from "../methods";
+import { authSocialProviders, authUsesPassword } from "../methods";
 import {
 	authPluginBindings,
 	authPluginEnvEntries,
 	authPluginImports,
 	authPluginTables,
+	authSendsEmail,
 } from "../plugins";
 import { authModels } from "../tables";
 
@@ -180,7 +177,7 @@ export function betterAuthRecipeVars(
 	const usesSocial = authSocialProviders(config).length > 0;
 	const pluginImports = [
 		...authPluginBindings(config, "server"),
-		...(authUsesEmail(config)
+		...(authSendsEmail(config)
 			? [{ module: `@${values.SLUG}/email`, name: "sendEmail" }]
 			: []),
 		...(usesMobile ? [{ module: "@better-auth/expo", name: "expo" }] : []),

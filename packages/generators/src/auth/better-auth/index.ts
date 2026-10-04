@@ -28,6 +28,7 @@ import {
 	authPluginFiles,
 	authPluginPackages,
 	authPluginsBlockDeclarations,
+	authSendsEmail,
 } from "../plugins";
 import { renderBetterAuthTemplate } from "./shared";
 
@@ -127,7 +128,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				},
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
 				{ ...catalogRef("betterAuth", config), type: "dependencies" },
-				...(authUsesEmail(config)
+				...(authSendsEmail(config)
 					? [
 							{
 								name: `@${slug}/email`,

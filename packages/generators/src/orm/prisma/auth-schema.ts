@@ -22,8 +22,19 @@ function prismaColumn(
 	const name = column.sqlName ?? authColumnName(column.name);
 	const attributes = [
 		...(column.type === "text" && column.index === "unique" ? ["@unique"] : []),
+		...(column.type !== "reference" && column.default !== undefined
+			? [
+					`@default(${column.type === "date" ? "now()" : JSON.stringify(column.default)})`,
+				]
+			: []),
 		...(name !== column.name ? [`@map("${name}")`] : []),
-		...(column.type === "text" && datasource === "mysql" ? ["@db.Text"] : []),
+		...(column.type === "text" && datasource === "mysql"
+			? [
+					column.index === "unique" || column.default !== undefined
+						? "@db.VarChar(255)"
+						: "@db.Text",
+				]
+			: []),
 		...(column.type === "date" && datasource === "postgresql"
 			? ["@db.Timestamptz"]
 			: []),
@@ -49,6 +60,15 @@ export function renderPrismaAuthTables(
 ): string {
 	return tables
 		.map((table) => {
+			const inverse = tables.flatMap((other) =>
+				other.columns.flatMap((column) => {
+					if (column.type !== "reference" || column.target !== table.model)
+						return [];
+
+					return [`  ${column.inverse} ${authModels[other.model].prisma}[]`];
+				}),
+			);
+
 			const relations = table.columns.flatMap((column) => {
 				if (column.type !== "reference") return [];
 
@@ -79,6 +99,7 @@ export function renderPrismaAuthTables(
 				...table.columns.map((column) => prismaColumn(column, datasource)),
 				"",
 				...relations,
+				...inverse,
 				"",
 				...indexes,
 				"",

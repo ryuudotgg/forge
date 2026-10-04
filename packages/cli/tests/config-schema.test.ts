@@ -129,33 +129,48 @@ describe("assembleSchema", () => {
 		).toBe(true);
 	});
 
-	it.each(["admin", "polar"])("rejects %s without Better Auth", (plugin) => {
-		const result = decodeConfig({
-			name: "Acme",
-			slug: "acme",
-			authPlugins: [plugin],
-		});
+	it.each(["two-factor", "organization", "admin", "polar"])(
+		"rejects %s without Better Auth",
+		(plugin) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authPlugins: [plugin],
+			});
 
-		expect(decodeMessages(result)).toContain(
-			"Authentication plugins need Better Auth.",
-		);
-	});
-
-	it("rejects username without the email-password method", () => {
-		const result = decodeConfig({
-			name: "Acme",
-			slug: "acme",
-			authentication: "better-auth",
-			authMethods: ["google", "apple"],
-			authPlugins: ["username"],
-		});
-
-		expect(decodeMessages(result)).toContain(
-			"Username needs this sign-in method: Email and password.",
-		);
-	});
+			expect(decodeMessages(result)).toContain(
+				"Authentication plugins need Better Auth.",
+			);
+		},
+	);
 
 	it.each([
+		{ plugin: "username", label: "Username" },
+		{ plugin: "two-factor", label: "Two-factor" },
+	])(
+		"rejects $plugin without the email-password method",
+		({ plugin, label }) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authMethods: ["google", "apple"],
+				authPlugins: [plugin],
+			});
+
+			expect(decodeMessages(result)).toContain(
+				`${label} needs this sign-in method: Email and password.`,
+			);
+		},
+	);
+
+	it.each([
+		{
+			authPlugins: ["two-factor", "organization"],
+			authMethods: ["email-password"],
+		},
+		{ authPlugins: ["organization"], authMethods: ["google"] },
+		{ authPlugins: ["organization"] },
 		{ authPlugins: ["username"], authMethods: ["email-password"] },
 		{ authPlugins: ["admin"], authMethods: ["google", "apple"] },
 		{ authPlugins: ["polar"], authMethods: ["google"] },

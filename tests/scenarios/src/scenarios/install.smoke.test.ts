@@ -120,7 +120,7 @@ async function readGeneratedEnv(projectRoot: string) {
 
 const authPluginConfig = {
 	authMethods: ["email-password", "google", "passkey"],
-	authPlugins: ["username", "admin"],
+	authPlugins: ["two-factor", "username", "admin", "organization"],
 };
 
 function smokeMysqlUrl() {
@@ -195,6 +195,9 @@ async function expectPasskeyInstallAndTypecheck(workspace: ScenarioProject) {
 			"",
 			"export const signIn = authClient.signIn.passkey;",
 			"export const register = authClient.passkey.addPasskey;",
+			"export const enableTwoFactor = authClient.twoFactor.enable;",
+			"export const createOrganization = authClient.organization.create;",
+			"export const inviteMember = authClient.organization.inviteMember;",
 			"export const options = {",
 			"  registration: { extensions: () => ({ credProps: true, prf: {} }) },",
 			"  authentication: { extensions: () => ({ credProps: true, prf: {} }) },",
