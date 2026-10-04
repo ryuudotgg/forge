@@ -23,6 +23,8 @@ const handler = new RPCHandler(appRouter, {
 
 export function registerOrpcRoutes(app: Express) {
   app.use(async (request, response, next) => {
+    if (!request.path.startsWith("/api/orpc/")) return next();
+
     const { matched } = await handler.handle(request, response, {
       prefix: "/api/orpc",
       context: await createORPCContext({ __AUTH_ARG__, headers: headersFromRequest(request.headers) }),
