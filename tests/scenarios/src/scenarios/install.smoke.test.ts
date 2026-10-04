@@ -1571,6 +1571,34 @@ export async function GET() {
 		});
 	}, 600_000);
 
+	it.each(["express", "fastify"])(
+		"installs, builds, and typechecks TanStack Router with an oRPC %s host",
+		async (backend) => {
+			await withScenarioWorkspace(
+				`smoke-orpc-${backend}-spa`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						backend,
+						database: "sqlite",
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc: "orpc",
+						style: "tailwind",
+						web: "tanstack-router",
+					});
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						rpc: "orpc",
+					});
+				},
+			);
+		},
+		600_000,
+	);
+
 	it.each([
 		{ web: "tanstack-start", sourceRoot: "src", secondary: false },
 		{ web: "react-router", sourceRoot: "app", secondary: false },
