@@ -10,6 +10,7 @@ import {
 	sharedAsset,
 	slotAsset,
 	surfaceDependencies,
+	variantAsset,
 } from "@ryuugg/core";
 import { selfHostedCorsRoute } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
@@ -21,7 +22,7 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { hasSecondaryClients } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
-import { readTemplate } from "../../template";
+import { interpolate, readTemplate } from "../../template";
 import { webAppInstances } from "../../web-apps";
 import { orpcTemplateVars, renderOrpcTemplate } from "./shared";
 
@@ -87,6 +88,71 @@ export const orpcRequestRecipe = defineTemplateRecipe({
 				"tanstack-start": "api/orpc/routes/tanstack-start/$.ts",
 			},
 		}),
+	],
+});
+
+export const orpcNextjsRecipe = defineTemplateRecipe({
+	addon: "orpc",
+	markers: {
+		SLUG: marker.required,
+		AUTH_IMPORT: marker.toggleLine("__AUTH_IMPORT__;\n"),
+		AUTH_ARG: marker.toggleInline("__AUTH_ARG__, "),
+	},
+	assets: [
+		variantAsset("health", {
+			variants: { nextjs: "api/orpc/rsc/health.tsx" },
+			destination: inSourceRoot("orpc/health.tsx"),
+		}),
+		slotAsset("orpc", {
+			variants: { nextjs: "api/orpc/routes/nextjs/route.ts" },
+		}),
+	],
+});
+
+export const orpcNextjsAdapters = deriveRecipeAdapters({
+	recipe: orpcNextjsRecipe,
+	frameworks: [nextjsFramework],
+	readTemplate,
+	requiredSlots: ["orpc"],
+	markers: ({ config }: AdapterContext<ForgeConfig>) => {
+		const values = orpcTemplateVars(config);
+		return {
+			SLUG: values.SLUG,
+			AUTH_IMPORT: values["__AUTH_IMPORT__;\n"],
+			AUTH_ARG: values["__AUTH_ARG__, "],
+		};
+	},
+	target: (_asset, context) => moduleTarget(context.module),
+	before: ({ config, module }) =>
+		["client.ts", "server.ts", "react.tsx"].map((name) =>
+			leafTextFile(
+				moduleTarget(module),
+				`orpc/${name}`,
+				renderOrpcTemplate(config, `rsc/${name}`),
+			),
+		),
+	after: ({ config, module }) => [
+		leafTextFile(
+			moduleTarget(module),
+			"app/orpc-example/page.tsx",
+			interpolate(readTemplate("api/orpc/rsc/page.tsx"), {
+				PROJECT_NAME: config.name ?? config.slug ?? "my-app",
+			}),
+		),
+		surfaceDependencies(moduleTarget(module), "packageJson", [
+			{
+				name: `@${config.slug ?? "my-app"}/orpc`,
+				version: "workspace:*",
+				type: "dependencies",
+			},
+			{ ...deps.orpcClient, type: "dependencies" },
+			{ ...deps.orpcServer, type: "dependencies" },
+			{ ...deps.orpcTanstackQuery, type: "dependencies" },
+			{ ...deps.tanstackReactQuery, type: "dependencies" },
+			{ ...deps.serverOnly, type: "dependencies" },
+		]),
+		...secondaryOrpcClients(config),
+		...secondaryOrpcDependencies(config),
 	],
 });
 

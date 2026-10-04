@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { createContext, Script } from "node:vm";
@@ -720,14 +720,23 @@ async function expectSameOriginOrpcSession(
 
 	await writeFile(
 		join(webRoot, "orpc-probe.ts"),
-		generatedOrpcClientProbe.replace(
-			"__CLIENT_IMPORT__",
-			`./${sourceRoot}/orpc/client`,
-		),
+		(sourceRoot === ""
+			? generatedOrpcHydrationProbe
+			: generatedOrpcClientProbe
+		).replace("__CLIENT_IMPORT__", `./${sourceRoot}/orpc/client`),
 	);
+
+	const hydrationState =
+		sourceRoot === ""
+			? await fetch(`${origin}/api/hydration-probe`).then((response) => {
+					expect(response.status).toBe(200);
+					return response.json();
+				})
+			: undefined;
 
 	const result = await build({
 		configFile: false,
+		define: { "process.env.NODE_ENV": JSON.stringify("production") },
 		root: webRoot,
 		logLevel: "error",
 		build: {
@@ -773,12 +782,15 @@ async function expectSameOriginOrpcSession(
 				clearTimeout,
 				console,
 				crypto,
+				dehydratedState: hydrationState,
 				location: { origin },
 				setTimeout,
 				reportResult: resolveResult,
 				reportError: rejectResult,
 				fetch: (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
 					const request = new Request(input, init);
+					if (sourceRoot === "")
+						expect(new URL(request.url).pathname).not.toBe("/api/orpc/health");
 
 					expect(request.credentials).toBe("include");
 					expect(new URL(request.url).origin).toBe(origin);
@@ -811,6 +823,7 @@ async function expectSelfHostedOrpc(
 	projectRoot: string,
 	sourceRoot: string,
 	clientOrigin?: string,
+	host: "vite" | "nextjs" = "vite",
 ) {
 	const reservation = createServer();
 
@@ -845,15 +858,24 @@ async function expectSelfHostedOrpc(
 	const webRoot = join(projectRoot, "apps/web");
 	const server = spawn(
 		"node",
-		[
-			join(webRoot, "node_modules/vite/bin/vite.js"),
-			"dev",
-			"--host",
-			"127.0.0.1",
-			"--port",
-			String(port),
-			"--strictPort",
-		],
+		host === "nextjs"
+			? [
+					join(webRoot, "node_modules/next/dist/bin/next"),
+					"start",
+					"--hostname",
+					"127.0.0.1",
+					"--port",
+					String(port),
+				]
+			: [
+					join(webRoot, "node_modules/vite/bin/vite.js"),
+					"dev",
+					"--host",
+					"127.0.0.1",
+					"--port",
+					String(port),
+					"--strictPort",
+				],
 		{ cwd: webRoot, env: { ...ambientEnv, ...generatedEnv } },
 	);
 
@@ -895,6 +917,14 @@ async function expectSelfHostedOrpc(
 		}
 
 		expect(ready, output).toBe(true);
+
+		if (host === "nextjs") {
+			const page = await fetch(`${origin}/orpc-example`);
+			const html = await page.text();
+
+			expect(page.status, output).toBe(200);
+			expect(html).toMatch(/data-testid="orpc-health"[^>]*>ok<\/p>/);
+		}
 
 		if (clientOrigin !== undefined) {
 			for (const path of ["/api/orpc/health", "/api/auth/get-session"]) {
@@ -993,6 +1023,24 @@ const generatedOrpcClientProbe = `import { client } from "__CLIENT_IMPORT__";
 
 void (async () => {
   const health = await client.health();
+  const me = await client.me().then(
+    (value) => ({ value }),
+    (error: { status?: number }) => ({ status: error.status }),
+  );
+
+  globalThis.reportResult({ health, me });
+})().catch(globalThis.reportError);
+`;
+
+const generatedOrpcHydrationProbe = `import { client, orpc } from "__CLIENT_IMPORT__";
+import { hydrate, QueryClient } from "@tanstack/react-query";
+
+void (async () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30 * 1000 } } });
+
+  hydrate(queryClient, globalThis.dehydratedState);
+
+  const health = await queryClient.fetchQuery(orpc.health.queryOptions());
   const me = await client.me().then(
     (value) => ({ value }),
     (error: { status?: number }) => ({ status: error.status }),
@@ -1449,6 +1497,79 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		},
 		600_000,
 	);
+
+	it("installs, builds, and hydrates Next.js as an oRPC self host", async () => {
+		await withScenarioWorkspace("smoke-orpc-self-nextjs", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				authMethods: ["email-password"],
+				backend: "self",
+				database: "sqlite",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "orpc",
+				style: "tailwind",
+				web: "nextjs",
+			});
+
+			const probeRoot = join(
+				workspace.projectRoot,
+				"apps/web/app/api/caller-probe",
+			);
+
+			await mkdir(probeRoot, { recursive: true });
+			await writeFile(
+				join(probeRoot, "route.ts"),
+				`import { ORPCError } from "@orpc/server";
+import { createServerCaller } from "@/orpc/server";
+
+export async function GET() {
+  const caller = await createServerCaller();
+
+  try {
+    return Response.json({ health: await caller.health(), me: await caller.me() });
+  } catch (error) {
+    if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
+
+    throw error;
+  }
+}
+`,
+			);
+
+			const hydrationRoot = join(
+				workspace.projectRoot,
+				"apps/web/app/api/hydration-probe",
+			);
+
+			await mkdir(hydrationRoot, { recursive: true });
+			await writeFile(
+				join(hydrationRoot, "route.ts"),
+				`import { createServerCaller } from "@/orpc/server";
+import { createTanstackQueryUtils } from "@orpc/tanstack-query";
+import { dehydrate, QueryClient } from "@tanstack/react-query";
+
+export async function GET() {
+  const caller = await createServerCaller();
+  const orpc = createTanstackQueryUtils(caller);
+  const queryClient = new QueryClient();
+
+  await queryClient.fetchQuery(orpc.health.queryOptions());
+
+  return Response.json(dehydrate(queryClient));
+}
+`,
+			);
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectSelfHostedOrpc(
+				workspace.projectRoot,
+				"",
+				undefined,
+				"nextjs",
+			);
+		});
+	}, 600_000);
 
 	it.each([
 		{ web: "tanstack-start", sourceRoot: "src", secondary: false },

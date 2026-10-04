@@ -46,7 +46,7 @@ export const rpcDescriptors: { readonly [Id in RpcProvider]: RpcDescriptor } = {
 		routes: { module: "./routes/orpc.js", register: "registerOrpcRoutes" },
 		support: {
 			hosts: {
-				nextjs: false,
+				nextjs: true,
 				"react-router": true,
 				"tanstack-start": true,
 				hono: true,
