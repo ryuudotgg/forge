@@ -49,6 +49,11 @@ interface RecipeAdapterOptions<
 		rendered: RenderedRecipeAsset,
 		context: AdapterContext<Config>,
 	) => string | SlotPath;
+	readonly content?: (
+		asset: Assets[number],
+		content: string,
+		context: AdapterContext<Config>,
+	) => string;
 	readonly before?: (
 		context: AdapterContext<Config>,
 	) => ReadonlyArray<Contribution>;
@@ -85,6 +90,7 @@ export function deriveRecipeAdapters<
 								slots: context.slots,
 							},
 						);
+
 						const target = options.target(asset, context);
 						const path =
 							options.path?.(asset, rendered, context) ??
@@ -92,7 +98,12 @@ export function deriveRecipeAdapters<
 								? slotPath(target, asset.slot)
 								: rendered.destination);
 
-						return leafTextFile(target, path, rendered.content);
+						return leafTextFile(
+							target,
+							path,
+							options.content?.(asset, rendered.content, context) ??
+								rendered.content,
+						);
 					});
 
 				return [

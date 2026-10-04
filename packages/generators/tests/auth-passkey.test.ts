@@ -1,3 +1,5 @@
+import { stripTypeScriptTypes } from "node:module";
+import { Script } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { renderBetterAuthTemplate } from "../src/auth/better-auth/shared";
 import { authUsesPasskey } from "../src/auth/methods";
@@ -146,6 +148,85 @@ describe("passkey selection", () => {
 });
 
 describe("passkey generation", () => {
+	it.each(["hono", "self"] as const)(
+		"accepts secondary web origins with a %s host",
+		async (backend) => {
+			const plan = await plannedProject({
+				...baseConfig,
+				backend,
+				orm: "drizzle",
+				database: "sqlite",
+				webApps: [{ name: "admin", framework: "react-router", client: true }],
+			});
+
+			const options = writeContent(plan, "packages/auth/src/passkey.ts");
+
+			expect(options).toContain(
+				"origin: [relyingParty.origin, ...env.WEB_URLS]",
+			);
+
+			expect(options).toContain(
+				"rpID: env.PASSKEY_RP_ID ?? relyingParty.hostname",
+			);
+
+			const authEnv = writeContent(plan, "packages/auth/env.ts");
+
+			expect(authEnv).toContain(
+				"PASSKEY_RP_ID: z.string().trim().min(1).optional()",
+			);
+
+			expect(authEnv).toContain("PASSKEY_RP_ID: process.env.PASSKEY_RP_ID");
+			expect(writeContent(plan, ".env.example")).toContain('PASSKEY_RP_ID=""');
+			expect(writeContent(plan, "packages/auth/README.md")).toContain(
+				"use `example.com`",
+			);
+
+			expect(writeContent(plan, "packages/auth/src/index.ts")).toContain(
+				"...env.WEB_URLS",
+			);
+
+			expect(writeContent(plan, "apps/admin/app/lib/auth-client.ts")).toContain(
+				"baseURL: env.VITE_SERVER_URL",
+			);
+		},
+	);
+
+	it.each([undefined, "example.com"])(
+		"runs secondary passkey options with RP ID %s",
+		(relyingPartyId) => {
+			const source = renderBetterAuthTemplate(
+				{
+					...baseConfig,
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				},
+				"packages/auth/src/passkey.ts",
+			)
+				.replace(
+					'import { type PasskeyOptions, passkey } from "@better-auth/passkey";',
+					"",
+				)
+				.replace('import { env } from "../env";', "")
+				.replace("export function passkeyPlugin", "function passkeyPlugin");
+
+			const options: unknown = new Script(
+				`${stripTypeScriptTypes(source)}\npasskeyPlugin();`,
+			).runInNewContext({
+				URL,
+				env: {
+					WEB_URL: "https://app.example.com",
+					WEB_URLS: ["https://admin.example.com"],
+					PASSKEY_RP_ID: relyingPartyId,
+				},
+				passkey: (value: unknown) => value,
+			});
+
+			expect(options).toMatchObject({
+				rpID: relyingPartyId ?? "app.example.com",
+				origin: ["https://app.example.com", "https://admin.example.com"],
+			});
+		},
+	);
+
 	it.each(variants)(
 		"wires server, web and schema for $name",
 		async ({ config: variant }) => {

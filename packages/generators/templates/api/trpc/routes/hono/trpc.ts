@@ -10,7 +10,7 @@ export const trpcRoutes = new Hono();
 trpcRoutes.use(
   "/api/trpc/*",
   cors({
-    origin: env.WEB_URL,
+    origin: __WEB_ORIGINS__,
     allowHeaders: ["Content-Type", "Authorization", "x-trpc-source"],
     allowMethods: ["GET", "POST", "OPTIONS"],
     exposeHeaders: ["Content-Length"],

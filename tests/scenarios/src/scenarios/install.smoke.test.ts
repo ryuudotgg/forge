@@ -223,12 +223,18 @@ async function withGeneratedServer(
 	generatedEnv: NodeJS.ProcessEnv,
 	serverOrigin: string,
 	exercise: (output: () => string) => Promise<void>,
+	host: "server" | "nextjs" = "server",
 ) {
 	const ambientEnv = { ...process.env };
 	delete ambientEnv.CI;
 
-	const server = spawn("node", ["dist/index.js"], {
-		cwd: join(projectRoot, "apps/server"),
+	const args =
+		host === "nextjs"
+			? ["node_modules/next/dist/bin/next", "start", "--port", "3000"]
+			: ["dist/index.js"];
+
+	const server = spawn("node", args, {
+		cwd: join(projectRoot, host === "nextjs" ? "apps/web" : "apps/server"),
 		env: { ...ambientEnv, ...generatedEnv },
 	});
 
@@ -269,7 +275,9 @@ async function withGeneratedServer(
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
+		readonly clientOrigin?: string;
 		readonly emailAuth?: boolean;
+		readonly host?: "server" | "nextjs";
 		readonly passkey?: boolean;
 		readonly polar?: boolean;
 		readonly rpc?: "trpc" | "orpc";
@@ -279,13 +287,23 @@ async function expectCredentialedGeneratedServer(
 ) {
 	const rpc = options?.rpc ?? "trpc";
 	const generatedEnv = await readGeneratedEnv(projectRoot);
-	const origin = generatedEnv.WEB_URL;
+	const origin = options?.clientOrigin ?? generatedEnv.WEB_URL;
 	const serverOrigin = generatedEnv.APP_ORIGIN;
+	const credentials = options?.host === "nextjs" ? "include" : undefined;
+
 	if (origin === undefined || serverOrigin === undefined)
 		throw new Error(`Missing Generated Origins: ${projectRoot}`);
 
-	expect(origin).toBe(options?.webOrigin ?? "http://localhost:3000");
-	expect(serverOrigin).toBe("http://localhost:3001");
+	if (options?.host === "nextjs") {
+		expect(serverOrigin).toBe("http://localhost:3000");
+		expect(generatedEnv.WEB_URLS?.split(",")).toContain(origin);
+	} else {
+		expect(generatedEnv.WEB_URL).toBe(
+			options?.webOrigin ?? "http://localhost:3000",
+		);
+
+		expect(serverOrigin).toBe("http://localhost:3001");
+	}
 
 	if (options?.polar) {
 		expect(generatedEnv.POLAR_ACCESS_TOKEN).toBe("");
@@ -302,10 +320,13 @@ async function expectCredentialedGeneratedServer(
 		async (output) => {
 			if (rpc === "trpc") {
 				const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
+					credentials,
 					method: "OPTIONS",
 					headers: {
 						Origin: origin,
-						"Access-Control-Request-Headers": "x-trpc-source",
+						"Access-Control-Request-Headers": options?.clientOrigin
+							? "x-trpc-source,trpc-accept"
+							: "x-trpc-source",
 						"Access-Control-Request-Method": "GET",
 					},
 				});
@@ -323,10 +344,22 @@ async function expectCredentialedGeneratedServer(
 					"x-trpc-source",
 				);
 
+				if (options?.clientOrigin)
+					expect(
+						preflight.headers.get("access-control-allow-headers"),
+					).toContain("trpc-accept");
+
 				const actual = await fetch(
 					`${serverOrigin}/api/trpc/health?input=%7B%7D`,
 					{
-						headers: { Origin: origin, "x-trpc-source": "smoke" },
+						credentials,
+						headers: {
+							Origin: origin,
+							"x-trpc-source": "smoke",
+							...(options?.host === "nextjs"
+								? { "trpc-accept": "application/json" }
+								: {}),
+						},
 					},
 				);
 
@@ -335,10 +368,16 @@ async function expectCredentialedGeneratedServer(
 				expect(actual.headers.get("access-control-allow-credentials")).toBe(
 					"true",
 				);
+
+				if (options?.host === "nextjs")
+					expect(await actual.json()).toMatchObject({
+						result: { data: { json: { status: "ok" } } },
+					});
 			}
 
 			const email = "hono-smoke@example.com";
 			const signup = await fetch(`${serverOrigin}/api/auth/sign-up/email`, {
+				credentials,
 				body: JSON.stringify({
 					email,
 					name: "Hono Smoke",
@@ -412,6 +451,7 @@ async function expectCredentialedGeneratedServer(
 			}
 
 			const authSession = await fetch(`${serverOrigin}/api/auth/get-session`, {
+				credentials,
 				headers: { Cookie: cookie, Origin: origin },
 			});
 
@@ -470,6 +510,7 @@ async function expectCredentialedGeneratedServer(
 				200,
 			);
 		},
+		options?.host,
 	);
 
 	if (!options?.polar) return;
@@ -766,7 +807,11 @@ async function expectSameOriginOrpcSession(
 	});
 }
 
-async function expectSelfHostedOrpc(projectRoot: string, sourceRoot: string) {
+async function expectSelfHostedOrpc(
+	projectRoot: string,
+	sourceRoot: string,
+	clientOrigin?: string,
+) {
 	const reservation = createServer();
 
 	await new Promise<void>((resolveListen, rejectListen) => {
@@ -851,9 +896,49 @@ async function expectSelfHostedOrpc(projectRoot: string, sourceRoot: string) {
 
 		expect(ready, output).toBe(true);
 
+		if (clientOrigin !== undefined) {
+			for (const path of ["/api/orpc/health", "/api/auth/get-session"]) {
+				const preflight = await fetch(`${origin}${path}`, {
+					method: "OPTIONS",
+					headers: {
+						Origin: clientOrigin,
+						"Access-Control-Request-Method": "POST",
+						"Access-Control-Request-Headers": "content-type, x-csrf-token",
+					},
+				});
+
+				expect(preflight.status, output).toBe(204);
+				expect(preflight.headers.get("access-control-allow-origin")).toBe(
+					clientOrigin,
+				);
+
+				expect(preflight.headers.get("access-control-allow-credentials")).toBe(
+					"true",
+				);
+			}
+
+			const health = await fetch(`${origin}/api/orpc/health`, {
+				method: "POST",
+				headers: {
+					Origin: clientOrigin,
+					"Content-Type": "application/json",
+					"x-csrf-token": "orpc",
+				},
+				body: JSON.stringify({ json: null }),
+			});
+
+			expect(health.status, output).toBe(200);
+			expect(health.headers.get("access-control-allow-origin")).toBe(
+				clientOrigin,
+			);
+		}
+
 		const signup = await fetch(`${origin}/api/auth/sign-up/email`, {
 			method: "POST",
-			headers: { Origin: origin, "Content-Type": "application/json" },
+			headers: {
+				Origin: clientOrigin ?? origin,
+				"Content-Type": "application/json",
+			},
 			body: JSON.stringify({
 				email: "self-orpc@example.com",
 				name: "Self Hosted",
@@ -868,12 +953,17 @@ async function expectSelfHostedOrpc(projectRoot: string, sourceRoot: string) {
 			throw new Error("Missing Session Cookie: Better Auth sign-up");
 
 		const sessionResponse = await fetch(`${origin}/api/auth/get-session`, {
-			headers: { Cookie: cookie },
+			headers: { Cookie: cookie, Origin: clientOrigin ?? origin },
 		});
 
 		const session: unknown = await sessionResponse.json();
 
 		expect(sessionResponse.status).toBe(200);
+
+		if (clientOrigin !== undefined)
+			expect(sessionResponse.headers.get("access-control-allow-origin")).toBe(
+				clientOrigin,
+			);
 
 		if (
 			typeof session !== "object" ||
@@ -1271,6 +1361,63 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		);
 	}, 600_000);
 
+	it.each(["trpc", "orpc"] as const)(
+		"installs secondary %s clients and accepts their credentialed requests",
+		async (rpc) => {
+			await withScenarioWorkspace(
+				`smoke-secondary-client-${rpc}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						authMethods: ["email-password", "passkey"],
+						backend: "hono",
+						database: "sqlite",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc,
+						web: "tanstack-router",
+						webApps: [{ name: "admin", framework: "nextjs", client: true }],
+						style: "tailwind",
+					});
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						rpc,
+						clientOrigin: "http://localhost:3002",
+						passkey: true,
+					});
+				},
+			);
+		},
+		600_000,
+	);
+
+	it("installs self-hosted RPC and auth with a secondary client", async () => {
+		await withScenarioWorkspace(
+			"smoke-secondary-client-self",
+			async (workspace) => {
+				await createProject(workspace, {
+					authentication: "better-auth",
+					authMethods: ["email-password", "passkey"],
+					backend: "self",
+					database: "sqlite",
+					orm: "drizzle",
+					packageManager: "pnpm",
+					rpc: "trpc",
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+					style: "tailwind",
+				});
+
+				await expectInstallBuildAndTypecheck(workspace, "pnpm");
+				await expectCredentialedGeneratedServer(workspace.projectRoot, {
+					clientOrigin: "http://localhost:3002",
+					host: "nextjs",
+				});
+			},
+		);
+	}, 600_000);
+
 	it.each(["tanstack-router", "react-router"])(
 		"installs, builds, and typechecks %s with an oRPC Hono host",
 		async (web) => {
@@ -1304,11 +1451,13 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	);
 
 	it.each([
-		{ web: "tanstack-start", sourceRoot: "src" },
-		{ web: "react-router", sourceRoot: "app" },
+		{ web: "tanstack-start", sourceRoot: "src", secondary: false },
+		{ web: "react-router", sourceRoot: "app", secondary: false },
+		{ web: "tanstack-start", sourceRoot: "src", secondary: true },
+		{ web: "react-router", sourceRoot: "app", secondary: true },
 	])(
-		"installs, builds, and typechecks $web as an oRPC self host",
-		async ({ web, sourceRoot }) => {
+		"installs, builds, and typechecks $web as an oRPC self host (secondary: $secondary)",
+		async ({ web, sourceRoot, secondary }) => {
 			await withScenarioWorkspace(
 				`smoke-orpc-self-${web}`,
 				async (workspace) => {
@@ -1322,6 +1471,13 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 						rpc: "orpc",
 						style: "tailwind",
 						web,
+						...(secondary
+							? {
+									webApps: [
+										{ name: "admin", framework: "nextjs", client: true },
+									],
+								}
+							: {}),
 					});
 
 					const callerProbe =
@@ -1397,7 +1553,15 @@ export async function loader({ request }: { request: Request }) {
 					}
 
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-					await expectSelfHostedOrpc(workspace.projectRoot, sourceRoot);
+					await expectSelfHostedOrpc(
+						workspace.projectRoot,
+						sourceRoot,
+						secondary
+							? web === "react-router"
+								? "http://localhost:5174"
+								: "http://localhost:3002"
+							: undefined,
+					);
 				},
 			);
 		},

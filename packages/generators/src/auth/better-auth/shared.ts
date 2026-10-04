@@ -1,5 +1,5 @@
 import type { FrameworkDefinition } from "@ryuugg/core";
-import type { ForgeConfig } from "../../config";
+import type { ForgeConfig, WebFramework } from "../../config";
 import {
 	drizzleAdapterProvider,
 	resolveDatabaseProvider,
@@ -9,9 +9,13 @@ import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
-import { standaloneApiOrigin } from "../../origins";
+import { hasSecondaryClients, standaloneApiOrigin } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
-import { authSocialProviders, authUsesPassword } from "../methods";
+import {
+	authSocialProviders,
+	authUsesPasskey,
+	authUsesPassword,
+} from "../methods";
 import {
 	authPluginBindings,
 	authPluginEnvEntries,
@@ -40,10 +44,15 @@ function clientEnvPrefix(config: ForgeConfig): string {
 	);
 }
 
-function authClientCall(config: ForgeConfig, standalone: boolean): string {
+function authClientCall(
+	config: ForgeConfig,
+	standalone: boolean,
+	secondary = false,
+): string {
 	const prefix = clientEnvPrefix(config);
-	const baseUrl =
-		config.web === "nextjs"
+	const baseUrl = secondary
+		? `env.${prefix}SERVER_URL`
+		: config.web === "nextjs"
 			? `process.env.${prefix}SERVER_URL`
 			: `import.meta.env.${prefix}SERVER_URL`;
 
@@ -82,10 +91,19 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 	const standalone = standaloneApiOrigin(config) !== undefined;
 	const providers = authSocialProviders(config);
 	const pluginEnv = authPluginEnvEntries(config);
+	const secondaryPasskeys =
+		hasSecondaryClients(config) && authUsesPasskey(config);
+
 	return {
 		SLUG: slug,
 		PASSKEY_ORIGIN:
 			standalone && config.web !== undefined ? "env.WEB_URL" : "env.APP_ORIGIN",
+		PASSKEY_ALLOWED_ORIGINS: hasSecondaryClients(config)
+			? "[relyingParty.origin, ...env.WEB_URLS]"
+			: "relyingParty.origin",
+		PASSKEY_RP_ID: secondaryPasskeys
+			? "env.PASSKEY_RP_ID ?? relyingParty.hostname"
+			: "relyingParty.hostname",
 		PASSKEY_NAME: JSON.stringify(config.name ?? slug),
 		DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 		DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
@@ -97,10 +115,8 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 				? `\ndeclare global {\n  interface ImportMetaEnv {\n    readonly ${clientEnvPrefix(config)}SERVER_URL: string;\n  }\n\n  interface ImportMeta {\n    readonly env: ImportMetaEnv;\n  }\n}\n`
 				: "",
 		[authClientDeclaration]: authClientCall(config, standalone),
-		"    // __WEB_URL_SCHEMA__\n": standalone ? "    WEB_URL: z.url(),\n" : "",
-		"    // __WEB_URL_RUNTIME__\n": standalone
-			? "    WEB_URL: process.env.WEB_URL,\n"
-			: "",
+		"    // __WEB_URL_SCHEMA__\n": `${standalone ? "    WEB_URL: z.url(),\n" : ""}${hasSecondaryClients(config) ? '    WEB_URLS: z.string().transform((value) => value.split(",").map((origin) => origin.trim()).filter(Boolean)),\n' : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: z.string().trim().min(1).optional(),\n" : ""}`,
+		"    // __WEB_URL_RUNTIME__\n": `${standalone ? "    WEB_URL: process.env.WEB_URL,\n" : ""}${hasSecondaryClients(config) ? "    WEB_URLS: process.env.WEB_URLS,\n" : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: process.env.PASSKEY_RP_ID,\n" : ""}`,
 		"\n    // __SOCIAL_SCHEMA__\n": providers
 			.map(({ envStem }) =>
 				[
@@ -206,7 +222,12 @@ export function betterAuthRecipeVars(
 	].filter((plugin) => plugin !== undefined);
 
 	const trustedOrigins = [
-		standaloneApiOrigin(config) ? "env.WEB_URL" : undefined,
+		standaloneApiOrigin(config)
+			? "env.WEB_URL"
+			: hasSecondaryClients(config)
+				? "env.APP_ORIGIN"
+				: undefined,
+		hasSecondaryClients(config) ? "...env.WEB_URLS" : undefined,
 		usesMobile ? `"${expoScheme(values.SLUG)}://"` : undefined,
 	].filter((origin) => origin !== undefined);
 
@@ -266,5 +287,22 @@ export function renderBetterAuthTemplate(
 	return interpolate(
 		readTemplate(`auth/better-auth/${path}`),
 		betterAuthTemplateVars(config),
+	);
+}
+
+export function renderSecondaryAuthClient(
+	config: ForgeConfig,
+	framework: WebFramework,
+): string {
+	const clientConfig = { ...config, web: framework };
+	return interpolate(
+		readTemplate("auth/better-auth/packages/auth/src/client.ts"),
+		{
+			"// __CLIENT_PLUGIN_IMPORTS__\n": authPluginImports(
+				authPluginBindings(config, "client"),
+			),
+			"// __CLIENT_ENV_TYPES__\n": `import { env } from "${framework === "nextjs" ? "../env" : "../../env"}";\n`,
+			[authClientDeclaration]: authClientCall(clientConfig, true, true),
+		},
 	);
 }

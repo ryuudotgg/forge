@@ -71,7 +71,7 @@ export default defineStep<typeof webAppsSchema.Type>({
 
 			const framework = await webStep.execute(config, true);
 			const client = await confirm({
-				message: `Mark ${name} as an API client? Wiring is not generated yet.`,
+				message: `Mark ${name} as an API client?`,
 				initialValue: false,
 			});
 

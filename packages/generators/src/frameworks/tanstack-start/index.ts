@@ -11,6 +11,10 @@ import {
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuugg/core";
+import {
+	selfHostedCorsContributions,
+	selfHostedCorsViteConfig,
+} from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
@@ -238,9 +242,13 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		surfaceText(
 			ensuredModuleTarget(instance.key),
 			"frameworkConfig",
-			interpolate(
-				readTemplate("frameworks/tanstack-start/vite.config.ts"),
-				vars,
+			selfHostedCorsViteConfig(
+				config,
+				instance,
+				interpolate(
+					readTemplate("frameworks/tanstack-start/vite.config.ts"),
+					vars,
+				),
 			),
 		),
 		surfaceJson(ensuredModuleTarget(instance.key), "tsconfig", webTsconfig),
@@ -288,6 +296,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"src/routeTree.gen.ts",
 			readTemplate("frameworks/tanstack-start/src/routeTree.gen.ts"),
 		),
+		...selfHostedCorsContributions(config, instance),
 	];
 }
 
