@@ -82,6 +82,8 @@ describe("printHelp", () => {
 				"        --keep-user                    Keep your values when resolving conflicts.",
 				"        --accept-forge                 Take Forge's values when resolving conflicts.",
 				"        --yes                          Install a new registry package without asking first.",
+				"        --name <value>                 Name the secondary web app to add.",
+				"        --client                       Mark the new secondary web app as an API client.",
 				"",
 				"  Examples",
 				"    forge list auth",

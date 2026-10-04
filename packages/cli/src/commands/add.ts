@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import {
 	confirm,
 	intro,
@@ -26,7 +27,11 @@ import {
 	matchQuery,
 	orms,
 	RegistryLoadError,
+	webFrameworks,
 } from "@ryuugg/generators";
+import { Effect, FileSystem, Result, Schema } from "effect";
+import { runCliEffectValue } from "../runtime";
+import { webAppsSchema } from "../steps/platforms/web-apps";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
@@ -473,12 +478,83 @@ function buildProjectInstallRecord(
 	return { definitionId: addon.id, targets: [{ kind: "project" }] };
 }
 
+async function addWebApp(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	framework: NonNullable<ForgeConfig["web"]>,
+	values: Record<string, string | boolean | string[] | undefined>,
+) {
+	const config: ForgeConfig = project.config;
+	if (config.web === undefined) {
+		log.error("You need a primary web app before adding another web app.");
+		process.exit(1);
+	}
+
+	const existingApps = config.webApps ?? [];
+	const decodeApps = (name: string) =>
+		Schema.decodeResult(webAppsSchema)([
+			...existingApps,
+			{ name, framework, ...(values.client === true ? { client: true } : {}) },
+		]);
+
+	let name = typeof values.name === "string" ? values.name : undefined;
+	if (name === undefined) {
+		if (values.yes === true || !isInteractiveLifecycleSession()) {
+			log.error("Pass --name to name the web app you want to add.");
+			process.exit(1);
+		}
+
+		const result = await text({
+			message: "What is the name of this web app?",
+			validate(value) {
+				const decoded = decodeApps(value ?? "");
+				if (Result.isFailure(decoded)) return decoded.failure.message;
+			},
+		});
+
+		if (isCancel(result)) cancel();
+		name = result;
+	}
+
+	const decoded = decodeApps(name);
+	if (Result.isFailure(decoded)) {
+		log.error(decoded.failure.message);
+		process.exit(1);
+	}
+
+	const root = `apps/${name}`;
+	const exists = await runCliEffectValue(
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			return yield* fs.exists(resolve(project.projectRoot, root));
+		}),
+	);
+
+	if (exists || project.modules.some((module) => module.root === root)) {
+		log.error(`We can't add "${name}" because ${root} already exists.`);
+		process.exit(1);
+	}
+
+	await applyInstalledPlan(
+		project.projectRoot,
+		{ ...project.config, webApps: decoded.success },
+		project.manifest.installs,
+		undefined,
+		project.manifest.registries,
+		...resolutionArguments(values),
+	);
+}
+
 export async function runAdd(
 	addonId: string | undefined,
 	values: Record<string, string | boolean | string[] | undefined>,
 ) {
 	const resolution = resolutionArguments(values);
 	const project = await loadManagedProject(".", "add");
+	const webFramework = webFrameworks.ids.find((id) => id === addonId);
+	if (webFramework !== undefined) {
+		await addWebApp(project, webFramework, values);
+		return;
+	}
 
 	let registryIds = project.manifest.registries;
 	let loadedRegistry = await loadProjectRegistry(

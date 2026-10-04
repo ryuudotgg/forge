@@ -1,4 +1,4 @@
-import { isAbsolute, join, relative, sep } from "node:path";
+import { basename, isAbsolute, join, relative, sep } from "node:path";
 import {
 	authenticationProviders,
 	backends,
@@ -11,7 +11,6 @@ import {
 	rpcProviders,
 	styleFrameworks,
 	uiLibraries,
-	webFrameworks,
 } from "@ryuugg/generators";
 import {
 	Context,
@@ -37,6 +36,7 @@ import {
 	packageManagerFromLockfiles,
 	providerFromSignals,
 	runtimeFromPackageJson,
+	webFrameworkFromPackage,
 } from "./mapping";
 import {
 	AdoptionFileParseError,
@@ -454,7 +454,6 @@ const makeAdoptionDetector = Effect.gen(function* () {
 		const packageJsonByRoot = new Map<string, PackageJson>();
 		const componentsByRoot = new Map<string, string>();
 		const tanstackRouterConfigRoots = new Set<string>();
-
 		for (const root of roots) {
 			const packageJson = yield* decodePackageJson(
 				join(projectRoot, root, "package.json"),
@@ -518,20 +517,27 @@ const makeAdoptionDetector = Effect.gen(function* () {
 
 		const detectedEnvNames = envNames(envFiles);
 
-		const web = oneDetected([
-			directDependencies.has("next")
-				? webFrameworks.normalize("nextjs")
-				: undefined,
-			directDependencies.has("react-router")
-				? webFrameworks.normalize("react-router")
-				: undefined,
-			directDependencies.has("@tanstack/react-start")
-				? webFrameworks.normalize("tanstack-start")
-				: undefined,
-			tanstackRouterConfigRoots.size > 0
-				? webFrameworks.normalize("tanstack-router")
-				: undefined,
-		]);
+		const webModules = roots.flatMap((root) => {
+			const framework = webFrameworkFromPackage(
+				packageJsonByRoot.get(root) ?? {},
+				tanstackRouterConfigRoots.has(root),
+			);
+
+			return framework === undefined ? [] : [{ framework, root }];
+		});
+
+		const primaryWebModule =
+			webModules.find((module) => module.root === "apps/web") ?? webModules[0];
+
+		const web =
+			primaryWebModule?.framework ??
+			webFrameworkFromPackage(rootPackageJson ?? {}, false);
+
+		const webApps = webModules.flatMap((module) =>
+			module === primaryWebModule
+				? []
+				: [{ name: basename(module.root), framework: module.framework }],
+		);
 
 		const orm = oneDetected([
 			directDependencies.has("drizzle-orm")
@@ -658,6 +664,7 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			...(runtime === undefined ? {} : { runtime }),
 			...(style === undefined ? {} : { style }),
 			...(uiLibrary === undefined ? {} : { uiLibrary }),
+			...(webApps.length === 0 ? {} : { webApps }),
 			...(web === undefined || webPlatform === undefined
 				? {}
 				: { platforms: [webPlatform], web }),

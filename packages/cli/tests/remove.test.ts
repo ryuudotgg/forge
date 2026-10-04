@@ -28,6 +28,7 @@ function addonRegistryFixture(
 		when: () => false,
 		contribute: () => [],
 	});
+
 	const loaded: LoadedDefinitionRegistry = {
 		catalog: [
 			...firstParty.catalog,
@@ -61,6 +62,7 @@ function addonRegistryFixture(
 			addons: [...firstParty.registry.addons, addon],
 		},
 	};
+
 	return { addon, firstParty, loaded };
 }
 
@@ -108,20 +110,366 @@ vi.mock("../src/commands/lifecycle", () => ({
 }));
 
 describe("remove command", () => {
+	it("reports a removed secondary name clearly on rerun", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ config: { web: "nextjs", webApps: [] } }),
+		);
+
+		try {
+			await expect(runRemove("site", { yes: true })).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'We couldn\'t find "site" in this project.',
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it.each(["admin", "apps/admin", adminModule.id, "react-router"])(
+		"removes a secondary app by %s and strips only its install targets",
+		async (requestedId) => {
+			const project = managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "react-router" }],
+				},
+				modules: [
+					appModule,
+					{ ...adminModule, type: "app", framework: "react-router" },
+				],
+				installs: [
+					{
+						definitionId: "tailwind",
+						targets: [
+							{ kind: "module", moduleId: appModule.id },
+							{ kind: "module", moduleId: adminModule.id },
+						],
+					},
+					{ definitionId: "biome", targets: [{ kind: "project" }] },
+					{
+						definitionId: "mock-multi",
+						targets: [{ kind: "module", moduleId: adminModule.id }],
+					},
+				],
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runRemove(requestedId, { yes: true, "keep-user": true });
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{ web: "nextjs", webApps: [] },
+				[
+					{
+						definitionId: "tailwind",
+						targets: [{ kind: "module", moduleId: appModule.id }],
+					},
+					{ definitionId: "biome", targets: [{ kind: "project" }] },
+				],
+				undefined,
+				undefined,
+				{ resolutionPolicy: "keep-user" },
+				{ modules: [appModule], records: project.manifest.modules },
+			);
+		},
+	);
+
+	it.each([
+		{ root: "sites/admin", recordedRoot: undefined },
+		{ root: "sites/admin", recordedRoot: "sites/admin" },
+		{ root: "sites/dashboard", recordedRoot: "sites/admin" },
+		{ root: "sites/dashboard", recordedRoot: "apps/admin" },
+	])(
+		"removes an adopted secondary at $root with recorded root $recordedRoot",
+		async ({ root, recordedRoot }) => {
+			const adoptedModule = {
+				...adminModule,
+				packageName: "@company/control-panel",
+				root,
+			};
+
+			const baseProject = managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				},
+				modules: [appModule, adoptedModule],
+			});
+
+			const project = {
+				...baseProject,
+				manifest: {
+					...baseProject.manifest,
+					modules:
+						recordedRoot === undefined
+							? {}
+							: {
+									[adoptedModule.id]: {
+										root: recordedRoot,
+										definitionIds: [],
+									},
+								},
+				},
+			};
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runRemove("admin", { yes: true });
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{ web: "nextjs", webApps: [] },
+				[],
+				undefined,
+				undefined,
+				{},
+				{
+					modules: [appModule],
+					records: project.manifest.modules,
+					...(recordedRoot === undefined || recordedRoot === root
+						? {}
+						: { removalRootRelocations: { [recordedRoot]: root } }),
+				},
+			);
+		},
+	);
+
+	it.each([
+		{
+			root: "apps/admin",
+			packageName: "@company/control",
+			recordedRoot: undefined,
+		},
+		{
+			root: "sites/control",
+			packageName: "@acme/admin",
+			recordedRoot: undefined,
+		},
+		{
+			root: "sites/control",
+			packageName: "@company/control",
+			recordedRoot: "apps/admin",
+		},
+	])(
+		"prefers explicit secondary identity at $root over a shared basename",
+		async ({ root, packageName, recordedRoot }) => {
+			const selectedModule = { ...adminModule, root, packageName };
+			const unrelatedModule = {
+				...adminModule,
+				id: "other",
+				root: "tools/admin",
+				packageName: "@company/other",
+			};
+
+			const baseProject = managedProject({
+				config: {
+					slug: "acme",
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				},
+				modules: [appModule, selectedModule, unrelatedModule],
+			});
+
+			const project = {
+				...baseProject,
+				manifest: {
+					...baseProject.manifest,
+					modules:
+						recordedRoot === undefined
+							? {}
+							: {
+									[selectedModule.id]: {
+										root: recordedRoot,
+										definitionIds: [],
+									},
+								},
+				},
+			};
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runRemove("admin", { yes: true });
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{ slug: "acme", web: "nextjs", webApps: [] },
+				[],
+				undefined,
+				undefined,
+				{},
+				{
+					modules: [appModule, unrelatedModule],
+					records: project.manifest.modules,
+					...(recordedRoot === undefined
+						? {}
+						: {
+								removalRootRelocations: { [recordedRoot]: root },
+							}),
+				},
+			);
+		},
+	);
+
+	it("refuses ambiguous adopted secondary roots", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		const project = managedProject({
+			config: {
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			},
+			modules: [
+				appModule,
+				{
+					...adminModule,
+					root: "sites/admin",
+					packageName: "@company/control",
+				},
+				{
+					...adminModule,
+					id: "other",
+					root: "tools/admin",
+					packageName: "@company/other",
+				},
+			],
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+		try {
+			await expect(runRemove("admin", { yes: true })).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'We can\'t identify one managed web app named "admin".',
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("removes a secondary app named primary", async () => {
+		const project = managedProject({
+			config: {
+				web: "nextjs",
+				webApps: [{ name: "primary", framework: "nextjs" }],
+			},
+			modules: [
+				appModule,
+				{ ...adminModule, root: "apps/primary", packageName: "@acme/primary" },
+			],
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+		await runRemove("primary", { yes: true });
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			project.projectRoot,
+			{ web: "nextjs", webApps: [] },
+			[],
+			undefined,
+			undefined,
+			{},
+			{ modules: [appModule], records: project.manifest.modules },
+		);
+	});
+
+	it("protects the actual primary when a secondary is named primary", async () => {
+		if (appModule.type !== "app") throw new Error("Expected an app fixture");
+
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "primary", framework: "nextjs" }],
+				},
+				modules: [{ ...appModule, id: "primary", role: "primary" }],
+			}),
+		);
+
+		try {
+			await expect(runRemove("primary", { yes: true })).rejects.toThrow(
+				"exit:1",
+			);
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't remove the primary web app.",
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it.each(["web", "primary", "apps/web", appModule.id, "nextjs"])(
+		"refuses to remove primary web app by %s",
+		async (requestedId) => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				lifecycleMocks.loadManagedProject.mockResolvedValue(
+					managedProject({
+						config: {
+							web: "nextjs",
+							webApps: [{ name: "admin", framework: "nextjs" }],
+						},
+						modules: [appModule, adminModule],
+					}),
+				);
+
+				await expect(runRemove(requestedId, { yes: true })).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					expect.stringContaining("primary web app"),
+				);
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
+
 	beforeEach(() => {
 		lifecycleMocks.applyInstalledPlan.mockReset();
 		lifecycleMocks.configuredPackageManager.mockReset();
 		lifecycleMocks.hasProjectDevDependency.mockReset();
+
 		lifecycleMocks.loadManagedProject.mockReset();
 		lifecycleMocks.loadProjectRegistry.mockReset();
 		lifecycleMocks.runPackageManagerOperation.mockReset();
+
 		promptMocks.confirm.mockReset();
 		promptMocks.intro.mockReset();
+
 		promptMocks.logError.mockReset();
 		promptMocks.logWarn.mockReset();
+
 		promptMocks.multiselect.mockReset();
 		promptMocks.select.mockReset();
 		promptMocks.text.mockReset();
+
 		lifecycleMocks.hasProjectDevDependency.mockResolvedValue(false);
 		lifecycleMocks.configuredPackageManager.mockImplementation(
 			(config: { readonly packageManager?: unknown }) =>
@@ -129,9 +477,11 @@ describe("remove command", () => {
 					? config.packageManager
 					: "pnpm",
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(
 			loadDefinitionRegistry(),
 		);
+
 		lifecycleMocks.runPackageManagerOperation.mockResolvedValue(true);
 	});
 
@@ -147,6 +497,7 @@ describe("remove command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const loaded: LoadedDefinitionRegistry = {
 			catalog: [
 				...firstParty.catalog,
@@ -180,6 +531,7 @@ describe("remove command", () => {
 				addons: [...firstParty.registry.addons, addon],
 			},
 		};
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				config: { packageManager: "pnpm", slug: "acme" },
@@ -193,6 +545,7 @@ describe("remove command", () => {
 				registryDescriptors: loaded.descriptors,
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 		lifecycleMocks.hasProjectDevDependency.mockResolvedValue(true);
 		promptMocks.confirm.mockResolvedValue(true);
@@ -205,6 +558,7 @@ describe("remove command", () => {
 			active: "Yes",
 			inactive: "No",
 		});
+
 		expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
 			".",
 			{
@@ -212,6 +566,7 @@ describe("remove command", () => {
 				command: "pnpm",
 			},
 		);
+
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ packageManager: "pnpm", slug: "acme" },
@@ -230,13 +585,16 @@ describe("remove command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(loaded)
 			.mockResolvedValueOnce(firstParty);
+
 		lifecycleMocks.hasProjectDevDependency.mockResolvedValue(true);
 		lifecycleMocks.applyInstalledPlan.mockRejectedValue(
 			new Error("Merge Refused"),
 		);
+
 		promptMocks.confirm.mockResolvedValue(true);
 
 		await expect(runRemove(addon.id, {})).rejects.toThrow("Merge Refused");
@@ -258,9 +616,11 @@ describe("remove command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(loaded)
 			.mockResolvedValueOnce(firstParty);
+
 		lifecycleMocks.hasProjectDevDependency.mockResolvedValue(true);
 		lifecycleMocks.runPackageManagerOperation.mockResolvedValue(false);
 		promptMocks.confirm.mockResolvedValue(true);
@@ -274,12 +634,14 @@ describe("remove command", () => {
 			undefined,
 			[],
 		);
+
 		expect(
 			lifecycleMocks.applyInstalledPlan.mock.invocationCallOrder[0],
 		).toBeLessThan(
 			lifecycleMocks.runPackageManagerOperation.mock.invocationCallOrder[0] ??
 				0,
 		);
+
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"We removed @acme/forge-sentry from Forge, but couldn't uninstall its unused devDependency.",
 		);
@@ -292,6 +654,7 @@ describe("remove command", () => {
 			framework: "nextjs",
 			contribute: () => [],
 		});
+
 		const loaded: LoadedDefinitionRegistry = {
 			catalog: firstParty.catalog,
 			descriptors: [
@@ -308,6 +671,7 @@ describe("remove command", () => {
 				adapters: [...firstParty.registry.adapters, adapter],
 			},
 		};
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -319,9 +683,11 @@ describe("remove command", () => {
 				registries: ["@acme/forge-vitest"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(loaded)
 			.mockResolvedValueOnce(firstParty);
+
 		promptMocks.confirm.mockResolvedValue(true);
 
 		await runRemove("@acme/forge-vitest", {});
@@ -332,6 +698,7 @@ describe("remove command", () => {
 			active: "Yes",
 			inactive: "No",
 		});
+
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", web: "nextjs" },
@@ -354,11 +721,13 @@ describe("remove command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const partialAddon = defineAddon<ForgeConfig>({
 			...retainedAddon,
 			id: "@acme/partial",
 			name: "Partial",
 		});
+
 		const adapterOnlyAddon = defineAddon<ForgeConfig>({
 			id: "@acme/adapter-only",
 			name: "Adapter Only",
@@ -369,12 +738,14 @@ describe("remove command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const singleAddon = defineAddon<ForgeConfig>({
 			...retainedAddon,
 			id: "@acme/single",
 			name: "Single",
 			targetMode: "single",
 		});
+
 		const nextRegistry: LoadedDefinitionRegistry = {
 			catalog: firstParty.catalog,
 			descriptors: [],
@@ -397,6 +768,7 @@ describe("remove command", () => {
 				],
 			},
 		};
+
 		const descriptor: LoadedDefinitionRegistry["descriptors"][number] = {
 			apiVersion: 1,
 			id: "@acme/forge-empty",
@@ -404,10 +776,12 @@ describe("remove command", () => {
 			units: [],
 			version: "1.0.0",
 		};
+
 		const loaded: LoadedDefinitionRegistry = {
 			...nextRegistry,
 			descriptors: [descriptor],
 		};
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -436,9 +810,11 @@ describe("remove command", () => {
 				registries: [descriptor.id],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(loaded)
 			.mockResolvedValueOnce(nextRegistry);
+
 		promptMocks.confirm.mockResolvedValue(true);
 
 		await runRemove(descriptor.id, {});
@@ -478,9 +854,11 @@ describe("remove command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(loaded)
 			.mockResolvedValueOnce(firstParty);
+
 		promptMocks.confirm.mockResolvedValue(true);
 
 		await runRemove("@acme/forge-sentry", {});
@@ -507,6 +885,7 @@ describe("remove command", () => {
 			when: () => true,
 			contribute: () => [],
 		});
+
 		const loadedWithDependent: LoadedDefinitionRegistry = {
 			...loaded,
 			registry: {
@@ -514,6 +893,7 @@ describe("remove command", () => {
 				addons: [...loaded.registry.addons, dependent],
 			},
 		};
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -523,6 +903,7 @@ describe("remove command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loadedWithDependent);
 		promptMocks.confirm.mockResolvedValue(true);
 		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
@@ -537,6 +918,7 @@ describe("remove command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We can't remove Sentry until you remove Replay.",
 			);
+
 			expect(lifecycleMocks.loadProjectRegistry).toHaveBeenCalledTimes(1);
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
@@ -549,6 +931,7 @@ describe("remove command", () => {
 			{ id: addonId, kind: "addon" },
 			{ addon: "vitest", framework: "nextjs", kind: "adapter" },
 		]);
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -561,6 +944,7 @@ describe("remove command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 
 		await runRemove(addon.id, {});
@@ -587,6 +971,7 @@ describe("remove command", () => {
 				{ id: addonId, kind: "addon" },
 				liveUnit,
 			]);
+
 			lifecycleMocks.loadManagedProject.mockResolvedValue(
 				managedProject({
 					installs: [
@@ -595,6 +980,7 @@ describe("remove command", () => {
 					registries: ["@acme/forge-sentry"],
 				}),
 			);
+
 			lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 
 			await runRemove(addon.id, {});
@@ -630,6 +1016,7 @@ describe("remove command", () => {
 			".",
 			"remove",
 		);
+
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which addon do you want to remove?",
 			options: [
@@ -640,6 +1027,7 @@ describe("remove command", () => {
 				},
 			],
 		});
+
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -724,6 +1112,7 @@ describe("remove command", () => {
 			],
 			required: true,
 		});
+
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", style: "tailwind", web: "nextjs" },
@@ -785,6 +1174,7 @@ describe("remove command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We can't remove the ORM until you remove Better Auth.",
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -810,6 +1200,7 @@ describe("remove command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We can't remove UI Package because your Next.js app needs it.",
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -835,6 +1226,7 @@ describe("remove command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We can't remove your package manager setup.",
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -892,6 +1284,7 @@ describe("remove command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We couldn\'t find "stale" in this project.',
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -913,6 +1306,7 @@ describe("remove command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We couldn\'t find "tailwind" in this project.',
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();

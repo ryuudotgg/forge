@@ -3180,6 +3180,111 @@ describe("planner", () => {
 		);
 	});
 
+	it("preserves narrowed addon scope when a compatible app is added", async () => {
+		await withTempDir("planner-preserve-addon-scope", async (directory) => {
+			const addon = defineAddon<TestConfig>({
+				id: "integration",
+				name: "Integration",
+				version: "0.1.0",
+				category: "addon",
+				exclusive: false,
+				targetMode: "multiple",
+				compatibility: { app: { frameworks: ["nextjs"] } },
+				when: () => true,
+				contribute: () => [
+					leafTextFile(
+						selectedModuleTarget(),
+						"integration.txt",
+						"integration\n",
+					),
+				],
+			});
+
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				when: (config) => config.web === "nextjs",
+				contribute: ({ config }) => [
+					ensureAppModule("web", "apps/web", {
+						framework: "nextjs",
+						template: { id: "nextjs/base", version: 1 },
+						slots: {},
+						...(config.dual ? { role: "primary" } : {}),
+					}),
+					...(config.dual
+						? [
+								ensureAppModule("admin", "apps/admin", {
+									framework: "nextjs",
+									template: { id: "nextjs/base", version: 1 },
+									slots: {},
+								}),
+							]
+						: []),
+					...(config.audit
+						? [
+								ensureAppModule("site", "apps/site", {
+									framework: "nextjs",
+									template: { id: "nextjs/base", version: 1 },
+									slots: {},
+								}),
+							]
+						: []),
+				],
+			});
+
+			const baseRegistry = testRegistry([addon]);
+			const registry = defineRegistry({
+				adapters: baseRegistry.adapters,
+				addons: baseRegistry.addons,
+				frameworks: baseRegistry.frameworks,
+				templates: [template],
+			});
+
+			const created = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs", dual: true }, registry),
+			);
+
+			await Effect.runPromise(applyPlanEffect(directory, created));
+
+			const primaryId = moduleIdByRoot(created.manifest.modules, "apps/web");
+			const narrowedInstalls = created.manifest.installs.map((install) => ({
+				...install,
+				targets: install.targets.filter(
+					(target) => target.kind === "module" && target.moduleId === primaryId,
+				),
+			}));
+
+			const installed = await Effect.runPromise(
+				planInstalledEffect(
+					directory,
+					{ web: "nextjs", dual: true, audit: true },
+					narrowedInstalls,
+					registry,
+				),
+			);
+
+			expect(
+				Object.values(installed.manifest.modules).map((module) => module.root),
+			).toContain("apps/site");
+
+			expect(installed.manifest.installs).toEqual(narrowedInstalls);
+			expect(
+				installed.writes.some(
+					(write) => write.path === "apps/site/integration.txt",
+				),
+			).toBe(false);
+
+			expect(
+				installed.writes.some(
+					(write) => write.path === "apps/web/integration.txt",
+				),
+			).toBe(true);
+		});
+	});
+
 	it("stabilizes dependency adapter targets and output across shuffled discovery", async () => {
 		const framework = defineFramework({
 			id: "nextjs",
