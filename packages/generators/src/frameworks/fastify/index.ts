@@ -43,7 +43,7 @@ export const fastifyFramework: FrameworkDefinition<"fastify"> = defineFramework(
 		ignoreDirs: [],
 		name: "Fastify",
 		sourceRoot: "src",
-		slots: Object.keys(fastifySlots),
+		slots: [...Object.keys(fastifySlots), "orpc"],
 		tsconfigPreset: {
 			name: "fastify",
 			content: {
@@ -140,7 +140,10 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("server", "apps/server", {
 			framework: "fastify",
 			template: { id: "fastify/base", version: 1 },
-			slots: fastifySlots,
+			slots:
+				config.rpc === "orpc"
+					? { ...fastifySlots, orpc: "src/routes/orpc.ts" }
+					: fastifySlots,
 		}),
 		surfaceJson(ensuredModuleTarget("server"), "packageJson", {
 			name: `@${slug}/server`,
@@ -197,7 +200,13 @@ function buildContributions(config: ForgeConfig) {
 			"src/app.ts",
 			webOriginsCors(
 				config,
-				interpolate(readTemplate("frameworks/fastify/src/app.ts"), vars),
+				interpolate(
+					readTemplate("frameworks/fastify/src/app.ts"),
+					vars,
+				).replace(
+					'"x-trpc-source"',
+					config.rpc === "orpc" ? '"x-csrf-token"' : '"x-trpc-source"',
+				),
 			),
 		),
 		leafTextFile(

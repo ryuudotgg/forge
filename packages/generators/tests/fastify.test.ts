@@ -42,7 +42,7 @@ describe("Fastify backend", () => {
 		expect(fastifyFramework).toMatchObject({
 			buildOutputs: ["dist/**"],
 			ignoreDirs: [],
-			slots: ["api", "trpc", "auth"],
+			slots: ["api", "trpc", "auth", "orpc"],
 			sourceRoot: "src",
 			tsconfigPreset: { name: "fastify" },
 		});

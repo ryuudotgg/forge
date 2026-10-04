@@ -14,6 +14,8 @@ import {
 import { selfHostedCorsRoute } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { expressFramework } from "../../frameworks/express";
+import { fastifyFramework } from "../../frameworks/fastify";
 import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
@@ -56,7 +58,7 @@ function orpcWebFramework(config: ForgeConfig) {
 	return orpcWebFrameworks.find((framework) => framework.id === config.web);
 }
 
-export const orpcHonoRecipe = defineTemplateRecipe({
+export const orpcStandaloneRecipe = defineTemplateRecipe({
 	addon: "orpc",
 	markers: {
 		SLUG: marker.required,
@@ -65,7 +67,13 @@ export const orpcHonoRecipe = defineTemplateRecipe({
 		WEB_ORIGINS: marker.required,
 	},
 	assets: [
-		slotAsset("orpc", { variants: { hono: "api/orpc/routes/hono/orpc.ts" } }),
+		slotAsset("orpc", {
+			variants: {
+				hono: "api/orpc/routes/hono/orpc.ts",
+				express: "api/orpc/routes/express/orpc.ts",
+				fastify: "api/orpc/routes/fastify/orpc.ts",
+			},
+		}),
 	],
 });
 
@@ -146,9 +154,9 @@ export const orpcRequestAdapters = deriveRecipeAdapters({
 	],
 });
 
-export const orpcHonoAdapters = deriveRecipeAdapters({
-	recipe: orpcHonoRecipe,
-	frameworks: [honoFramework],
+export const orpcStandaloneAdapters = deriveRecipeAdapters({
+	recipe: orpcStandaloneRecipe,
+	frameworks: [honoFramework, expressFramework, fastifyFramework],
 	readTemplate,
 	requiredSlots: ["orpc"],
 	markers: ({ config }: AdapterContext<ForgeConfig>) => {
