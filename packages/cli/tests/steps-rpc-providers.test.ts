@@ -41,12 +41,10 @@ describe("rpc step with an unavailable provider", () => {
 		).toThrow(expect.objectContaining({ reason: "api-host-required" }));
 	});
 
-	it("rejects preview oRPC on a Next.js self host", () => {
+	it("accepts preview oRPC on a Next.js self host", () => {
 		expect(() =>
 			rpcStep.validate?.("orpc", { backend: "self", web: "nextjs" }),
-		).toThrow(
-			expect.objectContaining({ reason: "framework-not-supported-yet" }),
-		);
+		).not.toThrow();
 	});
 
 	it("leaves the unavailable provider out of the options", async () => {

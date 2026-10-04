@@ -21,7 +21,6 @@ const unsupportedOrpcPairs: ReadonlyArray<{
 	name: string;
 	config: ForgeConfig;
 }> = [
-	{ name: "Next.js self host", config: { backend: "self", web: "nextjs" } },
 	{ name: "Express host", config: { backend: "express" } },
 	{ name: "Fastify host", config: { backend: "fastify" } },
 	{
@@ -306,6 +305,212 @@ describe("oRPC web clients beside Hono", () => {
 				for (const write of plan.writes)
 					expect(write.content, write.path).not.toMatch(/__[A-Z_]+__/);
 			}
+		},
+	);
+});
+
+describe("oRPC Next.js self host", () => {
+	it.each([false, true])(
+		"renders request scoped RSC with auth: %s",
+		async (usesAuth) => {
+			for (const backend of [undefined, "self"] satisfies ReadonlyArray<
+				ForgeConfig["backend"]
+			>) {
+				const plan = await plannedProject({
+					...supportedConfig,
+					backend,
+					web: "nextjs",
+					name: "Acme",
+					...(usesAuth
+						? ({
+								authentication: "better-auth",
+								orm: "drizzle",
+								database: "sqlite",
+							} satisfies Partial<ForgeConfig>)
+						: {}),
+				});
+
+				const server = writeContent(plan, "apps/web/orpc/server.ts");
+				const route = writeContent(
+					plan,
+					"apps/web/app/api/orpc/[[...rest]]/route.ts",
+				);
+
+				const client = writeContent(plan, "apps/web/orpc/client.ts");
+				const page = writeContent(plan, "apps/web/app/page.tsx");
+				const health = writeContent(plan, "apps/web/orpc/health.tsx");
+
+				expect(server).toContain('import "server-only"');
+				expect(server).toContain("createServerCaller = cache(async () =>");
+				expect(server).toContain("const requestHeaders = await headers()");
+
+				expect(server).toContain("createRouterClient(appRouter, { context })");
+				expect(server).toContain("export async function createServerORPC()");
+				expect(server).not.toContain('from "./client"');
+
+				for (const content of [server, route]) {
+					expect(content.includes('import { auth } from "@acme/auth"')).toBe(
+						usesAuth,
+					);
+
+					expect(content.includes("createORPCContext({ auth, headers:")).toBe(
+						usesAuth,
+					);
+				}
+
+				expect(route).toContain("SimpleCsrfProtectionHandlerPlugin");
+				expect(route).toContain("headers: request.headers");
+				expect(route).toContain('prefix: "/api/orpc"');
+
+				expect(route).toContain("export const GET = handler");
+				expect(route).toContain("export const POST = handler");
+				expect(route).toContain('new Response("Not Found", { status: 404 })');
+
+				expect(client).toMatch(/^"use client";/);
+				expect(client).toContain(
+					"export const client: RouterClient<AppRouter>",
+				);
+
+				expect(client).toContain(
+					'new URL("/api/orpc", window.location.origin)',
+				);
+
+				expect(client).toContain("SimpleCsrfProtectionLinkPlugin");
+
+				for (const content of [
+					client,
+					health,
+					writeContent(plan, "apps/web/orpc/react.tsx"),
+				]) {
+					expect(content).not.toMatch(
+						/next\/headers|server-only|createORPCContext|import \{ auth \}/,
+					);
+
+					expect(content).not.toContain(
+						'from "@acme/orpc";\nimport { appRouter',
+					);
+				}
+
+				expect(page).not.toContain('"use client"');
+				expect(page).toContain("export default async function Page()");
+				expect(page).toContain("const queryClient = new QueryClient()");
+				expect(page).toContain(
+					"await queryClient.prefetchQuery(orpc.health.queryOptions())",
+				);
+
+				expect(page).toContain(
+					"<HydrationBoundary state={dehydrate(queryClient)}>",
+				);
+
+				expect(page).toContain(
+					'className="text-4xl font-bold tracking-tight">Acme</h1>',
+				);
+
+				expect(page).not.toMatch(/data\.status|\.health\.call\(/);
+				expect(health).toContain("useQuery(orpc.health.queryOptions())");
+				expect(health).toContain('data-testid="orpc-health"');
+				expect(writeContent(plan, "apps/web/orpc/react.tsx")).toContain(
+					"staleTime: 30 * 1000",
+				);
+
+				expect(writeContent(plan, "apps/web/app/providers.tsx")).toContain(
+					"<ORPCReactProvider>{children}</ORPCReactProvider>",
+				);
+
+				expect(
+					JSON.parse(writeContent(plan, "apps/web/package.json")).dependencies,
+				).toMatchObject({
+					"@acme/orpc": "workspace:*",
+					"@orpc/client": "catalog:",
+					"@orpc/server": "catalog:",
+					"@orpc/tanstack-query": "catalog:",
+					"@tanstack/react-query": "catalog:",
+					"server-only": "catalog:",
+				});
+
+				expect(
+					JSON.parse(writeContent(plan, "apps/web/forge.json")).slots.orpc,
+				).toBe("app/api/orpc/[[...rest]]/route.ts");
+
+				expect(
+					plan.writes.some((write) => write.path.startsWith("apps/server/")),
+				).toBe(false);
+
+				for (const write of plan.writes)
+					expect(write.content, write.path).not.toMatch(/__[A-Z_]+__/);
+			}
+		},
+	);
+
+	it.each([undefined, "trpc"] satisfies ReadonlyArray<ForgeConfig["rpc"]>)(
+		"preserves legacy Next.js slots for %s",
+		async (rpc) => {
+			const plan = await plannedProject({
+				...supportedConfig,
+				backend: "self",
+				web: "nextjs",
+				rpc,
+			});
+
+			const manifest = JSON.parse(writeContent(plan, "apps/web/forge.json"));
+
+			expect(manifest.slots).toEqual({
+				layout: "app/layout.tsx",
+				page: "app/page.tsx",
+				api: "app/api",
+				trpc: "app/api/trpc/[trpc]/route.ts",
+				auth: "app/api/auth/[...all]/route.ts",
+			});
+
+			expect(writeContent(plan, "apps/web/app/page.tsx")).not.toContain(
+				"Health",
+			);
+
+			expect(plan.writes.some((write) => write.path.includes("/orpc/"))).toBe(
+				false,
+			);
+		},
+	);
+
+	it.each([false, true])(
+		"keeps secondary client CORS with auth: %s",
+		async (usesAuth) => {
+			const plan = await plannedProject({
+				...supportedConfig,
+				backend: "self",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				...(usesAuth
+					? ({
+							authentication: "better-auth",
+							orm: "drizzle",
+							database: "sqlite",
+						} satisfies Partial<ForgeConfig>)
+					: {}),
+			});
+
+			const proxy = writeContent(plan, "apps/web/proxy.ts");
+
+			expect(proxy).toContain('"/api/orpc/:path*"');
+			expect(proxy).not.toContain('"/api/trpc/:path*"');
+			expect(proxy).toContain('"Access-Control-Allow-Credentials": "true"');
+			expect(proxy).toContain("x-csrf-token");
+			expect(proxy).toContain("status: 204");
+			expect(writeContent(plan, "apps/admin/orpc/client.ts")).toContain(
+				"env.NEXT_PUBLIC_SERVER_URL",
+			);
+
+			expect(
+				plan.writes.some((write) => write.path === "apps/admin/orpc/server.ts"),
+			).toBe(false);
+
+			expect(
+				JSON.parse(writeContent(plan, "apps/admin/forge.json")).slots.orpc,
+			).toBeUndefined();
+
+			expect(writeContent(plan, "apps/web/next.config.ts")).toContain(
+				'"@acme/orpc"',
+			);
 		},
 	);
 });

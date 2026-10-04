@@ -51,7 +51,7 @@ export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	ignoreDirs: [".next/"],
 	name: "Next.js",
 	sourceRoot: "",
-	slots: Object.keys(nextjsSlots),
+	slots: [...Object.keys(nextjsSlots), "orpc"],
 	tsconfigPreset: {
 		name: "nextjs",
 		content: {
@@ -222,7 +222,12 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			framework: "nextjs",
 			template: { id: "nextjs/base", version: 1 },
 			slots: instance.primary
-				? nextjsSlots
+				? {
+						...nextjsSlots,
+						...(renderConfig.rpc === "orpc"
+							? { orpc: "app/api/orpc/[[...rest]]/route.ts" }
+							: {}),
+					}
 				: { layout: nextjsSlots.layout, page: nextjsSlots.page },
 			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),
@@ -289,7 +294,12 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 						"proxy.ts",
 						interpolate(readTemplate("frameworks/nextjs/proxy.ts"), {
 							WEB_ORIGINS: JSON.stringify(secondaryClientOrigins(config)),
-						}),
+						}).replace(
+							'"/api/trpc/:path*"',
+							renderConfig.rpc === "orpc"
+								? '"/api/orpc/:path*"'
+								: '"/api/trpc/:path*"',
+						),
 					),
 					...(config.authentication === "better-auth"
 						? []
