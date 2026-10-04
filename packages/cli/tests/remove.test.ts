@@ -242,6 +242,82 @@ describe("remove command", () => {
 		},
 	);
 
+	it.each([
+		{
+			root: "apps/admin",
+			packageName: "@company/control",
+			recordedRoot: undefined,
+		},
+		{
+			root: "sites/control",
+			packageName: "@acme/admin",
+			recordedRoot: undefined,
+		},
+		{
+			root: "sites/control",
+			packageName: "@company/control",
+			recordedRoot: "apps/admin",
+		},
+	])(
+		"prefers explicit secondary identity at $root over a shared basename",
+		async ({ root, packageName, recordedRoot }) => {
+			const selectedModule = { ...adminModule, root, packageName };
+			const unrelatedModule = {
+				...adminModule,
+				id: "other",
+				root: "tools/admin",
+				packageName: "@company/other",
+			};
+
+			const baseProject = managedProject({
+				config: {
+					slug: "acme",
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				},
+				modules: [appModule, selectedModule, unrelatedModule],
+			});
+
+			const project = {
+				...baseProject,
+				manifest: {
+					...baseProject.manifest,
+					modules:
+						recordedRoot === undefined
+							? {}
+							: {
+									[selectedModule.id]: {
+										root: recordedRoot,
+										definitionIds: [],
+									},
+								},
+				},
+			};
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runRemove("admin", { yes: true });
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{ slug: "acme", web: "nextjs", webApps: [] },
+				[],
+				undefined,
+				undefined,
+				{},
+				{
+					modules: [appModule, unrelatedModule],
+					records: project.manifest.modules,
+					...(recordedRoot === undefined
+						? {}
+						: {
+								removalRootRelocations: { [recordedRoot]: root },
+							}),
+				},
+			);
+		},
+	);
+
 	it("refuses ambiguous adopted secondary roots", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
 			throw new Error(`exit:${code ?? 0}`);

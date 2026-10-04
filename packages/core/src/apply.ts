@@ -708,9 +708,13 @@ const makeApply = Effect.gen(function* () {
 
 		const conflicts: ApplyConflict[] = [];
 		const refusals: ApplyRefusal[] = [];
+		const removalRootRelocations = Object.entries(
+			plan.removalRootRelocations ?? {},
+		).sort(([leftRoot], [rightRoot]) => rightRoot.length - leftRoot.length);
+
 		for (const plannedPath of plan.removals) {
-			const relocation = Object.entries(plan.removalRootRelocations ?? {}).find(
-				([previousRoot]) => plannedPath.startsWith(`${previousRoot}/`),
+			const relocation = removalRootRelocations.find(([previousRoot]) =>
+				plannedPath.startsWith(`${previousRoot}/`),
 			);
 
 			const relativePath =

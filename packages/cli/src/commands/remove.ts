@@ -293,15 +293,23 @@ function secondaryAppModules(
 	app: NonNullable<ForgeConfig["webApps"]>[number],
 ) {
 	const root = `apps/${app.name}`;
-	return project.modules.filter(
+	const compatibleModules = project.modules.filter(
+		(module) => module.type === "app" && module.framework === app.framework,
+	);
+
+	const identifiedModules = compatibleModules.filter(
 		(module) =>
-			module.type === "app" &&
-			module.framework === app.framework &&
-			(module.root === root ||
-				module.packageName === `@${project.config.slug}/${app.name}` ||
-				project.manifest.modules[module.id]?.root === root ||
-				basename(project.manifest.modules[module.id]?.root ?? module.root) ===
-					app.name),
+			module.root === root ||
+			module.packageName === `@${project.config.slug}/${app.name}` ||
+			project.manifest.modules[module.id]?.root === root,
+	);
+
+	if (identifiedModules.length > 0) return identifiedModules;
+
+	return compatibleModules.filter(
+		(module) =>
+			basename(project.manifest.modules[module.id]?.root ?? module.root) ===
+			app.name,
 	);
 }
 

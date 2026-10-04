@@ -258,6 +258,48 @@ describe("apply", () => {
 		},
 	);
 
+	it("uses the most specific root for relocated removals", async () => {
+		await withTempDir("apply-overlapping-relocations", async (directory) => {
+			const previousPath = "apps/admin/index.ts";
+			const currentPath = "sites/dashboard/index.ts";
+			const unrelatedPath = "sites/admin/index.ts";
+			const content = "export const generated = true;\n";
+
+			await writeText(join(directory, currentPath), content);
+			await writeText(join(directory, unrelatedPath), content);
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: {
+						"project:file:app": {
+							definitionIds: ["test"],
+							hash: await hashContent(content),
+							kind: "file",
+							path: previousPath,
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					lockfile: { artifacts: {} },
+					manifest: { config: {}, installs: [], modules: {} },
+					removalRootRelocations: {
+						apps: "sites",
+						"apps/admin": "sites/dashboard",
+					},
+					removals: [previousPath],
+					writes: [],
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await pathExists(join(directory, currentPath))).toBe(false);
+			expect(await readFile(join(directory, unrelatedPath), "utf-8")).toBe(
+				content,
+			);
+		});
+	});
+
 	it("creates a missing project root for contained writes", async () => {
 		await withTempDir("apply-create-root", async (scratch) => {
 			const projectRoot = join(scratch, "project");
