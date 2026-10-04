@@ -10,7 +10,6 @@ import {
 	sharedAsset,
 	slotAsset,
 	surfaceDependencies,
-	surfaceText,
 	variantAsset,
 } from "@ryuugg/core";
 import { selfHostedCorsRoute } from "../../client-cors";
@@ -133,13 +132,12 @@ export const orpcNextjsAdapters = deriveRecipeAdapters({
 			),
 		),
 	after: ({ config, module }) => [
-		surfaceText(
+		leafTextFile(
 			moduleTarget(module),
-			"page",
+			"app/orpc-example/page.tsx",
 			interpolate(readTemplate("api/orpc/rsc/page.tsx"), {
 				PROJECT_NAME: config.name ?? config.slug ?? "my-app",
 			}),
-			{ priority: 1 },
 		),
 		surfaceDependencies(moduleTarget(module), "packageJson", [
 			{

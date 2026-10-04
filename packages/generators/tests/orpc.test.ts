@@ -316,7 +316,7 @@ describe("oRPC Next.js self host", () => {
 			for (const backend of [undefined, "self"] satisfies ReadonlyArray<
 				ForgeConfig["backend"]
 			>) {
-				const plan = await plannedProject({
+				const config: ForgeConfig = {
 					...supportedConfig,
 					backend,
 					web: "nextjs",
@@ -328,7 +328,14 @@ describe("oRPC Next.js self host", () => {
 								database: "sqlite",
 							} satisfies Partial<ForgeConfig>)
 						: {}),
-				});
+				};
+
+				const plan = await plannedProject(config);
+				const defaultPlan = await plannedProject({ ...config, rpc: undefined });
+
+				expect(writeContent(plan, "apps/web/app/page.tsx")).toBe(
+					writeContent(defaultPlan, "apps/web/app/page.tsx"),
+				);
 
 				const server = writeContent(plan, "apps/web/orpc/server.ts");
 				const route = writeContent(
@@ -337,7 +344,7 @@ describe("oRPC Next.js self host", () => {
 				);
 
 				const client = writeContent(plan, "apps/web/orpc/client.ts");
-				const page = writeContent(plan, "apps/web/app/page.tsx");
+				const page = writeContent(plan, "apps/web/app/orpc-example/page.tsx");
 				const health = writeContent(plan, "apps/web/orpc/health.tsx");
 
 				expect(server).toContain('import "server-only"');

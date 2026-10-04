@@ -919,7 +919,7 @@ async function expectSelfHostedOrpc(
 		expect(ready, output).toBe(true);
 
 		if (host === "nextjs") {
-			const page = await fetch(origin);
+			const page = await fetch(`${origin}/orpc-example`);
 			const html = await page.text();
 
 			expect(page.status, output).toBe(200);
