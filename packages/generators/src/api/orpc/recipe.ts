@@ -11,6 +11,7 @@ import {
 	slotAsset,
 	surfaceDependencies,
 } from "@ryuugg/core";
+import { selfHostedCorsRoute } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { honoFramework } from "../../frameworks/hono";
@@ -103,6 +104,10 @@ export const orpcRequestAdapters = deriveRecipeAdapters({
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
+	content: (asset, content, { config, framework }) =>
+		asset._tag === "SlotAssetDefinition"
+			? selfHostedCorsRoute(config, framework.id, content)
+			: content,
 	before: ({ config, framework, module }) =>
 		orpcWebRecipe.assets.map((asset) => {
 			const rendered = renderRecipeAsset(orpcWebRecipe, asset, framework, {
@@ -136,6 +141,8 @@ export const orpcRequestAdapters = deriveRecipeAdapters({
 			{ ...deps.orpcTanstackQuery, type: "dependencies" },
 			{ ...deps.tanstackReactQuery, type: "dependencies" },
 		]),
+		...secondaryOrpcClients(config),
+		...secondaryOrpcDependencies(config),
 	],
 });
 

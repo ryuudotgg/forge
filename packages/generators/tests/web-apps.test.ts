@@ -241,6 +241,50 @@ describe("secondary web app planning", () => {
 		},
 	);
 
+	it.each(["react-router", "tanstack-start"] as const)(
+		"wires secondary oRPC clients to a self-hosted %s primary",
+		async (web) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web,
+				backend: "self",
+				rpc: "orpc",
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+			});
+
+			const route = contentAt(
+				plan,
+				web === "react-router"
+					? "apps/web/app/routes/api.orpc.$.ts"
+					: "apps/web/src/routes/api/orpc/$.ts",
+			);
+
+			expect(route).toContain("preflight(");
+			expect(route).toContain("withCors(");
+			expect(route).toContain("SimpleCsrfProtectionHandlerPlugin");
+			expect(contentAt(plan, "apps/web/vite.config.ts")).toContain(
+				"server: { cors: false }",
+			);
+
+			const primary = contentAt(
+				plan,
+				`apps/web/${web === "react-router" ? "app" : "src"}/orpc/client.ts`,
+			);
+
+			expect(primary).toContain("window.location.origin");
+			const secondary = contentAt(plan, "apps/admin/orpc/client.ts");
+			expect(secondary).toContain("NEXT_PUBLIC_SERVER_URL");
+			expect(secondary).not.toContain("window.location.origin");
+			expect(contentAt(plan, "apps/admin/orpc/react.tsx")).toContain(
+				"QueryClientProvider",
+			);
+
+			expect(contentAt(plan, "apps/admin/package.json")).toContain(
+				'"@acme/orpc"',
+			);
+		},
+	);
+
 	it.each([
 		{ rpc: "trpc", secondary: "react-router", root: "app/" },
 		{ rpc: "orpc", secondary: "tanstack-start", root: "src/" },

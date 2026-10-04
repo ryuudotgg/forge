@@ -10,6 +10,24 @@ import { hasSecondaryClients, secondaryClientOrigins } from "./origins";
 import { interpolate, readTemplate } from "./template";
 import type { WebAppInstance } from "./web-apps";
 
+export function selfHostedCorsViteConfig(
+	config: ForgeConfig,
+	instance: WebAppInstance,
+	content: string,
+): string {
+	if (
+		!instance.primary ||
+		(config.backend !== undefined && config.backend !== "self") ||
+		!hasSecondaryClients(config)
+	)
+		return content;
+
+	return content.replace(
+		"defineConfig({",
+		"defineConfig({\n  server: { cors: false },",
+	);
+}
+
 export function selfHostedCorsContributions(
 	config: ForgeConfig,
 	instance: WebAppInstance,
@@ -101,10 +119,20 @@ export function selfHostedCorsRoute(
 						"\n  });\n}\n\nexport const Route",
 						"\n  }));\n}\n\nexport const Route",
 					)
-			: imported.replace(
-					"  return auth.handler(request);",
-					"  return withCors(request, auth.handler(request));",
-				);
+			: imported.includes("rpcHandler.handle")
+				? imported
+						.replace(
+							"if (matched) return response;",
+							"if (matched) return withCors(request, response);",
+						)
+						.replace(
+							'return new Response("Not Found", { status: 404 });',
+							'return withCors(request, new Response("Not Found", { status: 404 }));',
+						)
+				: imported.replace(
+						"  return auth.handler(request);",
+						"  return withCors(request, auth.handler(request));",
+					);
 
 		return wrapped.replace(
 			"      POST: handler,",

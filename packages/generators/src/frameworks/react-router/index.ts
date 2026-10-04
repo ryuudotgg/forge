@@ -11,7 +11,10 @@ import {
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuugg/core";
-import { selfHostedCorsContributions } from "../../client-cors";
+import {
+	selfHostedCorsContributions,
+	selfHostedCorsViteConfig,
+} from "../../client-cors";
 import type { ForgeConfig, RpcProvider } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
@@ -174,14 +177,15 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		},
 	);
 
-	const viteConfig = interpolate(
-		readTemplate("frameworks/react-router/vite.config.ts"),
-		{
+	const viteConfig = selfHostedCorsViteConfig(
+		config,
+		instance,
+		interpolate(readTemplate("frameworks/react-router/vite.config.ts"), {
 			"// __TAILWIND_IMPORT__\n": useTailwind
 				? 'import tailwindcss from "@tailwindcss/vite";\n'
 				: "",
 			"/* __TAILWIND_PLUGIN__ */ ": useTailwind ? "tailwindcss(), " : "",
-		},
+		}),
 	);
 
 	const webPackageJson: Record<string, unknown> = {

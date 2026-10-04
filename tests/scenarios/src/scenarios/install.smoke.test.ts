@@ -807,7 +807,11 @@ async function expectSameOriginOrpcSession(
 	});
 }
 
-async function expectSelfHostedOrpc(projectRoot: string, sourceRoot: string) {
+async function expectSelfHostedOrpc(
+	projectRoot: string,
+	sourceRoot: string,
+	clientOrigin?: string,
+) {
 	const reservation = createServer();
 
 	await new Promise<void>((resolveListen, rejectListen) => {
@@ -892,9 +896,49 @@ async function expectSelfHostedOrpc(projectRoot: string, sourceRoot: string) {
 
 		expect(ready, output).toBe(true);
 
+		if (clientOrigin !== undefined) {
+			for (const path of ["/api/orpc/health", "/api/auth/get-session"]) {
+				const preflight = await fetch(`${origin}${path}`, {
+					method: "OPTIONS",
+					headers: {
+						Origin: clientOrigin,
+						"Access-Control-Request-Method": "POST",
+						"Access-Control-Request-Headers": "content-type, x-csrf-token",
+					},
+				});
+
+				expect(preflight.status, output).toBe(204);
+				expect(preflight.headers.get("access-control-allow-origin")).toBe(
+					clientOrigin,
+				);
+
+				expect(preflight.headers.get("access-control-allow-credentials")).toBe(
+					"true",
+				);
+			}
+
+			const health = await fetch(`${origin}/api/orpc/health`, {
+				method: "POST",
+				headers: {
+					Origin: clientOrigin,
+					"Content-Type": "application/json",
+					"x-csrf-token": "orpc",
+				},
+				body: JSON.stringify({ json: null }),
+			});
+
+			expect(health.status, output).toBe(200);
+			expect(health.headers.get("access-control-allow-origin")).toBe(
+				clientOrigin,
+			);
+		}
+
 		const signup = await fetch(`${origin}/api/auth/sign-up/email`, {
 			method: "POST",
-			headers: { Origin: origin, "Content-Type": "application/json" },
+			headers: {
+				Origin: clientOrigin ?? origin,
+				"Content-Type": "application/json",
+			},
 			body: JSON.stringify({
 				email: "self-orpc@example.com",
 				name: "Self Hosted",
@@ -909,12 +953,17 @@ async function expectSelfHostedOrpc(projectRoot: string, sourceRoot: string) {
 			throw new Error("Missing Session Cookie: Better Auth sign-up");
 
 		const sessionResponse = await fetch(`${origin}/api/auth/get-session`, {
-			headers: { Cookie: cookie },
+			headers: { Cookie: cookie, Origin: clientOrigin ?? origin },
 		});
 
 		const session: unknown = await sessionResponse.json();
 
 		expect(sessionResponse.status).toBe(200);
+
+		if (clientOrigin !== undefined)
+			expect(sessionResponse.headers.get("access-control-allow-origin")).toBe(
+				clientOrigin,
+			);
 
 		if (
 			typeof session !== "object" ||
@@ -1402,11 +1451,13 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	);
 
 	it.each([
-		{ web: "tanstack-start", sourceRoot: "src" },
-		{ web: "react-router", sourceRoot: "app" },
+		{ web: "tanstack-start", sourceRoot: "src", secondary: false },
+		{ web: "react-router", sourceRoot: "app", secondary: false },
+		{ web: "tanstack-start", sourceRoot: "src", secondary: true },
+		{ web: "react-router", sourceRoot: "app", secondary: true },
 	])(
-		"installs, builds, and typechecks $web as an oRPC self host",
-		async ({ web, sourceRoot }) => {
+		"installs, builds, and typechecks $web as an oRPC self host (secondary: $secondary)",
+		async ({ web, sourceRoot, secondary }) => {
 			await withScenarioWorkspace(
 				`smoke-orpc-self-${web}`,
 				async (workspace) => {
@@ -1420,6 +1471,13 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 						rpc: "orpc",
 						style: "tailwind",
 						web,
+						...(secondary
+							? {
+									webApps: [
+										{ name: "admin", framework: "nextjs", client: true },
+									],
+								}
+							: {}),
 					});
 
 					const callerProbe =
@@ -1495,7 +1553,15 @@ export async function loader({ request }: { request: Request }) {
 					}
 
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-					await expectSelfHostedOrpc(workspace.projectRoot, sourceRoot);
+					await expectSelfHostedOrpc(
+						workspace.projectRoot,
+						sourceRoot,
+						secondary
+							? web === "react-router"
+								? "http://localhost:5174"
+								: "http://localhost:3002"
+							: undefined,
+					);
 				},
 			);
 		},
