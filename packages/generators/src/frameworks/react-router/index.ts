@@ -50,7 +50,7 @@ export const reactRouterFramework: FrameworkDefinition<"react-router"> =
 		ignoreDirs: [".react-router/"],
 		name: "React Router",
 		sourceRoot: "app",
-		slots: Object.keys(reactRouterSlots),
+		slots: [...Object.keys(reactRouterSlots), "orpc"],
 		tsconfigPreset: {
 			name: "react-router",
 			content: {
@@ -245,7 +245,12 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			framework: "react-router",
 			template: { id: "react-router/base", version: 1 },
 			slots: instance.primary
-				? reactRouterSlots
+				? {
+						...reactRouterSlots,
+						...(renderConfig.rpc === "orpc"
+							? { orpc: "app/routes/api.orpc.$.ts" }
+							: {}),
+					}
 				: { layout: reactRouterSlots.layout, page: reactRouterSlots.page },
 			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),

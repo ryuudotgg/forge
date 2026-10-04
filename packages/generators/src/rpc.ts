@@ -47,8 +47,8 @@ export const rpcDescriptors: { readonly [Id in RpcProvider]: RpcDescriptor } = {
 		support: {
 			hosts: {
 				nextjs: false,
-				"react-router": false,
-				"tanstack-start": false,
+				"react-router": true,
+				"tanstack-start": true,
 				hono: true,
 				express: false,
 				fastify: false,

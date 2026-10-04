@@ -10,6 +10,7 @@ const template = (() => {
 	const found = loadDefinitionRegistry().registry.templates.find(
 		(entry) => entry.id === "react-router/base",
 	);
+
 	if (!found) throw new Error("Template Not Found: react-router/base");
 	return found;
 })();
@@ -20,6 +21,7 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 		config,
 		frameworks: [reactRouterFramework],
 	});
+
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: react-router/base");
 
@@ -84,7 +86,7 @@ describe("react-router/base template", () => {
 			buildOutputs: ["build/**"],
 			configFile: "react-router.config.ts",
 			ignoreDirs: [".react-router/"],
-			slots: ["layout", "page", "api", "trpc", "auth"],
+			slots: ["layout", "page", "api", "trpc", "auth", "orpc"],
 			tsconfigPreset: {
 				name: "react-router",
 				content: {
@@ -97,6 +99,7 @@ describe("react-router/base template", () => {
 				},
 			},
 		});
+
 		expect(
 			reactRouterFramework.tsconfigPreset.content.compilerOptions,
 		).not.toHaveProperty("rootDirs");
@@ -106,6 +109,7 @@ describe("react-router/base template", () => {
 			slug: "acme",
 			web: "react-router",
 		});
+
 		const ensure = must(
 			contributions.find(byTag("EnsureModuleContribution")),
 			"web module",
@@ -117,6 +121,7 @@ describe("react-router/base template", () => {
 			id: "react-router/base",
 			version: 1,
 		});
+
 		expect(ensure.module.slots).toEqual({
 			layout: "app/root.tsx",
 			page: "app/routes/home.tsx",
@@ -141,15 +146,19 @@ export default {
 } satisfies Config;
 `,
 		);
+
 		expect(textSurface(contributions, "layout").content).toContain(
 			'import type { Route } from "./+types/root";',
 		);
+
 		expect(textSurface(contributions, "page").content).toContain(
 			">Acme App</h1>",
 		);
+
 		expect(leafFile(contributions, "env.ts").content).toContain(
 			'return lifecycleEvent === "check" || lifecycleEvent === "typegen";',
 		);
+
 		expect(leafFile(contributions, "public/favicon.svg").content).toContain(
 			"<svg",
 		);
@@ -160,6 +169,7 @@ export default {
 			contributionsFor({ slug: "acme", web: "react-router" }),
 			"vite.config.ts",
 		);
+
 		expect(withoutTailwind.content).toBe(`import "./env";
 
 import { reactRouter } from "@react-router/dev/vite";
@@ -179,6 +189,7 @@ export default defineConfig({
 			}),
 			"vite.config.ts",
 		);
+
 		expect(withTailwind.content).toBe(`import "./env";
 
 import { reactRouter } from "@react-router/dev/vite";
@@ -204,9 +215,11 @@ export default [
 ] satisfies RouteConfig;
 `,
 		);
+
 		expect(routeContent({ rpc: "trpc", web: "react-router" })).toContain(
 			'  route("api/trpc/*", "routes/api.trpc.$.ts"),',
 		);
+
 		expect(
 			routeContent({ authentication: "better-auth", web: "react-router" }),
 		).toContain('  route("api/auth/*", "routes/api.auth.$.ts"),');
@@ -216,6 +229,7 @@ export default [
 			rpc: "trpc",
 			web: "react-router",
 		});
+
 		expect(both).toBe(
 			`import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
@@ -226,6 +240,7 @@ export default [
 ] satisfies RouteConfig;
 `,
 		);
+
 		expect(both.indexOf('route("api/trpc/*"')).toBeLessThan(
 			both.indexOf('route("api/auth/*"'),
 		);
@@ -244,6 +259,7 @@ export default [
 			contributionsFor({ slug: "acme", web: "react-router" }),
 			"app/providers.tsx",
 		);
+
 		expect(bare.target).toEqual(ensuredModuleTarget("web"));
 		expect(bare.content).not.toContain("trpc:");
 		expect(bare.content).not.toContain("TRPCReactProvider");
@@ -252,9 +268,11 @@ export default [
 			contributionsFor({ rpc: "trpc", slug: "acme", web: "react-router" }),
 			"app/providers.tsx",
 		);
+
 		expect(withTrpc.content).toContain(
 			'import { TRPCReactProvider } from "@/trpc/react";',
 		);
+
 		expect(withTrpc.content).toContain("trpc: TRPCReactProvider,");
 		expect(withTrpc.content).not.toMatch(/__[A-Z_]+__/);
 	});
@@ -264,10 +282,12 @@ export default [
 			slug: "acme",
 			web: "react-router",
 		});
+
 		const dependencySurface = must(
 			contributions.find(byTag("ManagedDependenciesSurfaceContribution")),
 			"packageJson dependencies",
 		);
+
 		const dependencyVersions = new Map(
 			dependencySurface.dependencies.map((entry) => [
 				entry.name,
@@ -288,6 +308,7 @@ export default [
 			"reactRouterServe",
 			"isbot",
 		];
+
 		for (const key of versionKeys)
 			expect(dependencyVersions.get(versions[key].name)).toBe(
 				versions[key].version,
@@ -297,6 +318,7 @@ export default [
 			contributions.find(byTag("ManagedScriptsSurfaceContribution")),
 			"packageJson scripts",
 		);
+
 		expect(scripts.scripts).toEqual({
 			build: "pnpm with-env react-router build",
 			dev: "pnpm with-env react-router dev",

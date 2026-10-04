@@ -3,6 +3,8 @@ import orpc, { orpcMetadata } from "../api/orpc";
 import {
 	orpcHonoAdapters,
 	orpcHonoRecipe,
+	orpcRequestAdapters,
+	orpcRequestRecipe,
 	orpcWebRecipe,
 } from "../api/orpc/recipe";
 import trpc, { trpcMetadata } from "../api/trpc";
@@ -122,6 +124,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		...betterAuthExpressAdapters,
 		...uiAdapters,
 		...orpcHonoAdapters,
+		...orpcRequestAdapters,
 	],
 	frameworks: [
 		expoFramework,
@@ -170,6 +173,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 	],
 	recipes: [
 		orpcHonoRecipe,
+		orpcRequestRecipe,
 		orpcWebRecipe,
 		trpcRecipe,
 		trpcExpoRecipe,
