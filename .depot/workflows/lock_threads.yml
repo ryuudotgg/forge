@@ -15,7 +15,7 @@ concurrency:
 jobs:
   action:
     name: Lock Threads
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     if: github.repository_owner == 'ryuudotgg'
 
     steps:

@@ -170,7 +170,14 @@ one is the maintainer's call.
 
 ### Cutting a release
 
-1. Run the Release workflow on `main`. It versions the pending change
+Publishing remains disabled in `.depot/workflows/publish.yml` while releases
+are on hold. Depot CI does not enforce GitHub deployment environment
+approvals. Before enabling publishing, configure npm authentication for
+Depot and replace the GitHub `npm` environment approval with an enforced
+approval mechanism. The existing GitHub trusted publisher is not a Depot
+publisher. Do not remove the disabled job condition until both are ready.
+
+1. Dispatch the Release workflow on `main` through Depot CI. It versions the pending change
    files, opens the `chore: release x.y.z` pull request from
    `tegami/version-packages` and requests review from the maintainer.
 2. Review and merge that pull request. It carries the bumped versions, the
@@ -179,6 +186,26 @@ one is the maintainer's call.
 
 Never edit a `CHANGELOG.md`, the publish lock or a package version by hand.
 Tegami writes all three.
+
+### Depot CI
+
+Repository workflows live in `.depot/workflows/`. There are no repository
+workflows under `.github/workflows/`; the generated projects' `github-ci`
+addon still creates GitHub Actions workflows.
+
+Install the Depot Code Access app for this repository. Configure `TURBO_TOKEN`
+and `TURBO_TEAM` in Depot CI, not GitHub Actions. Configure `DEPOT_TOKEN` as a
+Depot CI secret for the Release workflow to dispatch CI and Smoke on the
+version branch. Depot supplies `GITHUB_TOKEN` through its GitHub App.
+
+Run CI against local changes with `depot ci run --workflow .depot/workflows/ci.yml`.
+Dispatch a workflow with `depot ci dispatch --repo ryuudotgg/forge --workflow ci.yml --ref main`.
+
+Depot does not support issue-opened or issue-labeled events, so triage now
+runs on new comments only. Depot also does not run pull request workflows
+from forks. Contributors from forks need a maintainer to run checks on a
+repository branch. Update required GitHub checks to the Depot job checks
+when activating the migration.
 
 ## Debugging
 

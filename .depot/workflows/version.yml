@@ -20,7 +20,7 @@ jobs:
   version:
     name: Version
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -95,10 +95,13 @@ jobs:
 
           gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$number/requested_reviewers" -f 'reviewers[]=ryuudotgg' > /dev/null
 
+      - name: Install Depot CLI
+        uses: depot/setup-action@91bc8495a33ebfc504ffc89e5674379ccf23c29c
+
       - name: Run Checks on Version PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          DEPOT_TOKEN: ${{ secrets.DEPOT_TOKEN }}
         run: |
           for workflow in ci.yml smoke.yml; do
-            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref tegami/version-packages
+            depot ci dispatch --workflow "$workflow" --repo "$GITHUB_REPOSITORY" --ref tegami/version-packages
           done

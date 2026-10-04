@@ -16,7 +16,8 @@ env:
 jobs:
   pending:
     name: Check Publish Lock
-    runs-on: ubuntu-latest
+    if: ${{ false }}
+    runs-on: depot-ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
@@ -73,7 +74,7 @@ jobs:
     name: Tarball Smoke
     needs: pending
     if: needs.pending.outputs.publish == 'true'
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
@@ -97,9 +98,8 @@ jobs:
   publish:
     name: Publish
     needs: smoke
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     timeout-minutes: 15
-    environment: npm
     concurrency:
       group: npm-publish
       cancel-in-progress: false

@@ -52,7 +52,7 @@ For detailed information about our contribution process, including PR guidelines
 - 🏃 **Turborepo** - High-performance build system
 - 📝 **Biome** - Fast and consistent code style
 - 🧪 **Vitest** - Testing framework
-- 🚀 **GitHub Actions** - CI/CD workflows
+- 🚀 **Depot CI**: CI/CD workflows
 
 ## Code Style Principles
 
