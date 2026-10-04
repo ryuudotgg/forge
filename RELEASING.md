@@ -45,22 +45,37 @@ users only inside the CLI bundle. The tarball smoke fails if either loses
 
 ## Activation
 
-Releases are on hold. Lifting the hold is the maintainer's act, done once,
-in this order.
+Releases are on hold. The Publish workflow in `.depot/workflows/publish.yml`
+is disabled by its pending job condition. Do not remove that condition or
+write the first change file until the maintainer has completed these steps:
+
+1. Configure npm authentication that works from Depot CI. The previous
+   GitHub trusted publisher setup does not authenticate Depot jobs. Do not
+   run `pnpm tegami npm pretrust` for this migration.
+2. Implement an enforced approval mechanism for publishing in Depot CI.
+   Depot does not enforce GitHub deployment environments. Creating the
+   GitHub `npm` environment, or checking its reviewer configuration, does
+   not require approval before a Depot job publishes.
+3. Update the disabled Publish workflow to use that authentication and
+   approval mechanism. Remove its GitHub environment configuration check
+   and align its provenance settings with the chosen publishing method.
+4. Verify that publishing refuses to run without approval and that the
+   approved path authenticates to npm. Only then enable the pending job.
+5. Configure the Release workflow's `DEPOT_TOKEN` secret so it can dispatch
+   CI and Smoke against the version branch.
+
+After these prerequisites are verified, lifting the hold is the
+maintainer's act, done once, in this order.
 
 1. Write the first change file, `.tegami/<name>.md` naming
    `"@ryuugg/forge": minor`, and merge it to `main`.
 2. On a clean checkout of `main`, run `pnpm tegami version` and check that
    `@ryuugg/forge` lands on `0.1.0`. Without `CI` set it opens nothing. Keep
    the changes for the next two steps.
-3. Run `npm login`.
-4. Run `pnpm tegami npm pretrust` in that checkout. It publishes a
-   placeholder `0.0.0-tegami-trusted-publish-setup` of `@ryuugg/forge` under
-   the `temp` dist-tag and trusts `publish.yml` on `ryuudotgg/forge`.
-   Then discard the local changes from step 2.
-5. Create the `npm` environment on the repository with `ryuudotgg` as
-   required reviewer and prevent self review off. The Publish workflow
-   refuses to publish without it.
-6. Run the Release workflow, merge the `chore: release 0.1.0` pull request
-   and approve the `npm` deployment on the Publish run it starts.
-7. Confirm `npm view @ryuugg/forge dist.attestations` is non-empty.
+3. Discard the local version preview from step 2. Dispatch the Release
+   workflow on `main` through Depot CI, review and merge the
+   `chore: release 0.1.0` pull request, and approve publishing through the
+   mechanism verified above.
+4. Confirm the published package version and validate provenance according
+   to the configured publishing method. Do not assume GitHub trusted
+   publishing attestations are available from Depot.
