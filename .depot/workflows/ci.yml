@@ -25,7 +25,7 @@ env:
 jobs:
   check:
     name: Code Checks
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     permissions:
       contents: read
 
@@ -40,7 +40,7 @@ jobs:
 
   typecheck:
     name: Type Checks
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     permissions:
       contents: read
 
@@ -55,7 +55,7 @@ jobs:
 
   tests:
     name: Tests
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
@@ -79,7 +79,7 @@ jobs:
 
   scenarios:
     name: Scenarios
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     permissions:
       contents: read
 

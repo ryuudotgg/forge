@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: write
   pull-requests: write
 
@@ -94,11 +93,3 @@ jobs:
           fi
 
           gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$number/requested_reviewers" -f 'reviewers[]=ryuudotgg' > /dev/null
-
-      - name: Run Checks on Version PR
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for workflow in ci.yml smoke.yml; do
-            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref tegami/version-packages
-          done

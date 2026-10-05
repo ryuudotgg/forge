@@ -5,6 +5,9 @@
 		"customManagers:biomeVersions",
 		"helpers:pinGitHubActionDigests"
 	],
+	"github-actions": {
+		"managerFilePatterns": ["/^\\.depot/workflows/[^/]+\\.ya?ml$/"]
+	},
 	"labels": ["dependencies"],
 	"lockFileMaintenance": {
 		"enabled": true,

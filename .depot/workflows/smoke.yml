@@ -28,7 +28,7 @@ jobs:
   changes:
     name: Detect Smoke Changes
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     permissions:
       contents: read
 
@@ -56,7 +56,7 @@ jobs:
               packages/cli/tests/* | packages/core/tests/* | packages/generators/tests/*)
                 continue
                 ;;
-              .github/workflows/smoke.yml | package.json | .nvmrc | tooling/github/setup/* | packages/cli/* | packages/core/* | packages/generators/* | pnpm-lock.yaml | pnpm-workspace.yaml | tests/scenarios/package.json | tests/scenarios/turbo.json | tests/scenarios/vitest.config.ts | tests/scenarios/src/scenarios/install.smoke.test.ts | tests/scenarios/src/scenarios/multi-pm.smoke.test.ts | tests/scenarios/src/scenarios/registry.smoke.test.ts | tests/scenarios/src/scenarios/tarball.smoke.test.ts | tests/scenarios/src/utils/* | examples/registry-package/*)
+              .depot/workflows/smoke.yml | package.json | .nvmrc | tooling/github/setup/* | packages/cli/* | packages/core/* | packages/generators/* | pnpm-lock.yaml | pnpm-workspace.yaml | tests/scenarios/package.json | tests/scenarios/turbo.json | tests/scenarios/vitest.config.ts | tests/scenarios/src/scenarios/install.smoke.test.ts | tests/scenarios/src/scenarios/multi-pm.smoke.test.ts | tests/scenarios/src/scenarios/registry.smoke.test.ts | tests/scenarios/src/scenarios/tarball.smoke.test.ts | tests/scenarios/src/utils/* | examples/registry-package/*)
                 relevant=true
                 break
                 ;;
@@ -69,7 +69,7 @@ jobs:
     name: Install Smoke
     needs: [changes]
     if: ${{ always() && (github.event_name != 'pull_request' || needs.changes.result == 'failure' || needs.changes.outputs.relevant == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
@@ -135,7 +135,7 @@ jobs:
     name: Install Smoke Gate
     needs: [smoke]
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     permissions: {}
 
     steps:
