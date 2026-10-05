@@ -11,6 +11,7 @@ import {
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuugg/core";
+import { apiHostFramework } from "../../api-host";
 import { reactRouterInvitationRoute } from "../../auth/better-auth/invitation-page";
 import {
 	selfHostedCorsContributions,
@@ -137,10 +138,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 	const rpc = rpcDescriptor(renderConfig);
 	const usesAuth = renderConfig.authentication === "better-auth";
 	const servesApiRoutes =
-		instance.primary &&
-		(renderConfig.rpc !== "orpc" ||
-			renderConfig.backend === undefined ||
-			renderConfig.backend === "self");
+		instance.primary && apiHostFramework(renderConfig) === "react-router";
 
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
@@ -166,23 +164,24 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		? reactRouterInvitationRoute(renderConfig)
 		: "";
 
+	const extraRoutes = [
+		servesApiRoutes && renderConfig.rpc !== undefined
+			? reactRouterRpcRoutes[renderConfig.rpc]
+			: "",
+		servesApiRoutes && usesAuth
+			? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
+			: "",
+		invitationRoute,
+	].join("");
+
 	const routes = interpolate(
 		readTemplate("frameworks/react-router/app/routes.ts"),
 		{
-			ROUTE_IMPORT:
-				(servesApiRoutes && (rpc !== undefined || usesAuth)) ||
-				invitationRoute !== ""
-					? ", route"
-					: "",
-			"// __TRPC_ROUTE__\n":
-				renderConfig.rpc !== undefined && servesApiRoutes
-					? reactRouterRpcRoutes[renderConfig.rpc]
-					: "",
-			"// __AUTH_ROUTE__\n":
-				usesAuth && servesApiRoutes
-					? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
-					: "",
-			"__INVITATION_ROUTE__\n": invitationRoute,
+			ROUTE_IMPORT: extraRoutes === "" ? "" : ", route",
+			ROUTES:
+				extraRoutes === ""
+					? 'index("routes/home.tsx")'
+					: `\n  index("routes/home.tsx"),\n${extraRoutes}`,
 		},
 	);
 
@@ -325,7 +324,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"env.ts",
 			interpolate(
 				readTemplate("frameworks/react-router/env.ts"),
-				viteServerEnvMarkers(renderConfig),
+				viteServerEnvMarkers(config, instance),
 			),
 		),
 		leafTextFile(

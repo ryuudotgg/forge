@@ -23,11 +23,7 @@ import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
-import {
-	hasSecondaryClients,
-	serverCorsMarkers,
-	withTrpcStreamingHeader,
-} from "../../origins";
+import { serverCorsMarkers } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
 import { webAppInstances } from "../../web-apps";
@@ -138,8 +134,6 @@ export const trpcHonoAdapters = deriveRecipeAdapters({
 	frameworks: [honoFramework],
 	readTemplate,
 	requiredSlots: ["trpc"],
-	content: (_asset, content, { config }) =>
-		hasSecondaryClients(config) ? withTrpcStreamingHeader(content) : content,
 	markers: ({ config }: AdapterContext<ForgeConfig>) => {
 		const values = trpcTemplateVars(config);
 		return {

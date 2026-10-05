@@ -1,5 +1,5 @@
 import type { ForgeConfig, WebFramework } from "./config";
-import { webAppInstances } from "./web-apps";
+import { type WebAppInstance, webAppInstances } from "./web-apps";
 
 export const standaloneBackendDevPort = 3001;
 
@@ -136,20 +136,21 @@ export function selfHostedOriginsSource(config: ForgeConfig): string {
 }
 
 export function webOriginsCors(config: ForgeConfig, content: string): string {
+	const headers =
+		config.rpc === "trpc" ? withTrpcStreamingHeader(content) : content;
+
 	return hasSecondaryClients(config)
-		? withTrpcStreamingHeader(
-				content
-					.replace(
-						'import { env } from "../env.js";',
-						'import { webOrigins } from "../env.js";',
-					)
-					.replace("origin: env.WEB_URL,", "origin: webOrigins,"),
-			)
-		: content;
+		? headers
+				.replace(
+					'import { env } from "../env.js";',
+					'import { webOrigins } from "../env.js";',
+				)
+				.replace("origin: env.WEB_URL,", "origin: webOrigins,")
+		: headers;
 }
 
 const trpcSourceHeaders =
-	/^( *)(allowHeaders|allowedHeaders): \["Content-Type", "Authorization", "x-trpc-source"\],\n/m;
+	/^( *)allowedHeaders: \["Content-Type", "Authorization", "x-trpc-source"\],\n/m;
 
 const trpcStreamingHeaders = [
 	"Content-Type",
@@ -158,11 +159,11 @@ const trpcStreamingHeaders = [
 	"trpc-accept",
 ];
 
-export function withTrpcStreamingHeader(content: string): string {
+function withTrpcStreamingHeader(content: string): string {
 	return content.replace(
 		trpcSourceHeaders,
-		(_line, indent: string, key: string) =>
-			`${indent}${key}: [\n${trpcStreamingHeaders.map((header) => `${indent}  "${header}",\n`).join("")}${indent}],\n`,
+		(_line, indent: string) =>
+			`${indent}allowedHeaders: [\n${trpcStreamingHeaders.map((header) => `${indent}  "${header}",\n`).join("")}${indent}],\n`,
 	);
 }
 
@@ -170,20 +171,22 @@ export function appOrigin(config: ForgeConfig): string {
 	return standaloneApiOrigin(config) ?? webDevOrigin(config);
 }
 
-export function viteServerEnvMarkers(config: ForgeConfig) {
-	const origin =
-		standaloneApiOrigin(config) ??
-		(hasSecondaryClients(config) ? webDevOrigin(config) : undefined);
+function clientApiOrigin(
+	config: ForgeConfig,
+	instance: WebAppInstance,
+): string | undefined {
+	if (instance.client === true) return appOrigin(config);
+
+	return instance.primary ? standaloneApiOrigin(config) : undefined;
+}
+
+export function viteServerEnvMarkers(
+	config: ForgeConfig,
+	instance: WebAppInstance,
+) {
+	const origin = clientApiOrigin(config, instance);
 
 	return {
-		RUNTIME_ENV:
-			config.rpc === "orpc"
-				? '{ ...import.meta.env, ...(typeof process === "undefined" ? {} : process.env) }'
-				: "{ ...import.meta.env, ...process.env }",
-		SKIP_VALIDATION:
-			config.rpc === "orpc"
-				? 'typeof process !== "undefined" && (!!process.env.CI || shouldSkipValidation())'
-				: "!!process.env.CI || shouldSkipValidation()",
 		"  // __SERVER_ENV__\n  client: {},\n":
 			origin === undefined
 				? "  client: {},\n"
@@ -191,10 +194,11 @@ export function viteServerEnvMarkers(config: ForgeConfig) {
 	};
 }
 
-export function nextServerEnvMarkers(config: ForgeConfig) {
-	const origin =
-		standaloneApiOrigin(config) ??
-		(hasSecondaryClients(config) ? webDevOrigin(config) : undefined);
+export function nextServerEnvMarkers(
+	config: ForgeConfig,
+	instance: WebAppInstance,
+) {
+	const origin = clientApiOrigin(config, instance);
 
 	return {
 		"  // __SERVER_ENV__\n":

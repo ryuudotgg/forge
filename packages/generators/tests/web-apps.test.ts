@@ -165,18 +165,21 @@ describe("webAppInstances", () => {
 });
 
 describe("secondary web app planning", () => {
-	it("keeps the Hono tRPC allow list unchanged without clients", async () => {
-		const plan = await plannedProject({
-			slug: "acme",
-			web: "nextjs",
-			backend: "hono",
-			rpc: "trpc",
-		});
+	it.each(["nextjs", "tanstack-router"] as const)(
+		"allows tRPC streaming headers on a single app Hono server beside %s",
+		async (web) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web,
+				backend: "hono",
+				rpc: "trpc",
+			});
 
-		expect(contentAt(plan, "apps/server/src/routes/trpc.ts")).toContain(
-			'allowHeaders: ["Content-Type", "Authorization", "x-trpc-source"],',
-		);
-	});
+			expect(contentAt(plan, "apps/server/src/routes/trpc.ts")).toContain(
+				'      "x-trpc-source",\n      "trpc-accept",\n',
+			);
+		},
+	);
 
 	it.each([
 		{
@@ -392,7 +395,7 @@ describe("secondary web app planning", () => {
 	);
 
 	it.each(["express", "fastify"] as const)(
-		"allows secondary tRPC streaming headers on %s",
+		"allows tRPC streaming headers on %s with or without clients",
 		async (backend) => {
 			const config: ForgeConfig = {
 				slug: "acme",
@@ -401,29 +404,64 @@ describe("secondary web app planning", () => {
 				rpc: "trpc",
 			};
 
-			const legacy = await plannedProject(config);
+			const indent = backend === "express" ? "    " : "  ";
+			const streamingHeaders = [
+				`${indent}allowedHeaders: [`,
+				...[
+					"Content-Type",
+					"Authorization",
+					"x-trpc-source",
+					"trpc-accept",
+				].map((header) => `${indent}  "${header}",`),
+				`${indent}],`,
+			].join("\n");
 
-			const client = await plannedProject({
-				...config,
+			for (const projectConfig of [
+				config,
+				{
+					...config,
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				} satisfies ForgeConfig,
+			]) {
+				const plan = await plannedProject(projectConfig);
+				expect(contentAt(plan, "apps/server/src/app.ts")).toContain(
+					streamingHeaders,
+				);
+			}
+		},
+	);
+
+	it.each(["express", "fastify"] as const)(
+		"keeps tRPC streaming headers off an oRPC %s server with a client",
+		async (backend) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web: "nextjs",
+				backend,
+				rpc: "orpc",
 				webApps: [{ name: "admin", framework: "nextjs", client: true }],
 			});
 
-			expect(contentAt(legacy, "apps/server/src/app.ts")).not.toContain(
-				"trpc-accept",
-			);
+			const app = contentAt(plan, "apps/server/src/app.ts");
+			expect(app).toContain('"x-csrf-token"');
+			expect(app).not.toContain("trpc-accept");
+		},
+	);
 
-			const indent = backend === "express" ? "    " : "  ";
-			expect(contentAt(client, "apps/server/src/app.ts")).toContain(
-				[
-					`${indent}allowedHeaders: [`,
-					...[
-						"Content-Type",
-						"Authorization",
-						"x-trpc-source",
-						"trpc-accept",
-					].map((header) => `${indent}  "${header}",`),
-					`${indent}],`,
-				].join("\n"),
+	it.each(["express", "fastify"] as const)(
+		"keeps tRPC streaming headers off an auth only %s server",
+		async (backend) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web: "nextjs",
+				backend,
+				authentication: "better-auth",
+				orm: "drizzle",
+				database: "sqlite",
+			});
+
+			expect(contentAt(plan, "apps/server/src/app.ts")).not.toContain(
+				"trpc-accept",
 			);
 		},
 	);
@@ -467,6 +505,119 @@ describe("secondary web app planning", () => {
 			"x-csrf-token, trpc-accept",
 		);
 	});
+
+	it.each([
+		{
+			web: "nextjs",
+			authentication: undefined,
+			clients: ["nextjs"],
+			lines: ['NEXT_PUBLIC_SERVER_URL="http://localhost:3000"'],
+		},
+		{
+			web: "nextjs",
+			authentication: "better-auth",
+			clients: ["react-router"],
+			lines: ['VITE_SERVER_URL="http://localhost:3000"'],
+		},
+		{
+			web: "react-router",
+			authentication: undefined,
+			clients: ["nextjs", "tanstack-router", "tanstack-start"],
+			lines: [
+				'NEXT_PUBLIC_SERVER_URL="http://localhost:5173"',
+				'VITE_SERVER_URL="http://localhost:5173"',
+			],
+		},
+	] as const)(
+		"lists the API URL $clients clients read once beside a self-hosted $web primary",
+		async ({ web, authentication, clients, lines }) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web,
+				backend: "self",
+				rpc: "trpc",
+				...(authentication === undefined
+					? {}
+					: { authentication, orm: "drizzle", database: "sqlite" }),
+				webApps: clients.map((framework, index) => ({
+					name: `client${index}`,
+					framework,
+					client: true,
+				})),
+			});
+
+			for (const path of [".env", ".env.example"]) {
+				const content = contentAt(plan, path);
+				for (const line of lines)
+					expect(content.split("\n").filter((entry) => entry === line)).toEqual(
+						[line],
+					);
+
+				expect(content.match(/SERVER_URL=/g)).toHaveLength(lines.length);
+			}
+		},
+	);
+
+	it.each(["hono", "self"] as const)(
+		"keeps the server URL out of a non client secondary beside a client with backend %s",
+		async (backend) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web: "nextjs",
+				backend,
+				rpc: "trpc",
+				webApps: [
+					{ name: "admin", framework: "nextjs", client: true },
+					{ name: "docs", framework: "nextjs" },
+					{ name: "blog", framework: "tanstack-router" },
+				],
+			});
+
+			expect(contentAt(plan, "apps/admin/env.ts")).toContain(
+				`NEXT_PUBLIC_SERVER_URL: z.url().default("http://localhost:${backend === "hono" ? 3001 : 3000}")`,
+			);
+
+			for (const path of ["apps/docs/env.ts", "apps/blog/env.ts"])
+				expect(contentAt(plan, path)).not.toContain("SERVER_URL");
+
+			if (backend === "self")
+				expect(contentAt(plan, "apps/web/env.ts")).not.toContain("SERVER_URL");
+		},
+	);
+
+	it.each(["react-router", "tanstack-start"] as const)(
+		"keeps the server URL out of a self-hosted %s primary with a client",
+		async (web) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web,
+				backend: "self",
+				rpc: "trpc",
+				webApps: [
+					{ name: "admin", framework: "tanstack-router", client: true },
+				],
+			});
+
+			expect(contentAt(plan, "apps/web/env.ts")).not.toContain("SERVER_URL");
+			expect(contentAt(plan, "apps/admin/env.ts")).toContain(
+				`VITE_SERVER_URL: z.url().default("http://localhost:${web === "react-router" ? 5173 : 3000}")`,
+			);
+		},
+	);
+
+	it.each(webFrameworks.ids.filter((web) => web !== "nextjs"))(
+		"guards process in every %s env module",
+		async (web) => {
+			const plan = await plannedProject({ slug: "acme", web });
+			const env = contentAt(plan, "apps/web/env.ts");
+
+			expect(env).toContain(
+				'const processEnv: Record<string, string | undefined> =\n  typeof process === "undefined" ? {} : process.env;\n',
+			);
+
+			expect(env.match(/process\.env/g)).toHaveLength(1);
+		},
+	);
 
 	it.each(["nextjs", "react-router", "tanstack-start"] as const)(
 		"adds CORS to an implicit self-hosted %s primary",

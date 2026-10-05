@@ -10,9 +10,10 @@ import {
 	hasSecondaryClients,
 	secondaryClientOrigins,
 	selfHostedOriginsSource,
+	webDevOrigin,
 } from "./origins";
 import { interpolate, readTemplate } from "./template";
-import type { WebAppInstance } from "./web-apps";
+import { type WebAppInstance, webAppInstances } from "./web-apps";
 
 export function selfHostedCorsViteConfig(
 	config: ForgeConfig,
@@ -43,10 +44,21 @@ export function selfHostedCorsContributions(
 	)
 		return [];
 
-	const originLine = envFileLine(
-		"WEB_URLS",
-		secondaryClientOrigins(config).join(","),
-	);
+	const serverUrlLines = [
+		...new Set(
+			webAppInstances(config)
+				.filter((client) => client.client === true)
+				.map((client) => serverUrlVariables[client.framework]),
+		),
+	].map((name) => envFileLine(name, webDevOrigin(config)));
+
+	const clientLines =
+		config.authentication === "better-auth"
+			? serverUrlLines
+			: [
+					envFileLine("WEB_URLS", secondaryClientOrigins(config).join(",")),
+					...serverUrlLines,
+				];
 
 	return [
 		leafTextFile(
@@ -56,18 +68,21 @@ export function selfHostedCorsContributions(
 				WEB_ORIGINS: selfHostedOriginsSource(config),
 			}),
 		),
-		...(config.authentication === "better-auth"
-			? []
-			: [
-					surfaceLines(projectTarget(), "rootEnv", [originLine], {
-						section: "Web clients",
-					}),
-					surfaceLines(projectTarget(), "rootEnvExample", [originLine], {
-						section: "Web clients",
-					}),
-				]),
+		surfaceLines(projectTarget(), "rootEnv", clientLines, {
+			section: "Web clients",
+		}),
+		surfaceLines(projectTarget(), "rootEnvExample", clientLines, {
+			section: "Web clients",
+		}),
 	];
 }
+
+const serverUrlVariables: Readonly<Record<WebFramework, string>> = {
+	nextjs: "NEXT_PUBLIC_SERVER_URL",
+	"react-router": "VITE_SERVER_URL",
+	"tanstack-router": "VITE_SERVER_URL",
+	"tanstack-start": "VITE_SERVER_URL",
+};
 
 const selfHostedCorsPaths: Readonly<Record<WebFramework, string>> = {
 	nextjs: "lib/api-cors.ts",

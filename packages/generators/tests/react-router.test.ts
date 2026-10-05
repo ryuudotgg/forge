@@ -5,6 +5,7 @@ import type { ForgeConfig } from "../src";
 import { loadDefinitionRegistry } from "../src";
 import { reactRouterFramework } from "../src/frameworks/react-router";
 import { versions } from "../src/versions";
+import { plannedProject } from "./planner-harness";
 
 const template = (() => {
 	const found = loadDefinitionRegistry().registry.templates.find(
@@ -210,9 +211,7 @@ export default defineConfig({
 		expect(routeContent({ web: "react-router" })).toBe(
 			`import { index, type RouteConfig } from "@react-router/dev/routes";
 
-export default [
-  index("routes/home.tsx"),
-] satisfies RouteConfig;
+export default [index("routes/home.tsx")] satisfies RouteConfig;
 `,
 		);
 
@@ -346,5 +345,96 @@ export default [
 				".react-router/types/**/*",
 			],
 		});
+	});
+});
+
+describe("react-router API routes", () => {
+	const bareRoutes = `import { index, type RouteConfig } from "@react-router/dev/routes";
+
+export default [index("routes/home.tsx")] satisfies RouteConfig;
+`;
+
+	it.each([
+		{ backend: "hono", rpc: "trpc" },
+		{ backend: "hono", rpc: undefined },
+		{ backend: "express", rpc: "trpc" },
+		{ backend: "fastify", rpc: undefined },
+	] as const)(
+		"lists no API routes beside a $backend server with rpc $rpc",
+		async ({ backend, rpc }) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web: "react-router",
+				backend,
+				...(rpc === undefined ? {} : { rpc }),
+				authentication: "better-auth",
+				orm: "drizzle",
+				database: "sqlite",
+			});
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/web/app/routes.ts")
+					?.content,
+			).toBe(bareRoutes);
+
+			expect(
+				plan.writes
+					.map((write) => write.path)
+					.filter((path) => path.startsWith("apps/web/app/routes/api.")),
+			).toEqual([]);
+		},
+	);
+
+	it("lists only the invitation page beside a Hono server with organizations", async () => {
+		const plan = await plannedProject({
+			slug: "acme",
+			web: "react-router",
+			backend: "hono",
+			authentication: "better-auth",
+			authMethods: ["email-password"],
+			authPlugins: ["organization"],
+			orm: "drizzle",
+			database: "sqlite",
+		});
+
+		expect(
+			plan.writes.find((write) => write.path === "apps/web/app/routes.ts")
+				?.content,
+		).toBe(`import { index, type RouteConfig, route } from "@react-router/dev/routes";
+
+export default [
+  index("routes/home.tsx"),
+  route("accept-invitation/:id", "routes/accept-invitation.tsx"),
+] satisfies RouteConfig;
+`);
+
+		expect(
+			plan.writes.some(
+				(write) => write.path === "apps/web/app/routes/accept-invitation.tsx",
+			),
+		).toBe(true);
+	});
+
+	it("lists API routes only on a self-hosted primary beside a React Router client", async () => {
+		const plan = await plannedProject({
+			slug: "acme",
+			web: "react-router",
+			backend: "self",
+			rpc: "trpc",
+			authentication: "better-auth",
+			orm: "drizzle",
+			database: "sqlite",
+			webApps: [{ name: "admin", framework: "react-router", client: true }],
+		});
+
+		const routes = (app: string) =>
+			plan.writes.find((write) => write.path === `apps/${app}/app/routes.ts`)
+				?.content;
+
+		expect(routes("web")).toContain(
+			'  route("api/trpc/*", "routes/api.trpc.$.ts"),\n  route("api/auth/*", "routes/api.auth.$.ts"),\n',
+		);
+
+		expect(routes("admin")).toBe(bareRoutes);
 	});
 });

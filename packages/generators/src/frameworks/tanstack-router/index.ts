@@ -263,7 +263,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"env.ts",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/env.ts"),
-				viteServerEnvMarkers(renderConfig),
+				viteServerEnvMarkers(config, instance),
 			),
 		),
 		leafTextFile(

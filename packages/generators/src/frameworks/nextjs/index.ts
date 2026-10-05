@@ -142,7 +142,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 
 	const webEnv = interpolate(
 		readTemplate("frameworks/nextjs/env.ts"),
-		nextServerEnvMarkers(renderConfig),
+		nextServerEnvMarkers(config, instance),
 	);
 
 	const webPackageJson: Record<string, unknown> = {
