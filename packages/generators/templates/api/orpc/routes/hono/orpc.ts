@@ -1,5 +1,5 @@
-__AUTH_IMPORT__;
-import { appRouter, createORPCContext } from "@__SLUG__/orpc";
+import { appRouter, reportServerError } from "@__SLUG__/orpc";
+import { onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { SimpleCsrfProtectionHandlerPlugin } from "@orpc/server/plugins";
 import { Hono } from "hono";
@@ -22,12 +22,17 @@ orpcRoutes.use(
 
 const handler = new RPCHandler(appRouter, {
   plugins: [new SimpleCsrfProtectionHandlerPlugin()],
+  interceptors: [
+    onError((error, { request }) =>
+      reportServerError(error, request.url.pathname),
+    ),
+  ],
 });
 
 orpcRoutes.use("/api/orpc/*", async (c, next) => {
   const { matched, response } = await handler.handle(c.req.raw, {
     prefix: "/api/orpc",
-    context: await createORPCContext({ __AUTH_ARG__, headers: c.req.raw.headers }),
+    context: { headers: c.req.raw.headers },
   });
 
   if (matched) return c.newResponse(response.body, response);

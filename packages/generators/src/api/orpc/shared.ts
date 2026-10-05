@@ -10,22 +10,16 @@ export function orpcTemplateVars(config: ForgeConfig) {
 		"__DB_IMPORT__;\n": usesDb
 			? `import { db } from "@${slug}/db/client";\n`
 			: "",
-		"  __DB_CTX_TYPE__;\n": usesDb ? "  db: typeof db;\n" : "",
 		"__DB_CTX_VALUE__, ": usesDb ? "db, " : "",
-		"__AUTH_TYPE_IMPORT__;\n": usesAuth
-			? `import type { Auth } from "@${slug}/auth";\n`
-			: "",
 		"__AUTH_IMPORT__;\n": usesAuth
 			? `import { auth } from "@${slug}/auth";\n`
 			: "",
 		SESSION_TYPE: usesAuth
-			? 'Awaited<ReturnType<Auth["api"]["getSession"]>>'
+			? "Awaited<ReturnType<typeof auth.api.getSession>>"
 			: "{ user: { id: string; email: string } } | null",
-		"  __CTX_AUTH_PARAM__;\n": usesAuth ? "  auth: Auth;\n" : "",
 		SESSION_RESOLVE: usesAuth
-			? "const session = await opts.auth.api.getSession({ headers: opts.headers });"
-			: "const session = null;",
-		"__AUTH_ARG__, ": usesAuth ? "auth, " : "",
+			? "function resolveSession(headers: Headers): Promise<Session> {\n  return auth.api.getSession({ headers });\n}"
+			: "async function resolveSession(_headers: Headers): Promise<Session> {\n  return null;\n}",
 		"  __ME_PROCEDURE__,\n": usesAuth
 			? "  me: protectedProcedure.handler(({ context }) => ({ id: context.user.id })),\n"
 			: "",

@@ -1,5 +1,4 @@
-__AUTH_IMPORT__;
-import { type AppRouter, appRouter, createORPCContext } from "@__SLUG__/orpc";
+import { type AppRouter, appRouter } from "@__SLUG__/orpc";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { SimpleCsrfProtectionLinkPlugin } from "@orpc/client/plugins";
@@ -12,10 +11,7 @@ const getClient = createIsomorphicFn()
   .server(
     (): RouterClient<AppRouter> =>
       createRouterClient(appRouter, {
-        context: () => {
-          const { headers } = getRequest();
-          return createORPCContext({ __AUTH_ARG__, headers });
-        },
+        context: () => ({ headers: getRequest().headers }),
       }),
   )
   .client((): RouterClient<AppRouter> => {

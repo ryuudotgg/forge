@@ -785,7 +785,72 @@ async function expectCredentialedGeneratedServer(
 	);
 }
 
-async function expectUnrelatedOrpcRequests(projectRoot: string) {
+const orpcContextProbeAnchor =
+	"const session = await resolveSession(context.headers);";
+
+async function injectOrpcContextProbe(projectRoot: string) {
+	const contextPath = join(projectRoot, "packages/orpc/src/orpc.ts");
+	const context = await readFile(contextPath, "utf8");
+
+	expect(context.split(orpcContextProbeAnchor)).toHaveLength(2);
+
+	await writeFile(
+		contextPath,
+		context.replace(
+			orpcContextProbeAnchor,
+			`if (context.headers.get("x-context-probe") === "fail") throw new Error("Context Probe Failed");
+      ${orpcContextProbeAnchor}`,
+		),
+	);
+}
+
+async function expectOrpcRouteEdges(origin: string, output: () => string) {
+	const probe = {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"x-context-probe": "fail",
+			"x-csrf-token": "orpc",
+		},
+		body: JSON.stringify({ json: null }),
+	};
+
+	const missing = await fetch(`${origin}/api/orpc/missing`, probe);
+	expect(missing.status, output()).toBe(404);
+
+	const logged = output().length;
+	const failure = await fetch(`${origin}/api/orpc/health`, probe);
+
+	expect(failure.status, output()).toBe(500);
+	expect(failure.headers.get("content-type")).toContain("application/json");
+	expect(await failure.json()).toEqual({
+		json: {
+			defined: false,
+			code: "INTERNAL_SERVER_ERROR",
+			status: 500,
+			message: "Internal server error",
+		},
+	});
+
+	await waitForOutput(output, "Context Probe Failed", logged);
+	expect(output().slice(logged)).toContain("❌ oRPC failed on health:");
+	expect(output().slice(logged)).toContain("Context Probe Failed");
+
+	const upload = new FormData();
+	upload.set("data", JSON.stringify({ json: {}, maps: [[]] }));
+	upload.set("0", new File(["hello"], "a.txt", { type: "text/plain" }));
+
+	const multipart = await fetch(`${origin}/api/orpc/health`, {
+		method: "POST",
+		headers: { "x-csrf-token": "orpc" },
+		body: upload,
+	});
+
+	expect(multipart.status, output()).toBe(200);
+	expect(await multipart.json()).toEqual({ json: { status: "ok" } });
+}
+
+async function expectStandaloneOrpcRoute(projectRoot: string) {
 	const generatedEnv = await readGeneratedEnv(projectRoot);
 	const serverOrigin = generatedEnv.APP_ORIGIN;
 	if (serverOrigin === undefined)
@@ -795,18 +860,14 @@ async function expectUnrelatedOrpcRequests(projectRoot: string) {
 		projectRoot,
 		generatedEnv,
 		serverOrigin,
-		async () => {
+		async (output) => {
 			const headers = { "x-context-probe": "fail", "x-csrf-token": "probe" };
 			for (const path of ["/missing", "/api/orpc-other/health", "/api/orpc"]) {
 				const response = await fetch(`${serverOrigin}${path}`, { headers });
 				expect(response.status, path).toBe(404);
 			}
 
-			const response = await fetch(`${serverOrigin}/api/orpc/health`, {
-				headers,
-			});
-
-			expect(response.status).toBe(500);
+			await expectOrpcRouteEdges(serverOrigin, output);
 		},
 	);
 }
@@ -1516,6 +1577,7 @@ async function expectSelfHostedRpc(
 		}
 
 		await expectSameOriginOrpcSession(origin, session.cookie, session.userId);
+		await expectOrpcRouteEdges(origin, output);
 
 		if (web !== "tanstack-start") {
 			await expectBundledOrpcClient(
@@ -1537,6 +1599,15 @@ async function expectSelfHostedRpc(
 		);
 
 		await expectOrpcLoaderRoute(origin, [session, second], output);
+
+		const rendered = output().length;
+		await fetch(`${origin}/orpc-example`, {
+			headers: { Cookie: session.cookie, "x-context-probe": "fail" },
+		});
+
+		await waitForOutput(output, "Context Probe Failed", rendered);
+		expect(output().slice(rendered)).toContain("❌ oRPC failed on me:");
+
 		await expectServerOnlyCodeOutOfClientBundle(projectRoot);
 		await expectBrowserOrpcClientBundle(projectRoot);
 	} finally {
@@ -2976,6 +3047,7 @@ export async function GET() {
 `,
 			);
 
+			await injectOrpcContextProbe(workspace.projectRoot);
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 			await expectSelfHostedRpc(workspace.projectRoot, {
 				web: "nextjs",
@@ -3002,32 +3074,13 @@ export async function GET() {
 						web: "tanstack-router",
 					});
 
-					if (backend === "express") {
-						const contextPath = join(
-							workspace.projectRoot,
-							"packages/orpc/src/orpc.ts",
-						);
-
-						const context = await readFile(contextPath, "utf8");
-						expect(context).toContain("): Promise<Context> {");
-
-						await writeFile(
-							contextPath,
-							context.replace(
-								"): Promise<Context> {",
-								`): Promise<Context> {
-  if (opts.headers.get("x-context-probe") === "fail") throw new Error("Context Probe Failed");`,
-							),
-						);
-					}
-
+					await injectOrpcContextProbe(workspace.projectRoot);
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
 					await expectCredentialedGeneratedServer(workspace.projectRoot, {
 						rpc: "orpc",
 					});
 
-					if (backend === "express")
-						await expectUnrelatedOrpcRequests(workspace.projectRoot);
+					await expectStandaloneOrpcRoute(workspace.projectRoot);
 				},
 			);
 		},
@@ -3074,8 +3127,10 @@ export async function GET() {
 							: {}),
 					});
 
-					if (rpc === "orpc")
+					if (rpc === "orpc") {
 						await writeOrpcCallerProbe(workspace.projectRoot, web);
+						await injectOrpcContextProbe(workspace.projectRoot);
+					}
 
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
 					await expectSelfHostedRpc(workspace.projectRoot, {
