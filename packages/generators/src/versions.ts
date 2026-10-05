@@ -342,16 +342,11 @@ export const versions = {
 	},
 	zod: { name: "zod", version: "^4.3.6", group: "Validation & Env" },
 
-	clsx: { name: "clsx", version: "^2.1.1", group: "Utilities" },
+	cn: { name: "cn", version: "^0.4.0", group: "Utilities" },
 	nanoid: { name: "nanoid", version: "^6.0.0", group: "Utilities" },
 	resend: { name: "resend", version: "^6.32.0", group: "Utilities" },
 	postmark: { name: "postmark", version: "^5.1.0", group: "Utilities" },
 	nodemailer: { name: "nodemailer", version: "^10.0.13", group: "Utilities" },
-	tailwindMerge: {
-		name: "tailwind-merge",
-		version: "^3.5.0",
-		group: "Utilities",
-	},
 	classVarianceAuthority: {
 		name: "class-variance-authority",
 		version: "^0.7.1",
