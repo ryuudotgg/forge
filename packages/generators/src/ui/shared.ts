@@ -14,13 +14,13 @@ export function renderUiTemplate(config: ForgeConfig, path: string): string {
 	});
 }
 
-export function uiComponentsJson(config: ForgeConfig, rsc: boolean) {
+export function uiComponentsJson(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";
 	const shadcnStyle = uiStyle(config);
 	return {
 		$schema: "https://ui.shadcn.com/schema.json",
 		style: shadcnStyle,
-		rsc,
+		rsc: true,
 		tsx: true,
 		tailwind: {
 			config: "",

@@ -49,6 +49,27 @@ async function projectFiles(
 	return files;
 }
 
+function idReplacements(
+	path: string,
+	modules: ReadonlyArray<{ id: string; root: string }>,
+): Array<readonly [string, string]> {
+	if (path === join(".forge", "manifest.json"))
+		return modules.flatMap(({ id, root }) => [
+			[`"${id}": {`, `"${root}": {`],
+			[`"moduleId": "${id}"`, `"moduleId": "${root}"`],
+		]);
+
+	if (path === join(".forge", "lock.json"))
+		return modules.map(({ id, root }) => [
+			`"module:${id}:`,
+			`"module:${root}:`,
+		]);
+
+	return modules
+		.filter(({ root }) => path === join(root, "forge.json"))
+		.map(({ id, root }) => [`"id": "${id}"`, `"id": "${root}"`]);
+}
+
 async function normalizedProject(root: string): Promise<Map<string, Buffer>> {
 	const files = await projectFiles(root);
 	const manifestPath = join(".forge", "manifest.json");
@@ -78,8 +99,8 @@ async function normalizedProject(root: string): Promise<Map<string, Buffer>> {
 
 		let text = textContent(rawContent);
 		if (text !== undefined)
-			for (const module of moduleRoots)
-				text = text.replaceAll(module.id, module.root);
+			for (const [id, root] of idReplacements(path, moduleRoots))
+				text = text.replaceAll(id, root);
 
 		const content = text === undefined ? rawContent : Buffer.from(text);
 		normalizedFiles.set(path, content);

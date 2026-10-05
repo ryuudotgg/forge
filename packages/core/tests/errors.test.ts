@@ -30,7 +30,6 @@ describe("structured error rendering", () => {
 
 	const plannerCases = [
 		["ensured-module-conflict", "Ensured Module Conflict"],
-		["multiple-templates-selected", "Multiple Templates Selected"],
 		["definition-dependency-missing", "Definition Dependency Missing"],
 		["definition-cycle-detected", "Definition Cycle Detected"],
 		["module-root-conflict", "Module Root Conflict"],
@@ -266,18 +265,10 @@ describe("structured error rendering", () => {
 				path: "apps/web",
 				reason,
 				cause,
-				...(reason === "multiple-templates-selected" && {
-					category: "web",
-					detail: message,
-				}),
 				...(reason === "slot-path-invalid" && { detail: message }),
 			});
 
 			expect(error.reason).toBe(reason);
-
-			if (reason === "multiple-templates-selected")
-				expect(error.category).toBe("web");
-
 			expect(error.message).toBe(message);
 			expect(error.cause).toBe(cause);
 		},
