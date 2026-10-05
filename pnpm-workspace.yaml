@@ -22,7 +22,7 @@ catalogs:
   # ===== DEVELOPMENT TOOLS =====
   dev:
     # Git Hooks & Development Workflow
-    lefthook: ^2.1.14
+    lefthook: ^2.1.16
 
     # TypeScript & Compilation
     "@types/node": 24.19.0
