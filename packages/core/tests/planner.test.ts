@@ -3425,6 +3425,84 @@ describe("planner", () => {
 			});
 		});
 
+		it("drops template-targeted addon work for a deleted module", async () => {
+			await withTempDir(
+				"planner-deleted-template-target",
+				async (directory) => {
+					const base = lifecycleRegistry();
+					const styling = defineAddon<TestConfig>({
+						id: "styling",
+						name: "Styling",
+						version: "0.1.0",
+						category: "style",
+						exclusive: false,
+						dependencies: [{ id: "hono/base", type: "template" }],
+						targetMode: "single",
+						compatibility: { app: { frameworks: ["hono"] } },
+						when: (config) => config.theme === true,
+						contribute: () => [
+							moduleCapabilities(templateModuleTarget("hono/base", 1), [
+								"styling",
+							]),
+							leafTextFile(
+								ensuredModuleTarget("server"),
+								"styles.css",
+								"styles\n",
+							),
+						],
+					});
+
+					const registry = defineRegistry({
+						addons: [styling],
+						frameworks: base.frameworks,
+						templates: base.templates,
+					});
+
+					const config: TestConfig = {
+						backend: "hono",
+						theme: true,
+						web: "nextjs",
+					};
+
+					const created = await Effect.runPromise(
+						planCreateEffect(directory, config, registry),
+					);
+
+					await Effect.runPromise(applyPlanEffect(directory, created));
+
+					const present = await Effect.runPromise(
+						planInstalledEffect(
+							directory,
+							config,
+							created.manifest.installs,
+							registry,
+						),
+					);
+
+					expect(
+						writesUnder(present, "apps/server").map((write) => write.path),
+					).toContain("apps/server/styles.css");
+
+					await rm(join(directory, "apps/server"), {
+						force: true,
+						recursive: true,
+					});
+
+					const updated = await Effect.runPromise(
+						planInstalledEffect(
+							directory,
+							config,
+							created.manifest.installs,
+							registry,
+						),
+					);
+
+					expect(plannedRoots(updated)).toEqual(["apps/web"]);
+					expect(writesUnder(updated, "apps/server")).toEqual([]);
+				},
+			);
+		});
+
 		it("keeps a deleted sibling absent while its template still runs", async () => {
 			await withTempDir("planner-deleted-sibling", async (directory) => {
 				const registry = lifecycleRegistry();

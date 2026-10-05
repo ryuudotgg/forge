@@ -450,6 +450,127 @@ describe("remove command", () => {
 		}
 	});
 
+	describe("a web app named after an installed addon", () => {
+		const biomeApp = {
+			...adminModule,
+			packageName: "@acme/biome",
+			root: "apps/biome",
+		};
+
+		const collidingProject = () =>
+			managedProject({
+				config: {
+					linter: "biome",
+					web: "nextjs",
+					webApps: [{ name: "biome", framework: "nextjs" }],
+				},
+				modules: [appModule, biomeApp],
+				installs: [{ definitionId: "biome", targets: [{ kind: "project" }] }],
+			});
+
+		async function interactively(run: () => Promise<void>) {
+			const stdin = process.stdin.isTTY;
+			const stdout = process.stdout.isTTY;
+			const ci = process.env.CI;
+
+			process.stdin.isTTY = true;
+			process.stdout.isTTY = true;
+			delete process.env.CI;
+
+			try {
+				await run();
+			} finally {
+				process.stdin.isTTY = stdin;
+				process.stdout.isTTY = stdout;
+
+				if (ci === undefined) delete process.env.CI;
+				else process.env.CI = ci;
+			}
+		}
+
+		it("asks which one and removes the addon when the user picks it", async () => {
+			const project = collidingProject();
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+			promptMocks.select.mockResolvedValue("addon");
+
+			await interactively(() => runRemove("biome", {}));
+
+			expect(promptMocks.select).toHaveBeenCalledWith({
+				message: "Do you want to remove the biome web app or the Biome addon?",
+				initialValue: "app",
+				options: [
+					{ label: "The biome web app", value: "app" },
+					{ label: "The Biome addon", value: "addon" },
+				],
+			});
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledTimes(1);
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{
+					web: "nextjs",
+					webApps: [{ name: "biome", framework: "nextjs" }],
+				},
+				[],
+				undefined,
+				undefined,
+			);
+		});
+
+		it("removes the app when the user picks it", async () => {
+			const project = collidingProject();
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+			promptMocks.select.mockResolvedValue("app");
+
+			await interactively(() => runRemove("biome", {}));
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{ linter: "biome", web: "nextjs", webApps: [] },
+				project.manifest.installs,
+				undefined,
+				undefined,
+				{},
+				{
+					modules: [appModule],
+					records: project.manifest.modules,
+					removedRoots: ["apps/biome"],
+				},
+			);
+
+			expect(promptMocks.logInfo).not.toHaveBeenCalled();
+		});
+
+		it("removes the app without asking under --yes and names the addon", async () => {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(collidingProject());
+
+			await interactively(() => runRemove("biome", { yes: true }));
+
+			expect(promptMocks.select).not.toHaveBeenCalled();
+			expect(promptMocks.logInfo).toHaveBeenCalledWith(
+				"The Biome addon is still installed. Run forge remove without a name to choose it.",
+			);
+		});
+
+		it("does not ask when no installed addon shares the name", async () => {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					config: {
+						web: "nextjs",
+						webApps: [{ name: "biome", framework: "nextjs" }],
+					},
+					modules: [appModule, biomeApp],
+				}),
+			);
+
+			await interactively(() => runRemove("biome", {}));
+
+			expect(promptMocks.select).not.toHaveBeenCalled();
+			expect(promptMocks.logInfo).not.toHaveBeenCalled();
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	it("removes a secondary named after an installed addon before the addon", async () => {
 		const biomeApp = {
 			...adminModule,

@@ -505,6 +505,51 @@ async function removeWebApp(
 	return true;
 }
 
+function installedAddonNamed(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	loaded: LoadedDefinitionRegistry,
+	name: string,
+) {
+	const config: ForgeConfig = project.config;
+	if (
+		!(config.webApps ?? []).some((app) => app.name === name) ||
+		!project.manifest.installs.some((install) => install.definitionId === name)
+	)
+		return undefined;
+
+	return {
+		name:
+			loaded.registry.addons.find((addon) => addon.id === name)?.name ?? name,
+	};
+}
+
+async function chooseWebAppOverAddon(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	loaded: LoadedDefinitionRegistry,
+	name: string,
+	values: Record<string, string | boolean | string[] | undefined>,
+) {
+	const addon = installedAddonNamed(project, loaded, name);
+	if (
+		addon === undefined ||
+		values.yes === true ||
+		!isInteractiveLifecycleSession()
+	)
+		return true;
+
+	const choice = await select({
+		message: `Do you want to remove the ${name} web app or the ${addon.name} addon?`,
+		initialValue: "app",
+		options: [
+			{ label: `The ${name} web app`, value: "app" },
+			{ label: `The ${addon.name} addon`, value: "addon" },
+		],
+	});
+
+	if (isCancel(choice)) cancel();
+	return choice === "app";
+}
+
 export async function runRemove(
 	addonId: string | undefined,
 	values: Record<string, string | boolean | string[] | undefined>,
@@ -516,8 +561,27 @@ export async function runRemove(
 		project.manifest.registries ?? [],
 	);
 
-	if (addonId !== undefined && (await removeWebApp(project, addonId, values)))
+	if (
+		addonId !== undefined &&
+		(await chooseWebAppOverAddon(project, loadedRegistry, addonId, values)) &&
+		(await removeWebApp(project, addonId, values))
+	) {
+		const installedAddon = installedAddonNamed(
+			project,
+			loadedRegistry,
+			addonId,
+		);
+
+		if (
+			installedAddon !== undefined &&
+			(values.yes === true || !isInteractiveLifecycleSession())
+		)
+			log.info(
+				`The ${installedAddon.name} addon is still installed. Run forge remove without a name to choose it.`,
+			);
+
 		return;
+	}
 
 	const resolvedAddonId =
 		addonId ??

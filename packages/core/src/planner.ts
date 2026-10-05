@@ -248,21 +248,17 @@ function retargetMovedApps(
 	return { ...entry, contributions };
 }
 
-function ensuredModuleKeys(contribution: Contribution): ReadonlyArray<string> {
-	const keyOf = (target: TargetRef) =>
-		target._tag === "EnsuredModuleTarget" ? [target.moduleKey] : [];
-
+function contributionTargets(
+	contribution: Contribution,
+): ReadonlyArray<TargetRef> {
 	switch (contribution._tag) {
 		case "EnsureModuleContribution":
-			return [contribution.moduleKey];
+			return [];
 
 		case "LeafTextFileContribution":
-			return [
-				...keyOf(contribution.target),
-				...(typeof contribution.path === "string"
-					? []
-					: keyOf(contribution.path.target)),
-			];
+			return typeof contribution.path === "string"
+				? [contribution.target]
+				: [contribution.target, contribution.path.target];
 
 		case "ManagedDependenciesSurfaceContribution":
 		case "ManagedJsonSurfaceContribution":
@@ -270,17 +266,22 @@ function ensuredModuleKeys(contribution: Contribution): ReadonlyArray<string> {
 		case "ManagedScriptsSurfaceContribution":
 		case "ManagedTextSurfaceContribution":
 		case "ModuleCapabilitiesContribution":
-			return keyOf(contribution.target);
+			return [contribution.target];
 	}
 }
 
-function unresolvedTemplateKeys<ConfigValue>(
+interface UnresolvedTemplateInstances {
+	readonly keys: ReadonlySet<string>;
+	readonly templateIds: ReadonlySet<string>;
+}
+
+function unresolvedTemplateInstances<ConfigValue>(
 	evaluated: EvaluationPhaseContract["evaluated"],
 	registry: DefinitionRegistry<ConfigValue>,
 	moduleIdsByKey: ReadonlyMap<string, ModuleId>,
 	discovered: ReadonlyArray<DiscoveredModule>,
 	additions: ReadonlyArray<TemplateAddition>,
-): ReadonlySet<string> {
+): UnresolvedTemplateInstances {
 	const templateIds = new Set(
 		registry.templates.map((template) => template.id),
 	);
@@ -293,17 +294,17 @@ function unresolvedTemplateKeys<ConfigValue>(
 	const ensures = evaluated.flatMap((entry) =>
 		entry.contributions.flatMap((contribution) =>
 			contribution._tag === "EnsureModuleContribution"
-				? [{ contribution, template: templateIds.has(entry.definitionId) }]
+				? [{ contribution, definitionId: entry.definitionId }]
 				: [],
 		),
 	);
 
 	const resolvedKeys = new Set(
 		ensures
-			.filter(({ contribution, template }) => {
+			.filter(({ contribution, definitionId }) => {
 				const moduleId = moduleIdsByKey.get(contribution.moduleKey);
 				return (
-					!template ||
+					!templateIds.has(definitionId) ||
 					additionRoots.has(contribution.root) ||
 					(moduleId !== undefined && discoveredIds.has(moduleId))
 				);
@@ -311,22 +312,44 @@ function unresolvedTemplateKeys<ConfigValue>(
 			.map(({ contribution }) => contribution.moduleKey),
 	);
 
-	return new Set(
-		ensures
-			.map(({ contribution }) => contribution.moduleKey)
-			.filter((key) => !resolvedKeys.has(key)),
+	const unresolved = ensures.filter(
+		({ contribution }) => !resolvedKeys.has(contribution.moduleKey),
 	);
+
+	const resolvedTemplateIds = new Set(
+		ensures
+			.filter(({ contribution }) => resolvedKeys.has(contribution.moduleKey))
+			.map(({ definitionId }) => definitionId),
+	);
+
+	return {
+		keys: new Set(unresolved.map(({ contribution }) => contribution.moduleKey)),
+		templateIds: new Set(
+			unresolved
+				.map(({ definitionId }) => definitionId)
+				.filter((definitionId) => !resolvedTemplateIds.has(definitionId)),
+		),
+	};
 }
 
-function withoutModuleKeys(
+function withoutUnresolvedInstances(
 	evaluated: EvaluationPhaseContract["evaluated"],
-	keys: ReadonlySet<string>,
+	unresolved: UnresolvedTemplateInstances,
 ): EvaluationPhaseContract["evaluated"] {
+	const targetsUnresolved = (target: TargetRef) =>
+		(target._tag === "EnsuredModuleTarget" &&
+			unresolved.keys.has(target.moduleKey)) ||
+		(target._tag === "TemplateModuleTarget" &&
+			[...unresolved.templateIds].some((templateId) =>
+				templateMatchesId(target.template.id, templateId),
+			));
+
 	return evaluated.map((entry) => ({
 		...entry,
-		contributions: entry.contributions.filter(
-			(contribution) =>
-				!ensuredModuleKeys(contribution).some((key) => keys.has(key)),
+		contributions: entry.contributions.filter((contribution) =>
+			contribution._tag === "EnsureModuleContribution"
+				? !unresolved.keys.has(contribution.moduleKey)
+				: !contributionTargets(contribution).some(targetsUnresolved),
 		),
 	}));
 }
@@ -1677,10 +1700,10 @@ const makePlanner = Effect.gen(function* () {
 			adoptedEvaluations,
 		);
 
-		const unresolvedKeys =
+		const unresolved: UnresolvedTemplateInstances =
 			intent._tag === "Create"
-				? new Set<string>()
-				: unresolvedTemplateKeys(
+				? { keys: new Set(), templateIds: new Set() }
+				: unresolvedTemplateInstances(
 						adoptedEvaluations,
 						registry,
 						resolvedModules.moduleIdsByKey,
@@ -1689,16 +1712,16 @@ const makePlanner = Effect.gen(function* () {
 					);
 
 		const evaluated: EvaluationPhaseContract["evaluated"] =
-			unresolvedKeys.size === 0
+			unresolved.keys.size === 0
 				? adoptedEvaluations
-				: withoutModuleKeys(adoptedEvaluations, unresolvedKeys);
+				: withoutUnresolvedInstances(adoptedEvaluations, unresolved);
 
 		const {
 			ensuredIds,
 			moduleIdsByKey,
 			modules: mergedModules,
 			onDiskSlots,
-		} = unresolvedKeys.size === 0
+		} = unresolved.keys.size === 0
 			? resolvedModules
 			: yield* collectModules(discovered, previousRecords, evaluated);
 
