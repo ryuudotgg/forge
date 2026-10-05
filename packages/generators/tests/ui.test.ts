@@ -519,6 +519,6 @@ describe("ui addon", () => {
 		}
 
 		const utils = leafFile(contributions, "ui", "src/lib/utils.ts");
-		expect(utils.content).toContain("export function cn(");
+		expect(utils.content).toBe('export { cn } from "cn";\n');
 	});
 });

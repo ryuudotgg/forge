@@ -104,12 +104,11 @@ export const deps = {
 	t3OssEnvNextjs: dep("t3OssEnvNextjs"),
 	zod: dep("zod"),
 
-	clsx: dep("clsx"),
+	cn: dep("cn"),
 	nanoid: dep("nanoid"),
 	resend: dep("resend"),
 	postmark: dep("postmark"),
 	nodemailer: dep("nodemailer"),
-	tailwindMerge: dep("tailwindMerge"),
 	classVarianceAuthority: dep("classVarianceAuthority"),
 
 	baseUiReact: dep("baseUiReact"),

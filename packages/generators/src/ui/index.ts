@@ -64,8 +64,7 @@ const ui = defineAddon<ForgeConfig, "ui">({
 			catalog?: string;
 			type: "dependencies" | "devDependencies" | "peerDependencies";
 		}> = [
-			{ ...deps.clsx, type: "dependencies" },
-			{ ...deps.tailwindMerge, type: "dependencies" },
+			{ ...deps.cn, type: "dependencies" },
 			{ ...deps.classVarianceAuthority, type: "dependencies" },
 			{ ...catalogRef("react", config), type: "dependencies" },
 			{ ...catalogRef("reactDom", config), type: "dependencies" },
