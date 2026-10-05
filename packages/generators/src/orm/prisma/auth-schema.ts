@@ -3,6 +3,7 @@ import {
 	type AuthTable,
 	authColumnName,
 	authModels,
+	mysqlIndexPrefix,
 } from "../../auth/tables";
 import type { PrismaDatasourceProvider } from "../../data/providers";
 
@@ -86,7 +87,7 @@ export function renderPrismaAuthTables(
 
 				const prefix =
 					column.type === "text" && datasource === "mysql"
-						? "(length: 191)"
+						? `(length: ${mysqlIndexPrefix})`
 						: "";
 
 				return [`  @@index([${column.name}${prefix}])`];

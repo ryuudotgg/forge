@@ -49,7 +49,7 @@ export const accounts = snakeCase.table(
     idToken: text(),
 
     scope: text(),
-    // __PASSWORD_FIELD__
+    password: text(),
 
     createdAt: integer({ mode: "timestamp_ms" }).notNull().default(unixepochMs),
     updatedAt: integer({ mode: "timestamp_ms" })

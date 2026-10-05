@@ -209,9 +209,7 @@ describe("auth methods", () => {
 			expect(server).not.toContain("\n\n\n");
 			expect(authEnv).not.toContain("\n\n\n");
 
-			expect(/\bpassword\b/.test(writeContent(plan, schemaPath))).toBe(
-				authUsesPassword(config),
-			);
+			expect(writeContent(plan, schemaPath)).toMatch(/^\s+password\b/m);
 
 			for (const provider of ["google", "apple"]) {
 				const selected = selection.expected.some(

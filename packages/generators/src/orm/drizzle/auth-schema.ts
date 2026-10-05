@@ -3,6 +3,7 @@ import {
 	type AuthTable,
 	authColumnName,
 	authModels,
+	mysqlIndexPrefix,
 } from "../../auth/tables";
 import type { Database } from "../../config";
 
@@ -20,6 +21,7 @@ function drizzleColumn(
 		case "text":
 			value =
 				dialect === "mysql" &&
+				column.unbounded !== true &&
 				(column.index !== undefined || column.default !== undefined)
 					? `varchar(${sqlName ? `${sqlName}, ` : ""}{ length: 255 })`
 					: `text(${sqlName})`;
@@ -75,8 +77,13 @@ function drizzleIndexes(
 		)
 			return [];
 
+		const key =
+			dialect === "mysql" && column.type === "text" && column.unbounded
+				? `sql\`\${table.${column.name}}(${mysqlIndexPrefix})\``
+				: `table.${column.name}`;
+
 		return [
-			`    index("${identity.table}_${column.sqlName ?? authColumnName(column.name)}_idx").on(table.${column.name}),`,
+			`    index("${identity.table}_${column.sqlName ?? authColumnName(column.name)}_idx").on(${key}),`,
 		];
 	});
 }
@@ -139,7 +146,21 @@ export function renderDrizzleAuthTables(
 		},
 	);
 
-	return `${updated}\n${tables.map((table) => drizzleTable(table, dialect, foreignKeys)).join("\n")}`;
+	const sqlImport = 'import { sql } from "drizzle-orm";\n';
+	const prefixesIndexes =
+		dialect === "mysql" &&
+		tables.some((table) =>
+			table.columns.some(
+				(column) => column.type === "text" && column.unbounded === true,
+			),
+		);
+
+	const header =
+		prefixesIndexes && !updated.includes(sqlImport)
+			? `${sqlImport}${updated}`
+			: updated;
+
+	return `${header}\n${tables.map((table) => drizzleTable(table, dialect, foreignKeys)).join("\n")}`;
 }
 
 export function drizzleUserRelations(tables: ReadonlyArray<AuthTable>): string {

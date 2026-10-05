@@ -9,7 +9,6 @@ import {
 	surfaceLines,
 	surfaceScripts,
 } from "@ryuugg/core";
-import { authUsesPassword } from "../../auth/methods";
 import {
 	type AuthField,
 	authPluginFields,
@@ -90,14 +89,9 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 		const provider = resolveDatabaseProvider(config);
 
 		const usesAuth = config.authentication === "better-auth";
-		const usesCredentials = authUsesPassword(config);
 		const userFields = authPluginFields(config, "user");
 		const sessionFields = authPluginFields(config, "session");
 		const tables = authPluginTables(config);
-		// Each schema template nests its columns differently, so the marker
-		// carries the indentation and the leading newline keys them apart.
-		const passwordField = (indent: string) =>
-			usesCredentials ? `\n${indent}password: text(),\n` : "\n";
 		const vars = {
 			SLUG: slug,
 			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
@@ -109,8 +103,6 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			ENV_SERVER: envServerLines(provider.envVars),
 			KIT_CREDENTIALS: drizzleKitCredentials(provider.drizzle),
 			KIT_DIALECT: provider.drizzle.kitDialect,
-			"\n    // __PASSWORD_FIELD__\n": passwordField("    "),
-			"\n  // __PASSWORD_FIELD__\n": passwordField("  "),
 			"  // __USER_PLUGIN_FIELDS_PACKED__\n": drizzleAuthFields(
 				userFields,
 				provider.dialect,

@@ -279,8 +279,14 @@ describe("passkey generation", () => {
 				);
 
 				expect(table).toContain('"passkeys"');
-				expect(table).toContain(
-					'index("passkeys_credential_id_idx").on(table.credentialID)',
+				expect(table).toMatch(
+					config.database === "mysql"
+						? /index\("passkeys_credential_id_idx"\)\.on\(sql`\$\{table\.credentialID\}\(191\)`\)/
+						: /index\("passkeys_credential_id_idx"\)\.on\(table\.credentialID\)/,
+				);
+
+				expect(schema.includes('import { sql } from "drizzle-orm";')).toBe(
+					config.database !== "postgresql",
 				);
 
 				expect(table.includes('index("passkeys_user_id_idx")')).toBe(
@@ -315,9 +321,7 @@ describe("passkey generation", () => {
 				expect(table).toContain(`backedUp: ${boolean}.notNull(),`);
 				expect(table).toContain(`counter: ${integer}.notNull(),`);
 				expect(table).toContain(
-					config.database === "mysql"
-						? 'credentialID: varchar("credential_id", { length: 255 }).notNull(),'
-						: 'credentialID: text("credential_id").notNull(),',
+					'credentialID: text("credential_id").notNull(),',
 				);
 
 				for (const name of [
