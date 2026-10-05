@@ -8,7 +8,7 @@ import {
 	resolveApiHost,
 } from "../src";
 import { standaloneApiOrigin } from "../src/origins";
-import { plannedProject } from "./planner-harness";
+import { plannedProject, serverEnvGroups } from "./planner-harness";
 
 const markerPattern = /__[A-Z_]+__/;
 
@@ -221,5 +221,31 @@ describe("Express backend", () => {
 				builtins.frameworks,
 			),
 		).toBeUndefined();
+	});
+
+	it("groups NODE_ENV alone and PORT with every origin setting", async () => {
+		const config = {
+			backend: "express",
+			catalogs: "scoped",
+			name: "Acme",
+			packageManager: "pnpm",
+			slug: "acme",
+			web: "tanstack-router",
+		} as const;
+
+		const plain = await plannedProject(config);
+		expect(serverEnvGroups(writeContent(plain, "apps/server/env.ts"))).toEqual([
+			["NODE_ENV"],
+			["PORT", "WEB_URL"],
+		]);
+
+		const withClient = await plannedProject({
+			...config,
+			webApps: [{ name: "admin", framework: "nextjs", client: true }],
+		});
+
+		expect(
+			serverEnvGroups(writeContent(withClient, "apps/server/env.ts")),
+		).toEqual([["NODE_ENV"], ["PORT", "WEB_URL", "WEB_URLS"]]);
 	});
 });
