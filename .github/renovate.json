@@ -63,10 +63,12 @@
 			"matchUpdateTypes": ["major"]
 		},
 		{
-			"groupName": "scaffolded actions",
-			"matchFileNames": [
-				"packages/generators/templates/tooling/github/*.yml"
-			]
+			"groupName": "github actions",
+			"matchManagers": ["github-actions"]
+		},
+		{
+			"groupName": "github actions",
+			"matchFileNames": ["packages/generators/templates/tooling/github/*.yml"]
 		},
 		{
 			"matchFileNames": [
