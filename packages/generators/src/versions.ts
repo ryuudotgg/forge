@@ -24,7 +24,7 @@ export interface CatalogEntry {
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 
 export const versions = {
-	biome: { name: "@biomejs/biome", version: "^2.4.16", group: "Tooling" },
+	biome: { name: "@biomejs/biome", version: "^2.5.14", group: "Tooling" },
 	commitlintCli: {
 		name: "@commitlint/cli",
 		version: "^21.0.2",
