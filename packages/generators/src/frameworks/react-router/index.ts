@@ -250,7 +250,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		{ ...deps.typesNode, type: "devDependencies" },
 		{ ...deps.typesReact, type: "devDependencies" },
 		{ ...deps.typesReactDom, type: "devDependencies" },
-		{ ...deps.dotenvCli, type: "devDependencies" },
+		{ ...deps.dotenvCli, type: "dependencies" },
 		{ ...deps.typescript, type: "devDependencies" },
 	];
 

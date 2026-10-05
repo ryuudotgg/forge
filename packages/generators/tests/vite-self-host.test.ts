@@ -248,6 +248,25 @@ describe("secondary Vite production start", () => {
 		}
 	});
 
+	it("keeps dotenv for every Vite start after a production install", async () => {
+		const plan = await plannedProject({
+			...selfHost,
+			web: "react-router",
+			orm: "drizzle",
+			database: "sqlite",
+			webApps: [
+				{ name: "admin", framework: "tanstack-start", client: true },
+				{ name: "docs", framework: "react-router" },
+			],
+		});
+
+		for (const app of ["web", "admin", "docs"]) {
+			const manifest = packageJsonAt(plan, `apps/${app}/package.json`);
+			expect(manifest.scripts?.start, app).toMatch(/^dotenv /);
+			expect(manifest.dependencies, app).toHaveProperty("dotenv-cli");
+		}
+	});
+
 	it("keeps .env.production out of the generated gitignore", async () => {
 		const plan = await plannedProject({
 			...selfHost,
@@ -255,6 +274,7 @@ describe("secondary Vite production start", () => {
 			orm: "drizzle",
 			database: "sqlite",
 		});
+
 		const ignored = writeContent(plan, ".gitignore").split("\n");
 
 		expect(ignored).not.toContain(".env.production");
