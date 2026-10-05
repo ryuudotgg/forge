@@ -520,5 +520,13 @@ describe("ui addon", () => {
 
 		const utils = leafFile(contributions, "ui", "src/lib/utils.ts");
 		expect(utils.content).toBe('export { cn } from "cn";\n');
+
+		const uiNames = dependencyEntries(contributions, "ui").map(
+			({ name }) => name,
+		);
+
+		expect(uiNames).toContain("cn");
+		expect(uiNames).not.toContain("clsx");
+		expect(uiNames).not.toContain("tailwind-merge");
 	});
 });
