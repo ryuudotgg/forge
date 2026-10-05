@@ -4,6 +4,7 @@ export type {
 	ApplyPlan,
 	ApplyRefusal,
 	ApplyResolution,
+	ApplyResult,
 	ConflictResolution,
 	FormatApplyErrorOptions,
 	PlannedWrite,

@@ -6,6 +6,11 @@ import { buildFlagOverrides } from "../cli";
 import { orchestrate } from "../orchestrator";
 import { presets } from "../presets";
 import { steps } from "../steps";
+import {
+	firstPartyAddonIds,
+	webAppNameIssue,
+	webAppsSchema,
+} from "../steps/platforms/web-apps";
 import type { PartialConfig } from "../steps/types";
 import { listOr } from "../utils/list";
 
@@ -59,6 +64,23 @@ export async function runCreate(
 	}
 
 	initialConfig = { ...initialConfig, ...buildFlagOverrides(values) };
+
+	const configuredApps = Schema.decodeUnknownResult(webAppsSchema)(
+		initialConfig.webApps ?? [],
+	);
+
+	if (Result.isSuccess(configuredApps)) {
+		const addonIds = firstPartyAddonIds();
+		const issue = configuredApps.success
+			.map((app) => webAppNameIssue(app.name, addonIds))
+			.find((entry) => entry !== undefined);
+
+		if (issue !== undefined) {
+			log.error(issue);
+			process.exit(1);
+		}
+	}
+
 	if (values["no-install"] === true) initialConfig.installDeps = false;
 	if (values["no-git"] === true) initialConfig.gitInit = false;
 

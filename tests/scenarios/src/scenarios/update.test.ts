@@ -193,6 +193,33 @@ describe("update", () => {
 		});
 	}, 120_000);
 
+	it("keeps a deleted Hono server absent", async () => {
+		await withScenarioWorkspace("update-deleted-server", async (workspace) => {
+			await createProject(workspace, {
+				backend: "hono",
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			const serverRoot = join(workspace.projectRoot, "apps/server");
+			expect(await pathExists(join(serverRoot, "forge.json"))).toBe(true);
+
+			await rm(serverRoot, { force: true, recursive: true });
+			await updateProject(workspace.projectRoot);
+			await updateProject(workspace.projectRoot);
+
+			expect(await pathExists(serverRoot)).toBe(false);
+
+			const manifest = await readJson<{
+				modules: Record<string, { readonly root?: string }>;
+			}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+			expect(
+				Object.values(manifest.modules).map((module) => module.root),
+			).not.toContain("apps/server");
+		});
+	}, 120_000);
+
 	it("surfaces planner failures as a friendly error with exit 1", async () => {
 		await withScenarioWorkspace("update-planner-error", async (workspace) => {
 			await createProject(workspace, {

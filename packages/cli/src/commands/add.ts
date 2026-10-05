@@ -31,7 +31,7 @@ import {
 } from "@ryuugg/generators";
 import { Effect, FileSystem, Result, Schema } from "effect";
 import { runCliEffectValue } from "../runtime";
-import { webAppsSchema } from "../steps/platforms/web-apps";
+import { webAppNameIssue, webAppsSchema } from "../steps/platforms/web-apps";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
@@ -489,6 +489,16 @@ async function addWebApp(
 		process.exit(1);
 	}
 
+	const loadedRegistry = await loadProjectRegistry(
+		project.projectRoot,
+		project.manifest.registries ?? [],
+	);
+
+	const addonIds = [
+		...loadedRegistry.registry.addons.map((addon) => addon.id),
+		...loadedRegistry.descriptors.map((descriptor) => descriptor.id),
+	];
+
 	const existingApps = config.webApps ?? [];
 	const decodeApps = (name: string) =>
 		Schema.decodeResult(webAppsSchema)([
@@ -508,6 +518,7 @@ async function addWebApp(
 			validate(value) {
 				const decoded = decodeApps(value ?? "");
 				if (Result.isFailure(decoded)) return decoded.failure.message;
+				return webAppNameIssue(value ?? "", addonIds);
 			},
 		});
 
@@ -518,6 +529,12 @@ async function addWebApp(
 	const decoded = decodeApps(name);
 	if (Result.isFailure(decoded)) {
 		log.error(decoded.failure.message);
+		process.exit(1);
+	}
+
+	const nameIssue = webAppNameIssue(name, addonIds);
+	if (nameIssue !== undefined) {
+		log.error(nameIssue);
 		process.exit(1);
 	}
 
@@ -540,7 +557,12 @@ async function addWebApp(
 		project.manifest.installs,
 		undefined,
 		project.manifest.registries,
-		...resolutionArguments(values),
+		resolutionArguments(values)[0] ?? {},
+		{
+			additions: [{ framework, root }],
+			modules: project.modules,
+			records: project.manifest.modules,
+		},
 	);
 }
 

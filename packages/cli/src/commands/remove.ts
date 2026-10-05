@@ -313,6 +313,43 @@ function secondaryAppModules(
 	);
 }
 
+function resolveAppRemoval(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	app: NonNullable<ForgeConfig["webApps"]>[number],
+) {
+	const modules = secondaryAppModules(project, app);
+	const [module] = modules;
+	if (module !== undefined)
+		return modules.length === 1
+			? { ids: [module.id], modules, roots: [module.root] }
+			: undefined;
+
+	const discoveredIds = new Set(project.modules.map((entry) => entry.id));
+	const missingRecords = Object.entries(project.manifest.modules).flatMap(
+		([id, record]) =>
+			record.root === undefined || discoveredIds.has(id)
+				? []
+				: [{ id, root: record.root }],
+	);
+
+	const canonicalRecords = missingRecords.filter(
+		(record) => record.root === `apps/${app.name}`,
+	);
+
+	const records =
+		canonicalRecords.length > 0
+			? canonicalRecords
+			: missingRecords.filter((record) => basename(record.root) === app.name);
+
+	if (records.length > 1) return undefined;
+
+	return {
+		ids: records.map((record) => record.id),
+		modules: [],
+		roots: records.map((record) => record.root),
+	};
+}
+
 async function removeWebApp(
 	project: Awaited<ReturnType<typeof loadManagedProject>>,
 	requestedId: string,
@@ -382,8 +419,8 @@ async function removeWebApp(
 
 	if (selectedApp === undefined) return false;
 
-	const removedModules = secondaryAppModules(project, selectedApp);
-	if (removedModules.length !== 1) {
+	const removal = resolveAppRemoval(project, selectedApp);
+	if (removal === undefined) {
 		log.error(
 			`We can't identify one managed web app named "${selectedApp.name}".`,
 		);
@@ -391,10 +428,8 @@ async function removeWebApp(
 		process.exit(1);
 	}
 
-	const removedRoots = new Set(removedModules.map((module) => module.root));
-
 	if (
-		removedModules.some(
+		removal.modules.some(
 			(module) => module.type === "app" && module.role === "primary",
 		)
 	) {
@@ -402,9 +437,36 @@ async function removeWebApp(
 		process.exit(1);
 	}
 
-	const removedIds = removedModules.map((module) => module.id);
+	const nextConfig = {
+		...project.config,
+		webApps: apps.filter((app) => app.name !== selectedApp.name),
+	};
+
+	const options = resolutionArguments(values)[0] ?? {};
+	if (removal.ids.length === 0) {
+		await applyInstalledPlan(
+			project.projectRoot,
+			nextConfig,
+			project.manifest.installs,
+			undefined,
+			project.manifest.registries,
+			options,
+			{
+				modules: project.modules,
+				records: project.manifest.modules,
+				removedRoots: [],
+			},
+		);
+
+		return true;
+	}
+
+	const removedModuleRoots = new Set(
+		removal.modules.map((module) => module.root),
+	);
+
 	const removalRootRelocations = Object.fromEntries(
-		removedModules.flatMap((module) => {
+		removal.modules.flatMap((module) => {
 			const previousRoot = project.manifest.modules[module.id]?.root;
 			return previousRoot === undefined || previousRoot === module.root
 				? []
@@ -413,31 +475,79 @@ async function removeWebApp(
 	);
 
 	const nextInstalls = project.manifest.installs
-		.map((install) => removeTargets(install, removedIds))
+		.map((install) => removeTargets(install, removal.ids))
 		.filter((install): install is InstallRecord => install !== undefined);
 
-	await applyInstalledPlan(
+	const { retained } = await applyInstalledPlan(
 		project.projectRoot,
-		{
-			...project.config,
-			webApps: apps.filter((app) => app.name !== selectedApp.name),
-		},
+		nextConfig,
 		nextInstalls,
 		undefined,
 		project.manifest.registries,
-		resolutionArguments(values)[0] ?? {},
+		options,
 		{
 			modules: project.modules.filter(
-				(module) => !removedRoots.has(module.root),
+				(module) => !removedModuleRoots.has(module.root),
 			),
 			records: project.manifest.modules,
 			...(Object.keys(removalRootRelocations).length === 0
 				? {}
 				: { removalRootRelocations }),
+			removedRoots: removal.roots,
 		},
 	);
 
+	if (retained.length > 0)
+		log.info(
+			`We kept your edited ${retained.length === 1 ? "file" : "files"} at ${listAnd.format(retained)}.`,
+		);
+
 	return true;
+}
+
+function installedAddonNamed(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	loaded: LoadedDefinitionRegistry,
+	name: string,
+) {
+	const config: ForgeConfig = project.config;
+	if (
+		!(config.webApps ?? []).some((app) => app.name === name) ||
+		!project.manifest.installs.some((install) => install.definitionId === name)
+	)
+		return undefined;
+
+	return {
+		name:
+			loaded.registry.addons.find((addon) => addon.id === name)?.name ?? name,
+	};
+}
+
+async function chooseWebAppOverAddon(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	loaded: LoadedDefinitionRegistry,
+	name: string,
+	values: Record<string, string | boolean | string[] | undefined>,
+) {
+	const addon = installedAddonNamed(project, loaded, name);
+	if (
+		addon === undefined ||
+		values.yes === true ||
+		!isInteractiveLifecycleSession()
+	)
+		return true;
+
+	const choice = await select({
+		message: `Do you want to remove the ${name} web app or the ${addon.name} addon?`,
+		initialValue: "app",
+		options: [
+			{ label: `The ${name} web app`, value: "app" },
+			{ label: `The ${addon.name} addon`, value: "addon" },
+		],
+	});
+
+	if (isCancel(choice)) cancel();
+	return choice === "app";
 }
 
 export async function runRemove(
@@ -453,13 +563,25 @@ export async function runRemove(
 
 	if (
 		addonId !== undefined &&
-		!loadedRegistry.registry.addons.some((addon) => addon.id === addonId) &&
-		!loadedRegistry.descriptors.some(
-			(descriptor) => descriptor.id === addonId,
-		) &&
+		(await chooseWebAppOverAddon(project, loadedRegistry, addonId, values)) &&
 		(await removeWebApp(project, addonId, values))
-	)
+	) {
+		const installedAddon = installedAddonNamed(
+			project,
+			loadedRegistry,
+			addonId,
+		);
+
+		if (
+			installedAddon !== undefined &&
+			(values.yes === true || !isInteractiveLifecycleSession())
+		)
+			log.info(
+				`The ${installedAddon.name} addon is still installed. Run forge remove without a name to choose it.`,
+			);
+
 		return;
+	}
 
 	const resolvedAddonId =
 		addonId ??

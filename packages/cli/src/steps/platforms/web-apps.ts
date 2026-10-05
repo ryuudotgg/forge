@@ -1,5 +1,8 @@
 import { confirm, isCancel, text } from "@clack/prompts";
-import { reservedWebAppNames } from "@ryuugg/generators";
+import {
+	loadDefinitionRegistry,
+	reservedWebAppNames,
+} from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
@@ -35,6 +38,15 @@ export const webAppsSchema = Schema.Array(
 	}),
 );
 
+export function webAppNameIssue(name: string, addonIds: ReadonlyArray<string>) {
+	if (addonIds.includes(name))
+		return `${name} is an addon id. Pick another name for this web app.`;
+}
+
+export function firstPartyAddonIds() {
+	return loadDefinitionRegistry().registry.addons.map((addon) => addon.id);
+}
+
 export default defineStep<typeof webAppsSchema.Type>({
 	id: "webApps",
 	group: "platforms",
@@ -46,6 +58,8 @@ export default defineStep<typeof webAppsSchema.Type>({
 		if (!interactive) return SKIP;
 
 		const apps: Array<(typeof webAppsSchema.Type)[number]> = [];
+		const addonIds = firstPartyAddonIds();
+
 		for (;;) {
 			const more = await confirm({
 				message: "Do you want to add another web app?",
@@ -64,6 +78,7 @@ export default defineStep<typeof webAppsSchema.Type>({
 					]);
 
 					if (Result.isFailure(result)) return result.failure.message;
+					return webAppNameIssue(value ?? "", addonIds);
 				},
 			});
 

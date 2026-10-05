@@ -36,7 +36,10 @@ function updateFixture(options: UpdateFixtureOptions) {
 		},
 	};
 
-	const applyInstalledPlan = vi.fn<ApplyInstalledPlanFunction>(async () => {});
+	const applyInstalledPlan = vi.fn<ApplyInstalledPlanFunction>(async () => ({
+		retained: [],
+	}));
+
 	const intro = vi.fn();
 	const loadManagedProject = vi.fn<LoadManagedProjectFunction>(
 		async () => project,

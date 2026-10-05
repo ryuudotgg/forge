@@ -288,6 +288,38 @@ describe("create command", () => {
 		});
 	});
 
+	it("refuses a config file web app named after an addon id", async () => {
+		await withTempDir("create-test", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				await writeFile(
+					configPath,
+					JSON.stringify({
+						web: "nextjs",
+						webApps: [{ name: "biome", framework: "nextjs" }],
+					}),
+					"utf-8",
+				);
+
+				await expect(runCreate({ config: configPath })).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"biome is an addon id. Pick another name for this web app.",
+				);
+
+				expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
 	it("rejects config files that parse but are not a record", async () => {
 		await withTempDir("create-test", async (directory) => {
 			const configPath = join(directory, "invalid.json");

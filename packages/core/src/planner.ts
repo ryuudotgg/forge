@@ -248,6 +248,112 @@ function retargetMovedApps(
 	return { ...entry, contributions };
 }
 
+function contributionTargets(
+	contribution: Contribution,
+): ReadonlyArray<TargetRef> {
+	switch (contribution._tag) {
+		case "EnsureModuleContribution":
+			return [];
+
+		case "LeafTextFileContribution":
+			return typeof contribution.path === "string"
+				? [contribution.target]
+				: [contribution.target, contribution.path.target];
+
+		case "ManagedDependenciesSurfaceContribution":
+		case "ManagedJsonSurfaceContribution":
+		case "ManagedLinesSurfaceContribution":
+		case "ManagedScriptsSurfaceContribution":
+		case "ManagedTextSurfaceContribution":
+		case "ModuleCapabilitiesContribution":
+			return [contribution.target];
+	}
+}
+
+interface UnresolvedTemplateInstances {
+	readonly keys: ReadonlySet<string>;
+	readonly templateIds: ReadonlySet<string>;
+}
+
+function unresolvedTemplateInstances<ConfigValue>(
+	evaluated: EvaluationPhaseContract["evaluated"],
+	registry: DefinitionRegistry<ConfigValue>,
+	moduleIdsByKey: ReadonlyMap<string, ModuleId>,
+	discovered: ReadonlyArray<DiscoveredModule>,
+	additions: ReadonlyArray<TemplateAddition>,
+): UnresolvedTemplateInstances {
+	const templateIds = new Set(
+		registry.templates.map((template) => template.id),
+	);
+
+	const discoveredIds = new Set<ModuleId>(
+		discovered.map((module) => module.id),
+	);
+
+	const additionRoots = new Set(additions.map((addition) => addition.root));
+	const ensures = evaluated.flatMap((entry) =>
+		entry.contributions.flatMap((contribution) =>
+			contribution._tag === "EnsureModuleContribution"
+				? [{ contribution, definitionId: entry.definitionId }]
+				: [],
+		),
+	);
+
+	const resolvedKeys = new Set(
+		ensures
+			.filter(({ contribution, definitionId }) => {
+				const moduleId = moduleIdsByKey.get(contribution.moduleKey);
+				return (
+					!templateIds.has(definitionId) ||
+					additionRoots.has(contribution.root) ||
+					(moduleId !== undefined && discoveredIds.has(moduleId))
+				);
+			})
+			.map(({ contribution }) => contribution.moduleKey),
+	);
+
+	const unresolved = ensures.filter(
+		({ contribution }) => !resolvedKeys.has(contribution.moduleKey),
+	);
+
+	const resolvedTemplateIds = new Set(
+		ensures
+			.filter(({ contribution }) => resolvedKeys.has(contribution.moduleKey))
+			.map(({ definitionId }) => definitionId),
+	);
+
+	return {
+		keys: new Set(unresolved.map(({ contribution }) => contribution.moduleKey)),
+		templateIds: new Set(
+			unresolved
+				.map(({ definitionId }) => definitionId)
+				.filter((definitionId) => !resolvedTemplateIds.has(definitionId)),
+		),
+	};
+}
+
+function withoutUnresolvedInstances(
+	evaluated: EvaluationPhaseContract["evaluated"],
+	unresolved: UnresolvedTemplateInstances,
+): EvaluationPhaseContract["evaluated"] {
+	const targetsUnresolved = (target: TargetRef) =>
+		(target._tag === "EnsuredModuleTarget" &&
+			unresolved.keys.has(target.moduleKey)) ||
+		(target._tag === "TemplateModuleTarget" &&
+			[...unresolved.templateIds].some((templateId) =>
+				templateMatchesId(target.template.id, templateId),
+			));
+
+	return evaluated.map((entry) => ({
+		...entry,
+		contributions: entry.contributions.filter((contribution) =>
+			contribution._tag === "EnsureModuleContribution"
+				? !unresolved.keys.has(contribution.moduleKey)
+				: !contributionTargets(contribution).some(targetsUnresolved),
+		),
+	}));
+}
+
 function expandAdoptedTemplateEvaluations<ConfigValue>(
 	evaluated: EvaluationPhaseContract["evaluated"],
 	registry: DefinitionRegistry<ConfigValue>,
@@ -347,6 +453,7 @@ export interface PlannedFile {
 	readonly definitionIds: ReadonlyArray<string>;
 	readonly kind: "file" | "surface";
 	readonly path: string;
+	readonly preserveExisting?: boolean;
 	readonly target: RenderBucket;
 	readonly targetKey: string;
 }
@@ -357,6 +464,7 @@ export interface ProjectPlan {
 	readonly manifest: Manifest;
 	readonly removalRootRelocations?: Readonly<Record<string, string>>;
 	readonly removals: ReadonlyArray<string>;
+	readonly removedRoots?: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedFile>;
 }
 
@@ -431,10 +539,17 @@ function collectDependencyNames<ConfigValue>(
 	);
 }
 
+interface TemplateAddition {
+	readonly framework: string;
+	readonly root: string;
+}
+
 export interface InstalledPlanningSeed {
+	readonly additions?: ReadonlyArray<TemplateAddition>;
 	readonly modules: ReadonlyArray<DiscoveredModule>;
 	readonly records: Manifest["modules"];
 	readonly removalRootRelocations?: ProjectPlan["removalRootRelocations"];
+	readonly removedRoots?: ProjectPlan["removedRoots"];
 }
 
 function templateMatchesId(templateId: string, moduleTemplateId: string) {
@@ -1186,6 +1301,7 @@ const makePlanner = Effect.gen(function* () {
 				readonly bucket: RenderBucket;
 				readonly content: string;
 				readonly definitionIds: ReadonlyArray<string>;
+				readonly preserveExisting: boolean;
 			}
 		>();
 
@@ -1273,6 +1389,7 @@ const makePlanner = Effect.gen(function* () {
 						bucket: target,
 						content: contribution.content,
 						definitionIds: [entry.definitionId],
+						preserveExisting: contribution.preserveExisting === true,
 					});
 				}
 			}
@@ -1283,6 +1400,7 @@ const makePlanner = Effect.gen(function* () {
 				content: file.content,
 				generators: file.definitionIds,
 				path: filePath(path),
+				...(file.preserveExisting ? { preserveExisting: true } : {}),
 			}),
 		);
 	});
@@ -1439,6 +1557,7 @@ const makePlanner = Effect.gen(function* () {
 					definitionIds: file.generators,
 					kind: "file",
 					path: String(file.path),
+					...(file.preserveExisting === true ? { preserveExisting: true } : {}),
 					target: file.bucket,
 					targetKey:
 						file.bucket.kind === "project"
@@ -1490,10 +1609,8 @@ const makePlanner = Effect.gen(function* () {
 						templates: registry.templates.filter(
 							(template) =>
 								(template.when(intent.config) &&
-									!discovered.some(
-										(module) =>
-											module.type === "app" &&
-											module.framework === template.framework,
+									(seed?.additions ?? []).some(
+										(addition) => addition.framework === template.framework,
 									)) ||
 								discovered.some(
 									(module) =>
@@ -1570,19 +1687,43 @@ const makePlanner = Effect.gen(function* () {
 				commandProbe,
 			);
 
+		const adoptedEvaluations = expandAdoptedTemplateEvaluations(
+			baseEvaluated,
+			registry,
+			discovered,
+		);
+
+		const previousRecords = seed?.records ?? existingManifest.modules;
+		const resolvedModules = yield* collectModules(
+			discovered,
+			previousRecords,
+			adoptedEvaluations,
+		);
+
+		const unresolved: UnresolvedTemplateInstances =
+			intent._tag === "Create"
+				? { keys: new Set(), templateIds: new Set() }
+				: unresolvedTemplateInstances(
+						adoptedEvaluations,
+						registry,
+						resolvedModules.moduleIdsByKey,
+						discovered,
+						seed?.additions ?? [],
+					);
+
 		const evaluated: EvaluationPhaseContract["evaluated"] =
-			expandAdoptedTemplateEvaluations(baseEvaluated, registry, discovered);
+			unresolved.keys.size === 0
+				? adoptedEvaluations
+				: withoutUnresolvedInstances(adoptedEvaluations, unresolved);
 
 		const {
 			ensuredIds,
 			moduleIdsByKey,
 			modules: mergedModules,
 			onDiskSlots,
-		} = yield* collectModules(
-			discovered,
-			seed?.records ?? existingManifest.modules,
-			evaluated,
-		);
+		} = unresolved.keys.size === 0
+			? resolvedModules
+			: yield* collectModules(discovered, previousRecords, evaluated);
 
 		const discoveredIds = new Set(discovered.map((module) => module.id));
 		const baseInstalls =
@@ -1824,6 +1965,9 @@ const makePlanner = Effect.gen(function* () {
 				? {}
 				: { removalRootRelocations: seed.removalRootRelocations }),
 			removals,
+			...(seed?.removedRoots === undefined
+				? {}
+				: { removedRoots: seed.removedRoots }),
 			writes,
 		} satisfies ProjectPlan;
 	});
