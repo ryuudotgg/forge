@@ -46,7 +46,7 @@ const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 			linter: {
 				enabled: true,
 				rules: {
-					recommended: true,
+					preset: "recommended",
 					correctness: { noUnusedImports: "warn" },
 					style: {
 						useImportType: "warn",

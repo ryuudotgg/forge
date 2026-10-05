@@ -1035,8 +1035,11 @@ describe("biome addon", () => {
 		expect(config.value).toMatchObject({
 			vcs: { enabled: true, clientKind: "git" },
 			formatter: { indentStyle: "space", indentWidth: 2 },
+			linter: { rules: { preset: "recommended" } },
 			css: { parser: { tailwindDirectives: true } },
 		});
+
+		expect(config.value).not.toHaveProperty("linter.rules.recommended");
 
 		expect(projectDependencySurface(contributions).dependencies).toEqual([
 			expect.objectContaining({
