@@ -36,13 +36,13 @@ const REPOSITORY_SETUP_ACTION = join(
 const REPOSITORY_CI_WORKFLOW = join(ROOT_DIR, ".github", "workflows", "ci.yml");
 
 const readActionPins = (path: string) => {
-	const actions = new Map<string, string>();
+	const actions: Array<[string, string]> = [];
 	for (const match of readFileSync(path, "utf-8").matchAll(
 		/^\s*-? *uses:\s+(?<depName>[\w.-]+\/[\w.-]+)@(?<pin>\S+(?:\s+#\s+\S+)?)\s*$/gm,
 	)) {
 		const depName = match.groups?.depName;
 		const pin = match.groups?.pin;
-		if (depName && pin) actions.set(depName, pin);
+		if (depName && pin) actions.push([depName, pin]);
 	}
 
 	return actions;
@@ -169,11 +169,16 @@ describe("GitHub Actions templates", () => {
 
 			for (const actionName of actionNames) {
 				const repositoryPin = repositoryActions.get(actionName);
+				const pins = actions
+					.filter(([name]) => name === actionName)
+					.map(([, pin]) => pin);
 
 				expect(repositoryPin, `${actionName} is used by Forge`).toBeDefined();
-				expect(actions.get(actionName), `${templateName} ${actionName}`).toBe(
-					repositoryPin,
-				);
+				expect(pins, `${templateName} uses ${actionName}`).not.toHaveLength(0);
+
+				for (const pin of pins) {
+					expect(pin, `${templateName} ${actionName}`).toBe(repositoryPin);
+				}
 			}
 		}
 	});

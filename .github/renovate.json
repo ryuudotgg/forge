@@ -30,7 +30,8 @@
 			],
 			"matchStrings": [
 				"uses:\\s+(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentDigest>[0-9a-f]{40})\\s+#\\s+(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
-			]
+			],
+			"autoReplaceStringTemplate": "uses: {{depName}}@{{newDigest}} # {{newValue}}"
 		}
 	],
 	"packageRules": [
