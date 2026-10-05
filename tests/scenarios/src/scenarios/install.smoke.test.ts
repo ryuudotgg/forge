@@ -320,6 +320,7 @@ async function withGeneratedServer(
 			await exited;
 		} else {
 			stopProcessGroup(pid, "SIGTERM");
+
 			for (
 				let attempt = 0;
 				attempt < 50 && processGroupAlive(pid);
@@ -1490,6 +1491,7 @@ async function expectProductionEmailSecrets(projectRoot: string) {
 				log.indexOf(unconfigured, beforeMagicLink),
 				`the magic link send never reached sendEmail: ${magicLinkBody}\n${log}`,
 			).not.toBe(-1);
+
 			expect(log).not.toContain("prod-smoke@example.com");
 			expect(log).not.toContain("magic-link/verify?token=");
 			expect(log).not.toMatch(/code is \d{6}/);
@@ -1532,6 +1534,7 @@ async function expectCorsPolicy(
 
 			expect(varyIncludesOrigin(preflight), label).toBe(true);
 			expect(varyIncludesOrigin(simple), label).toBe(true);
+
 			if (isAllowed)
 				expect(preflight.headers.get("access-control-max-age"), label).toBe(
 					"600",
@@ -1574,6 +1577,7 @@ async function webOriginsOf(projectRoot: string, env: NodeJS.ProcessEnv) {
 	const parsed: unknown = JSON.parse(
 		probe.stdout.trim().split("\n").at(-1) ?? "",
 	);
+
 	return parsed;
 }
 
@@ -1665,7 +1669,6 @@ async function expectProductionOrigins(
 
 function stringField(value: unknown, key: string): string | undefined {
 	if (typeof value !== "object" || value === null) return undefined;
-
 	const field: unknown = Reflect.get(value, key);
 	return typeof field === "string" ? field : undefined;
 }
@@ -1721,6 +1724,7 @@ async function expectInvitationFlow(projectRoot: string, projectName: string) {
 			const enable = await request("/two-factor/enable", owner, {
 				password: smokePassword,
 			});
+
 			const totpURI = stringField(enable.json, "totpURI");
 			if (totpURI === undefined)
 				throw new Error(`Missing TOTP URI: ${enable.text}`);

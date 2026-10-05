@@ -98,7 +98,6 @@ async function upsertComment(
 ): Promise<void> {
 	const api = process.env.GITHUB_API_URL || "https://api.github.com";
 	const base = `${api}/repos/${repository}`;
-
 	for (let page = 1; ; page++) {
 		const comments = await github(
 			token,
@@ -108,7 +107,7 @@ async function upsertComment(
 
 		if (!Array.isArray(comments)) break;
 
-		for (const comment of comments) {
+		for (const comment of comments)
 			if (
 				isRecord(comment) &&
 				typeof comment.id === "number" &&
@@ -121,7 +120,6 @@ async function upsertComment(
 
 				return;
 			}
-		}
 
 		if (comments.length < 100) break;
 	}
@@ -163,7 +161,6 @@ const brittleRefs: string[] = [];
 
 let tempered = 0;
 let brittle = 0;
-
 for (const [name, pkg] of Object.entries(PACKAGES)) {
 	const coverageDir = join(root, pkg.directory, "coverage");
 	const summaryPath = join(coverageDir, "coverage-summary.json");
@@ -201,20 +198,19 @@ for (const [name, pkg] of Object.entries(PACKAGES)) {
 		}
 
 		brittle += brittleLines.length;
+
 		for (const range of toRanges(brittleLines))
 			brittleRefs.push(formatRange(relPath, range));
 	}
 }
 
 const body = render(reports, tempered, brittle, brittleRefs);
-
 if (process.env.GITHUB_STEP_SUMMARY)
 	appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${body}\n`);
 
 const token = process.env.GITHUB_TOKEN;
 const repository = process.env.GITHUB_REPOSITORY;
 const pullRequest = pullRequestNumber();
-
 if (!token || !repository || pullRequest === undefined) console.log(body);
 else
 	try {

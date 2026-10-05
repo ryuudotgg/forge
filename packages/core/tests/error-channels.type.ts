@@ -48,23 +48,28 @@ type RegistryEffectErrors =
 type _PlannerErrorsAreComplete = Assert<
 	Equal<PlannerEffectErrors, PlannerErrors>
 >;
+
 type _ApplyErrorsAreComplete = Assert<Equal<ApplyEffectErrors, ApplyErrors>>;
 type _StateErrorsAreComplete = Assert<Equal<StateEffectErrors, StateErrors>>;
 type _SubprocessErrorsAreComplete = Assert<
 	Equal<SubprocessEffectErrors, SubprocessError>
 >;
+
 type _RegistryErrorsAreComplete = Assert<
 	Equal<RegistryEffectErrors, RegistryErrors>
 >;
+
 type _EvaluateDefinitionsErrorsMatchEvaluationPhase = Assert<
 	Equal<
 		Effect.Error<ReturnType<typeof evaluateDefinitions>>,
 		EvaluationPhaseError
 	>
 >;
+
 type _EvaluateAdaptersErrorsMatchEvaluationPhase = Assert<
 	Equal<Effect.Error<ReturnType<typeof evaluateAdapters>>, EvaluationPhaseError>
 >;
+
 type _RecipeRegistryReasonsAreComplete = Assert<
 	Equal<
 		Extract<RegistryError["reason"], `recipe-${string}`>,

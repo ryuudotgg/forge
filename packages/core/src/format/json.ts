@@ -22,10 +22,8 @@ function serializeValue(
 	compact: boolean,
 ): string {
 	if (value === null) return "null";
-
 	if (typeof value === "boolean") return String(value);
 	if (typeof value === "number") return serializeNumber(value);
-
 	if (typeof value === "string") return JSON.stringify(value);
 
 	if (Array.isArray(value))
@@ -108,12 +106,9 @@ function compactObject(obj: Record<string, unknown>): string {
 
 function compactValue(value: unknown): string {
 	if (value === null) return "null";
-
 	if (typeof value === "boolean") return String(value);
 	if (typeof value === "number") return serializeNumber(value);
-
 	if (typeof value === "string") return JSON.stringify(value);
-
 	if (Array.isArray(value)) return compactArray(value);
 	if (typeof value === "object")
 		return compactObject(value as Record<string, unknown>);

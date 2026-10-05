@@ -58,6 +58,7 @@ function conflictMessage(conflict: ApplyConflict, path: string): string {
 
 function withProgress(message: string, step: number, total: number): string {
 	if (total < 2) return message;
+
 	const progress = color.dim(`(${step} of ${total})`);
 	const newline = message.indexOf("\n");
 	return newline === -1
@@ -74,6 +75,7 @@ async function selectResolution(
 		{ label: "Keep my value", value: "user" },
 		{ label: "Take Forge's", value: "forge" },
 	];
+
 	if (step < total)
 		options.push(
 			{ label: "Keep my value for all remaining", value: "user-all" },
@@ -112,6 +114,7 @@ export function canResolveInteractively(
 		return false;
 
 	const conflicts = preflight.conflicts ?? [];
+
 	if ((preflight.refusals ?? []).some((refusal) => !refusal.resolvable))
 		return false;
 
@@ -164,9 +167,9 @@ export async function promptForConflictResolutions(
 			});
 
 	const decisions: ConflictDecision[] = [];
+
 	let bulk: ConflictResolution | undefined;
 	let header: string | undefined;
-
 	for (const [index, cell] of cells.entries()) {
 		let resolution = bulk;
 		if (resolution === undefined) {
@@ -174,16 +177,19 @@ export async function promptForConflictResolutions(
 				log.info(color.bold(cell.header));
 				header = cell.header;
 			}
+
 			const choice = await selectResolution(
 				cell.message,
 				index + 1,
 				cells.length,
 			);
+
 			if (choice === "user-all" || choice === "forge-all") {
 				bulk = choice === "user-all" ? "user" : "forge";
 				resolution = bulk;
 			} else resolution = choice;
 		}
+
 		decisions.push({
 			label: cell.label,
 			request:

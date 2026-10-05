@@ -37,7 +37,6 @@ const handlers = {
 };
 
 const PortSchema = Schema.Struct({ port: Schema.String });
-
 async function decodeFailure(raw: string) {
 	const exit = await Effect.runPromiseExit(
 		decodeJsonString(raw, PortSchema, handlers),
@@ -57,7 +56,6 @@ function validationIssues(
 ) {
 	const result = Schema.decodeUnknownResult(schema)(input);
 	if (Result.isSuccess(result)) throw new Error("Expected Validation Failure");
-
 	return formatSchemaIssues(result.failure, input);
 }
 
@@ -103,15 +101,19 @@ describe("json", () => {
 		expect(validationIssues(Schema.String, 1)).toEqual([
 			"Expected string, actual 1",
 		]);
+
 		expect(validationIssues(Schema.Boolean, "yes")).toEqual([
 			'Expected boolean, actual "yes"',
 		]);
+
 		expect(validationIssues(Schema.Literal("forge"), "other")).toEqual([
 			'Expected "forge", actual "other"',
 		]);
+
 		expect(validationIssues(Schema.Literal(1), 2)).toEqual([
 			"Expected 1, actual 2",
 		]);
+
 		expect(
 			validationIssues(Schema.Struct({ value: Schema.Unknown }), []),
 		).toEqual(["Expected { readonly value: unknown }, actual []"]);
@@ -121,6 +123,7 @@ describe("json", () => {
 		expect(validationIssues(Schema.Array(Schema.String), {})).toEqual([
 			"Expected ReadonlyArray<string>, actual {}",
 		]);
+
 		expect(
 			validationIssues(
 				Schema.Array(Schema.Union([Schema.String, Schema.Finite])),
@@ -133,6 +136,7 @@ describe("json", () => {
 		const DateSchema = Schema.declare(
 			(input): input is Date => input instanceof Date,
 		);
+
 		expect(validationIssues(DateSchema, "not-a-date")).toEqual([
 			'Expected <Declaration>, actual "not-a-date"',
 		]);
@@ -140,6 +144,7 @@ describe("json", () => {
 		const FilteredSchema = Schema.String.check(
 			Schema.makeFilter(() => new SchemaIssue.UnexpectedKey(Schema.String.ast)),
 		);
+
 		expect(validationIssues(FilteredSchema, "excess")).toEqual([
 			'Expected no excess property, actual "excess"',
 		]);

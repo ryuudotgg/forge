@@ -24,6 +24,7 @@ async function failure(input: SubprocessInput) {
 	const exit = await Effect.runPromiseExit(
 		Subprocess.run(input).pipe(Effect.provide(subprocessLayer)),
 	);
+
 	if (!Exit.isFailure(exit)) throw new Error("Expected Subprocess Failure");
 
 	const error = Cause.findErrorOption(exit.cause);
@@ -187,6 +188,7 @@ describe("Subprocess", () => {
 		expect(error.detail).toBe(
 			"FileSystem.access: The argument 'path' must be a string, Uint8Array, or URL without null bytes. Received '\\x00'",
 		);
+
 		expect(error.message).toBe(
 			`Subprocess Spawn Error: ${process.execPath}. FileSystem.access: The argument 'path' must be a string, Uint8Array, or URL without null bytes. Received '\\x00'`,
 		);

@@ -69,6 +69,7 @@ describe("catalog", () => {
 			"uwebsockets",
 			"react-native",
 		]);
+
 		expect(templates.map((entry) => entry.id)).toEqual([
 			"expo/base",
 			"express/base",
@@ -79,6 +80,7 @@ describe("catalog", () => {
 			"tanstack-router/base",
 			"tanstack-start/base",
 		]);
+
 		expect(addons.every((entry) => entry.kind === "addon")).toBe(true);
 		expect(frameworks.length + templates.length + addons.length).toBe(
 			(await listCatalogEntries()).length,
@@ -91,6 +93,7 @@ describe("catalog", () => {
 			id: "hono",
 			kind: "framework",
 		});
+
 		expect(await getCatalogEntry("nextjs")).toMatchObject({ category: "web" });
 		expect(await getCatalogEntry("nextjs/base")).toMatchObject({
 			id: "nextjs/base",
@@ -132,6 +135,7 @@ describe("catalog", () => {
 			frameworks: serverFrameworks,
 			requiredSlots: ["trpc"],
 		});
+
 		expect(await getCatalogEntry("better-auth")).toMatchObject({
 			frameworks: [
 				"nextjs",
@@ -143,6 +147,7 @@ describe("catalog", () => {
 			],
 			requiredSlots: ["auth"],
 		});
+
 		expect(await getCatalogEntry("ui")).toMatchObject({
 			frameworks: [
 				"nextjs",
@@ -158,6 +163,7 @@ describe("catalog", () => {
 			const adapterFrameworks = builtins.adapters
 				.filter((adapter) => adapter.addon === addon.id)
 				.map((adapter) => adapter.framework);
+
 			const previousFrameworks =
 				adapterFrameworks.length > 0
 					? [...new Set(adapterFrameworks)]
@@ -268,7 +274,6 @@ describe("catalog", () => {
 
 	it("keeps catalog ids unique across kinds", async () => {
 		const ids = (await listCatalogEntries()).map((entry) => entry.id);
-
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 
@@ -285,6 +290,7 @@ describe("catalog", () => {
 		expect(() => loadAddonDefinition("does-not-exist")).toThrow(
 			RegistryLoadError,
 		);
+
 		expect(() => loadAddonDefinition("does-not-exist")).toThrow(
 			"Addon Not Found: does-not-exist",
 		);
@@ -303,6 +309,7 @@ describe("catalog", () => {
 		expect(catalogIds("framework")).toEqual(
 			registry.frameworks.map((definition) => definition.id).sort(),
 		);
+
 		expect(catalogIds("template")).toEqual(
 			registry.templates.map((definition) => definition.id).sort(),
 		);
@@ -321,7 +328,6 @@ describe("catalog", () => {
 			(value) => value.kind === "addon" && value.available,
 		)) {
 			const loaded = await loadAddonDefinition(entry.id);
-
 			expect(loaded.addon.id).toBe(entry.id);
 			expect(loaded.catalogEntry).toBe(entry);
 		}

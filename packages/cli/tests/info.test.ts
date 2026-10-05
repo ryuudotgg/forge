@@ -47,6 +47,7 @@ describe("forge info builders", () => {
 		expect(addon).toContain(
 			"Frameworks:      nextjs, react-router, tanstack-start, hono, fastify, and express",
 		);
+
 		expect(addon).toContain("Required slots:  trpc");
 		expect(framework).toContain("Slots:");
 		expect(template).toContain("Framework:  nextjs");
@@ -250,6 +251,7 @@ describe("forge info builders", () => {
 			requiredSlots: [],
 			source: "@acme/forge-sentry",
 		});
+
 		expect(firstParty.entry).not.toHaveProperty("publisherVersion");
 		expect(firstParty.entry.source).toBe("first-party");
 		expect(JSON.parse(JSON.stringify(thirdParty))).toEqual(thirdParty);
@@ -259,6 +261,7 @@ describe("forge info builders", () => {
 			await runInfo("@acme/sentry", { json: true }, () =>
 				Promise.resolve(loaded),
 			);
+
 			expect(consoleLog).toHaveBeenCalledWith(
 				JSON.stringify(thirdParty, null, "\t"),
 			);
@@ -307,6 +310,7 @@ describe("forge info builders", () => {
 					"\t",
 				),
 			);
+
 			expect(promptMocks.logMessage).toHaveBeenCalledTimes(1);
 		} finally {
 			consoleLog.mockRestore();
@@ -326,6 +330,7 @@ describe("forge info builders", () => {
 				1,
 				'We couldn\'t find "missing" in the catalog.',
 			);
+
 			expect(promptMocks.logError).toHaveBeenNthCalledWith(
 				2,
 				'We couldn\'t find "root" in the catalog.',

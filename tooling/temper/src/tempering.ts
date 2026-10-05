@@ -50,7 +50,6 @@ export function lineCoverage(fileCoverage: unknown): Map<number, number> {
 	for (const [id, statement] of Object.entries(fileCoverage.statementMap)) {
 		const count = fileCoverage.s[id];
 		if (typeof count !== "number") continue;
-
 		if (!isRecord(statement) || !isRecord(statement.start)) continue;
 
 		const line = statement.start.line;
@@ -138,7 +137,6 @@ function plural(count: number, word: string): string {
 
 export function tier(report: PackageReport): string {
 	const { branches, lines, temper } = report;
-
 	if (lines >= temper.lines && branches >= temper.branches) return "🔥";
 	if (lines >= temper.lines * 0.9 && branches >= temper.branches * 0.9)
 		return "🟠";

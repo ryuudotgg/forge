@@ -13,6 +13,7 @@ describe("mobileAppFrameworkInPlay", () => {
 		expect(
 			mobileAppFrameworkInPlay({ mobile: "react-native" }),
 		).toBeUndefined();
+
 		expect(mobileAppFrameworkInPlay({ mobile: undefined })).toBeUndefined();
 	});
 });

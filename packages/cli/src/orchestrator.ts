@@ -21,7 +21,6 @@ export async function orchestrate(
 			if (!step.shouldRun(config)) continue;
 
 			const key = step.configKey === null ? null : (step.configKey ?? step.id);
-
 			if (key !== null && key in config && config[key] !== undefined) {
 				await step.validate?.(config[key], config);
 				continue;
@@ -44,7 +43,6 @@ export async function orchestrate(
 	const decodeConfig = () => {
 		const schema = assembleSchema(steps);
 		const result = Schema.decodeResult(schema)(config);
-
 		if (Result.isFailure(result)) {
 			const issues = formatSchemaError(result.failure, config);
 			const message = issues

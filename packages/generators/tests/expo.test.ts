@@ -72,6 +72,7 @@ describe("Expo mobile framework", () => {
 			sourceRoot: "src",
 			tsconfigPreset: { name: "expo" },
 		});
+
 		expect(expoFramework.tsconfigPreset.content).not.toHaveProperty("extends");
 	});
 
@@ -80,6 +81,7 @@ describe("Expo mobile framework", () => {
 		const packageJson: unknown = JSON.parse(
 			writeContent(plan, "apps/mobile/package.json"),
 		);
+
 		const tsconfig: unknown = JSON.parse(
 			writeContent(plan, "apps/mobile/tsconfig.json"),
 		);
@@ -89,6 +91,7 @@ describe("Expo mobile framework", () => {
 				.replaceAll("__SCHEME__", "acme")
 				.replaceAll("__SLUG__", "acme"),
 		);
+
 		expect(packageJson).toMatchObject({
 			main: "expo-router/entry",
 			name: "@acme/mobile",
@@ -100,17 +103,20 @@ describe("Expo mobile framework", () => {
 				"with-env": "dotenv -e ../../.env --",
 			},
 		});
+
 		expect(packageJson).not.toHaveProperty("scripts.build");
 		expect(tsconfig).toHaveProperty("extends", [
 			"expo/tsconfig.base",
 			"@acme/tsconfig/expo.json",
 		]);
+
 		expect(writeContent(plan, "apps/mobile/env.ts")).toBe(
 			readTemplate("frameworks/expo/env.ts").replaceAll(
 				"__SERVER_ORIGIN__",
 				"http://localhost:3001",
 			),
 		);
+
 		expect(writeContent(plan, "apps/mobile/src/app/_layout.tsx")).toBe(
 			readTemplate("frameworks/expo/src/app/_layout.tsx").replace(
 				"// __GLOBAL_CSS_IMPORT__\n",
@@ -135,7 +141,6 @@ describe("Expo mobile framework", () => {
 				"nativewind-env.d.ts",
 			]) {
 				const path = `apps/mobile/${file}`;
-
 				if (selected)
 					expect(writeContent(plan, path)).toBe(
 						readTemplate(`style/nativewind/${file}`),
@@ -149,6 +154,7 @@ describe("Expo mobile framework", () => {
 					? 'import { Stack } from "expo-router";\n\nimport "../../global.css";\n\nexport default function RootLayout() {\n  return <Stack />;\n}\n'
 					: 'import { Stack } from "expo-router";\n\nexport default function RootLayout() {\n  return <Stack />;\n}\n',
 			);
+
 			expect(writeContent(plan, "apps/mobile/src/app/index.tsx")).toBe(
 				readTemplate(
 					selected
@@ -161,6 +167,7 @@ describe("Expo mobile framework", () => {
 				const packageJson: unknown = JSON.parse(
 					writeContent(plan, "apps/mobile/package.json"),
 				);
+
 				const tsconfig: unknown = JSON.parse(
 					writeContent(plan, "apps/mobile/tsconfig.json"),
 				);
@@ -177,6 +184,7 @@ describe("Expo mobile framework", () => {
 						"@tailwindcss/postcss": expect.any(String),
 					},
 				});
+
 				expect(tsconfig).toHaveProperty("include", [
 					"**/*.ts",
 					"**/*.tsx",
@@ -184,6 +192,7 @@ describe("Expo mobile framework", () => {
 					"expo-env.d.ts",
 					"nativewind-env.d.ts",
 				]);
+
 				expect(writeContent(plan, "pnpm-workspace.yaml")).toContain(
 					"overrides:\n  lightningcss: 1.30.1\n",
 				);
@@ -215,6 +224,7 @@ describe("Expo mobile framework", () => {
 		);
 
 		expect(mobile).toMatchObject({ root: "apps/mobile" });
+
 		const marker = writeContent(plan, "apps/mobile/forge.json");
 		expect(marker).toContain('"framework": "expo"');
 		expect(marker).toContain('"id": "expo/base"');
@@ -232,6 +242,7 @@ describe("Expo mobile framework", () => {
 				"tooling/tsconfig/expo.json",
 			]),
 		);
+
 		expect(writeContent(plan, "tooling/tsconfig/expo.json")).not.toContain(
 			'"extends"',
 		);
@@ -251,16 +262,19 @@ describe("Expo mobile framework", () => {
 					...(usesTrpc ? trpcOverrides : {}),
 				}),
 			);
+
 			const paths = plan.writes.map((write) => write.path);
 
 			expect(paths.includes("apps/mobile/src/lib/trpc.ts")).toBe(usesTrpc);
 			expect(paths.includes("apps/mobile/src/lib/auth-client.ts")).toBe(
 				usesAuth,
 			);
+
 			if (usesTrpc)
 				expect(writeContent(plan, "apps/mobile/src/lib/trpc.ts")).toBe(
 					expectedTrpcClient(usesAuth),
 				);
+
 			if (usesAuth)
 				expect(writeContent(plan, "apps/mobile/src/lib/auth-client.ts")).toBe(
 					readTemplate("auth/better-auth/expo/auth-client.ts")
@@ -296,6 +310,7 @@ describe("Expo mobile framework", () => {
 				web: "nextjs",
 			}),
 		);
+
 		const paths = plan.writes.map((write) => write.path);
 		const packageJson: unknown = JSON.parse(
 			writeContent(plan, "apps/mobile/package.json"),
@@ -313,6 +328,7 @@ describe("Expo mobile framework", () => {
 			"apps/mobile/src/lib/auth-client.ts",
 			"apps/mobile/src/lib/trpc.ts",
 		]);
+
 		expect(packageJson).toMatchObject({
 			dependencies: {
 				"@acme/trpc": "workspace:*",
@@ -338,9 +354,11 @@ describe("Expo mobile framework", () => {
 		expect(writeContent(plan, "apps/mobile/app.json")).toContain(
 			'"scheme": "app-123-acme"',
 		);
+
 		expect(writeContent(plan, "packages/auth/src/index.ts")).toContain(
 			'"app-123-acme://"',
 		);
+
 		expect(writeContent(plan, "apps/mobile/src/lib/auth-client.ts")).toContain(
 			'scheme: "app-123-acme"',
 		);
@@ -360,9 +378,11 @@ describe("Expo mobile framework", () => {
 				(module) => module.root === "apps/mobile",
 			),
 		).toBe(true);
+
 		expect(
 			plan.writes.some((write) => write.path.startsWith("apps/web/")),
 		).toBe(false);
+
 		expect(
 			plan.writes.some((write) => write.path.startsWith("apps/server/")),
 		).toBe(false);
@@ -383,6 +403,7 @@ describe("Expo mobile framework", () => {
 			generatorId: "trpc",
 			reason: "framework-not-supported-yet",
 		});
+
 		expect(error).toHaveProperty("message", "tRPC does not support Expo yet.");
 	});
 
@@ -392,6 +413,7 @@ describe("Expo mobile framework", () => {
 		expect(writeContent(plan, ".env")).toContain(
 			'# Expo\nEXPO_PUBLIC_SERVER_URL="http://localhost:3001"',
 		);
+
 		expect(
 			writeContent(plan, ".gitignore")
 				.split("\n")
@@ -409,6 +431,7 @@ describe("Expo mobile framework", () => {
 				web: "react-router",
 			}),
 		);
+
 		const expoAndNext = await plannedProject(
 			mobileConfig({
 				authentication: "better-auth",
@@ -418,6 +441,7 @@ describe("Expo mobile framework", () => {
 				web: "nextjs",
 			}),
 		);
+
 		const standalone = await plannedProject(
 			mobileConfig({
 				authentication: "better-auth",
@@ -430,6 +454,7 @@ describe("Expo mobile framework", () => {
 		expect(expoOnlyIndex).toContain(
 			'import { expo } from "@better-auth/expo";',
 		);
+
 		expect(expoOnlyIndex).toContain("plugins: [expo()]");
 		expect(expoOnlyIndex).toContain('trustedOrigins: ["acme://"]');
 		expect(expoOnlyIndex).toContain("emailAndPassword: { enabled: true }");
@@ -441,6 +466,7 @@ describe("Expo mobile framework", () => {
 			expoAndNext,
 			"packages/auth/src/index.ts",
 		);
+
 		expect(expoAndNextIndex).toContain("plugins: [expo(), nextCookies()]");
 		expect(
 			writeContent(expoAndNext, "packages/db/src/schema/auth.ts"),
@@ -450,9 +476,11 @@ describe("Expo mobile framework", () => {
 			standalone,
 			"packages/auth/src/index.ts",
 		);
+
 		expect(standaloneIndex).toContain(
 			'trustedOrigins: [env.WEB_URL, "acme://"]',
 		);
+
 		expect(writeContent(standalone, "packages/auth/package.json")).toContain(
 			'"@better-auth/expo"',
 		);

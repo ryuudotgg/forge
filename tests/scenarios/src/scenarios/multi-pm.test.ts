@@ -90,6 +90,7 @@ function expectResolvedDependencies(
 
 		for (const value of values) {
 			expect(value, path).not.toMatch(/^catalog:/);
+
 			if (!options.allowWorkspaceProtocol)
 				expect(value, path).not.toMatch(/^workspace:/);
 		}
@@ -148,9 +149,11 @@ describe("multi-pm", () => {
 			const root = await readJson<PackageJson>(
 				join(workspace.projectRoot, "package.json"),
 			);
+
 			const web = await readJson<PackageJson>(
 				join(workspace.projectRoot, "apps/web/package.json"),
 			);
+
 			const workspaceYaml = await readFile(
 				join(workspace.projectRoot, "pnpm-workspace.yaml"),
 				"utf-8",
@@ -158,11 +161,13 @@ describe("multi-pm", () => {
 
 			expect(root.workspaces).toBeUndefined();
 			expect(root.trustedDependencies).toBeUndefined();
+
 			expect(workspaceYaml).toContain("catalog:");
 			expect(workspaceYaml).toMatch(/^ {2}next: \d/m);
 			expect(workspaceYaml).toContain("allowBuilds:");
 			expect(workspaceYaml).toContain("  esbuild: true");
 			expect(workspaceYaml).toContain("  lefthook: true");
+
 			expect(web.dependencies?.next).toBe("catalog:");
 			expect(web.dependencies?.["@acme/ui"]).toBe("workspace:*");
 			expect(web.scripts?.build).toBe("pnpm with-env next build");
@@ -182,16 +187,20 @@ describe("multi-pm", () => {
 			const root = await readJson<PackageJson>(
 				join(workspace.projectRoot, "package.json"),
 			);
+
 			const web = await readJson<PackageJson>(
 				join(workspace.projectRoot, "apps/web/package.json"),
 			);
+
 			const db = await readJson<PackageJson>(
 				join(workspace.projectRoot, "packages/db/package.json"),
 			);
+
 			const lefthook = await readFile(
 				join(workspace.projectRoot, "lefthook.yml"),
 				"utf-8",
 			);
+
 			const setupAction = await readFile(
 				join(workspace.projectRoot, "tooling/github/setup/action.yml"),
 				"utf-8",
@@ -212,13 +221,16 @@ describe("multi-pm", () => {
 			expect(web.scripts?.["db:generate"]).toBe(
 				"npm run generate --prefix ../../packages/db",
 			);
+
 			expect(db.scripts?.generate).toBe(
 				"npm run with-env -- drizzle-kit generate",
 			);
+
 			expect(lefthook).toContain("npx commitlint --edit {1}");
 			expect(lefthook).toContain(
 				"npm run check:fix -- --staged --no-errors-on-unmatched",
 			);
+
 			expect(setupAction).toContain("npm ci");
 			expect(setupAction).toContain('cache: "npm"');
 		});
@@ -234,17 +246,21 @@ describe("multi-pm", () => {
 			const root = await readJson<PackageJson>(
 				join(workspace.projectRoot, "package.json"),
 			);
+
 			const web = await readJson<PackageJson>(
 				join(workspace.projectRoot, "apps/web/package.json"),
 			);
+
 			const yarnrc = await readFile(
 				join(workspace.projectRoot, ".yarnrc.yml"),
 				"utf-8",
 			);
+
 			const gitignore = await readFile(
 				join(workspace.projectRoot, ".gitignore"),
 				"utf-8",
 			);
+
 			const setupAction = await readFile(
 				join(workspace.projectRoot, "tooling/github/setup/action.yml"),
 				"utf-8",
@@ -254,20 +270,24 @@ describe("multi-pm", () => {
 			expect(
 				await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
 			).toBe(false);
+
 			expect(yarnrc).toBe("nodeLinker: node-modules\n");
 			expect(gitignore).toContain(".pnp.*");
 			expect(gitignore).toContain(".yarn/*");
 			expect(gitignore).toContain("!.yarn/patches");
+
 			expect(web.dependencies?.["@acme/ui"]).toBe("workspace:*");
 			expect(web.dependencies?.next).toMatch(/^\d/);
 			expectResolvedDependencies(
 				await readWorkspaceManifests(workspace.projectRoot),
 				{ allowWorkspaceProtocol: true },
 			);
+
 			expect(web.scripts?.build).toBe("yarn with-env next build");
 			expect(web.scripts?.["db:generate"]).toBe(
 				"yarn workspace @acme/db generate",
 			);
+
 			expect(setupAction).toContain("yarn install --immutable");
 			expect(setupAction).toContain("corepack enable");
 		});
@@ -283,12 +303,15 @@ describe("multi-pm", () => {
 			const root = await readJson<PackageJson>(
 				join(workspace.projectRoot, "package.json"),
 			);
+
 			const web = await readJson<PackageJson>(
 				join(workspace.projectRoot, "apps/web/package.json"),
 			);
+
 			const ui = await readJson<PackageJson>(
 				join(workspace.projectRoot, "packages/ui/package.json"),
 			);
+
 			const setupAction = await readFile(
 				join(workspace.projectRoot, "tooling/github/setup/action.yml"),
 				"utf-8",
@@ -301,22 +324,27 @@ describe("multi-pm", () => {
 				"msw",
 				"sharp",
 			]);
+
 			expect(
 				await pathExists(join(workspace.projectRoot, "pnpm-workspace.yaml")),
 			).toBe(false);
+
 			expect(await pathExists(join(workspace.projectRoot, ".yarnrc.yml"))).toBe(
 				false,
 			);
+
 			expect(web.dependencies?.["@acme/ui"]).toBe("workspace:*");
 			expect(web.dependencies?.next).toMatch(/^\d/);
 			expectResolvedDependencies(
 				await readWorkspaceManifests(workspace.projectRoot),
 				{ allowWorkspaceProtocol: true },
 			);
+
 			expect(web.scripts?.build).toBe("bun run with-env next build");
 			expect(web.scripts?.["db:generate"]).toBe(
 				"bun --filter @acme/db generate",
 			);
+
 			expect(ui.scripts?.["ui-add"]).toBe("bunx shadcn@latest add");
 			expect(setupAction).toContain("oven-sh/setup-bun");
 			expect(setupAction).toContain("bun install --frozen-lockfile");
@@ -346,9 +374,11 @@ describe("multi-pm", () => {
 					const root = await readJson<PackageJson>(
 						join(workspace.projectRoot, "package.json"),
 					);
+
 					const web = await readJson<PackageJson>(
 						join(workspace.projectRoot, "apps/web/package.json"),
 					);
+
 					const db = await readJson<PackageJson>(
 						join(workspace.projectRoot, "packages/db/package.json"),
 					);

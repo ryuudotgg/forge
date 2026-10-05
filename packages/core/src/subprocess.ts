@@ -166,8 +166,8 @@ const makeSubprocess = Effect.gen(function* () {
 		const resultOption = yield* execution.pipe(
 			Effect.mapError((cause) => {
 				if (cause instanceof SubprocessError) return cause;
-				const detail = platformErrorDetail(cause);
 
+				const detail = platformErrorDetail(cause);
 				return new SubprocessError({
 					...errorFields(input),
 					reason: "spawn-error",

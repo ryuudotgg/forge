@@ -94,6 +94,7 @@ async function createWithBaseline(
 		result.exitCode,
 		`Baseline create failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
 	).toBe(0);
+
 	expect(await pathExists(projectRoot)).toBe(true);
 }
 
@@ -128,6 +129,7 @@ async function assertStateIntegrity(projectRoot: string) {
 
 	for (const install of manifest.installs) {
 		definitionIds.add(install.definitionId);
+
 		for (const target of install.targets)
 			if (target.kind === "module")
 				expect(moduleIds.has(target.moduleId)).toBe(true);
@@ -167,8 +169,8 @@ describe.runIf(process.env.FORGE_N1 === "1")("N-1 evolution", () => {
 			await mkdir(scratchRoot, { recursive: true });
 			const workspaceRoot = await mkdtemp(join(scratchRoot, `n1-${web}-`));
 			const projectRoot = join(workspaceRoot, "project");
-			let succeeded = false;
 
+			let succeeded = false;
 			try {
 				await createWithBaseline(workspaceRoot, projectRoot, web);
 
@@ -201,12 +203,11 @@ describe.runIf(process.env.FORGE_N1 === "1")("N-1 evolution", () => {
 					expect(await readFile(manifestPath, "utf-8")).toBe(
 						manifestBeforeUpdate,
 					);
+
 					expect(await readFile(lockfilePath, "utf-8")).toBe(
 						lockfileBeforeUpdate,
 					);
-				} else {
-					expect(update.stderr).toBe("");
-				}
+				} else expect(update.stderr).toBe("");
 
 				expect(await readFile(userPath, "utf-8")).toBe(userContent);
 				const [manifestBeforeAdd, lockfileBeforeAdd] = await Promise.all([
@@ -224,6 +225,7 @@ describe.runIf(process.env.FORGE_N1 === "1")("N-1 evolution", () => {
 					expect(output).toMatch(
 						/We couldn't apply this change\.[\s\S]*Forge cannot safely update these files:[\s\S]*was modified after Forge last managed it\.[\s\S]*--keep-user[\s\S]*--accept-forge/i,
 					);
+
 					expect(await readFile(manifestPath, "utf-8")).toBe(manifestBeforeAdd);
 					expect(await readFile(lockfilePath, "utf-8")).toBe(lockfileBeforeAdd);
 					expect(await readFile(userPath, "utf-8")).toBe(userContent);
@@ -239,6 +241,7 @@ describe.runIf(process.env.FORGE_N1 === "1")("N-1 evolution", () => {
 					addWithKeepUser.exitCode,
 					`forge add commitlint --keep-user failed with code ${addWithKeepUser.exitCode}\n${addWithKeepUser.stdout}\n${addWithKeepUser.stderr}`,
 				).toBe(0);
+
 				expect(await readFile(userPath, "utf-8")).toBe(userContent);
 
 				const state = await assertStateIntegrity(projectRoot);
@@ -247,11 +250,13 @@ describe.runIf(process.env.FORGE_N1 === "1")("N-1 evolution", () => {
 						(install) => install.definitionId === "commitlint",
 					),
 				).toBe(true);
+
 				expect(
 					Object.values(state.lockfile.artifacts).some((artifact) =>
 						artifact.definitionIds.includes("commitlint"),
 					),
 				).toBe(true);
+
 				expect(Object.keys(state.manifest.modules).sort()).toEqual(
 					Object.keys(initialState.manifest.modules).sort(),
 				);

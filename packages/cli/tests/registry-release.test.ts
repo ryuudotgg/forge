@@ -59,6 +59,7 @@ describe("registry release lookup", () => {
 					outputMode: "capture",
 				}),
 			]);
+
 			expect(release).toEqual(
 				Option.some({ publisher: "acme-bot", version: "2.3.4" }),
 			);

@@ -67,12 +67,15 @@ describe("pmRunIn", () => {
 		expect(pmRunIn("pnpm", pkg, "generate")).toBe(
 			"pnpm --filter @acme/db run generate",
 		);
+
 		expect(pmRunIn("npm", pkg, "generate")).toBe(
 			"npm run generate --prefix ../../packages/db",
 		);
+
 		expect(pmRunIn("yarn", pkg, "generate")).toBe(
 			"yarn workspace @acme/db generate",
 		);
+
 		expect(pmRunIn("bun", pkg, "generate")).toBe(
 			"bun --filter @acme/db generate",
 		);
@@ -84,10 +87,12 @@ describe("pmDlx", () => {
 		expect(pmDlx("pnpm", "shadcn@latest init")).toBe(
 			"pnpm dlx shadcn@latest init",
 		);
+
 		expect(pmDlx("npm", "shadcn@latest init")).toBe("npx shadcn@latest init");
 		expect(pmDlx("yarn", "shadcn@latest init")).toBe(
 			"yarn dlx shadcn@latest init",
 		);
+
 		expect(pmDlx("bun", "shadcn@latest init")).toBe("bunx shadcn@latest init");
 	});
 });
@@ -97,10 +102,12 @@ describe("pmExec", () => {
 		expect(pmExec("pnpm", "lefthook install")).toBe(
 			"pnpm exec lefthook install",
 		);
+
 		expect(pmExec("npm", "lefthook install")).toBe("npx lefthook install");
 		expect(pmExec("yarn", "lefthook install")).toBe(
 			"yarn exec lefthook install",
 		);
+
 		expect(pmExec("bun", "lefthook install")).toBe("bunx lefthook install");
 	});
 });

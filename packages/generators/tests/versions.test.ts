@@ -51,6 +51,7 @@ describe("catalogEntries", () => {
 				entries.every((entry) => entry.group === group),
 				group,
 			).toBe(true);
+
 			expect(names, group).toEqual(
 				[...names].sort((a, b) => a.localeCompare(b)),
 			);
@@ -59,7 +60,6 @@ describe("catalogEntries", () => {
 
 	it("keeps pinned package names unique", () => {
 		const names = Object.values(versions).map((entry) => entry.name);
-
 		expect(new Set(names).size).toBe(names.length);
 	});
 

@@ -153,6 +153,7 @@ describe("origin lists", () => {
 				.map((write) => write.path);
 
 			expect(parsers).toEqual([owner]);
+
 			for (const path of consumers)
 				expect(writeContent(plan, path), path).toContain("webOrigins");
 
@@ -166,6 +167,7 @@ describe("origin lists", () => {
 			const declaration = writeContent(plan, owner);
 			expect(declaration).toContain("webOrigins = originList(");
 			expect(declaration).not.toContain(".transform(");
+
 			if (owner.endsWith("env.ts"))
 				expect(declaration).toContain("WEB_URLS: z.string().optional(),");
 		},
@@ -185,6 +187,7 @@ describe("origin lists", () => {
 				if (write === undefined) continue;
 
 				expect(write.content, path).not.toContain("localhost:3002");
+
 				if (path !== "apps/server/env.ts")
 					expect(write.content, path).not.toContain("localhost");
 			}

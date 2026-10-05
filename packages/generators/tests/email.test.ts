@@ -42,6 +42,7 @@ function contributionsOf(config: ForgeConfig): ReadonlyArray<Contribution> {
 		config,
 		frameworks: [],
 	});
+
 	if (Effect.isEffect(result) || result instanceof Promise)
 		throw new Error("Unexpected Contribution Shape: email");
 
@@ -54,6 +55,7 @@ function leafFile(contributions: ReadonlyArray<Contribution>, path: string) {
 			contribution._tag === "LeafTextFileContribution" &&
 			contribution.path === path,
 	);
+
 	if (file?._tag !== "LeafTextFileContribution")
 		throw new Error(`Missing Leaf File: ${path}`);
 
@@ -118,6 +120,7 @@ describe("email addon", () => {
 			expect(env).toContain(
 				`${provider.key}: z.string().trim().min(1).optional()`,
 			);
+
 			expect(env).toContain(`${provider.key}: process.env.${provider.key}`);
 			expect(env).not.toMatch(/__[A-Z_]+__/);
 
@@ -126,10 +129,13 @@ describe("email addon", () => {
 			expect(source).toContain(
 				`Email isn't configured. Set EMAIL_FROM and ${provider.key}.`,
 			);
+
 			expect(source).toContain('env.NODE_ENV !== "development"');
 			expect(source).toContain("html?: string");
+
 			if (provider.id === "resend")
 				expect(source).toContain("throw new Error(error.message)");
+
 			if (provider.id === "smtp")
 				expect(source).toContain("await transport.sendMail");
 		},
@@ -141,6 +147,7 @@ describe("email addon", () => {
 			packageManager: "pnpm",
 			slug: "acme",
 		});
+
 		const packageJson = plan.writes.find(
 			(write) => write.path === "packages/email/package.json",
 		);
@@ -148,6 +155,7 @@ describe("email addon", () => {
 		expect(packageJson?.content).toContain(
 			`"${provider.dependency}": "catalog:"`,
 		);
+
 		expect(
 			plan.writes.find((write) => write.path === ".env.example")?.content,
 		).toContain(`${provider.key}=""`);
@@ -197,6 +205,7 @@ const message: EmailMessage = {
 	text: "Welcome",
 	html: "<p>Welcome</p>",
 };
+
 const directories: string[] = [];
 const envPaths: string[] = [];
 
@@ -217,10 +226,12 @@ async function renderedEmail(
 	environment: Record<string, string | undefined>,
 ) {
 	vi.resetModules();
+
 	const directory = await mkdtemp(join(tmpdir(), "forge-email-"));
 	directories.push(directory);
 	const envPath = join(directory, "env.ts");
 	envPaths.push(envPath);
+
 	const sourcePath = join(directory, "src/index.ts");
 	await mkdir(join(directory, "src"));
 	await writeFile(envPath, "export const env = {};\n");
@@ -234,11 +245,13 @@ async function renderedEmail(
 			_payload: unknown,
 		): Promise<{ error: { message: string } | null }> => ({ error: null }),
 	);
+
 	const construct = vi.fn((_key: string) => ({
 		emails: { send },
 		sendEmail: send,
 		sendMail: send,
 	}));
+
 	class Client {
 		readonly emails = { send };
 		readonly sendEmail = send;
@@ -253,6 +266,7 @@ async function renderedEmail(
 		ServerClient: Client,
 		createTransport: construct,
 	}));
+
 	vi.doMock(envPath, () => ({ env: environment }));
 	const rendered: { sendEmail: (message: EmailMessage) => Promise<void> } =
 		await import(sourcePath);
@@ -269,6 +283,7 @@ describe.each(providers)("generated $id sendEmail", (provider) => {
 		expect(info).toHaveBeenCalledWith(
 			"Email to reader@example.com: Hello\n\nWelcome",
 		);
+
 		expect(rendered.construct).not.toHaveBeenCalled();
 		expect(rendered.send).not.toHaveBeenCalled();
 	});
@@ -279,11 +294,13 @@ describe.each(providers)("generated $id sendEmail", (provider) => {
 			const info = vi
 				.spyOn(console, "info")
 				.mockImplementation(() => undefined);
+
 			const rendered = await renderedEmail(provider, { NODE_ENV: nodeEnv });
 
 			await expect(rendered.sendEmail(message)).rejects.toThrow(
 				`Email isn't configured. Set EMAIL_FROM and ${provider.key}.`,
 			);
+
 			expect(info).not.toHaveBeenCalled();
 			expect(rendered.construct).not.toHaveBeenCalled();
 		},
@@ -301,6 +318,7 @@ describe.each(providers)("generated $id sendEmail", (provider) => {
 			await expect(rendered.sendEmail(message)).rejects.toThrow(
 				"Email isn't configured.",
 			);
+
 			expect(rendered.construct).not.toHaveBeenCalled();
 		},
 	);
@@ -350,6 +368,7 @@ it("rejects when Resend reports an error", async () => {
 		EMAIL_FROM: "sender@example.com",
 		RESEND_API_KEY: "configured-key",
 	});
+
 	rendered.send.mockResolvedValueOnce({
 		error: { message: "Domain not verified" },
 	});

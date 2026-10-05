@@ -203,7 +203,6 @@ const serverWithAuth = expectedContent([
 	"const createContext = cache(async () => {",
 	"  const heads = new Headers(await headers());",
 	'  heads.set("x-trpc-source", "rsc");',
-	"",
 	"  return createTRPCContext({ auth, headers: heads });",
 	"});",
 	"",
@@ -230,7 +229,6 @@ const serverWithoutAuth = expectedContent([
 	"const createContext = cache(async () => {",
 	"  const heads = new Headers(await headers());",
 	'  heads.set("x-trpc-source", "rsc");',
-	"",
 	"  return createTRPCContext({ headers: heads });",
 	"});",
 	"",
@@ -363,6 +361,7 @@ describe("trpc auth context", () => {
 		expect(trpcFile).toContain(
 			'Awaited<ReturnType<Auth["api"]["getSession"]>>',
 		);
+
 		expect(trpcFile).toContain("opts.auth.api.getSession");
 		expect(trpcFile).not.toContain("session: null");
 
@@ -371,6 +370,7 @@ describe("trpc auth context", () => {
 			"web",
 			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
 		);
+
 		expect(route).toContain('import { auth } from "@acme/auth";');
 		expect(route).toContain("createTRPCContext({ auth, headers })");
 		expect(route).toBe(routeWithAuth);
@@ -396,6 +396,7 @@ describe("trpc auth context", () => {
 			"web",
 			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
 		);
+
 		expect(route).not.toContain("@acme/auth");
 		expect(route).toContain("createTRPCContext({ headers })");
 		expect(route).toBe(routeWithoutAuth);
@@ -422,11 +423,13 @@ describe("trpc tanstack-start variant", () => {
 			...tanstackConfig,
 			authentication: "better-auth",
 		});
+
 		const route = leafFile(
 			contributions,
 			"web",
 			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
 		);
+
 		const server = leafFile(contributions, "web", "src/trpc/server.ts");
 
 		expect(route).toBe(tanstackRouteWithAuth);
@@ -443,6 +446,7 @@ describe("trpc tanstack-start variant", () => {
 			"web",
 			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
 		);
+
 		const server = leafFile(contributions, "web", "src/trpc/server.ts");
 
 		expect(route).toBe(tanstackRouteWithoutAuth);
@@ -458,6 +462,7 @@ describe("trpc tanstack-start variant", () => {
 			"web",
 			"src/trpc/query-client.ts",
 		);
+
 		const provider = leafFile(contributions, "web", "src/trpc/react.tsx");
 
 		expect(queryClient).toContain("export function createQueryClient");
@@ -470,6 +475,7 @@ describe("trpc tanstack-start variant", () => {
 		expect(
 			trpc.dependencies.some((dependency) => dependency.type === "template"),
 		).toBe(false);
+
 		expect(trpc.dependencies).toContainEqual({
 			id: "typescript",
 			type: "addon",
@@ -490,23 +496,28 @@ describe("trpc react-router variant", () => {
 			...reactRouterConfig,
 			authentication: "better-auth",
 		});
+
 		const route = leafFile(
 			contributions,
 			"web",
 			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
 		);
+
 		const server = leafFile(contributions, "web", "app/trpc/server.ts");
 
 		expect(route).toContain('import { auth } from "@acme/auth";');
 		expect(route).toContain(
 			"function handler({ request }: LoaderFunctionArgs | ActionFunctionArgs)",
 		);
+
 		expect(route).toContain(
 			"export const loader = (args: LoaderFunctionArgs) => handler(args);",
 		);
+
 		expect(route).toContain(
 			"export const action = (args: ActionFunctionArgs) => handler(args);",
 		);
+
 		expect(route).not.toContain("createFileRoute");
 		expect(server).toBe(sharedServerWithAuth);
 	});
@@ -518,17 +529,20 @@ describe("trpc react-router variant", () => {
 			"web",
 			slotPath({ _tag: "EnsuredModuleTarget", moduleKey: "web" }, "trpc"),
 		);
+
 		const server = leafFile(contributions, "web", "app/trpc/server.ts");
 		const queryClient = leafFile(
 			contributions,
 			"web",
 			"app/trpc/query-client.ts",
 		);
+
 		const provider = leafFile(contributions, "web", "app/trpc/react.tsx");
 
 		expect(route).toContain("createTRPCContext({ headers })");
 		expect(route).not.toContain("@acme/auth");
 		expect(route).not.toMatch(/__[A-Z_]+__/);
+
 		expect(server).toBe(sharedServerWithoutAuth);
 		expect(queryClient).toContain("export function createQueryClient");
 		expect(provider).toContain("import.meta.env.DEV");

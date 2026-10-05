@@ -19,7 +19,6 @@ const sdkModules = vi.hoisted(() => ({
 
 vi.mock(import("expo/package.json"), async (importOriginal) => {
 	const original = await importOriginal();
-
 	return {
 		...original,
 		default: { ...original.default, version: "58.0.0" },
@@ -28,7 +27,6 @@ vi.mock(import("expo/package.json"), async (importOriginal) => {
 
 vi.mock(import("expo/bundledNativeModules.json"), async (importOriginal) => {
 	const original = await importOriginal();
-
 	return {
 		...original,
 		default: { ...original.default, ...sdkModules },
@@ -79,7 +77,6 @@ describe("SDK catalog updates", () => {
 			});
 
 			const specifier = packageManager === "pnpm" ? "catalog:" : "20.0.0";
-
 			for (const path of [
 				"apps/mobile/package.json",
 				"apps/web/package.json",

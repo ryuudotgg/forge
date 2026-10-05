@@ -71,6 +71,7 @@ const generateStep = defineStep({
 					: error instanceof Error
 						? error.message
 						: String(error);
+
 			throw new Error(`Generation Failed: ${message}`);
 		}
 

@@ -315,7 +315,6 @@ export function authPluginBindings(
 ): ReadonlyArray<AuthPluginImport> {
 	return activeAuthExtensions(config).flatMap((extension) => {
 		const definition: AuthPluginDefinition = authPluginDefinitions[extension];
-
 		if (side === "server")
 			return typeof definition.server === "function"
 				? definition.server(config)

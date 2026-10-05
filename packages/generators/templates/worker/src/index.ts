@@ -10,7 +10,6 @@ const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
 });
 
 const shutdownTimeoutMs = 10_000;
-
 function shutdown() {
   const force = setTimeout(() => process.exit(1), shutdownTimeoutMs);
   force.unref();
@@ -23,7 +22,6 @@ function shutdown() {
 
     const drain = setInterval(() => {
       if (inFlightCount() > 0) return;
-
       clearInterval(drain);
       process.exit(0);
     }, 100);

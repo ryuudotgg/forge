@@ -85,6 +85,7 @@ describe("registry loader", () => {
 		expect(loaded.registry.addons.map((entry) => entry.id)).toEqual(
 			expect.arrayContaining(["root", "pnpm", "tailwind", "trpc"]),
 		);
+
 		expect(
 			loaded.catalog.every((entry) => entry.source === "first-party"),
 		).toBe(true);
@@ -149,6 +150,7 @@ describe("registry loader", () => {
 		expect(withIds).toEqual(
 			expect.arrayContaining(["lefthook", "shared", "vitest"]),
 		);
+
 		expect(withIds).not.toContain("vscode");
 		expect(withIds).not.toContain("github-ci");
 	});
@@ -163,17 +165,21 @@ describe("registry loader", () => {
 		expect(loaded.registry.addons.map((entry) => entry.id)).toContain(
 			"@fixture/neutral",
 		);
+
 		expect(loaded.registry.frameworks.map((entry) => entry.id)).toContain(
 			"@fixture/web",
 		);
+
 		expect(loaded.registry.templates.map((entry) => entry.id)).toContain(
 			"@fixture/base",
 		);
+
 		expect(
 			loaded.registry.adapters.some(
 				(entry) => entry.addon === "vitest" && entry.framework === "nextjs",
 			),
 		).toBe(true);
+
 		expect(
 			loaded.catalog.find(
 				(entry) => entry.kind === "addon" && entry.id === "vitest",
@@ -183,6 +189,7 @@ describe("registry loader", () => {
 			frameworkSources: { nextjs: fixtureRegistryId },
 			source: "first-party",
 		});
+
 		expect(
 			loaded.catalog.find(
 				(entry) => entry.kind === "addon" && entry.id === "@fixture/mixed",
@@ -195,6 +202,7 @@ describe("registry loader", () => {
 			},
 			source: fixtureRegistryId,
 		});
+
 		expect(
 			loaded.catalog.find(
 				(entry) =>
@@ -205,12 +213,15 @@ describe("registry loader", () => {
 			frameworkSources: {},
 			source: fixtureRegistryId,
 		});
+
 		expect(
 			loaded.catalog.find((entry) => entry.id === "@fixture/neutral"),
 		).toMatchObject({ source: fixtureRegistryId });
+
 		expect(
 			loaded.catalog.find((entry) => entry.id === "@fixture/web"),
 		).toMatchObject({ source: fixtureRegistryId });
+
 		expect(
 			loaded.catalog.find((entry) => entry.id === "@fixture/base"),
 		).toMatchObject({ source: fixtureRegistryId });
@@ -228,10 +239,12 @@ describe("registry loader", () => {
 			{},
 			loaded.registry,
 		);
+
 		expect(
 			plan.manifest.installs.find((entry) => entry.definitionId === "vitest")
 				?.targets,
 		).toEqual([{ kind: "module", moduleId: expect.any(String) }]);
+
 		expect(loaded.descriptors).toEqual([
 			{
 				apiVersion: 1,
@@ -258,6 +271,7 @@ describe("registry loader", () => {
 				version: "1.2.3",
 			},
 		]);
+
 		expect(
 			Schema.decodeUnknownSync(Schema.Array(RegistryDescriptorSchema))(
 				JSON.parse(JSON.stringify(loaded.descriptors)),
@@ -275,6 +289,7 @@ describe("registry loader", () => {
 			slots: ["entry"],
 			tsconfigPreset: { content: {}, name: "configless" },
 		});
+
 		const template = defineTemplate<ForgeConfig>({
 			category: "backend",
 			contribute: () => [],
@@ -284,6 +299,7 @@ describe("registry loader", () => {
 			version: 1,
 			when: () => false,
 		});
+
 		const loaded = await loadDefinitionRegistry({
 			importRegistry: async () => ({
 				module: {
@@ -315,6 +331,7 @@ describe("registry loader", () => {
 			slots: ["entry"],
 			tsconfigPreset: { content: {}, name: "legacy" },
 		});
+
 		const template = {
 			...defineTemplate<ForgeConfig>({
 				category: "web",
@@ -327,6 +344,7 @@ describe("registry loader", () => {
 			}),
 			exclusive: true,
 		};
+
 		const loaded = await loadDefinitionRegistry({
 			importRegistry: async () => ({
 				module: {
@@ -352,15 +370,18 @@ describe("registry loader", () => {
 			projectRoot: "/fixture-project",
 			registries: [fixtureRegistryId],
 		});
+
 		const addon = loaded.registry.addons.find(
 			(entry) => entry.id === "@fixture/unconstrained",
 		);
+
 		if (!addon) throw new Error("Missing Addon: @fixture/unconstrained");
 
 		const derivedFrameworks = deriveAddonFrameworks(
 			addon,
 			loaded.registry.adapters,
 		);
+
 		for (const framework of loaded.registry.frameworks) {
 			const module: AppConfig = {
 				id: "abcde",
@@ -371,6 +392,7 @@ describe("registry loader", () => {
 					framework.slots.map((slot) => [slot, `src/${slot}.ts`]),
 				),
 			};
+
 			const expectedMembership =
 				derivedFrameworks === undefined ||
 				derivedFrameworks.includes(framework.id);
@@ -437,6 +459,7 @@ describe("registry loader", () => {
 				(entry) => entry.id === "@fixture/structural",
 			),
 		).toMatchObject({ _tag: "AddonDefinition", target });
+
 		expect(loaded.descriptors[0]?.units).toEqual([
 			{ id: "@fixture/structural", kind: "addon" },
 		]);
@@ -506,10 +529,12 @@ describe("registry loader", () => {
 		const projectRoot = await mkdtemp(
 			join(tmpdir(), "forge-registry-resolve-"),
 		);
+
 		const packageRoot = join(
 			projectRoot,
 			"node_modules/@fixture/empty-registry",
 		);
+
 		const versionlessRoot = join(
 			projectRoot,
 			"node_modules/@fixture/versionless-registry",
@@ -526,6 +551,7 @@ describe("registry loader", () => {
 					exports: { ".": "./index.mjs" },
 				}),
 			);
+
 			await writeFile(
 				join(packageRoot, "index.mjs"),
 				"export default { apiVersion: 1, catalog: [] };\n",
@@ -556,19 +582,23 @@ describe("registry loader", () => {
 					exports: { ".": "./index.mjs" },
 				}),
 			);
+
 			await writeFile(
 				join(versionlessRoot, "index.mjs"),
 				"export default { apiVersion: 1, catalog: [] };\n",
 			);
+
 			await expect(
 				importRegistryPackage("@fixture/versionless-registry", projectRoot),
 			).rejects.toThrow(
 				"Registry Package Version Missing: @fixture/versionless-registry",
 			);
+
 			const versionlessError = await loadFailure({
 				projectRoot,
 				registries: ["@fixture/versionless-registry"],
 			});
+
 			expect(versionlessError.message).toBe(
 				"Registry Package Version Missing: @fixture/versionless-registry",
 			);
@@ -581,16 +611,19 @@ describe("registry loader", () => {
 		const projectRoot = await mkdtemp(
 			join(tmpdir(), "forge-registry-interop-"),
 		);
+
 		const cjsRoot = join(projectRoot, "node_modules/@fixture/cjs-registry");
 		const esmRoot = join(projectRoot, "node_modules/@fixture/esm-registry");
 		const nestedEsmRoot = join(
 			projectRoot,
 			"node_modules/@fixture/nested-esm-registry",
 		);
+
 		const arrayEsmRoot = join(
 			projectRoot,
 			"node_modules/@fixture/array-esm-registry",
 		);
+
 		const requireRoot = join(
 			projectRoot,
 			"node_modules/@fixture/require-registry",
@@ -606,6 +639,7 @@ describe("registry loader", () => {
 					main: "index.cjs",
 				}),
 			);
+
 			await writeFile(
 				join(cjsRoot, "index.cjs"),
 				"exports.default = { apiVersion: 1, catalog: [] };\n",
@@ -621,10 +655,12 @@ describe("registry loader", () => {
 					exports: { import: "./index.mjs" },
 				}),
 			);
+
 			await writeFile(
 				join(esmRoot, "index.mjs"),
 				"export default { apiVersion: 1, catalog: [] };\n",
 			);
+
 			await mkdir(nestedEsmRoot, { recursive: true });
 			await writeFile(
 				join(nestedEsmRoot, "package.json"),
@@ -635,10 +671,12 @@ describe("registry loader", () => {
 					exports: { ".": { node: { import: "./index.mjs" } } },
 				}),
 			);
+
 			await writeFile(
 				join(nestedEsmRoot, "index.mjs"),
 				"export default { apiVersion: 1, catalog: [] };\n",
 			);
+
 			await mkdir(arrayEsmRoot, { recursive: true });
 			await writeFile(
 				join(arrayEsmRoot, "package.json"),
@@ -649,10 +687,12 @@ describe("registry loader", () => {
 					exports: { ".": { import: [null, {}, "./index.mjs"] } },
 				}),
 			);
+
 			await writeFile(
 				join(arrayEsmRoot, "index.mjs"),
 				"export default { apiVersion: 1, catalog: [] };\n",
 			);
+
 			await mkdir(requireRoot, { recursive: true });
 			await writeFile(
 				join(requireRoot, "package.json"),
@@ -662,6 +702,7 @@ describe("registry loader", () => {
 					exports: { ".": { require: "./index.cjs" } },
 				}),
 			);
+
 			await writeFile(
 				join(requireRoot, "index.cjs"),
 				"module.exports = { apiVersion: 1, catalog: [] };\n",
@@ -694,6 +735,7 @@ describe("registry loader", () => {
 		const projectRoot = await mkdtemp(
 			join(tmpdir(), "forge-registry-project-only-"),
 		);
+
 		const packageRoot = join(
 			projectRoot,
 			"node_modules/@fixture/project-only-registry",
@@ -710,6 +752,7 @@ describe("registry loader", () => {
 					exports: { ".": { import: "./index.mjs" } },
 				}),
 			);
+
 			await writeFile(
 				join(packageRoot, "index.mjs"),
 				'export default { source: "fixture-project" };\n',
@@ -733,10 +776,12 @@ describe("registry loader", () => {
 		const projectRoot = await mkdtemp(
 			join(tmpdir(), "forge-registry-resolution-failures-"),
 		);
+
 		const missingEntryRoot = join(
 			projectRoot,
 			"node_modules/@fixture/missing-entry-registry",
 		);
+
 		const noTargetRoot = join(
 			projectRoot,
 			"node_modules/@fixture/no-target-registry",
@@ -752,6 +797,7 @@ describe("registry loader", () => {
 					main: "missing.cjs",
 				}),
 			);
+
 			await mkdir(noTargetRoot, { recursive: true });
 			await writeFile(
 				join(noTargetRoot, "package.json"),
@@ -771,6 +817,7 @@ describe("registry loader", () => {
 					projectRoot,
 					registries: [registryId],
 				});
+
 				expect(error.message).toBe(`Registry Not Installed: ${registryId}`);
 			}
 
@@ -800,6 +847,7 @@ describe("registry loader", () => {
 					exports: { ".": "./index.mjs" },
 				}),
 			);
+
 			await writeFile(
 				join(packageRoot, "index.mjs"),
 				'throw new Error("boom");\n',
@@ -813,6 +861,7 @@ describe("registry loader", () => {
 			expect(error.message).toBe(
 				"Registry Import Failed: @fixture/throws-registry: boom",
 			);
+
 			expect(error.detail).toContain("boom");
 		} finally {
 			await rm(projectRoot, { force: true, recursive: true });
@@ -854,14 +903,17 @@ describe("registry loader", () => {
 		const projectRoot = await mkdtemp(
 			join(tmpdir(), "forge-registry-missing-"),
 		);
+
 		try {
 			const error = await loadFailure({
 				projectRoot,
 				registries: ["@fixture/absent-registry"],
 			});
+
 			expect(error.message).toBe(
 				"Registry Not Installed: @fixture/absent-registry",
 			);
+
 			expect(error.detail).toContain("@fixture/absent-registry");
 		} finally {
 			await rm(projectRoot, { force: true, recursive: true });
@@ -874,6 +926,7 @@ describe("registry loader", () => {
 			projectRoot: "/fixture-project",
 			registries: ["@acme/invalid"],
 		});
+
 		expect(primitiveWrapper.message).toBe(
 			"Registry Package Invalid: @acme/invalid",
 		);
@@ -886,6 +939,7 @@ describe("registry loader", () => {
 			projectRoot: "/fixture-project",
 			registries: ["@acme/invalid"],
 		});
+
 		expect(invalidWrapper.message).toBe(
 			"Registry Package Invalid: @acme/invalid",
 		);
@@ -900,6 +954,7 @@ describe("registry loader", () => {
 			projectRoot: "/fixture-project",
 			registries: ["@acme/invalid"],
 		});
+
 		expect(invalidUnit.message).toBe("Registry Package Invalid: @acme/invalid");
 
 		const invalidId = await loadFailure({
@@ -916,6 +971,7 @@ describe("registry loader", () => {
 			projectRoot: "/fixture-project",
 			registries: ["@acme/invalid"],
 		});
+
 		expect(invalidId.message).toBe("Registry Unit Id Invalid: root");
 	});
 
@@ -1040,6 +1096,7 @@ describe("removal blockers", () => {
 		const template = builtins.templates.find(
 			(entry) => entry.id === "nextjs/base",
 		);
+
 		if (template === undefined)
 			throw new Error("Missing Template: nextjs/base");
 
@@ -1048,6 +1105,7 @@ describe("removal blockers", () => {
 			frameworks: [],
 			templates: [{ ...template, framework: "@fixture/missing-framework" }],
 		};
+
 		const blockers = findRemovalBlockers(
 			"root",
 			{ web: "nextjs" },
@@ -1070,6 +1128,7 @@ describe("removal blockers", () => {
 		expect(blockers.dependents.map((dependent) => dependent.id)).toEqual([
 			"better-auth",
 		]);
+
 		expect(blockers.frameworks).toEqual([]);
 	});
 
@@ -1159,7 +1218,6 @@ describe("addon config bindings", () => {
 	it("activates each bound addon through its own binding", () => {
 		for (const [addonId, binding] of Object.entries(addonConfigBindings)) {
 			const { addon } = loadAddonDefinition(addonId);
-
 			expect(addon.when({ mobile: "expo", ...binding }), addonId).toBe(true);
 			expect(addon.when({}), addonId).toBe(false);
 		}

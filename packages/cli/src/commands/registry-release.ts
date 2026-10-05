@@ -28,7 +28,6 @@ export function lookupRegistryRelease(
 	packageId: string,
 ): Effect.Effect<Option.Option<RegistryRelease>, never, Subprocess> {
 	const operation = packageManagerViewCommand(packageManager, packageId);
-
 	return Subprocess.run({
 		...operation,
 		cwd: projectRoot,

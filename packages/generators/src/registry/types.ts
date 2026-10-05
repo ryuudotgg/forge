@@ -257,12 +257,14 @@ export function announcedCatalogEntry(
 	name: string,
 	category?: string,
 ): FrameworkCatalogEntry;
+
 export function announcedCatalogEntry(
 	kind: "addon",
 	id: string,
 	name: string,
 	category: string,
 ): AddonCatalogEntry;
+
 export function announcedCatalogEntry(
 	kind: "addon" | "framework",
 	id: string,

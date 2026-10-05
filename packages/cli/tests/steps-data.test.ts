@@ -74,7 +74,6 @@ describe("database step", () => {
 
 	it("skips when none is selected", async () => {
 		promptMocks.select.mockResolvedValue("none");
-
 		await expect(databaseStep.execute({}, true)).resolves.toBe(SKIP);
 	});
 });
@@ -129,7 +128,6 @@ describe("orm step", () => {
 
 	it("skips when none is selected", async () => {
 		promptMocks.select.mockResolvedValue("none");
-
 		await expect(ormStep.execute({}, true)).resolves.toBe(SKIP);
 	});
 });
@@ -188,6 +186,7 @@ describe("databaseProvider step", () => {
 				{ label: "None", value: "none" },
 			],
 		});
+
 		expect(promptMocks.select).toHaveBeenCalledWith(
 			expect.objectContaining({
 				options: expect.not.arrayContaining([
@@ -215,6 +214,7 @@ describe("databaseProvider step", () => {
 				{ label: "None", value: "none" },
 			],
 		});
+
 		expect(promptMocks.select).toHaveBeenCalledWith(
 			expect.objectContaining({
 				options: expect.arrayContaining([
@@ -242,7 +242,6 @@ describe("databaseProvider step", () => {
 
 	it("skips interactively when no database was chosen", async () => {
 		await expect(databaseProviderStep.execute({}, true)).resolves.toBe(SKIP);
-
 		expect(promptMocks.select).not.toHaveBeenCalled();
 	});
 

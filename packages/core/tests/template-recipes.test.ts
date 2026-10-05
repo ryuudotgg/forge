@@ -49,13 +49,16 @@ describe("template recipe authoring", () => {
 			template: "client.ts",
 			destination: inSourceRoot("trpc/client.ts"),
 		});
+
 		const variant = variantAsset("server", {
 			destination: inModule("packages/api/src/server.ts"),
 			variants: { nextjs: "server/rsc.ts" },
 		});
+
 		const slot = slotAsset("trpc", {
 			variants: { nextjs: "routes/nextjs.ts" },
 		});
+
 		const recipe = defineTemplateRecipe({
 			addon: "trpc",
 			markers: {
@@ -82,14 +85,17 @@ describe("template recipe authoring", () => {
 			},
 			assets: [shared, variant, slot],
 		});
+
 		expect(shared.destination).toEqual({
 			_tag: "SourceRootDestination",
 			relativePath: "trpc/client.ts",
 		});
+
 		expect(variant.destination).toEqual({
 			_tag: "ModuleDestination",
 			relativePath: "packages/api/src/server.ts",
 		});
+
 		expect(slot).toEqual({
 			_tag: "SlotAssetDefinition",
 			name: "trpc",
@@ -178,6 +184,7 @@ describe("template recipe validation", () => {
 				}),
 			],
 		});
+
 		const registry = defineRegistry({
 			frameworks: [framework],
 			templates: [],
@@ -319,11 +326,13 @@ describe("template recipe validation", () => {
 				template: "client.ts",
 				destination: inSourceRoot("client.ts"),
 			});
+
 		const first = defineTemplateRecipe({
 			addon: "first",
 			markers: {},
 			assets: [asset()],
 		});
+
 		const second = defineTemplateRecipe({
 			addon: "second",
 			markers: {},
@@ -432,16 +441,19 @@ describe("template recipe validation", () => {
 			template: "adjacent.ts",
 			destination: inModule("adjacent.ts"),
 		});
+
 		const recipe = defineTemplateRecipe({
 			addon: "adjacent",
 			markers: { A: marker.required, B: marker.required },
 			assets: [asset],
 		});
+
 		const readTemplate = fixtureReader({ "adjacent.ts": "__A____B__" });
 
 		expect(() =>
 			validateTemplateRecipes([recipe], [framework], readTemplate),
 		).not.toThrow();
+
 		expect(
 			renderRecipeAsset(recipe, asset, framework, {
 				markers: { A: "left", B: "right" },
@@ -458,6 +470,7 @@ describe("template recipe rendering", () => {
 			template: "client.ts",
 			destination: inSourceRoot("trpc/client.ts"),
 		});
+
 		const recipe = defineTemplateRecipe({
 			addon: "trpc",
 			markers: {
@@ -467,10 +480,12 @@ describe("template recipe rendering", () => {
 			},
 			assets: [asset],
 		});
+
 		const readTemplate = fixtureReader({
 			"client.ts":
 				"// __AUTH_IMPORT__\nexport const __NAME__ = call(/* __AUTH_ARG__ */ value);\n",
 		});
+
 		const on = renderRecipeAsset(recipe, asset, framework, {
 			markers: {
 				NAME: "client",
@@ -480,6 +495,7 @@ describe("template recipe rendering", () => {
 			readTemplate,
 			slots: {},
 		});
+
 		const off = renderRecipeAsset(recipe, asset, framework, {
 			markers: { NAME: "client", AUTH_IMPORT: "", AUTH_ARG: "" },
 			readTemplate,
@@ -491,10 +507,12 @@ describe("template recipe rendering", () => {
 			content:
 				'import { auth } from "auth";\nexport const client = call(auth, value);\n',
 		});
+
 		expect(off).toEqual({
 			destination: "src/trpc/client.ts",
 			content: "export const client = call(value);\n",
 		});
+
 		expect(on.content).not.toMatch(/__[A-Z_]+__/);
 		expect(off.content).not.toMatch(/__[A-Z_]+__/);
 	});
@@ -503,6 +521,7 @@ describe("template recipe rendering", () => {
 		const asset = slotAsset("trpc", {
 			variants: { nextjs: "routes/nextjs.ts" },
 		});
+
 		const recipe = defineTemplateRecipe({
 			addon: "trpc",
 			markers: {},
@@ -528,6 +547,7 @@ describe("template recipe rendering", () => {
 			destination: inModule("server.ts"),
 			variants: { "tanstack-start": "server.ts" },
 		});
+
 		const recipe = defineTemplateRecipe({
 			addon: "trpc",
 			markers: {},
@@ -547,6 +567,7 @@ describe("template recipe rendering", () => {
 		const asset = slotAsset("trpc", {
 			variants: { nextjs: "routes/nextjs.ts" },
 		});
+
 		const recipe = defineTemplateRecipe({
 			addon: "trpc",
 			markers: {},

@@ -629,6 +629,7 @@ describe("planner", () => {
 			);
 
 			await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
 			for (const { root, moved } of apps)
 				await rename(join(directory, root), join(directory, moved));
 

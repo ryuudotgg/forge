@@ -80,6 +80,7 @@ describe("addons", () => {
 			const root = await readJson<PackageJson>(
 				join(workspace.projectRoot, "package.json"),
 			);
+
 			const shared = await readJson<PackageJson>(
 				join(workspace.projectRoot, "packages/shared/package.json"),
 			);
@@ -179,6 +180,7 @@ describe("addons", () => {
 					join(workspace.projectRoot, "packages/shared/forge.json"),
 				),
 			).toBe(true);
+
 			expect(
 				await pathExists(
 					join(workspace.projectRoot, "packages/shared/src/index.ts"),
@@ -200,14 +202,17 @@ describe("addons", () => {
 				"commitlint",
 				"shared",
 			]);
+
 			expect(manifest.installs).toContainEqual({
 				definitionId: "lefthook",
 				targets: [{ kind: "project" }],
 			});
+
 			expect(manifest.installs).toContainEqual({
 				definitionId: "commitlint",
 				targets: [{ kind: "project" }],
 			});
+
 			expect(manifest.installs).toContainEqual({
 				definitionId: "shared",
 				targets: [{ kind: "project" }],

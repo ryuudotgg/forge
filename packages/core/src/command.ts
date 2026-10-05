@@ -107,7 +107,6 @@ export function readPersistedCommandVersions(
 		);
 
 		const persisted: Record<string, string> = {};
-
 		if (Option.isSome(runtimeVersion))
 			persisted[runtimeCommandName] = runtimeVersion.value;
 

@@ -31,7 +31,6 @@ layer(configStoreLayerTest())("ConfigStore layerTest", (it) => {
 	it.effect("discovers no modules in a scoped empty directory", () =>
 		Effect.gen(function* () {
 			const directory = yield* TestDirectory;
-
 			expect(yield* ConfigStore.discover(directory.path)).toEqual([]);
 		}),
 	);
