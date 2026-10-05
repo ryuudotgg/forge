@@ -64,7 +64,7 @@ model Account {
   idToken               String?   @map("id_token")__TEXT__
 
   scope                 String?__TEXT__
-  // __PASSWORD_FIELD__
+  password              String?__TEXT__
 
   createdAt             DateTime  @default(now()) @map("created_at")__TIMESTAMPTZ__
   updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__

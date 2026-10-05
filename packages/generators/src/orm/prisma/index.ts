@@ -9,7 +9,6 @@ import {
 	surfaceLines,
 	surfaceScripts,
 } from "@ryuugg/core";
-import { authUsesPassword } from "../../auth/methods";
 import {
 	type AuthField,
 	authPluginFields,
@@ -114,9 +113,6 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			ENV_SERVER: envServerLines(envVars),
 			RELATION_MODE: emulatesRelations
 				? `\n  relationMode = "${provider.prisma.relationMode}"`
-				: "",
-			"  // __PASSWORD_FIELD__\n": authUsesPassword(config)
-				? "  password              String?__TEXT__\n"
 				: "",
 			"  // __USER_PLUGIN_FIELDS__\n": prismaAuthFields(
 				authPluginFields(config, "user"),

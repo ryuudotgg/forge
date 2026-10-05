@@ -265,7 +265,12 @@ async function withGeneratedServer(
 
 	const args =
 		host === "nextjs"
-			? ["node_modules/next/dist/bin/next", "start", "--port", "3000"]
+			? [
+					"node_modules/next/dist/bin/next",
+					"start",
+					"--port",
+					new URL(serverOrigin).port,
+				]
 			: ["dist/index.js"];
 
 	const server =
@@ -2009,6 +2014,44 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		},
 		600_000,
 	);
+
+	it("answers get-session on the default self-hosted Next.js project", async () => {
+		await withScenarioWorkspace(
+			"smoke-default-self-nextjs",
+			async (workspace) => {
+				await createProject(workspace, {
+					authentication: "better-auth",
+					backend: "self",
+					database: "sqlite",
+					orm: "drizzle",
+					packageManager: "pnpm",
+					style: "tailwind",
+					web: "nextjs",
+				});
+
+				await expectInstallBuildAndTypecheck(workspace, "pnpm");
+				await expectSchemaPush(workspace.projectRoot);
+
+				const origin = "http://localhost:47400";
+				const generatedEnv = {
+					...(await readGeneratedEnv(workspace.projectRoot)),
+					APP_ORIGIN: origin,
+				};
+
+				await withGeneratedServer(
+					workspace.projectRoot,
+					generatedEnv,
+					origin,
+					async (output) => {
+						const session = await fetch(`${origin}/api/auth/get-session`);
+						expect(session.status, output()).toBe(200);
+						expect(await session.json()).toBeNull();
+					},
+					"nextjs",
+				);
+			},
+		);
+	}, 600_000);
 
 	it("installs self-hosted RPC and auth with a secondary client", async () => {
 		await withScenarioWorkspace(

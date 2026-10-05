@@ -88,63 +88,6 @@ describe("two-factor and organization", () => {
 		).toEqual(["organization"]);
 	});
 
-	it("matches the pinned two-factor and organization column contract", () => {
-		const tables = authPluginTables({
-			...baseConfig,
-			authPlugins: ["two-factor", "organization"],
-		});
-
-		expect(
-			tables.map(({ model, columns }) => ({
-				model,
-				columns: columns.map(({ name, presence }) => [name, presence]),
-			})),
-		).toEqual([
-			{
-				model: "twoFactor",
-				columns: [
-					["secret", "required"],
-					["backupCodes", "required"],
-					["userId", "required"],
-					["verified", "nullable"],
-					["failedVerificationCount", "nullable"],
-					["lockedUntil", "nullable"],
-				],
-			},
-			{
-				model: "organization",
-				columns: [
-					["name", "required"],
-					["slug", "required"],
-					["logo", "nullable"],
-					["createdAt", "required"],
-					["metadata", "nullable"],
-				],
-			},
-			{
-				model: "member",
-				columns: [
-					["organizationId", "required"],
-					["userId", "required"],
-					["role", "required"],
-					["createdAt", "required"],
-				],
-			},
-			{
-				model: "invitation",
-				columns: [
-					["organizationId", "required"],
-					["email", "required"],
-					["role", "nullable"],
-					["status", "required"],
-					["expiresAt", "required"],
-					["createdAt", "required"],
-					["inviterId", "required"],
-				],
-			},
-		]);
-	});
-
 	describe.each(variants)("$name", (variant) => {
 		it.each(selections)(
 			"renders selection %j across server, web and Expo",

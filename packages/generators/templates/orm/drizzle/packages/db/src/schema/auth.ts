@@ -46,7 +46,7 @@ export const accounts = snakeCase.table(
     idToken: text(),
 
     scope: text(),
-    // __PASSWORD_FIELD__
+    password: text(),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })

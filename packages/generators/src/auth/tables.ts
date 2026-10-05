@@ -17,6 +17,7 @@ export type AuthColumn = AuthColumnBase &
 				readonly type: "text";
 				readonly index?: "lookup" | "unique";
 				readonly default?: string;
+				readonly unbounded?: true;
 		  }
 		| { readonly type: "integer"; readonly default?: number }
 		| { readonly type: "boolean"; readonly default?: boolean }
@@ -34,6 +35,8 @@ export interface AuthTable {
 	readonly model: AuthModel;
 	readonly columns: ReadonlyArray<AuthColumn>;
 }
+
+export const mysqlIndexPrefix = 191;
 
 export const authModels = {
 	user: { table: "users", prisma: "User" },
@@ -64,6 +67,8 @@ export const passkeyTable: AuthTable = {
 			type: "text",
 			presence: "required",
 			index: "lookup",
+			// WebAuthn allows 1023 byte ids, about 1364 characters in base64url.
+			unbounded: true,
 		},
 		{ name: "counter", type: "integer", presence: "required" },
 		{ name: "deviceType", type: "text", presence: "required" },
