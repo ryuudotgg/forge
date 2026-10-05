@@ -29,8 +29,9 @@
 				"/^packages/generators/templates/tooling/github/[^/]+\\.yml$/"
 			],
 			"matchStrings": [
-				"uses:\\s+(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentValue>v\\d+)"
-			]
+				"uses:\\s+(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentDigest>[0-9a-f]{40})\\s+#\\s+(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+			],
+			"autoReplaceStringTemplate": "uses: {{depName}}@{{newDigest}} # {{newValue}}"
 		}
 	],
 	"packageRules": [
@@ -68,7 +69,10 @@
 			]
 		},
 		{
-			"matchFileNames": ["packages/generators/templates/**"],
+			"matchFileNames": [
+				"packages/generators/templates/**",
+				"!packages/generators/templates/tooling/github/*.yml"
+			],
 			"pinDigests": false
 		}
 	],
