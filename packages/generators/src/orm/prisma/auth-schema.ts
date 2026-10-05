@@ -2,6 +2,7 @@ import {
 	type AuthColumn,
 	type AuthTable,
 	authColumnName,
+	authColumns,
 	authModels,
 	mysqlIndexPrefix,
 } from "../../auth/tables";
@@ -47,7 +48,7 @@ function prismaColumn(
 export function prismaUserRelations(tables: ReadonlyArray<AuthTable>): string {
 	return tables
 		.flatMap((table) =>
-			table.columns.flatMap((column) => {
+			authColumns(table).flatMap((column) => {
 				if (column.type !== "reference" || column.target !== "user") return [];
 				return [`  ${column.inverse} ${authModels[table.model].prisma}[]\n`];
 			}),
@@ -62,7 +63,7 @@ export function renderPrismaAuthTables(
 	return tables
 		.map((table) => {
 			const inverse = tables.flatMap((other) =>
-				other.columns.flatMap((column) => {
+				authColumns(other).flatMap((column) => {
 					if (column.type !== "reference" || column.target !== table.model)
 						return [];
 
@@ -70,7 +71,7 @@ export function renderPrismaAuthTables(
 				}),
 			);
 
-			const relations = table.columns.flatMap((column) => {
+			const relations = authColumns(table).flatMap((column) => {
 				if (column.type !== "reference") return [];
 
 				return [
@@ -78,7 +79,7 @@ export function renderPrismaAuthTables(
 				];
 			});
 
-			const indexes = table.columns.flatMap((column) => {
+			const indexes = authColumns(table).flatMap((column) => {
 				if (
 					column.type !== "reference" &&
 					!(column.type === "text" && column.index === "lookup")
@@ -93,18 +94,23 @@ export function renderPrismaAuthTables(
 				return [`  @@index([${column.name}${prefix}])`];
 			});
 
+			const sections = [
+				[
+					"  id String @id",
+					...table.references.map((column) => prismaColumn(column, datasource)),
+				],
+				...table.groups.map((group) =>
+					group.map((column) => prismaColumn(column, datasource)),
+				),
+				[...relations, ...inverse],
+				indexes,
+				[`  @@map("${authModels[table.model].table}")`],
+			].filter((section) => section.length > 0);
+
 			return [
 				"",
 				`model ${authModels[table.model].prisma} {`,
-				"  id String @id",
-				...table.columns.map((column) => prismaColumn(column, datasource)),
-				"",
-				...relations,
-				...inverse,
-				"",
-				...indexes,
-				"",
-				`  @@map("${authModels[table.model].table}")`,
+				sections.map((section) => section.join("\n")).join("\n\n"),
 				"}",
 				"",
 			].join("\n");

@@ -11,6 +11,7 @@ import {
 } from "@ryuugg/core";
 import {
 	type AuthField,
+	type AuthFieldGroup,
 	authPluginFields,
 	authPluginTables,
 } from "../../auth/plugins";
@@ -36,49 +37,56 @@ const authFieldTypes: Record<AuthField["type"], string> = {
 };
 
 function prismaAuthFields(
-	fields: ReadonlyArray<AuthField>,
+	groups: ReadonlyArray<AuthFieldGroup>,
 	datasource: PrismaDatasourceProvider,
 ): string {
-	if (fields.length === 0) return "";
+	if (groups.length === 0) return "";
 
+	const fields = groups.flat();
 	const nameWidth = Math.max(...fields.map(({ name }) => name.length));
 	const typeWidth = Math.max(
 		...fields.map(({ type }) => authFieldTypes[type].length),
 	);
 
-	const columns = fields.map((field) => {
-		const snakeName = field.name.replace(
-			/[A-Z]/g,
-			(letter) => `_${letter.toLowerCase()}`,
-		);
+	return groups
+		.map((group) => {
+			const columns = group.map((field) => {
+				const snakeName = field.name.replace(
+					/[A-Z]/g,
+					(letter) => `_${letter.toLowerCase()}`,
+				);
 
-		const attributes = [
-			...(field.unique ? ["@unique"] : []),
-			...(field.default === false ? ["@default(false)"] : []),
-			...(snakeName !== field.name ? [`@map("${snakeName}")`] : []),
-		];
+				const attributes = [
+					...(field.unique ? ["@unique"] : []),
+					...(field.default === false ? ["@default(false)"] : []),
+					...(snakeName !== field.name ? [`@map("${snakeName}")`] : []),
+				];
 
-		const fieldType = authFieldTypes[field.type];
-		const hasNativeAttribute =
-			(field.type === "string" && !field.unique && datasource === "mysql") ||
-			(field.type === "date" && datasource === "postgresql");
+				const fieldType = authFieldTypes[field.type];
+				const hasNativeAttribute =
+					(field.type === "string" &&
+						!field.unique &&
+						datasource === "mysql") ||
+					(field.type === "date" && datasource === "postgresql");
 
-		const definition =
-			attributes.length > 0 || hasNativeAttribute
-				? `${fieldType.padEnd(typeWidth)}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}`
-				: fieldType;
+				const definition =
+					attributes.length > 0 || hasNativeAttribute
+						? `${fieldType.padEnd(typeWidth)}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}`
+						: fieldType;
 
-		const nativeType =
-			field.type === "date"
-				? "__TIMESTAMPTZ__"
-				: field.type === "string" && !field.unique
-					? "__TEXT__"
-					: "";
+				const nativeType =
+					field.type === "date"
+						? "__TIMESTAMPTZ__"
+						: field.type === "string" && !field.unique
+							? "__TEXT__"
+							: "";
 
-		return `  ${field.name.padEnd(nameWidth)} ${definition}${nativeType}\n`;
-	});
+				return `  ${field.name.padEnd(nameWidth)} ${definition}${nativeType}\n`;
+			});
 
-	return `\n${columns.join("")}`;
+			return `\n${columns.join("")}`;
+		})
+		.join("");
 }
 
 const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({

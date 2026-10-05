@@ -11,7 +11,7 @@ interface AuthColumnBase {
 
 export type AuthModel = keyof typeof authModels;
 
-export type AuthColumn = AuthColumnBase &
+export type AuthValue = AuthColumnBase &
 	(
 		| {
 				readonly type: "text";
@@ -22,18 +22,27 @@ export type AuthColumn = AuthColumnBase &
 		| { readonly type: "integer"; readonly default?: number }
 		| { readonly type: "boolean"; readonly default?: boolean }
 		| { readonly type: "date"; readonly default?: "now" }
-		| {
-				readonly type: "reference";
-				readonly target: AuthModel;
-				readonly relation: string;
-				readonly inverse: string;
-				readonly onDelete: "cascade";
-		  }
 	);
+
+export type AuthReference = AuthColumnBase & {
+	readonly type: "reference";
+	readonly target: AuthModel;
+	readonly relation: string;
+	readonly inverse: string;
+	readonly onDelete: "cascade";
+};
+
+export type AuthColumn = AuthReference | AuthValue;
+export type AuthGroup = readonly [AuthValue, ...ReadonlyArray<AuthValue>];
 
 export interface AuthTable {
 	readonly model: AuthModel;
-	readonly columns: ReadonlyArray<AuthColumn>;
+	readonly references: ReadonlyArray<AuthReference>;
+	readonly groups: ReadonlyArray<AuthGroup>;
+}
+
+export function authColumns(table: AuthTable): ReadonlyArray<AuthColumn> {
+	return [...table.references, ...table.groups.flat()];
 }
 
 export const mysqlIndexPrefix = 191;
@@ -49,9 +58,7 @@ export const authModels = {
 
 export const passkeyTable: AuthTable = {
 	model: "passkey",
-	columns: [
-		{ name: "name", type: "text", presence: "nullable" },
-		{ name: "publicKey", type: "text", presence: "required" },
+	references: [
 		{
 			name: "userId",
 			type: "reference",
@@ -61,29 +68,39 @@ export const passkeyTable: AuthTable = {
 			onDelete: "cascade",
 			presence: "required",
 		},
-		{
-			name: "credentialID",
-			sqlName: "credential_id",
-			type: "text",
-			presence: "required",
-			index: "lookup",
-			// WebAuthn allows 1023 byte ids, about 1364 characters in base64url.
-			unbounded: true,
-		},
-		{ name: "counter", type: "integer", presence: "required" },
-		{ name: "deviceType", type: "text", presence: "required" },
-		{ name: "backedUp", type: "boolean", presence: "required" },
-		{ name: "transports", type: "text", presence: "nullable" },
-		{ name: "createdAt", type: "date", presence: "nullable" },
-		{ name: "aaguid", type: "text", presence: "nullable" },
+	],
+	groups: [
+		[
+			{ name: "name", type: "text", presence: "nullable" },
+			{ name: "publicKey", type: "text", presence: "required" },
+		],
+		[
+			{
+				name: "credentialID",
+				sqlName: "credential_id",
+				type: "text",
+				presence: "required",
+				index: "lookup",
+				// WebAuthn allows 1023 byte ids, about 1364 characters in base64url.
+				unbounded: true,
+			},
+		],
+		[
+			{ name: "counter", type: "integer", presence: "required" },
+			{ name: "deviceType", type: "text", presence: "required" },
+			{ name: "backedUp", type: "boolean", presence: "required" },
+		],
+		[
+			{ name: "transports", type: "text", presence: "nullable" },
+			{ name: "aaguid", type: "text", presence: "nullable" },
+		],
+		[{ name: "createdAt", type: "date", presence: "nullable" }],
 	],
 };
 
 export const twoFactorTable: AuthTable = {
 	model: "twoFactor",
-	columns: [
-		{ name: "secret", type: "text", presence: "required", index: "lookup" },
-		{ name: "backupCodes", type: "text", presence: "required" },
+	references: [
 		{
 			name: "userId",
 			type: "reference",
@@ -93,31 +110,47 @@ export const twoFactorTable: AuthTable = {
 			onDelete: "cascade",
 			presence: "required",
 		},
-		{ name: "verified", type: "boolean", presence: "nullable", default: true },
-		{
-			name: "failedVerificationCount",
-			type: "integer",
-			presence: "nullable",
-			default: 0,
-		},
-		{ name: "lockedUntil", type: "date", presence: "nullable" },
+	],
+	groups: [
+		[
+			{ name: "secret", type: "text", presence: "required", index: "lookup" },
+			{ name: "backupCodes", type: "text", presence: "required" },
+		],
+		[
+			{
+				name: "verified",
+				type: "boolean",
+				presence: "nullable",
+				default: true,
+			},
+			{
+				name: "failedVerificationCount",
+				type: "integer",
+				presence: "nullable",
+				default: 0,
+			},
+			{ name: "lockedUntil", type: "date", presence: "nullable" },
+		],
 	],
 };
 
 export const organizationTables: ReadonlyArray<AuthTable> = [
 	{
 		model: "organization",
-		columns: [
-			{ name: "name", type: "text", presence: "required" },
-			{ name: "slug", type: "text", presence: "required", index: "unique" },
-			{ name: "logo", type: "text", presence: "nullable" },
-			{ name: "createdAt", type: "date", presence: "required" },
-			{ name: "metadata", type: "text", presence: "nullable" },
+		references: [],
+		groups: [
+			[
+				{ name: "name", type: "text", presence: "required" },
+				{ name: "slug", type: "text", presence: "required", index: "unique" },
+				{ name: "logo", type: "text", presence: "nullable" },
+			],
+			[{ name: "metadata", type: "text", presence: "nullable" }],
+			[{ name: "createdAt", type: "date", presence: "required" }],
 		],
 	},
 	{
 		model: "member",
-		columns: [
+		references: [
 			{
 				name: "organizationId",
 				type: "reference",
@@ -136,13 +169,15 @@ export const organizationTables: ReadonlyArray<AuthTable> = [
 				onDelete: "cascade",
 				presence: "required",
 			},
-			{ name: "role", type: "text", presence: "required", default: "member" },
-			{ name: "createdAt", type: "date", presence: "required" },
+		],
+		groups: [
+			[{ name: "role", type: "text", presence: "required", default: "member" }],
+			[{ name: "createdAt", type: "date", presence: "required" }],
 		],
 	},
 	{
 		model: "invitation",
-		columns: [
+		references: [
 			{
 				name: "organizationId",
 				type: "reference",
@@ -152,16 +187,6 @@ export const organizationTables: ReadonlyArray<AuthTable> = [
 				onDelete: "cascade",
 				presence: "required",
 			},
-			{ name: "email", type: "text", presence: "required", index: "lookup" },
-			{ name: "role", type: "text", presence: "nullable" },
-			{
-				name: "status",
-				type: "text",
-				presence: "required",
-				default: "pending",
-			},
-			{ name: "expiresAt", type: "date", presence: "required" },
-			{ name: "createdAt", type: "date", presence: "required", default: "now" },
 			{
 				name: "inviterId",
 				type: "reference",
@@ -171,6 +196,29 @@ export const organizationTables: ReadonlyArray<AuthTable> = [
 				onDelete: "cascade",
 				presence: "required",
 			},
+		],
+		groups: [
+			[
+				{ name: "email", type: "text", presence: "required", index: "lookup" },
+				{ name: "role", type: "text", presence: "nullable" },
+			],
+			[
+				{
+					name: "status",
+					type: "text",
+					presence: "required",
+					default: "pending",
+				},
+				{ name: "expiresAt", type: "date", presence: "required" },
+			],
+			[
+				{
+					name: "createdAt",
+					type: "date",
+					presence: "required",
+					default: "now",
+				},
+			],
 		],
 	},
 ];

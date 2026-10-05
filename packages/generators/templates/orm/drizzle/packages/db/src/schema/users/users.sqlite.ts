@@ -6,11 +6,11 @@ const unixepochMs = sql`(cast(unixepoch('subsecond') * 1000 as integer))`;
 export const users = snakeCase.table("users", {
   id: text().primaryKey(),
 
-  name: text().notNull(),
-  image: text(),
-
   email: text().notNull().unique(),
   emailVerified: integer({ mode: "boolean" }).notNull().default(false),
+
+  name: text().notNull(),
+  image: text(),
   // __USER_PLUGIN_FIELDS__
 
   createdAt: integer({ mode: "timestamp_ms" }).notNull().default(unixepochMs),

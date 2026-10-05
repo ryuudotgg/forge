@@ -2,6 +2,7 @@ import {
 	type AuthColumn,
 	type AuthTable,
 	authColumnName,
+	authColumns,
 	authModels,
 	mysqlIndexPrefix,
 } from "../../auth/tables";
@@ -14,6 +15,7 @@ function drizzleColumn(
 ): string {
 	const sqlName = column.sqlName ? `"${column.sqlName}"` : "";
 	let value: string;
+
 	switch (column.type) {
 		case "reference":
 			value = dialect === "mysql" ? "varchar({ length: 36 })" : "text()";
@@ -44,6 +46,7 @@ function drizzleColumn(
 	}
 
 	const required = column.presence === "required" ? ".notNull()" : "";
+
 	if (column.type === "reference" && foreignKeys)
 		return `    ${column.name}: ${value}\n      ${required}\n      .references(() => ${authModels[column.target].table}.id, { onDelete: "${column.onDelete}" }),`;
 
@@ -68,9 +71,10 @@ function drizzleIndexes(
 ): ReadonlyArray<string> {
 	const identity = authModels[table.model];
 
-	return table.columns.flatMap((column) => {
+	return authColumns(table).flatMap((column) => {
 		if (column.type === "reference" && dialect === "mysql" && foreignKeys)
 			return [];
+
 		if (
 			column.type !== "reference" &&
 			!(column.type === "text" && column.index === "lookup")
@@ -88,6 +92,20 @@ function drizzleIndexes(
 	});
 }
 
+function drizzleIndexBlock(
+	indexes: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+	const [only, ...rest] = indexes;
+	const inline =
+		only === undefined || rest.length > 0
+			? undefined
+			: `  (table) => [${only.trim().replace(/,$/, "")}],`;
+
+	if (inline !== undefined && inline.length <= 80) return [inline];
+
+	return ["  (table) => [", ...indexes, "  ],"];
+}
+
 function drizzleTable(
 	table: AuthTable,
 	dialect: Database,
@@ -97,16 +115,32 @@ function drizzleTable(
 	const id = dialect === "mysql" ? "varchar({ length: 36 })" : "text()";
 	const indexes = drizzleIndexes(table, dialect, foreignKeys);
 
+	const columns = [
+		`    id: ${id}.primaryKey(),`,
+		...table.references.map((column) =>
+			drizzleColumn(column, dialect, foreignKeys),
+		),
+		...table.groups.flatMap((group) => [
+			"",
+			...group.map((column) => drizzleColumn(column, dialect, foreignKeys)),
+		]),
+	];
+
+	if (indexes.length === 0)
+		return [
+			`export const ${identity.table} = snakeCase.table("${identity.table}", {`,
+			...columns.map((line) => line.replace(/^ {2}/gm, "")),
+			"});",
+			"",
+		].join("\n");
+
 	return [
 		`export const ${identity.table} = snakeCase.table(`,
 		`  "${identity.table}",`,
 		"  {",
-		`    id: ${id}.primaryKey(),`,
-		...table.columns.map((column) =>
-			drizzleColumn(column, dialect, foreignKeys),
-		),
+		...columns,
 		"  },",
-		...(indexes.length > 0 ? ["  (table) => [", ...indexes, "  ],"] : []),
+		...drizzleIndexBlock(indexes),
 		");",
 		"",
 	].join("\n");
@@ -118,14 +152,13 @@ export function renderDrizzleAuthTables(
 	dialect: Database,
 	foreignKeys: boolean,
 ): string {
-	if (tables.length === 0) return content;
-
 	const imports = new Set<string>();
+
 	for (const table of tables) {
 		if (drizzleIndexes(table, dialect, foreignKeys).length > 0)
 			imports.add("index");
 
-		for (const column of table.columns) {
+		for (const column of authColumns(table)) {
 			if (column.type === "boolean" && dialect !== "sqlite")
 				imports.add("boolean");
 			if (column.type === "integer")
@@ -146,11 +179,13 @@ export function renderDrizzleAuthTables(
 		},
 	);
 
+	if (tables.length === 0) return updated;
+
 	const sqlImport = 'import { sql } from "drizzle-orm";\n';
 	const prefixesIndexes =
 		dialect === "mysql" &&
 		tables.some((table) =>
-			table.columns.some(
+			authColumns(table).some(
 				(column) => column.type === "text" && column.unbounded === true,
 			),
 		);
@@ -166,7 +201,7 @@ export function renderDrizzleAuthTables(
 export function drizzleUserRelations(tables: ReadonlyArray<AuthTable>): string {
 	return tables
 		.flatMap((table) =>
-			table.columns.flatMap((column) => {
+			authColumns(table).flatMap((column) => {
 				if (column.type !== "reference" || column.target !== "user") return [];
 
 				const source = authModels[table.model].table;
@@ -185,7 +220,7 @@ export function drizzleTableRelations(
 		.map((table) => {
 			const source = authModels[table.model].table;
 			const inverse = tables.flatMap((other) =>
-				other.columns.flatMap((column) => {
+				authColumns(other).flatMap((column) => {
 					if (column.type !== "reference" || column.target !== table.model)
 						return [];
 
@@ -195,7 +230,8 @@ export function drizzleTableRelations(
 					];
 				}),
 			);
-			const relations = table.columns.flatMap((column) => {
+
+			const relations = authColumns(table).flatMap((column) => {
 				if (column.type !== "reference") return [];
 
 				const target = authModels[column.target].table;
