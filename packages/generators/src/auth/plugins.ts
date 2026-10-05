@@ -21,6 +21,8 @@ export interface AuthField {
 	readonly default?: false;
 }
 
+export type AuthFieldGroup = readonly [AuthField, ...ReadonlyArray<AuthField>];
+
 type AuthModel = "user" | "session";
 type AuthPluginSide = "server" | "client" | "expo";
 type AuthExtension =
@@ -56,7 +58,7 @@ interface AuthPluginDefinition {
 	readonly tables?: ReadonlyArray<AuthTable>;
 	readonly files?: ReadonlyArray<string>;
 	readonly requires?: AuthMethod;
-	readonly fields: Partial<Record<AuthModel, ReadonlyArray<AuthField>>>;
+	readonly fields: Partial<Record<AuthModel, AuthFieldGroup>>;
 	readonly env?: ReadonlyArray<AuthPluginEnvEntry>;
 	readonly emitsNamelessTypes?: true;
 	readonly packages?: Partial<
@@ -302,10 +304,11 @@ export function resolveAuthPlugins(
 export function authPluginFields(
 	config: ForgeConfig,
 	model: AuthModel,
-): ReadonlyArray<AuthField> {
+): ReadonlyArray<AuthFieldGroup> {
 	return resolveAuthPlugins(config).flatMap((plugin) => {
 		const definition: AuthPluginDefinition = authPluginDefinitions[plugin];
-		return definition.fields[model] ?? [];
+		const group = definition.fields[model];
+		return group === undefined ? [] : [group];
 	});
 }
 

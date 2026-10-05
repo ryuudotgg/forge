@@ -11,6 +11,7 @@ import {
 } from "@ryuugg/core";
 import {
 	type AuthField,
+	type AuthFieldGroup,
 	authPluginFields,
 	authPluginTables,
 } from "../../auth/plugins";
@@ -53,24 +54,26 @@ const authColumnTypes: Record<Database, Record<AuthField["type"], string>> = {
 };
 
 function drizzleAuthFields(
-	fields: ReadonlyArray<AuthField>,
+	groups: ReadonlyArray<AuthFieldGroup>,
 	dialect: Database,
 	indent: string,
-	grouped: boolean,
 ): string {
-	if (fields.length === 0) return "";
+	return groups
+		.map((group) => {
+			const columns = group.map((field) => {
+				const column =
+					dialect === "mysql" && field.type === "string" && field.unique
+						? "varchar({ length: 255 })"
+						: authColumnTypes[dialect][field.type];
+				const unique = field.unique ? ".unique()" : "";
+				const defaultValue = field.default === false ? ".default(false)" : "";
 
-	const columns = fields.map((field) => {
-		const column =
-			dialect === "mysql" && field.type === "string" && field.unique
-				? "varchar({ length: 255 })"
-				: authColumnTypes[dialect][field.type];
-		const unique = field.unique ? ".unique()" : "";
-		const defaultValue = field.default === false ? ".default(false)" : "";
-		return `${indent}${field.name}: ${column}${unique}${defaultValue},\n`;
-	});
+				return `${indent}${field.name}: ${column}${unique}${defaultValue},\n`;
+			});
 
-	return `${grouped ? "\n" : ""}${columns.join("")}`;
+			return `\n${columns.join("")}`;
+		})
+		.join("");
 }
 
 const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
@@ -104,29 +107,20 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			ENV_SERVER: envServerLines(provider.envVars),
 			KIT_CREDENTIALS: drizzleKitCredentials(provider.drizzle),
 			KIT_DIALECT: provider.drizzle.kitDialect,
-			"  // __USER_PLUGIN_FIELDS_PACKED__\n": drizzleAuthFields(
-				userFields,
-				provider.dialect,
-				"  ",
-				false,
-			),
 			"  // __USER_PLUGIN_FIELDS__\n": drizzleAuthFields(
 				userFields,
 				provider.dialect,
 				"  ",
-				true,
 			),
 			"\n    // __SESSION_PLUGIN_FIELDS__\n": `\n${drizzleAuthFields(
 				sessionFields,
 				provider.dialect,
 				"    ",
-				true,
 			)}`,
 			"\n  // __SESSION_PLUGIN_FIELDS__\n": `\n${drizzleAuthFields(
 				sessionFields,
 				provider.dialect,
 				"  ",
-				true,
 			)}`,
 		};
 

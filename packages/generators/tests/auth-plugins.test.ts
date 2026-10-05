@@ -188,13 +188,13 @@ function expectDrizzleFields(
 	if (plugins.length > 0) {
 		const columns = fields
 			.filter(({ present }) => present)
-			.map(({ line }) => `  ${line}\n`)
+			.map(
+				({ line }) =>
+					`${username && line === "role: text()," ? "\n" : ""}  ${line}\n`,
+			)
 			.join("");
 
-		const grouped = config.database !== "postgresql";
-		expect(users).toContain(
-			`${grouped ? "\n\n" : "\n"}${columns}${grouped ? "\n" : ""}  createdAt:`,
-		);
+		expect(users).toContain(`\n\n${columns}\n  createdAt:`);
 	}
 
 	if (admin) {
@@ -284,7 +284,8 @@ function expectPrismaFields(
 					? definition
 					: `${definition.slice(0, space).padEnd(typeWidth)}${definition.slice(space)}`;
 
-			return `  ${name.padEnd(nameWidth)} ${aligned}\n`;
+			const groupStart = plugins.includes("username") && name === "role";
+			return `${groupStart ? "\n" : ""}  ${name.padEnd(nameWidth)} ${aligned}\n`;
 		});
 
 		expect(schema).toContain(`\n\n${lines.join("")}\n  createdAt`);
