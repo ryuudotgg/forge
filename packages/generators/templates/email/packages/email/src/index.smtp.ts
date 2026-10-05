@@ -12,7 +12,7 @@ let transport: Transporter | undefined;
 
 export async function sendEmail(message: EmailMessage): Promise<void> {
   if (!env.EMAIL_FROM || !env.SMTP_URL) {
-    if (env.NODE_ENV === "production") {
+    if (env.NODE_ENV !== "development") {
       throw new Error("Email isn't configured. Set EMAIL_FROM and SMTP_URL.");
     }
 

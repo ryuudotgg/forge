@@ -57,15 +57,15 @@ describe("create", () => {
 				);
 
 				expect(await readText("apps/server/src/routes/trpc.ts")).toContain(
-					"[env.WEB_URL, ...env.WEB_URLS]",
+					"origin: webOrigins,",
 				);
 
 				expect(await readText("apps/server/src/routes/auth.ts")).toContain(
-					"[env.WEB_URL, ...env.WEB_URLS]",
+					"origin: webOrigins,",
 				);
 
 				expect(await readText("packages/auth/src/index.ts")).toContain(
-					"...env.WEB_URLS",
+					"trustedOrigins: webOrigins,",
 				);
 
 				expect(
@@ -100,12 +100,12 @@ describe("create", () => {
 					"env.NEXT_PUBLIC_SERVER_URL",
 				);
 
-				expect(await readText("packages/auth/src/index.ts")).toContain(
-					"env.APP_ORIGIN, ...env.WEB_URLS",
+				expect(await readText("packages/auth/env.ts")).toContain(
+					"export const webOrigins = originList({\n  APP_ORIGIN: env.APP_ORIGIN,\n  WEB_URLS: env.WEB_URLS,\n});",
 				);
 
-				expect(await readText("apps/web/proxy.ts")).toContain(
-					'"Access-Control-Allow-Credentials": "true"',
+				expect(await readText("apps/web/lib/api-cors.ts")).toContain(
+					'headers.set("Access-Control-Allow-Credentials", "true");',
 				);
 
 				expect(

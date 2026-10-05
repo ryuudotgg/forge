@@ -3,7 +3,7 @@ import { appRouter, createTRPCContext } from "@__SLUG__/trpc";
 import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { env } from "../../env.js";
+import { __SERVER_ENV_BINDING__ } from "../../env.js";
 
 export const trpcRoutes = new Hono();
 

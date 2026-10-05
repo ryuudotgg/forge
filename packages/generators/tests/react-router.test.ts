@@ -208,7 +208,7 @@ export default defineConfig({
 			leafFile(contributionsFor(config), "app/routes.ts").content;
 
 		expect(routeContent({ web: "react-router" })).toBe(
-			`import { type RouteConfig, index } from "@react-router/dev/routes";
+			`import { index, type RouteConfig } from "@react-router/dev/routes";
 
 export default [
   index("routes/home.tsx"),
@@ -231,7 +231,7 @@ export default [
 		});
 
 		expect(both).toBe(
-			`import { type RouteConfig, index, route } from "@react-router/dev/routes";
+			`import { index, type RouteConfig, route } from "@react-router/dev/routes";
 
 export default [
   index("routes/home.tsx"),

@@ -126,7 +126,7 @@ describe("email addon", () => {
 			expect(source).toContain(
 				`Email isn't configured. Set EMAIL_FROM and ${provider.key}.`,
 			);
-			expect(source).toContain('env.NODE_ENV === "production"');
+			expect(source).toContain('env.NODE_ENV !== "development"');
 			expect(source).toContain("html?: string");
 			if (provider.id === "resend")
 				expect(source).toContain("throw new Error(error.message)");
@@ -273,14 +273,21 @@ describe.each(providers)("generated $id sendEmail", (provider) => {
 		expect(rendered.send).not.toHaveBeenCalled();
 	});
 
-	it("rejects an unconfigured production email without constructing a client", async () => {
-		const rendered = await renderedEmail(provider, { NODE_ENV: "production" });
+	it.each(["production", "test", undefined])(
+		"rejects an unconfigured email under NODE_ENV %s without logging it",
+		async (nodeEnv) => {
+			const info = vi
+				.spyOn(console, "info")
+				.mockImplementation(() => undefined);
+			const rendered = await renderedEmail(provider, { NODE_ENV: nodeEnv });
 
-		await expect(rendered.sendEmail(message)).rejects.toThrow(
-			`Email isn't configured. Set EMAIL_FROM and ${provider.key}.`,
-		);
-		expect(rendered.construct).not.toHaveBeenCalled();
-	});
+			await expect(rendered.sendEmail(message)).rejects.toThrow(
+				`Email isn't configured. Set EMAIL_FROM and ${provider.key}.`,
+			);
+			expect(info).not.toHaveBeenCalled();
+			expect(rendered.construct).not.toHaveBeenCalled();
+		},
+	);
 
 	it.each(["EMAIL_FROM", "key"])(
 		"rejects when %s is missing",

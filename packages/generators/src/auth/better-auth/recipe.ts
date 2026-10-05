@@ -24,7 +24,7 @@ import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
-import { hasSecondaryClients } from "../../origins";
+import { serverCorsMarkers } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
@@ -37,9 +37,12 @@ import { betterAuthRecipeVars } from "./shared";
 
 const betterAuthMarkers = {
 	SLUG: marker.required,
+	APP_NAME: marker.required,
+	AUTH_ENV_NAMES: marker.required,
 	DATASOURCE_PROVIDER: marker.required,
 	DRIZZLE_PROVIDER: marker.required,
 	PLUGIN_IMPORTS: marker.toggleLine("// __PLUGIN_IMPORTS__\n"),
+	SCOPED_PLUGIN_IMPORTS: marker.toggleLine("__SCOPED_PLUGIN_IMPORTS__\n"),
 	RELATIVE_PLUGIN_IMPORTS: marker.toggleLine("__RELATIVE_PLUGIN_IMPORTS__\n"),
 	PLUGINS: marker.toggleLine("  // __PLUGINS__\n\n"),
 	CLIENT_PLUGIN_IMPORTS: marker.toggleLine("// __CLIENT_PLUGIN_IMPORTS__\n"),
@@ -132,7 +135,11 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 // distinct keys here even though `path` below rewrites both to src/index.ts.
 export const betterAuthHonoRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: { ...betterAuthServerMarkers, WEB_ORIGINS: marker.required },
+	markers: {
+		...betterAuthServerMarkers,
+		SERVER_ENV_BINDING: marker.required,
+		WEB_ORIGINS: marker.required,
+	},
 	assets: [
 		sharedAsset("index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -155,9 +162,7 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 	requiredSlots: ["auth"],
 	markers: ({ config }: AdapterContext<ForgeConfig>) => ({
 		...betterAuthRecipeVars(config, honoFramework),
-		WEB_ORIGINS: hasSecondaryClients(config)
-			? "[env.WEB_URL, ...env.WEB_URLS]"
-			: "env.WEB_URL",
+		...serverCorsMarkers(config),
 	}),
 	include: (asset, { config }) =>
 		asset._tag === "SlotAssetDefinition" ||

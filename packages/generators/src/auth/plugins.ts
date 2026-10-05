@@ -5,6 +5,7 @@ import {
 	type ForgeConfig,
 } from "../config";
 import { deps } from "../deps";
+import { organizationServerCall } from "./invitations";
 import { authUsesEmail, resolveAuthMethods } from "./methods";
 import {
 	type AuthTable,
@@ -47,7 +48,9 @@ interface AuthPluginImport {
 }
 
 interface AuthPluginDefinition {
-	readonly server: ReadonlyArray<AuthPluginImport>;
+	readonly server:
+		| ReadonlyArray<AuthPluginImport>
+		| ((config: ForgeConfig) => ReadonlyArray<AuthPluginImport>);
 	readonly client: ReadonlyArray<AuthPluginImport>;
 	readonly expo?: ReadonlyArray<AuthPluginImport>;
 	readonly tables?: ReadonlyArray<AuthTable>;
@@ -72,7 +75,13 @@ const authPluginDefinitions = {
 		tables: [twoFactorTable],
 	},
 	organization: {
-		server: [{ module: "better-auth/plugins", name: "organization" }],
+		server: (config) => [
+			{
+				module: "better-auth/plugins",
+				name: "organization",
+				call: organizationServerCall(config),
+			},
+		],
 		client: [
 			{ module: "better-auth/client/plugins", name: "organizationClient" },
 		],
@@ -231,6 +240,13 @@ export function authSendsEmail(config: ForgeConfig): boolean {
 	);
 }
 
+export function authRefusesInvitations(config: ForgeConfig): boolean {
+	return (
+		config.emailProvider === undefined &&
+		resolveAuthPlugins(config).includes("organization")
+	);
+}
+
 function isAuthPluginList(value: unknown): value is ReadonlyArray<AuthPlugin> {
 	if (!Array.isArray(value)) return false;
 
@@ -300,38 +316,14 @@ export function authPluginBindings(
 	return activeAuthExtensions(config).flatMap((extension) => {
 		const definition: AuthPluginDefinition = authPluginDefinitions[extension];
 
-		if (extension === "organization" && side === "server") {
-			const delivery =
-				config.emailProvider === undefined
-					? [
-							`        console.log(\`Invitation \${id} to \${organization.name} for \${email}\`);`,
-						]
-					: [
-							"        await sendEmail({",
-							"          to: email,",
-							`          subject: \`Invitation to \${organization.name}\`,`,
-							`          text: \`You have been invited to \${organization.name}. Your invitation ID is \${id}.\`,`,
-							"        });",
-						];
-
-			return [
-				{
-					module: "better-auth/plugins",
-					name: "organization",
-					call: [
-						"organization({",
-						"      async sendInvitationEmail({ id, email, organization }) {",
-						...delivery,
-						"      },",
-						"    })",
-					].join("\n"),
-				},
-			];
-		}
+		if (side === "server")
+			return typeof definition.server === "function"
+				? definition.server(config)
+				: definition.server;
 
 		return side === "expo"
 			? (definition.expo ?? definition.client)
-			: definition[side];
+			: definition.client;
 	});
 }
 

@@ -664,12 +664,16 @@ describe("oRPC Next.js self host", () => {
 			});
 
 			const proxy = writeContent(plan, "apps/web/proxy.ts");
+			const cors = writeContent(plan, "apps/web/lib/api-cors.ts");
 
 			expect(proxy).toContain('"/api/orpc/:path*"');
 			expect(proxy).not.toContain('"/api/trpc/:path*"');
-			expect(proxy).toContain('"Access-Control-Allow-Credentials": "true"');
-			expect(proxy).toContain("x-csrf-token");
-			expect(proxy).toContain("status: 204");
+			expect(proxy).toContain("withCors(request, NextResponse.next())");
+			expect(cors).toContain(
+				'headers.set("Access-Control-Allow-Credentials", "true");',
+			);
+			expect(cors).toContain("x-csrf-token");
+			expect(cors).toContain("status: 204");
 			expect(writeContent(plan, "apps/admin/orpc/client.ts")).toContain(
 				"env.NEXT_PUBLIC_SERVER_URL",
 			);

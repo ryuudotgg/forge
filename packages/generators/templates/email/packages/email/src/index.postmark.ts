@@ -10,7 +10,7 @@ export interface EmailMessage {
 
 export async function sendEmail(message: EmailMessage): Promise<void> {
   if (!env.EMAIL_FROM || !env.POSTMARK_SERVER_TOKEN) {
-    if (env.NODE_ENV === "production") {
+    if (env.NODE_ENV !== "development") {
       throw new Error(
         "Email isn't configured. Set EMAIL_FROM and POSTMARK_SERVER_TOKEN.",
       );

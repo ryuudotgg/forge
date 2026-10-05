@@ -1,7 +1,7 @@
 import { auth } from "@__SLUG__/auth";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { env } from "../../env.js";
+import { __SERVER_ENV_BINDING__ } from "../../env.js";
 
 export const authRoutes = new Hono();
 

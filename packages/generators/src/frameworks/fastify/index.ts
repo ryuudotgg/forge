@@ -20,15 +20,16 @@ import {
 	standaloneApiOrigin,
 	webDevOrigin,
 	webOriginsCors,
-	webOriginsEnvSchema,
+	withServerEnvOrigins,
 } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import { resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
 import { rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
+import { standaloneServerScripts } from "../server-scripts";
 
 const fastifySlots = {
 	api: "src/routes",
@@ -182,13 +183,11 @@ function buildContributions(config: ForgeConfig) {
 					]),
 				]
 			: []),
-		surfaceScripts(ensuredModuleTarget("server"), "packageJson", {
-			build: pmRun(pm, "with-env", "tsdown"),
-			dev: pmRun(pm, "with-env", "tsx watch src/index.ts"),
-			start: pmRun(pm, "with-env", "node dist/index.js"),
-			typecheck: "tsc --noEmit",
-			"with-env": "dotenv -e ../../.env --",
-		}),
+		surfaceScripts(
+			ensuredModuleTarget("server"),
+			"packageJson",
+			standaloneServerScripts(pm),
+		),
 		surfaceLines(projectTarget(), "rootEnv", envLines, {
 			section: "Fastify",
 		}),
@@ -217,9 +216,9 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("server"),
 			"env.ts",
-			interpolate(readTemplate("frameworks/fastify/env.ts"), vars).replace(
-				`    WEB_URL: z.url().default("${webOrigin}"),\n`,
-				`    WEB_URL: z.url().default("${webOrigin}"),\n${webOriginsEnvSchema(config)}`,
+			withServerEnvOrigins(
+				config,
+				interpolate(readTemplate("frameworks/fastify/env.ts"), vars),
 			),
 		),
 		leafTextFile(

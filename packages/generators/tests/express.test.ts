@@ -123,6 +123,9 @@ describe("Express backend", () => {
 				expect(route).toContain("createExpressMiddleware");
 				expect(route).toContain('"/api/trpc"');
 				expect(route).toContain("headersFromRequest(req.headers)");
+				expect(route).toContain(
+					'responseMeta: () => ({ headers: { vary: ["Origin"] } }),',
+				);
 
 				if (combination.authentication === "better-auth")
 					expect(route).toContain(

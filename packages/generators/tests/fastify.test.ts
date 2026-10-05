@@ -120,6 +120,9 @@ describe("Fastify backend", () => {
 				expect(route).toContain("fastifyTRPCPlugin");
 				expect(route).toContain('prefix: "/api/trpc"');
 				expect(route).toContain("headersFromRequest(req.headers)");
+				expect(route).toContain(
+					'responseMeta: () => ({ headers: { vary: ["Origin"] } }),',
+				);
 
 				if (combination.authentication === "better-auth")
 					expect(route).toContain(
