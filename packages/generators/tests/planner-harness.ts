@@ -178,3 +178,12 @@ export async function replannedProject(
 		await rm(directory, { force: true, recursive: true });
 	}
 }
+
+export function serverEnvGroups(content: string): string[][] {
+	const block = /^ {2}server: \{\n([\s\S]*?)^ {2}\},$/m.exec(content)?.[1];
+	if (block === undefined) throw new Error("Missing Server Env Block");
+
+	return block
+		.split("\n\n")
+		.map((group) => group.match(/(?<=^ {4})[A-Z_]+(?=:)/gm) ?? []);
+}

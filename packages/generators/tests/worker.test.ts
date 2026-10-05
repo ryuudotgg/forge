@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { builtins } from "../src";
-import { plannedProject } from "./planner-harness";
+import { plannedProject, serverEnvGroups } from "./planner-harness";
 
 const base = {
 	catalogs: "flat",
@@ -166,5 +166,20 @@ describe("worker addon", () => {
 		const entry = builtins.addons.find((addon) => addon.id === "worker");
 		expect(entry?.when({ ...base, addons: [] })).toBe(false);
 		expect(entry?.when({ ...base, addons: ["worker"] })).toBe(true);
+	});
+
+	it("groups NODE_ENV, PORT and the secret apart", async () => {
+		const plan = await plannedProject({
+			...base,
+			addons: ["worker"],
+			platforms: ["web"],
+			web: "nextjs",
+		});
+
+		expect(serverEnvGroups(writeContent(plan, "apps/worker/env.ts"))).toEqual([
+			["NODE_ENV"],
+			["PORT"],
+			["WORKER_SECRET"],
+		]);
 	});
 });
