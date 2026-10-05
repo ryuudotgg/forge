@@ -311,9 +311,8 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			),
 			postinstall: pmRun(pm, "typegen"),
 			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
-			start: instance.primary
-				? pmRun(pm, "with-env", "react-router-serve ./build/server/index.js")
-				: `dotenv -e ../../.env -v PORT=${instance.port} -- react-router-serve ./build/server/index.js`,
+			start:
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- react-router-serve ./build/server/index.js",
 			typecheck: "tsc --noEmit",
 			typegen: pmRun(pm, "with-env", "react-router typegen"),
 			"with-env": "dotenv -e ../../.env --",
@@ -326,6 +325,11 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 				readTemplate("frameworks/react-router/env.ts"),
 				viteServerEnvMarkers(config, instance),
 			),
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			".env.production",
+			`PORT=${instance.port}\n`,
 		),
 		leafTextFile(
 			ensuredModuleTarget(instance.key),

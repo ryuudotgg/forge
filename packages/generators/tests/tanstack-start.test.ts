@@ -250,6 +250,7 @@ export default config;
 			versions.tanstackRouterCli.version,
 		);
 
+		expect(dependencyVersions.get("srvx")).toBe(versions.srvx.version);
 		expect(dependencyVersions.get("vite")).toBe(versions.vite.version);
 		expect(dependencyVersions.get("@vitejs/plugin-react")).toBe(
 			versions.viteReact.version,
@@ -267,6 +268,8 @@ export default config;
 			postinstall: "pnpm generate-routes",
 			pretypecheck: "pnpm generate-routes",
 			preview: "pnpm with-env vite preview",
+			start:
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- srvx --prod -s ../client dist/server/server.js",
 			typecheck: "tsc --noEmit",
 			"with-env": "dotenv -e ../../.env --",
 		});

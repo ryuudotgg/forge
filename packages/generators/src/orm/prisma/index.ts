@@ -27,6 +27,7 @@ import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+import { viteHostDriverDependencies } from "../vite-host-drivers";
 import { prismaUserRelations, renderPrismaAuthTables } from "./auth-schema";
 
 const authFieldTypes: Record<AuthField["type"], string> = {
@@ -231,6 +232,10 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 								version: "workspace:*",
 								type: "dependencies",
 							},
+							...viteHostDriverDependencies(
+								config,
+								provider.prisma.runtimeDeps,
+							),
 						]),
 					]),
 

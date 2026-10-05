@@ -19,6 +19,7 @@ export interface CatalogEntry {
 	readonly version: string;
 	readonly group: CatalogGroup;
 	readonly authMethod?: "passkey";
+	readonly viteHostDependency?: true;
 }
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
@@ -136,6 +137,7 @@ export const versions = {
 		version: "8.3.1",
 		group: "Framework",
 	},
+	srvx: { name: "srvx", version: "1.0.5", group: "Framework" },
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
@@ -258,6 +260,7 @@ export const versions = {
 		name: "@libsql/client",
 		version: "^0.18.0",
 		group: "Database",
+		viteHostDependency: true,
 	},
 	planetscaleDatabase: {
 		name: "@planetscale/database",
@@ -293,6 +296,7 @@ export const versions = {
 		name: "@prisma/adapter-libsql",
 		version: "^7.8.0",
 		group: "Database",
+		viteHostDependency: true,
 	},
 	prismaAdapterMariadb: {
 		name: "@prisma/adapter-mariadb",
@@ -308,6 +312,7 @@ export const versions = {
 		name: "@prisma/adapter-better-sqlite3",
 		version: "^7.8.0",
 		group: "Database",
+		viteHostDependency: true,
 	},
 	pg: {
 		name: "pg",

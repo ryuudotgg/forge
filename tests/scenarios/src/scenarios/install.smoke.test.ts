@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -226,6 +226,7 @@ function scriptEnvironment(overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 	for (const name of Object.keys(process.env))
 		if (
 			name === "NODE_ENV" ||
+			name === "PORT" ||
 			name === "CI" ||
 			name === "TEST" ||
 			name === "VITEST" ||
@@ -741,8 +742,6 @@ async function expectOrpcSession(
 }
 
 async function expectSameOriginOrpcSession(
-	projectRoot: string,
-	sourceRoot: string,
 	origin: string,
 	cookie: string,
 	userId: string,
@@ -801,7 +800,15 @@ async function expectSameOriginOrpcSession(
 	});
 
 	expect(anonymousCaller.status).toBe(401);
+}
 
+async function expectBundledOrpcClient(
+	projectRoot: string,
+	sourceRoot: string,
+	origin: string,
+	cookie: string,
+	userId: string,
+) {
 	const webRoot = join(projectRoot, "apps/web");
 
 	await writeFile(
@@ -905,12 +912,131 @@ async function expectSameOriginOrpcSession(
 	});
 }
 
-async function expectSelfHostedOrpc(
-	projectRoot: string,
-	sourceRoot: string,
-	clientOrigin?: string,
-	host: "vite" | "nextjs" = "vite",
+async function signUpSession(
+	origin: string,
+	requestOrigin: string,
+	email: string,
+	output: () => string,
 ) {
+	const signup = await fetch(`${origin}/api/auth/sign-up/email`, {
+		method: "POST",
+		headers: { Origin: requestOrigin, "Content-Type": "application/json" },
+		body: JSON.stringify({
+			email,
+			name: "Self Hosted",
+			password: "forge-smoke-password",
+		}),
+	});
+
+	expect(signup.status, `${await signup.text()}\n${output()}`).toBe(200);
+
+	const cookie = signup.headers.get("set-cookie")?.split(";", 1)[0];
+	if (cookie === undefined)
+		throw new Error("Missing Session Cookie: Better Auth sign-up");
+
+	const sessionResponse = await fetch(`${origin}/api/auth/get-session`, {
+		headers: { Cookie: cookie, Origin: requestOrigin },
+	});
+
+	const session: unknown = await sessionResponse.json();
+
+	expect(sessionResponse.status).toBe(200);
+
+	if (requestOrigin !== origin)
+		expect(sessionResponse.headers.get("access-control-allow-origin")).toBe(
+			requestOrigin,
+		);
+
+	if (
+		typeof session !== "object" ||
+		session === null ||
+		!("user" in session) ||
+		typeof session.user !== "object" ||
+		session.user === null ||
+		!("id" in session.user) ||
+		typeof session.user.id !== "string"
+	)
+		throw new Error("Missing Session User: Better Auth sign-up");
+
+	return { cookie, userId: session.user.id };
+}
+
+async function expectOrpcLoaderRoute(
+	origin: string,
+	sessions: ReadonlyArray<{ readonly cookie: string; readonly userId: string }>,
+	output: () => string,
+) {
+	const render = async (cookie?: string) => {
+		const page = await fetch(`${origin}/orpc-example`, {
+			headers: cookie === undefined ? {} : { Cookie: cookie },
+		});
+
+		const html = await page.text();
+		expect(page.status, output()).toBe(200);
+		return /data-testid="orpc-me">([^<]*)</.exec(html)?.[1];
+	};
+
+	const rendered = await Promise.all([
+		...sessions.map((session) => render(session.cookie)),
+		render(),
+	]);
+
+	expect(rendered).toEqual([
+		...sessions.map((session) => session.userId),
+		"Signed out",
+	]);
+}
+
+async function bundleText(root: string) {
+	const files = await readdir(root, { recursive: true, withFileTypes: true });
+	const contents = await Promise.all(
+		files
+			.filter((file) => file.isFile() && file.name.endsWith(".js"))
+			.map((file) => readFile(join(file.parentPath, file.name), "utf8")),
+	);
+
+	return contents.join("\n");
+}
+
+async function expectServerOnlyCodeOutOfClientBundle(projectRoot: string) {
+	const dist = join(projectRoot, "apps/web/dist");
+	const client = await bundleText(join(dist, "client"));
+	const server = await bundleText(join(dist, "server"));
+
+	for (const marker of ["AUTH_SECRET", "DATABASE_URL", "@libsql"]) {
+		expect(server, marker).toContain(marker);
+		expect(client, marker).not.toContain(marker);
+	}
+}
+
+async function expectBrowserOrpcClientBundle(projectRoot: string) {
+	const client = await bundleText(join(projectRoot, "apps/web/dist/client"));
+
+	for (const pattern of [
+		/\/api\/orpc/,
+		/["'`]x-csrf-token["'`]/,
+		/credentials:\s*["'`]include["'`]/,
+	])
+		expect(pattern.test(client), String(pattern)).toBe(true);
+
+	expect(/\/api\/trpc/.test(client)).toBe(false);
+}
+
+async function expectPortFree(port: number) {
+	const probe = createServer();
+
+	await new Promise<void>((resolveListen, rejectListen) => {
+		probe.once("error", (error) =>
+			rejectListen(new Error(`Port In Use: ${port}`, { cause: error })),
+		);
+
+		probe.listen(port, resolveListen);
+	});
+
+	await new Promise<void>((resolveClose) => probe.close(() => resolveClose()));
+}
+
+async function reservePort() {
 	const reservation = createServer();
 
 	await new Promise<void>((resolveListen, rejectListen) => {
@@ -922,76 +1048,186 @@ async function expectSelfHostedOrpc(
 	if (address === null || typeof address === "string")
 		throw new Error("Missing Reserved Port");
 
-	const port = address.port;
-
 	await new Promise<void>((resolveClose, rejectClose) => {
 		reservation.close((error) => (error ? rejectClose(error) : resolveClose()));
 	});
 
-	const origin = `http://127.0.0.1:${port}`;
-	const generatedEnv = {
-		...(await readGeneratedEnv(projectRoot)),
-		APP_ORIGIN: origin,
-		WEB_URL: origin,
+	return address.port;
+}
+
+const rpcHealthRequests = {
+	orpc: {
+		path: "/api/orpc/health",
+		method: "POST",
+		headers: { "Content-Type": "application/json", "x-csrf-token": "orpc" },
+		body: JSON.stringify({ json: null }),
+		result: { json: { status: "ok" } },
+	},
+	trpc: {
+		path: "/api/trpc/health",
+		method: "GET",
+		headers: { "x-trpc-source": "smoke" },
+		body: undefined,
+		result: { result: { data: { json: { status: "ok" } } } },
+	},
+} as const;
+
+function rpcHealthInit(
+	health: (typeof rpcHealthRequests)[keyof typeof rpcHealthRequests],
+	headers: Readonly<Record<string, string>> = {},
+): RequestInit {
+	return {
+		method: health.method,
+		headers: { ...health.headers, ...headers },
+		body: health.body,
 	};
+}
 
-	await expectSchemaPush(projectRoot, generatedEnv);
+type SelfHostWeb = "nextjs" | "react-router" | "tanstack-start";
 
-	const ambientEnv = { ...process.env };
+const selfHostSourceRoots = {
+	nextjs: "",
+	"react-router": "app",
+	"tanstack-start": "src",
+} as const satisfies Record<SelfHostWeb, string>;
 
-	delete ambientEnv.CI;
-
-	const webRoot = join(projectRoot, "apps/web");
-	const server = spawn(
-		"node",
-		host === "nextjs"
-			? [
-					join(webRoot, "node_modules/next/dist/bin/next"),
-					"start",
-					"--hostname",
-					"127.0.0.1",
-					"--port",
-					String(port),
-				]
-			: [
-					join(webRoot, "node_modules/vite/bin/vite.js"),
-					"dev",
-					"--host",
-					"127.0.0.1",
-					"--port",
-					String(port),
-					"--strictPort",
-				],
-		{ cwd: webRoot, env: { ...ambientEnv, ...generatedEnv } },
-	);
-
+function launchedServer(
+	child: ChildProcessWithoutNullStreams,
+	origin: string,
+	kill: () => Promise<void>,
+) {
 	let output = "";
 	const capture = (chunk: Buffer) => {
 		output += chunk.toString();
 	};
 
-	server.stdout.on("data", capture);
-	server.stderr.on("data", capture);
+	child.stdout.on("data", capture);
+	child.stderr.on("data", capture);
 
-	const exited = new Promise<void>((resolveExit, rejectExit) => {
-		server.once("exit", () => resolveExit());
-		server.once("error", rejectExit);
+	let failure: Error | undefined;
+	const exited = new Promise<void>((resolveExit) => {
+		child.once("exit", () => resolveExit());
+		child.once("error", (error) => {
+			failure = error;
+			resolveExit();
+		});
 	});
+
+	return {
+		child,
+		origin,
+		failure: () => failure,
+		output: () => output,
+		stop: async () => {
+			await kill();
+			await exited;
+		},
+	};
+}
+
+async function startSelfHostedServer(
+	projectRoot: string,
+	web: SelfHostWeb,
+	injectPort: boolean,
+) {
+	const webRoot = join(projectRoot, "apps/web");
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+
+	if (web === "nextjs") {
+		const port = await reservePort();
+		const origin = `http://127.0.0.1:${port}`;
+		const env = { ...generatedEnv, APP_ORIGIN: origin, WEB_URL: origin };
+		const ambientEnv = { ...process.env };
+
+		delete ambientEnv.CI;
+
+		await expectSchemaPush(projectRoot, env);
+
+		const child = spawn(
+			"node",
+			[
+				join(webRoot, "node_modules/next/dist/bin/next"),
+				"start",
+				"--hostname",
+				"127.0.0.1",
+				"--port",
+				String(port),
+			],
+			{ cwd: webRoot, env: { ...ambientEnv, ...env } },
+		);
+
+		return launchedServer(child, origin, async () => {
+			if (child.exitCode === null) child.kill("SIGTERM");
+		});
+	}
+
+	const injectedPort = injectPort ? await reservePort() : undefined;
+	const origin =
+		injectedPort === undefined
+			? generatedEnv.APP_ORIGIN
+			: `http://127.0.0.1:${injectedPort}`;
+
+	if (origin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	await expectPortFree(Number(new URL(origin).port));
+	await expectSchemaPush(projectRoot);
+
+	const child = spawn("pnpm", ["run", "start"], {
+		cwd: webRoot,
+		detached: true,
+		env: {
+			...process.env,
+			...scriptEnvironment(
+				injectedPort === undefined
+					? {}
+					: { APP_ORIGIN: origin, PORT: String(injectedPort) },
+			),
+		},
+	});
+
+	return launchedServer(child, origin, async () => {
+		const pid = child.pid;
+		if (pid === undefined) return;
+
+		stopProcessGroup(pid, "SIGTERM");
+
+		for (let attempt = 0; attempt < 50 && processGroupAlive(pid); attempt += 1)
+			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+
+		stopProcessGroup(pid, "SIGKILL");
+	});
+}
+
+async function expectSelfHostedRpc(
+	projectRoot: string,
+	options: {
+		readonly web: SelfHostWeb;
+		readonly rpc: "trpc" | "orpc";
+		readonly clientOrigin?: string;
+		readonly injectPort?: boolean;
+	},
+) {
+	const { web, rpc, clientOrigin } = options;
+	const health = rpcHealthRequests[rpc];
+	const server = await startSelfHostedServer(
+		projectRoot,
+		web,
+		options.injectPort === true,
+	);
+	const { origin, output } = server;
 
 	try {
 		let ready = false;
-		for (let attempt = 0; attempt < 200; attempt += 1) {
-			if (server.exitCode !== null) break;
+		for (let attempt = 0; attempt < 300; attempt += 1) {
+			if (server.child.exitCode !== null || server.failure() !== undefined)
+				break;
 
 			try {
-				const response = await fetch(`${origin}/api/orpc/health`, {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						"x-csrf-token": "orpc",
-					},
-					body: JSON.stringify({ json: null }),
-				});
+				const response = await fetch(
+					`${origin}${health.path}`,
+					rpcHealthInit(health),
+				);
 
 				if (response.ok) {
 					ready = true;
@@ -1002,28 +1238,40 @@ async function expectSelfHostedOrpc(
 			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 		}
 
-		expect(ready, output).toBe(true);
+		const failure = server.failure();
+		if (failure !== undefined) throw failure;
 
-		if (host === "nextjs") {
+		expect(ready, output()).toBe(true);
+
+		const healthResponse = await fetch(
+			`${origin}${health.path}`,
+			rpcHealthInit(health),
+		);
+
+		expect(await healthResponse.json()).toEqual(health.result);
+
+		if (web === "nextjs") {
 			const page = await fetch(`${origin}/orpc-example`);
 			const html = await page.text();
 
-			expect(page.status, output).toBe(200);
+			expect(page.status, output()).toBe(200);
 			expect(html).toMatch(/data-testid="orpc-health"[^>]*>ok<\/p>/);
 		}
 
 		if (clientOrigin !== undefined) {
-			for (const path of ["/api/orpc/health", "/api/auth/get-session"]) {
+			for (const path of [health.path, "/api/auth/get-session"]) {
 				const preflight = await fetch(`${origin}${path}`, {
 					method: "OPTIONS",
 					headers: {
 						Origin: clientOrigin,
-						"Access-Control-Request-Method": "POST",
-						"Access-Control-Request-Headers": "content-type, x-csrf-token",
+						"Access-Control-Request-Method": health.method,
+						"Access-Control-Request-Headers": Object.keys(health.headers)
+							.join(", ")
+							.toLowerCase(),
 					},
 				});
 
-				expect(preflight.status, output).toBe(204);
+				expect(preflight.status, output()).toBe(204);
 				expect(preflight.headers.get("access-control-allow-origin")).toBe(
 					clientOrigin,
 				);
@@ -1033,75 +1281,64 @@ async function expectSelfHostedOrpc(
 				);
 			}
 
-			const health = await fetch(`${origin}/api/orpc/health`, {
-				method: "POST",
-				headers: {
-					Origin: clientOrigin,
-					"Content-Type": "application/json",
-					"x-csrf-token": "orpc",
-				},
-				body: JSON.stringify({ json: null }),
-			});
+			const crossOrigin = await fetch(
+				`${origin}${health.path}`,
+				rpcHealthInit(health, { Origin: clientOrigin }),
+			);
 
-			expect(health.status, output).toBe(200);
-			expect(health.headers.get("access-control-allow-origin")).toBe(
+			expect(crossOrigin.status, output()).toBe(200);
+			expect(crossOrigin.headers.get("access-control-allow-origin")).toBe(
 				clientOrigin,
 			);
 		}
 
-		const signup = await fetch(`${origin}/api/auth/sign-up/email`, {
-			method: "POST",
-			headers: {
-				Origin: clientOrigin ?? origin,
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({
-				email: "self-orpc@example.com",
-				name: "Self Hosted",
-				password: "forge-smoke-password",
-			}),
-		});
+		const session = await signUpSession(
+			origin,
+			clientOrigin ?? origin,
+			"self-host@example.com",
+			output,
+		);
 
-		expect(signup.status, `${await signup.text()}\n${output}`).toBe(200);
+		if (web !== "nextjs")
+			expect(session.cookie).toMatch(/^__Secure-better-auth\.session_token=/);
 
-		const cookie = signup.headers.get("set-cookie")?.split(";", 1)[0];
-		if (cookie === undefined)
-			throw new Error("Missing Session Cookie: Better Auth sign-up");
-
-		const sessionResponse = await fetch(`${origin}/api/auth/get-session`, {
-			headers: { Cookie: cookie, Origin: clientOrigin ?? origin },
-		});
-
-		const session: unknown = await sessionResponse.json();
-
-		expect(sessionResponse.status).toBe(200);
-
-		if (clientOrigin !== undefined)
-			expect(sessionResponse.headers.get("access-control-allow-origin")).toBe(
-				clientOrigin,
+		if (rpc === "trpc") {
+			const call = await fetch(
+				`${origin}${health.path}`,
+				rpcHealthInit(health, { Cookie: session.cookie, Origin: origin }),
 			);
 
-		if (
-			typeof session !== "object" ||
-			session === null ||
-			!("user" in session) ||
-			typeof session.user !== "object" ||
-			session.user === null ||
-			!("id" in session.user) ||
-			typeof session.user.id !== "string"
-		)
-			throw new Error("Missing Session User: Better Auth sign-up");
+			expect(call.status, output()).toBe(200);
+			expect(await call.json()).toEqual(health.result);
+			return;
+		}
 
-		await expectSameOriginOrpcSession(
-			projectRoot,
-			sourceRoot,
+		await expectSameOriginOrpcSession(origin, session.cookie, session.userId);
+
+		if (web !== "tanstack-start") {
+			await expectBundledOrpcClient(
+				projectRoot,
+				selfHostSourceRoots[web],
+				origin,
+				session.cookie,
+				session.userId,
+			);
+
+			return;
+		}
+
+		const second = await signUpSession(
 			origin,
-			cookie,
-			session.user.id,
+			origin,
+			"self-host-second@example.com",
+			output,
 		);
+
+		await expectOrpcLoaderRoute(origin, [session, second], output);
+		await expectServerOnlyCodeOutOfClientBundle(projectRoot);
+		await expectBrowserOrpcClientBundle(projectRoot);
 	} finally {
-		if (server.exitCode === null) server.kill("SIGTERM");
-		await exited;
+		await server.stop();
 	}
 }
 
@@ -1856,6 +2093,80 @@ async function expectInvitationFlow(projectRoot: string, projectName: string) {
 	);
 }
 
+async function writeOrpcCallerProbe(
+	projectRoot: string,
+	web: "react-router" | "tanstack-start",
+) {
+	const callerProbe =
+		web === "tanstack-start"
+			? `import "@tanstack/react-start";
+import { ORPCError } from "@orpc/server";
+import { createFileRoute } from "@tanstack/react-router";
+import { client } from "../../orpc/client";
+import { createServerCaller } from "../../orpc/server";
+
+export const Route = createFileRoute("/api/caller-probe")({
+  server: {
+    handlers: {
+      GET: async ({ request }) => {
+        if (typeof client.health !== "function") throw new Error("Missing Browser Client");
+
+        const caller = await createServerCaller(request);
+
+        try {
+          return Response.json({ health: await caller.health(), me: await caller.me() });
+        } catch (error) {
+          if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
+
+          throw error;
+        }
+      },
+    },
+  },
+});
+`
+			: `import { ORPCError } from "@orpc/server";
+import { client } from "../orpc/client";
+import { createServerCaller } from "../orpc/server";
+
+export async function loader({ request }: { request: Request }) {
+  if (typeof client.health !== "function") throw new Error("Missing Browser Client");
+
+  const caller = await createServerCaller(request);
+
+  try {
+    return Response.json({ health: await caller.health(), me: await caller.me() });
+  } catch (error) {
+    if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
+
+    throw error;
+  }
+}
+`;
+
+	await writeFile(
+		join(
+			projectRoot,
+			`apps/web/${selfHostSourceRoots[web]}/routes/${web === "tanstack-start" ? "api/caller-probe.ts" : "api.caller-probe.ts"}`,
+		),
+		callerProbe,
+	);
+
+	if (web === "react-router") {
+		const routesPath = join(projectRoot, "apps/web/app/routes.ts");
+
+		const routes = await readFile(routesPath, "utf8");
+
+		await writeFile(
+			routesPath,
+			routes.replace(
+				"export default [",
+				'export default [\n  route("api/caller-probe", "routes/api.caller-probe.ts"),',
+			),
+		);
+	}
+}
+
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it.each([
 		{ backend: "hono", web: "nextjs", emailProvider: "resend" },
@@ -2256,12 +2567,10 @@ export async function GET() {
 			);
 
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectSelfHostedOrpc(
-				workspace.projectRoot,
-				"",
-				undefined,
-				"nextjs",
-			);
+			await expectSelfHostedRpc(workspace.projectRoot, {
+				web: "nextjs",
+				rpc: "orpc",
+			});
 		});
 	}, 600_000);
 
@@ -2316,24 +2625,34 @@ export async function GET() {
 	);
 
 	it.each([
-		{ web: "tanstack-start", sourceRoot: "src", secondary: false },
-		{ web: "react-router", sourceRoot: "app", secondary: false },
-		{ web: "tanstack-start", sourceRoot: "src", secondary: true },
-		{ web: "react-router", sourceRoot: "app", secondary: true },
-	])(
-		"installs, builds, and typechecks $web as an oRPC self host (secondary: $secondary)",
-		async ({ web, sourceRoot, secondary }) => {
+		{ web: "tanstack-start", rpc: "orpc", orm: "drizzle", secondary: false },
+		{ web: "react-router", rpc: "orpc", orm: "drizzle", secondary: false },
+		{ web: "tanstack-start", rpc: "orpc", orm: "drizzle", secondary: true },
+		{ web: "react-router", rpc: "orpc", orm: "drizzle", secondary: true },
+		{ web: "tanstack-start", rpc: "trpc", orm: "drizzle", secondary: false },
+		{
+			web: "react-router",
+			rpc: "trpc",
+			orm: "drizzle",
+			secondary: false,
+			injectPort: true,
+		},
+		{ web: "react-router", rpc: "orpc", orm: "prisma", secondary: false },
+	] as const)(
+		"installs, builds, and starts $web as a $rpc self host on $orm (secondary: $secondary)",
+		async (cell) => {
+			const { web, rpc, orm, secondary } = cell;
 			await withScenarioWorkspace(
-				`smoke-orpc-self-${web}`,
+				`smoke-${rpc}-self-${web}-${orm}`,
 				async (workspace) => {
 					await createProject(workspace, {
 						authentication: "better-auth",
 						authMethods: ["email-password"],
 						backend: "self",
 						database: "sqlite",
-						orm: "drizzle",
+						orm,
 						packageManager: "pnpm",
-						rpc: "orpc",
+						rpc,
 						style: "tailwind",
 						web,
 						...(secondary
@@ -2345,88 +2664,23 @@ export async function GET() {
 							: {}),
 					});
 
-					const callerProbe =
-						web === "tanstack-start"
-							? `import "@tanstack/react-start";
-import { ORPCError } from "@orpc/server";
-import { createFileRoute } from "@tanstack/react-router";
-import { client } from "../../orpc/client";
-import { createServerCaller } from "../../orpc/server";
-
-export const Route = createFileRoute("/api/caller-probe")({
-  server: {
-    handlers: {
-      GET: async ({ request }) => {
-        if (typeof client.health !== "function") throw new Error("Missing Browser Client");
-
-        const caller = await createServerCaller(request);
-
-        try {
-          return Response.json({ health: await caller.health(), me: await caller.me() });
-        } catch (error) {
-          if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
-
-          throw error;
-        }
-      },
-    },
-  },
-});
-`
-							: `import { ORPCError } from "@orpc/server";
-import { client } from "../orpc/client";
-import { createServerCaller } from "../orpc/server";
-
-export async function loader({ request }: { request: Request }) {
-  if (typeof client.health !== "function") throw new Error("Missing Browser Client");
-
-  const caller = await createServerCaller(request);
-
-  try {
-    return Response.json({ health: await caller.health(), me: await caller.me() });
-  } catch (error) {
-    if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
-
-    throw error;
-  }
-}
-`;
-
-					await writeFile(
-						join(
-							workspace.projectRoot,
-							`apps/web/${sourceRoot}/routes/${web === "tanstack-start" ? "api/caller-probe.ts" : "api.caller-probe.ts"}`,
-						),
-						callerProbe,
-					);
-
-					if (web === "react-router") {
-						const routesPath = join(
-							workspace.projectRoot,
-							"apps/web/app/routes.ts",
-						);
-
-						const routes = await readFile(routesPath, "utf8");
-
-						await writeFile(
-							routesPath,
-							routes.replace(
-								"export default [",
-								'export default [\n  route("api/caller-probe", "routes/api.caller-probe.ts"),',
-							),
-						);
-					}
+					if (rpc === "orpc")
+						await writeOrpcCallerProbe(workspace.projectRoot, web);
 
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-					await expectSelfHostedOrpc(
-						workspace.projectRoot,
-						sourceRoot,
-						secondary
-							? web === "react-router"
-								? "http://localhost:5174"
-								: "http://localhost:3002"
-							: undefined,
-					);
+					await expectSelfHostedRpc(workspace.projectRoot, {
+						web,
+						rpc,
+						injectPort: "injectPort" in cell,
+						...(secondary
+							? {
+									clientOrigin:
+										web === "react-router"
+											? "http://localhost:5174"
+											: "http://localhost:3002",
+								}
+							: {}),
+					});
 				},
 			);
 		},

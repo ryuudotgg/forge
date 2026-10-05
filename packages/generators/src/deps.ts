@@ -43,6 +43,7 @@ export const deps = {
 	reactRouterDev: dep("reactRouterDev"),
 	reactRouterNode: dep("reactRouterNode"),
 	reactRouterServe: dep("reactRouterServe"),
+	srvx: dep("srvx"),
 
 	tanstackReactRouter: dep("tanstackReactRouter"),
 	tanstackReactStart: dep("tanstackReactStart"),
