@@ -240,6 +240,13 @@ export function authSendsEmail(config: ForgeConfig): boolean {
 	);
 }
 
+export function authRefusesInvitations(config: ForgeConfig): boolean {
+	return (
+		config.emailProvider === undefined &&
+		resolveAuthPlugins(config).includes("organization")
+	);
+}
+
 function isAuthPluginList(value: unknown): value is ReadonlyArray<AuthPlugin> {
 	if (!Array.isArray(value)) return false;
 

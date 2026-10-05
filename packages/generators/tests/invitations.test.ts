@@ -40,6 +40,7 @@ const baseConfig: ForgeConfig = {
 interface InvitationOptions {
 	readonly organizationLimit: unknown;
 	readonly invitationLimit: unknown;
+	readonly organizationHooks?: unknown;
 	readonly sendInvitationEmail: (data: unknown) => Promise<void>;
 }
 
@@ -52,6 +53,32 @@ function isInvitationOptions(value: unknown): value is InvitationOptions {
 	);
 }
 
+class APIError extends Error {
+	readonly status: string;
+
+	constructor(status: string, body: { readonly message: string }) {
+		super(body.message);
+		this.status = status;
+	}
+}
+
+function beforeCreateInvitation(
+	options: InvitationOptions,
+): (data: unknown) => Promise<unknown> {
+	const hooks = options.organizationHooks;
+	const hook: unknown =
+		typeof hooks === "object" &&
+		hooks !== null &&
+		"beforeCreateInvitation" in hooks
+			? hooks.beforeCreateInvitation
+			: undefined;
+
+	if (typeof hook !== "function")
+		throw new Error("Missing Invitation Hook: generated server");
+
+	return async (data) => hook(data);
+}
+
 function organizationOptions(
 	server: string,
 	env: Readonly<Record<string, string | undefined>>,
@@ -61,6 +88,7 @@ function organizationOptions(
 	const options: unknown = new Script(
 		callSource(server, "organization"),
 	).runInNewContext({
+		APIError,
 		URL,
 		console: log,
 		env,
@@ -159,6 +187,76 @@ describe("generated invitations", () => {
 				expect(warning).not.toContain(detail);
 		},
 	);
+
+	it.each(["production", "test", undefined])(
+		"refuses invitations without a provider under NODE_ENV %s",
+		async (nodeEnv) => {
+			const plan = await plannedProject({
+				...baseConfig,
+				backend: "self",
+				web: "nextjs",
+			});
+
+			const server = writeContent(plan, "packages/auth/src/index.ts");
+			expect(server).toContain('import { APIError } from "better-auth/api";');
+			expect(server).toContain('if (env.NODE_ENV === "development") return;');
+
+			const { options } = organizationOptions(server, {
+				NODE_ENV: nodeEnv,
+				APP_ORIGIN: "https://app.example.com",
+			});
+
+			const refusal = beforeCreateInvitation(options)({
+				invitation: { email: "invitee@example.com", role: "member" },
+			});
+
+			await expect(refusal).rejects.toBeInstanceOf(APIError);
+			await expect(refusal).rejects.toMatchObject({
+				status: "BAD_REQUEST",
+				message:
+					"Invitations need an email provider, so this project can't send them yet.",
+			});
+		},
+	);
+
+	it("creates invitations without a provider in development", async () => {
+		const plan = await plannedProject({
+			...baseConfig,
+			backend: "self",
+			web: "nextjs",
+		});
+
+		const { options } = organizationOptions(
+			writeContent(plan, "packages/auth/src/index.ts"),
+			{ NODE_ENV: "development", APP_ORIGIN: "http://localhost:3000" },
+		);
+
+		await expect(
+			beforeCreateInvitation(options)({
+				invitation: { email: "invitee@example.com", role: "member" },
+			}),
+		).resolves.toBeUndefined();
+	});
+
+	it("leaves invitations alone when an email provider delivers them", async () => {
+		const plan = await plannedProject({
+			...baseConfig,
+			backend: "self",
+			web: "nextjs",
+			emailProvider: "resend",
+		});
+
+		const server = writeContent(plan, "packages/auth/src/index.ts");
+		expect(server).not.toContain("organizationHooks");
+		expect(server).not.toContain("better-auth/api");
+
+		const { options } = organizationOptions(server, {
+			NODE_ENV: "production",
+			APP_ORIGIN: "https://app.example.com",
+		});
+
+		expect(options.organizationHooks).toBeUndefined();
+	});
 
 	it("logs the accept link without a provider in development", async () => {
 		const plan = await plannedProject({

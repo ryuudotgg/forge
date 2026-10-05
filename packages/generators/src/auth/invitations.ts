@@ -66,12 +66,26 @@ function invitationFallback(
 	];
 }
 
+const invitationRefusal = [
+	"      organizationHooks: {",
+	"        async beforeCreateInvitation() {",
+	'          if (env.NODE_ENV === "development") return;',
+	"",
+	'          throw new APIError("BAD_REQUEST", {',
+	"            message:",
+	`              "Invitations need an email provider, so this project can't send them yet.",`,
+	"          });",
+	"        },",
+	"      },",
+];
+
 export function organizationServerCall(config: ForgeConfig): string {
 	const base = invitationLinkBase(config);
 	return [
 		"organization({",
 		`      organizationLimit: ${organizationLimit},`,
 		`      invitationLimit: ${invitationLimit},`,
+		...(config.emailProvider === undefined ? invitationRefusal : []),
 		"      async sendInvitationEmail({ id, email, organization, inviter }) {",
 		...(config.emailProvider === undefined
 			? invitationFallback(base)

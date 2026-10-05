@@ -25,6 +25,7 @@ import {
 	authPluginEnvEntries,
 	authPluginImports,
 	authPluginTables,
+	authRefusesInvitations,
 	authSendsEmail,
 } from "../plugins";
 import { authModels } from "../tables";
@@ -199,6 +200,9 @@ export function betterAuthRecipeVars(
 	const usesSocial = authSocialProviders(config).length > 0;
 	const pluginImports = [
 		...authPluginBindings(config, "server"),
+		...(authRefusesInvitations(config)
+			? [{ module: "better-auth/api", name: "APIError" }]
+			: []),
 		...(authSendsEmail(config)
 			? [{ module: `@${values.SLUG}/email`, name: "sendEmail" }]
 			: []),

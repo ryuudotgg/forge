@@ -1745,63 +1745,18 @@ async function expectInvitationFlow(projectRoot: string, projectName: string) {
 			if (organizationId === undefined)
 				throw new Error("Missing Organization: smoke create");
 
-			const invitations = [];
-			for (let index = 1; index <= 21; index += 1)
-				invitations.push(
-					await request("/organization/invite-member", owner, {
-						email:
-							index === 1
-								? "invitee@example.com"
-								: `invitee-${index}@example.com`,
-						organizationId,
-						role: "member",
-					}),
-				);
-
-			expect(
-				invitations.map(({ status }) => status),
-				invitations.map(({ text }) => text).join("\n"),
-			).toEqual([...Array.from({ length: 20 }, () => 200), 403]);
-
-			expect(invitations[20]?.json).toMatchObject({
-				code: "INVITATION_LIMIT_REACHED",
+			const refused = await request("/organization/invite-member", owner, {
+				email: "invitee@example.com",
+				organizationId,
+				role: "member",
 			});
 
-			const invitationId = stringField(invitations[0]?.json, "id");
-			if (invitationId === undefined)
-				throw new Error("Missing Invitation: smoke invite");
-
-			const page = await fetch(`${origin}/accept-invitation/${invitationId}`);
-			expect(page.status).toBe(200);
-			expect(await page.text()).toContain("Checking your session.");
-
-			const invitee = await signUp("invitee@example.com", "Grace Invitee");
-			const accepted = await request(
-				"/organization/accept-invitation",
-				invitee,
-				{ invitationId },
+			expect(refused.status, refused.text).toBe(400);
+			expect(refused.text).toContain(
+				"Invitations need an email provider, so this project can't send them yet.",
 			);
 
-			expect(accepted.status, accepted.text).toBe(200);
-
-			const memberships = await request("/organization/list", invitee);
-			expect(memberships.status, memberships.text).toBe(200);
-			expect(
-				Array.isArray(memberships.json) &&
-					memberships.json.some(
-						(organization) =>
-							stringField(organization, "id") === organizationId,
-					),
-				memberships.text,
-			).toBe(true);
-
-			await waitForOutput(output, "no email provider is configured");
-
-			const log = output();
-			expect(log).toContain(
-				"An invitation was created, but no email provider is configured to deliver it.",
-			);
-			expect(log).not.toMatch(/invitee(-\d+)?@example\.com/);
+			expect(output()).not.toMatch(/invitee@example\.com/);
 		},
 		"nextjs",
 		"start",
@@ -1850,6 +1805,45 @@ async function expectInvitationFlow(projectRoot: string, projectName: string) {
 			const page = await fetch(link);
 			expect(page.status, output()).toBe(200);
 			expect(await page.text()).toContain("Checking your session.");
+
+			const invitations = [];
+			for (let index = 2; index <= 21; index += 1)
+				invitations.push(
+					await request("/organization/invite-member", owner, {
+						email: `dev-invitee-${index}@example.com`,
+						organizationId,
+						role: "member",
+					}),
+				);
+
+			expect(
+				invitations.map(({ status }) => status),
+				invitations.map(({ text }) => text).join("\n"),
+			).toEqual([...Array.from({ length: 19 }, () => 200), 403]);
+
+			expect(invitations[19]?.json).toMatchObject({
+				code: "INVITATION_LIMIT_REACHED",
+			});
+
+			const invitee = await signUp("dev-invitee@example.com", "Grace Invitee");
+			const accepted = await request(
+				"/organization/accept-invitation",
+				invitee,
+				{ invitationId },
+			);
+
+			expect(accepted.status, accepted.text).toBe(200);
+
+			const memberships = await request("/organization/list", invitee);
+			expect(memberships.status, memberships.text).toBe(200);
+			expect(
+				Array.isArray(memberships.json) &&
+					memberships.json.some(
+						(organization) =>
+							stringField(organization, "id") === organizationId,
+					),
+				memberships.text,
+			).toBe(true);
 		},
 		"nextjs",
 		"dev",
