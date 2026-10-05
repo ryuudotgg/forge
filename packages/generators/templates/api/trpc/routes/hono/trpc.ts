@@ -11,7 +11,12 @@ trpcRoutes.use(
   "/api/trpc/*",
   cors({
     origin: __WEB_ORIGINS__,
-    allowHeaders: ["Content-Type", "Authorization", "x-trpc-source"],
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-trpc-source",
+      "trpc-accept",
+    ],
     allowMethods: ["GET", "POST", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,

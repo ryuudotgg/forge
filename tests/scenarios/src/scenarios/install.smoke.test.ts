@@ -385,9 +385,7 @@ async function expectCredentialedGeneratedServer(
 					method: "OPTIONS",
 					headers: {
 						Origin: origin,
-						"Access-Control-Request-Headers": options?.clientOrigin
-							? "x-trpc-source,trpc-accept"
-							: "x-trpc-source",
+						"Access-Control-Request-Headers": "x-trpc-source,trpc-accept",
 						"Access-Control-Request-Method": "GET",
 					},
 				});
@@ -405,10 +403,9 @@ async function expectCredentialedGeneratedServer(
 					"x-trpc-source",
 				);
 
-				if (options?.clientOrigin)
-					expect(
-						preflight.headers.get("access-control-allow-headers"),
-					).toContain("trpc-accept");
+				expect(preflight.headers.get("access-control-allow-headers")).toContain(
+					"trpc-accept",
+				);
 
 				const actual = await fetch(
 					`${serverOrigin}/api/trpc/health?input=%7B%7D`,
@@ -2156,6 +2153,35 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 								? "http://localhost:5173"
 								: "http://localhost:3000",
 					});
+				},
+			);
+		},
+		600_000,
+	);
+
+	it.each(["trpc", undefined] as const)(
+		"installs, builds, and typechecks react-router beside Hono with rpc %s",
+		async (rpc) => {
+			await withScenarioWorkspace(
+				`smoke-hono-react-router-${rpc ?? "auth"}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						backend: "hono",
+						database: "sqlite",
+						linter: "biome",
+						orm: "drizzle",
+						packageManager: "pnpm",
+						rpc,
+						style: "tailwind",
+						web: "react-router",
+					});
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					if (rpc === "trpc")
+						await expectCredentialedGeneratedServer(workspace.projectRoot, {
+							webOrigin: "http://localhost:5173",
+						});
 				},
 			);
 		},

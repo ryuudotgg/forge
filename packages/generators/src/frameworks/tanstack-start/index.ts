@@ -278,7 +278,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"env.ts",
 			interpolate(
 				readTemplate("frameworks/tanstack-start/env.ts"),
-				viteServerEnvMarkers(renderConfig),
+				viteServerEnvMarkers(config, instance),
 			),
 		),
 		leafTextFile(
