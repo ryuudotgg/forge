@@ -107,6 +107,7 @@ describe("Express backend", () => {
 			expect(app).toContain('import cors from "cors"');
 			expect(app).toContain('import express from "express"');
 			expect(app).toContain("export const app: Express = express()");
+
 			expect(app).toContain("origin: env.WEB_URL");
 			expect(app).toContain('"x-trpc-source"');
 			expect(app).not.toMatch(markerPattern);

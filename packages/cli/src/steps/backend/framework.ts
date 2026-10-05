@@ -32,7 +32,6 @@ export default defineStep<typeof backendSchema.Type>({
 		if (!interactive) {
 			const normalized = backends.normalize(config.backend);
 			if (normalized && backends.available(normalized)) return normalized;
-
 			return SKIP;
 		}
 

@@ -22,6 +22,7 @@ function contributionsFor(
 		config,
 		frameworks: [nextjsFramework],
 	});
+
 	if (!Array.isArray(result))
 		throw new Error(`Unexpected Contribution Result: ${addon.id}`);
 
@@ -35,6 +36,7 @@ function ensuredModule(
 		(contribution): contribution is EnsureModuleContribution =>
 			contribution._tag === "EnsureModuleContribution",
 	);
+
 	if (found === undefined) throw new Error("Missing Module Contribution");
 
 	return found;
@@ -55,7 +57,6 @@ function leafFile(
 ): string {
 	const found = leafFiles(contributions).find((file) => file.path === path);
 	if (found === undefined) throw new Error(`Missing Leaf File: ${path}`);
-
 	return found.content;
 }
 
@@ -71,6 +72,7 @@ function moduleJson(
 			contribution.target.moduleKey === moduleKey &&
 			contribution.surface === surface,
 	);
+
 	if (found === undefined)
 		throw new Error(`Missing Json Contribution: ${moduleKey} ${surface}`);
 
@@ -87,6 +89,7 @@ function moduleDependencies(
 			contribution.target._tag === "EnsuredModuleTarget" &&
 			contribution.target.moduleKey === moduleKey,
 	);
+
 	if (found === undefined)
 		throw new Error(`Missing Dependencies Contribution: ${moduleKey}`);
 
@@ -103,6 +106,7 @@ function moduleScripts(
 			contribution.target._tag === "EnsuredModuleTarget" &&
 			contribution.target.moduleKey === moduleKey,
 	);
+
 	if (found === undefined)
 		throw new Error(`Missing Scripts Contribution: ${moduleKey}`);
 
@@ -117,6 +121,7 @@ function projectScripts(
 			contribution._tag === "ManagedScriptsSurfaceContribution" &&
 			contribution.target._tag === "ProjectTarget",
 	);
+
 	if (found === undefined) throw new Error("Missing Root Scripts Contribution");
 
 	return found.scripts;
@@ -148,6 +153,7 @@ describe("prisma addon", () => {
 		});
 
 		const schema = leafFile(contributions, "prisma/schema.prisma");
+
 		expect(schema).toContain('provider = "postgresql"');
 		expect(schema).toContain(" @db.Timestamptz");
 		expect(schema).not.toContain("relationMode");
@@ -157,6 +163,7 @@ describe("prisma addon", () => {
 		expect(leafFile(contributions, "src/client.ts")).toContain(
 			"@prisma/adapter-pg",
 		);
+
 		expect(leafFile(contributions, "prisma.config.ts")).toContain(
 			"process.env.DATABASE_DIRECT_URL",
 		);
@@ -172,6 +179,7 @@ describe("prisma addon", () => {
 		});
 
 		const schema = leafFile(contributions, "prisma/schema.prisma");
+
 		expect(schema).toContain('provider = "mysql"');
 		expect(schema).toContain('relationMode = "prisma"');
 		expect(schema).toContain("  @@index([userId])");
@@ -181,6 +189,7 @@ describe("prisma addon", () => {
 		expect(leafFile(contributions, "prisma.config.ts")).toContain(
 			"process.env.DATABASE_URL",
 		);
+
 		expect(leafFile(contributions, "src/client.ts")).toContain(
 			"@prisma/adapter-planetscale",
 		);
@@ -205,6 +214,7 @@ describe("prisma addon", () => {
 		});
 
 		const schema = leafFile(withAuth, "prisma/schema.prisma");
+
 		expect(schema).toContain("model Session");
 		expect(schema).toContain('@@map("sessions")');
 		expect(schema).toContain("  @@index([userId])");
@@ -223,6 +233,7 @@ describe("prisma addon", () => {
 		expect(schema).toContain(
 			'idToken               String?   @map("id_token")',
 		);
+
 		expect(schema).not.toContain("issuer");
 	});
 
@@ -237,10 +248,12 @@ describe("prisma addon", () => {
 			orm: "prisma",
 			database: "sqlite",
 		});
+
 		expect(projectLines(sqlite, "gitignore")?.lines).toEqual([
 			"packages/db/src/generated/",
 			"/local.db*",
 		]);
+
 		expect(leafFile(sqlite, "src/client.ts")).toContain(
 			"@prisma/adapter-better-sqlite3",
 		);
@@ -251,6 +264,7 @@ describe("prisma addon", () => {
 			database: "sqlite",
 			databaseProvider: "turso",
 		});
+
 		expect(projectLines(turso, "gitignore")?.lines).toEqual([
 			"packages/db/src/generated/",
 			"/packages/db/prisma/local.db*",
@@ -271,9 +285,11 @@ describe("prisma addon", () => {
 				migrate: "pnpm with-env prisma migrate dev",
 			},
 		});
+
 		expect(moduleScripts(contributions, "web")["db:migrate"]).toBe(
 			"pnpm --filter @acme/db run migrate",
 		);
+
 		expect(projectScripts(contributions).postinstall).toBe(
 			"pnpm --filter @acme/db run generate",
 		);
@@ -290,9 +306,11 @@ describe("prisma addon", () => {
 		expect(moduleJson(contributions, "db", "packageJson")).toMatchObject({
 			scripts: { migrate: "npm run with-env -- prisma migrate dev" },
 		});
+
 		expect(moduleScripts(contributions, "web")["db:migrate"]).toBe(
 			"npm run migrate --prefix ../../packages/db",
 		);
+
 		expect(projectScripts(contributions).postinstall).toBe(
 			"npm run generate --prefix packages/db",
 		);
@@ -338,6 +356,7 @@ describe("drizzle addon", () => {
 		expect(leafFile(contributions, "src/schema/users/users.ts")).toContain(
 			"snakeCase.table",
 		);
+
 		expect(leafFile(contributions, "src/schema/index.ts")).toBe(
 			'export * from "./users";\n',
 		);
@@ -362,6 +381,7 @@ describe("drizzle addon", () => {
 		expect(authSchema).toContain(
 			'export const sessions = snakeCase.table(\n  "sessions"',
 		);
+
 		expect(authSchema).toContain("sessions_user_id_idx");
 		expect(authSchema).toContain("accounts_user_id_idx");
 		expect(leafFile(contributions, "src/schema/index.ts")).toBe(
@@ -410,6 +430,7 @@ describe("drizzle addon", () => {
 				contributionsFor(drizzle, config),
 				"src/schema/auth.ts",
 			);
+
 			expect(authSchema).toContain(marker);
 			expect(authSchema).toContain("idToken: text(),");
 			expect(authSchema).not.toContain("issuer");
@@ -440,6 +461,7 @@ describe("drizzle addon", () => {
 			'TURSO_DATABASE_URL="libsql://database-name-org.aws-us-east-1.turso.io"',
 			'TURSO_AUTH_TOKEN="change-me"',
 		]);
+
 		expect(projectLines(contributions, "rootEnvExample")?.lines).toEqual([
 			'TURSO_DATABASE_URL="libsql://database-name-org.aws-us-east-1.turso.io"',
 			'TURSO_AUTH_TOKEN=""',
@@ -490,9 +512,11 @@ describe("drizzle addon", () => {
 				type: "dependencies",
 			}),
 		);
+
 		expect(dependencies).toContainEqual(
 			expect.objectContaining({ name: "drizzle-kit", type: "devDependencies" }),
 		);
+
 		expect(dependencies).toContainEqual(
 			expect.objectContaining({ name: "mysql2", type: "devDependencies" }),
 		);
@@ -512,9 +536,11 @@ describe("drizzle addon", () => {
 			orm: "drizzle",
 			web: "nextjs",
 		});
+
 		expect(moduleJson(pnpm, "db", "packageJson")).toMatchObject({
 			scripts: { push: "pnpm with-env drizzle-kit push" },
 		});
+
 		expect(moduleScripts(pnpm, "web")["db:push"]).toBe(
 			"pnpm --filter @acme/db run push",
 		);
@@ -525,9 +551,11 @@ describe("drizzle addon", () => {
 			packageManager: "npm",
 			web: "nextjs",
 		});
+
 		expect(moduleJson(npm, "db", "packageJson")).toMatchObject({
 			scripts: { push: "npm run with-env -- drizzle-kit push" },
 		});
+
 		expect(moduleScripts(npm, "web")["db:push"]).toBe(
 			"npm run push --prefix ../../packages/db",
 		);

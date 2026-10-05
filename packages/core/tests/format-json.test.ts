@@ -11,6 +11,7 @@ describe("format json", () => {
 		expect(
 			formatJson({ a: null, b: true, c: 1.5, d: undefined }, { compact: true }),
 		).toBe('{ "a": null, "b": true, "c": 1.5 }\n');
+
 		expect(formatJson({ a: undefined }, { compact: false })).toBe("{}\n");
 	});
 
@@ -30,6 +31,7 @@ describe("format json", () => {
 		expect(() => formatJson({ value: Number.NaN }, { compact: true })).toThrow(
 			RangeError,
 		);
+
 		expect(() => formatJson({ value: Infinity }, { compact: false })).toThrow(
 			"JSON Number Must Be Finite: Infinity",
 		);

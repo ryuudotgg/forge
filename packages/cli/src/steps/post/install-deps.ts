@@ -32,9 +32,9 @@ async function runInstall(
 	s.start("We're installing your dependencies...");
 
 	const exit = await runCliEffect(installDeps(cmd, dir));
-
 	if (Exit.isFailure(exit)) {
 		s.stop("We couldn't install your dependencies.");
+
 		if (Option.isNone(Cause.findErrorOption(exit.cause)))
 			console.error(Cause.squash(exit.cause));
 
@@ -62,7 +62,6 @@ const installDepsStep = defineStep({
 		const pm = config.packageManager ?? "pnpm";
 		const cmd = packageManagerCommand(pm);
 		const dir = String(config.path);
-
 		if (!interactive) {
 			await runInstall(pm, cmd, dir);
 			return SKIP;

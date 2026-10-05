@@ -86,6 +86,7 @@ function braceAlternatives(pattern: string): ReadonlyArray<string> | undefined {
 		);
 
 		if (alternatives === undefined) return undefined;
+
 		expanded.push(...alternatives);
 	}
 
@@ -96,7 +97,7 @@ function globSource(pattern: string): string {
 	let source = "";
 	for (let index = 0; index < pattern.length; index += 1) {
 		const character = pattern[index];
-		if (character === "*") {
+		if (character === "*")
 			if (pattern[index + 1] === "*") {
 				if (pattern[index + 2] === "/") {
 					source += "(?:[^/]+/)*";
@@ -106,7 +107,7 @@ function globSource(pattern: string): string {
 					index += 1;
 				}
 			} else source += "[^/]*";
-		} else if (character === "?") source += "[^/]";
+		else if (character === "?") source += "[^/]";
 		else if (character !== undefined)
 			source += character.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
 	}
@@ -129,7 +130,6 @@ function globAlternatives(pattern: string): ReadonlyArray<string> | undefined {
 function globPattern(pattern: string): RegExp | undefined {
 	const alternatives = globAlternatives(pattern);
 	if (alternatives === undefined) return undefined;
-
 	return new RegExp(`^(?:${alternatives.map(globSource).join("|")})$`);
 }
 
@@ -139,6 +139,7 @@ function literalPrefix(pattern: string): string {
 		if (segment.includes("*") || segment.includes("?")) break;
 		prefix.push(segment);
 	}
+
 	return prefix.join("/");
 }
 
@@ -150,7 +151,6 @@ export function workspaceFrontiers(
 	patterns: ReadonlyArray<string>,
 ): ReadonlyArray<string> {
 	const frontiers = new Set<string>();
-
 	for (const pattern of patterns) {
 		if (pattern.startsWith("!")) continue;
 
@@ -192,10 +192,10 @@ export function matchesWorkspacePatterns(
 
 function yamlScalar(value: string): string | undefined {
 	const trimmed = value.trim();
-
 	if (trimmed.length === 0) return undefined;
 	if (trimmed.startsWith('"')) {
 		if (!trimmed.endsWith('"')) return undefined;
+
 		const decoded = Schema.decodeResult(Schema.fromJsonString(Schema.String))(
 			trimmed,
 		);
@@ -245,7 +245,6 @@ export function parsePnpmWorkspace(raw: string, filePath: string) {
 		const trimmed = line.trim();
 		if (section === "packages" && trimmed.startsWith("- ")) {
 			const pattern = yamlScalar(trimmed.slice(2));
-
 			if (pattern === undefined)
 				invalidDetails.push(`Invalid package pattern on line ${index + 1}.`);
 			else packages.push(pattern);
@@ -264,6 +263,7 @@ export function parsePnpmWorkspace(raw: string, filePath: string) {
 			else if (trimmed === "catalogs:") section = "catalogs";
 			else {
 				section = undefined;
+
 				if (
 					/^(?:catalog|catalogs|packages)\s*:/.test(trimmed) ||
 					!trimmed.includes(":")
@@ -287,7 +287,6 @@ export function parsePnpmWorkspace(raw: string, filePath: string) {
 
 		if (section === "catalogs") {
 			catalogsIndent ??= indent;
-
 			if (indent === catalogsIndent && trimmed.endsWith(":")) {
 				currentCatalog = yamlScalar(trimmed.slice(0, -1));
 				catalogEntryIndent = undefined;

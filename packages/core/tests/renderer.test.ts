@@ -136,6 +136,7 @@ describe("renderer", () => {
 			"override",
 			"deps",
 		]);
+
 		expect(rendered[0]?.content).toBe(
 			`${[
 				"{",
@@ -191,7 +192,6 @@ describe("renderer", () => {
 
 		const rendered = await render(inputs, []);
 		const packageJson: unknown = JSON.parse(rendered[0]?.content ?? "");
-
 		if (
 			typeof packageJson !== "object" ||
 			packageJson === null ||
@@ -368,6 +368,7 @@ describe("renderer", () => {
 			],
 			[appModule("nextjs")],
 		);
+
 		expect(rendered[0]?.path).toBe("apps/web/tsconfig.json");
 		expect(rendered[0]?.mergeKind).toBeUndefined();
 	});
@@ -386,6 +387,7 @@ describe("renderer", () => {
 			],
 			[],
 		);
+
 		expect(rendered[0]?.path).toBe(".env");
 		expect(rendered[0]?.mergeKind).toBeUndefined();
 	});
@@ -458,6 +460,7 @@ describe("renderer", () => {
 			slots: [],
 			tsconfigPreset: { content: {}, name: "forge-web" },
 		});
+
 		const inputs = [
 			{
 				bucket: { kind: "module", moduleId: "abcde" },
@@ -512,6 +515,7 @@ describe("renderer", () => {
 			slots: [],
 			tsconfigPreset: { content: {}, name: "configless" },
 		});
+
 		const error = await renderFailure(
 			[
 				{

@@ -12,7 +12,6 @@ import {
 } from "../src/tempering.ts";
 
 const TEMPER = { branches: 40, lines: 50 };
-
 function report(lines: number, branches: number) {
 	return { branches, lines, name: "@ryuugg/core", temper: TEMPER };
 }
@@ -60,7 +59,6 @@ describe("parseAddedLines", () => {
 
 	it("adds nothing for a pure deletion hunk", () => {
 		const diff = ["+++ b/packages/core/src/a.ts", "@@ -5,3 +4,0 @@"].join("\n");
-
 		expect(parseAddedLines(diff).get("packages/core/src/a.ts")?.size).toBe(0);
 	});
 

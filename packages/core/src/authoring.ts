@@ -785,7 +785,6 @@ function throwRecipeMarkerInvalidError(
 
 function validateRecipeMarkers(recipe: TemplateRecipeDefinition): void {
 	const replacementKeys = new Map<string, string>();
-
 	for (const [name, declaration] of Object.entries(recipe.markers)) {
 		if (!recipeMarkerNamePattern.test(name))
 			throwRecipeMarkerInvalidError(
@@ -870,6 +869,7 @@ export function validateTemplateRecipes(
 
 	for (const recipe of recipes) {
 		validateRecipeMarkers(recipe);
+
 		for (const asset of recipe.assets)
 			validateAssetVariants(recipe, asset, frameworks);
 	}
@@ -1201,7 +1201,6 @@ export function defineRegistry<Config>(
 	for (const framework of registry.frameworks) {
 		const uniqueSlots = new Set(framework.slots);
 		const hasEmptySlot = framework.slots.some((slot) => slot.length === 0);
-
 		if (
 			framework.slots.length === 0 ||
 			hasEmptySlot ||
@@ -1222,7 +1221,6 @@ export function defineRegistry<Config>(
 	const adapterKeys = new Set<string>();
 	for (const adapter of adapters) {
 		const key = `${adapter.addon}:${adapter.framework}`;
-
 		if (adapterKeys.has(key))
 			throw new RegistryError({
 				reason: "adapter-duplicate",
@@ -1312,7 +1310,6 @@ export function deriveAddonFrameworks<Config>(
 
 	const declaredFrameworks = appCompatibility?.frameworks;
 	const frameworks: FrameworkId[] = [];
-
 	for (const framework of declaredFrameworks ?? [])
 		if (!frameworks.includes(framework)) frameworks.push(framework);
 

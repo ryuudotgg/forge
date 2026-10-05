@@ -9,6 +9,7 @@ const template = (() => {
 	const found = loadDefinitionRegistry().registry.templates.find(
 		(entry) => entry.id === "nextjs/base",
 	);
+
 	if (!found) throw new Error("Template Not Found: nextjs/base");
 	return found;
 })();
@@ -19,6 +20,7 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 		config,
 		frameworks: [nextjsFramework],
 	});
+
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: nextjs/base");
 
@@ -85,6 +87,7 @@ describe("nextjs/base template", () => {
 			slug: "acme",
 			web: "nextjs",
 		});
+
 		expect(textSurface(full, "frameworkConfig").content).toContain(
 			'transpilePackages: ["@acme/auth", "@acme/db", "@acme/trpc", "@acme/ui"],',
 		);
@@ -94,6 +97,7 @@ describe("nextjs/base template", () => {
 			slug: "acme",
 			web: "nextjs",
 		});
+
 		expect(textSurface(ormOnly, "frameworkConfig").content).toContain(
 			'transpilePackages: ["@acme/db", "@acme/ui"],',
 		);
@@ -109,6 +113,7 @@ describe("nextjs/base template", () => {
 			contributionsFor({ slug: "acme", web: "nextjs" }),
 			"app/providers.tsx",
 		);
+
 		expect(bare.target).toEqual(ensuredModuleTarget("web"));
 		expect(bare.content).toContain("{children}");
 		expect(bare.content).not.toContain("TRPCReactProvider");
@@ -118,9 +123,11 @@ describe("nextjs/base template", () => {
 			contributionsFor({ rpc: "trpc", slug: "acme", web: "nextjs" }),
 			"app/providers.tsx",
 		);
+
 		expect(withTrpc.content).toContain(
 			'import { TRPCReactProvider } from "@/trpc/react";',
 		);
+
 		expect(withTrpc.content).toContain(
 			"<TRPCReactProvider>{children}</TRPCReactProvider>",
 		);
@@ -183,6 +190,7 @@ describe("nextjs/base template", () => {
 			contributions.find(byTag("EnsureModuleContribution")),
 			"web module",
 		);
+
 		expect(ensure.moduleKey).toBe("web");
 		expect(ensure.root).toBe("apps/web");
 		expect(ensure.module.template).toEqual({ id: "nextjs/base", version: 1 });
@@ -217,6 +225,7 @@ describe("nextjs/base template", () => {
 			contributions.find(byTag("ManagedDependenciesSurfaceContribution")),
 			"packageJson dependencies",
 		);
+
 		expect(dependencies.dependencies).toEqual(
 			expect.arrayContaining([
 				{ name: "@acme/ui", version: "workspace:*", type: "dependencies" },
@@ -235,9 +244,11 @@ describe("nextjs/base template", () => {
 		expect(textSurface(contributions, "frameworkConfig").content).toContain(
 			'transpilePackages: ["@my-app/ui"],',
 		);
+
 		expect(jsonSurface(contributions, "packageJson").value).toMatchObject({
 			name: "@my-app/web",
 		});
+
 		expect(textSurface(contributions, "layout").content).toContain(
 			'title: "my-app",',
 		);

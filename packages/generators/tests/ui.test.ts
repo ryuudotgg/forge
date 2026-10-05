@@ -14,7 +14,6 @@ import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
 import { plannedProject } from "./planner-harness";
 
 const { addon } = loadAddonDefinition("ui");
-
 function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 	const framework =
 		config.web === "tanstack-start"
@@ -28,6 +27,7 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 		config,
 		frameworks: [framework],
 	});
+
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: ui");
 
@@ -213,11 +213,13 @@ describe("ui addon", () => {
 			"react-router",
 			"tanstack-start",
 		];
+
 		for (const web of nonRscFrameworks) {
 			const contributions = contributionsFor({ ...baseConfig, web });
 			const uiJson: unknown = JSON.parse(
 				leafFile(contributions, "ui", "components.json").content,
 			);
+
 			const appJson: unknown = JSON.parse(
 				leafFile(contributions, "web", "components.json").content,
 			);
@@ -236,11 +238,13 @@ describe("ui addon", () => {
 		const uiJson: unknown = JSON.parse(
 			leafFile(radix, "ui", "components.json").content,
 		);
+
 		expect(uiJson).toMatchObject({ style: "radix-vega" });
 
 		const appJson: unknown = JSON.parse(
 			leafFile(radix, "web", "components.json").content,
 		);
+
 		expect(appJson).toMatchObject({ style: "radix-vega" });
 
 		const radixNames = dependencyEntries(radix).map(({ name }) => name);
@@ -249,6 +253,7 @@ describe("ui addon", () => {
 		const baseUiNames = dependencyEntries(contributionsFor(baseConfig)).map(
 			({ name }) => name,
 		);
+
 		expect(baseUiNames).toContain("@base-ui/react");
 	});
 
@@ -271,6 +276,7 @@ describe("ui addon", () => {
 				expect.objectContaining({ name: "shadcn", type: "devDependencies" }),
 			]),
 		);
+
 		expect(dependencyEntries(withTailwind, "web")).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
@@ -288,9 +294,11 @@ describe("ui addon", () => {
 			...baseConfig,
 			web: "tanstack-start",
 		});
+
 		const tanstackUiNames = dependencyEntries(tanstackWithTailwind, "ui").map(
 			({ name }) => name,
 		);
+
 		expect(tanstackUiNames).toContain("tailwindcss");
 		expect(tanstackUiNames).not.toContain("@tailwindcss/postcss");
 		expect(dependencyEntries(tanstackWithTailwind, "web")).toEqual(
@@ -305,6 +313,7 @@ describe("ui addon", () => {
 				}),
 			]),
 		);
+
 		expect(
 			dependencyEntries(tanstackWithTailwind, "web").map(({ name }) => name),
 		).not.toContain("@tailwindcss/postcss");
@@ -313,12 +322,14 @@ describe("ui addon", () => {
 			...baseConfig,
 			web: "react-router",
 		});
+
 		expect(dependencyEntries(reactRouterWithTailwind, "web")).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ name: "tailwindcss" }),
 				expect.objectContaining({ name: "@tailwindcss/vite" }),
 			]),
 		);
+
 		expect(
 			dependencyEntries(reactRouterWithTailwind, "web").map(({ name }) => name),
 		).not.toContain("@tailwindcss/postcss");
@@ -327,6 +338,7 @@ describe("ui addon", () => {
 			withTailwind.find(byTag("EnsureModuleContribution")),
 			"ui module",
 		);
+
 		expect(ensure.moduleKey).toBe("ui");
 		expect(ensure.root).toBe("packages/ui");
 		expect(ensure.module).toMatchObject({
@@ -337,6 +349,7 @@ describe("ui addon", () => {
 			slug: "acme",
 			web: "nextjs",
 		});
+
 		const names = dependencyEntries(withoutStyle, "ui").map(({ name }) => name);
 		for (const name of [
 			"tailwindcss",
@@ -349,6 +362,7 @@ describe("ui addon", () => {
 		const webNames = (
 			dependencySurface(withoutStyle, "web")?.dependencies ?? []
 		).map(({ name }) => name);
+
 		for (const name of ["tailwindcss", "@tailwindcss/postcss"])
 			expect(webNames).not.toContain(name);
 
@@ -356,6 +370,7 @@ describe("ui addon", () => {
 			withoutStyle.find(byTag("EnsureModuleContribution")),
 			"ui module",
 		);
+
 		expect(cssEnsure.module).toMatchObject({
 			capabilities: ["react", "ui", "css"],
 		});
@@ -373,6 +388,7 @@ describe("ui addon", () => {
 			moduleId: "abcde",
 			moduleRoot: "apps/web",
 		});
+
 		expect(postcss.content).toBe(
 			'export { default } from "@acme/ui/postcss.config";\n',
 		);
@@ -381,23 +397,28 @@ describe("ui addon", () => {
 			...baseConfig,
 			web: "tanstack-start",
 		});
+
 		const tanstackPostcssFiles = tanstack
 			.filter(byTag("LeafTextFileContribution"))
 			.filter((entry) => entry.path === "postcss.config.mjs");
+
 		expect(tanstackPostcssFiles).toEqual([]);
 		expect(packageJsonSurface(tanstack).value.exports).not.toHaveProperty(
 			"./postcss.config",
 		);
+
 		const ensure = must(
 			tanstack.find(byTag("EnsureModuleContribution")),
 			"ui module",
 		);
+
 		expect(ensure.module.slots).not.toHaveProperty("postcssConfig");
 
 		const reactRouter = contributionsFor({
 			...baseConfig,
 			web: "react-router",
 		});
+
 		expect(
 			reactRouter
 				.filter(byTag("LeafTextFileContribution"))
@@ -417,6 +438,7 @@ describe("ui addon", () => {
 			"./lib/*": "./src/lib/*.ts",
 			"./*": "./src/components/*.tsx",
 		});
+
 		expect(pnpm.value).toMatchObject({
 			scripts: {
 				typecheck: "tsc --noEmit",
@@ -427,6 +449,7 @@ describe("ui addon", () => {
 		const npm = packageJsonSurface(
 			contributionsFor({ ...baseConfig, packageManager: "npm" }),
 		);
+
 		expect(npm.value).toMatchObject({
 			scripts: { "ui-add": "npx shadcn@latest add" },
 		});
@@ -439,6 +462,7 @@ describe("ui addon", () => {
 				plan.writes.find((write) => write.path === "packages/ui/package.json"),
 				"generated packages/ui/package.json",
 			);
+
 			const parsed: unknown = JSON.parse(packageJson.content);
 			if (
 				typeof parsed !== "object" ||
@@ -459,9 +483,11 @@ describe("ui addon", () => {
 			"./lib/*",
 			"./*",
 		]);
+
 		expect(
 			await exportsOrder({ ...baseConfig, web: "tanstack-start" }),
 		).toEqual(["./globals.css", "./hooks/*", "./lib/*", "./*"]);
+
 		expect(await exportsOrder({ ...baseConfig, web: "react-router" })).toEqual([
 			"./globals.css",
 			"./hooks/*",
@@ -488,6 +514,7 @@ describe("ui addon", () => {
 				typeof leaf.path === "string"
 					? leaf.path
 					: `${leaf.path.module}:${leaf.path.slot}`;
+
 			expect(leaf.content, path).not.toMatch(/__[A-Z_]+__/);
 		}
 

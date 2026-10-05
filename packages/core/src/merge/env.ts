@@ -34,7 +34,6 @@ function variables(lines: ReadonlyArray<EnvLine>): Map<string, string> {
 function duplicateVariableNames(lines: ReadonlyArray<EnvLine>): Set<string> {
 	const seen = new Set<string>();
 	const duplicates = new Set<string>();
-
 	for (const line of lines) {
 		if (line.name === undefined) continue;
 		if (seen.has(line.name)) duplicates.add(line.name);
@@ -61,7 +60,6 @@ function collapseDuplicateVariables(
 
 	const emitted = new Set<string>();
 	const collapsed: EnvLine[] = [];
-
 	for (const line of lines) {
 		if (line.name === undefined || !duplicateNames.has(line.name)) {
 			collapsed.push(line);
@@ -201,7 +199,6 @@ export function threeWayMergeEnv(
 
 	const output: string[] = [];
 	const emitted = new Set<string>();
-
 	for (const line of incomingLines) {
 		if (line.name === undefined) {
 			output.push(line.raw);

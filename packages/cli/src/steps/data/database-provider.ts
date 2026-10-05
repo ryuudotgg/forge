@@ -34,7 +34,6 @@ const databaseProviderStep = defineStep<DatabaseProvider>({
 
 		let options: ProviderOption[];
 		let message: string;
-
 		switch (config.database) {
 			case "mysql": {
 				options = ["planetscale", "none"];

@@ -43,7 +43,6 @@ const pathStep = defineStep<string>({
 
 	async execute(config, interactive) {
 		const slug = config.slug ?? "my-app";
-
 		if (!interactive) {
 			const value = config.path ?? `./${slug}`;
 

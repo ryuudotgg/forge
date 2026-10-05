@@ -17,7 +17,6 @@ export function renderUiTemplate(config: ForgeConfig, path: string): string {
 export function uiComponentsJson(config: ForgeConfig, rsc: boolean) {
 	const slug = config.slug ?? "my-app";
 	const shadcnStyle = uiStyle(config);
-
 	return {
 		$schema: "https://ui.shadcn.com/schema.json",
 		style: shadcnStyle,

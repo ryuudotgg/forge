@@ -25,6 +25,7 @@ describe("publishing guide", () => {
 		const sources = await exampleSources();
 
 		expect(blocks.length).toBeGreaterThan(0);
+
 		for (const block of blocks)
 			expect(
 				sources.some((source) => source.includes(block)),

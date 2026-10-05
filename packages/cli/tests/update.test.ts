@@ -35,14 +35,17 @@ function updateFixture(options: UpdateFixtureOptions) {
 			recipes: [],
 		},
 	};
+
 	const applyInstalledPlan = vi.fn<ApplyInstalledPlanFunction>(async () => {});
 	const intro = vi.fn();
 	const loadManagedProject = vi.fn<LoadManagedProjectFunction>(
 		async () => project,
 	);
+
 	const loadProjectRegistry = vi.fn<LoadProjectRegistryFunction>(
 		async () => registry,
 	);
+
 	const logInfo = vi.fn();
 	const service: UpdateCommandService = {
 		applyInstalledPlan,
@@ -66,8 +69,8 @@ it.effect("re-applies the plan with the manifest installs", () => {
 	const project = managedProject({
 		installs: [{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
 	});
-	const fixture = updateFixture({ project });
 
+	const fixture = updateFixture({ project });
 	return Effect.gen(function* () {
 		yield* runUpdateEffect({});
 
@@ -105,7 +108,6 @@ it.effect("runs the Promise command wrapper with an injected layer", () => {
 
 it.effect("prints the intro before applying the plan", () => {
 	const fixture = updateFixture({});
-
 	return Effect.gen(function* () {
 		yield* runUpdateEffect({});
 
@@ -116,8 +118,10 @@ it.effect("prints the intro before applying the plan", () => {
 
 		const introOrder =
 			fixture.intro.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
+
 		const applyOrder =
 			fixture.applyInstalledPlan.mock.invocationCallOrder[0] ?? 0;
+
 		expect(introOrder).toBeLessThan(applyOrder);
 	}).pipe(Effect.provide(fixture.layer));
 });
@@ -142,7 +146,6 @@ it.effect("forwards opted-in registries", () => {
 
 it.effect("forwards the selected conflict resolution policy", () => {
 	const fixture = updateFixture({});
-
 	return Effect.gen(function* () {
 		yield* runUpdateEffect({ "keep-user": true });
 
@@ -198,6 +201,7 @@ it.effect("reports registry package version changes", () => {
 		expect(fixture.loadProjectRegistry).toHaveBeenCalledWith(".", [
 			"@acme/forge-sentry",
 		]);
+
 		expect(fixture.logInfo).toHaveBeenCalledWith(
 			"@acme/forge-sentry 1.4.2 -> 1.5.0.",
 		);

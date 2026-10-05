@@ -10,15 +10,15 @@ export interface EmailMessage {
 
 export async function sendEmail(message: EmailMessage): Promise<void> {
   if (!env.EMAIL_FROM || !env.RESEND_API_KEY) {
-    if (env.NODE_ENV !== "development") {
+    if (env.NODE_ENV !== "development")
       throw new Error(
         "Email isn't configured. Set EMAIL_FROM and RESEND_API_KEY.",
       );
-    }
 
     console.info(
       `Email to ${message.to}: ${message.subject}\n\n${message.text}`,
     );
+
     return;
   }
 

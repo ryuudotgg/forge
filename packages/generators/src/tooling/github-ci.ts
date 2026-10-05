@@ -15,7 +15,6 @@ const githubCi = defineAddon<ForgeConfig, "github-ci">({
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
 		const pm = resolvePackageManager(config);
-
 		return [
 			leafTextFile(
 				projectTarget(),

@@ -6,8 +6,8 @@ const dataProviders: { default: ElementType; trpc?: ElementType } = {
   default: Fragment,
   // __TRPC_ENTRY__
 };
-const DataProvider = dataProviders.trpc ?? dataProviders.default;
 
+const DataProvider = dataProviders.trpc ?? dataProviders.default;
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider

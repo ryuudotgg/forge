@@ -27,7 +27,6 @@ async function withTempDir<T>(
 	run: (directory: string) => Promise<T>,
 ) {
 	const directory = await mkdtemp(join(tmpdir(), `forge-${name}-`));
-
 	try {
 		return await run(directory);
 	} finally {
@@ -113,6 +112,7 @@ describe("generate step", () => {
 				"src/routeTree.gen.ts",
 				"components.json",
 			];
+
 			for (const path of expectedWebFiles)
 				expect(
 					await readFile(join(directory, "apps/web", path), "utf-8"),
@@ -122,9 +122,11 @@ describe("generate step", () => {
 			const manifest = await readJson(
 				join(directory, ".forge", "manifest.json"),
 			);
+
 			expect(manifest).toMatchObject({
 				config: expect.objectContaining({ web: "tanstack-start" }),
 			});
+
 			expect(JSON.stringify(manifest)).toContain(
 				'"definitionIds":["tanstack-start/base"]',
 			);
@@ -133,6 +135,7 @@ describe("generate step", () => {
 				join(directory, "apps/web/src/routes/api/trpc/$.ts"),
 				"utf-8",
 			);
+
 			expect(trpcRoute).toContain('createFileRoute("/api/trpc/$")');
 			expect(trpcRoute).toContain('import { auth } from "@acme/auth";');
 
@@ -140,6 +143,7 @@ describe("generate step", () => {
 				join(directory, "packages/auth/src/index.ts"),
 				"utf-8",
 			);
+
 			expect(authIndex).toContain(
 				'import { tanstackStartCookies } from "better-auth/tanstack-start";',
 			);
@@ -147,6 +151,7 @@ describe("generate step", () => {
 			const components = await readJson(
 				join(directory, "apps/web/components.json"),
 			);
+
 			expect(components).toMatchObject({ rsc: false });
 		});
 	}, 120_000);
@@ -194,6 +199,7 @@ describe("generate step", () => {
 				join(directory, "apps/web/app/routes.ts"),
 				"utf-8",
 			);
+
 			expect(routes).toContain('route("api/trpc/*", "routes/api.trpc.$.ts")');
 			expect(routes).toContain('route("api/auth/*", "routes/api.auth.$.ts")');
 			expect(routes).not.toMatch(/__[A-Z_]+__/);
@@ -202,15 +208,18 @@ describe("generate step", () => {
 				join(directory, "packages/auth/src/index.ts"),
 				"utf-8",
 			);
+
 			expect(authIndex).not.toContain("tanstackStartCookies");
 			expect(authIndex).not.toContain("nextCookies");
 
 			const manifest = await readJson(
 				join(directory, ".forge", "manifest.json"),
 			);
+
 			expect(manifest).toMatchObject({
 				config: expect.objectContaining({ web: "react-router" }),
 			});
+
 			expect(JSON.stringify(manifest)).toContain(
 				'"definitionIds":["react-router/base"]',
 			);
@@ -297,6 +306,7 @@ describe("generate step", () => {
 			slots: ["layout"],
 			tsconfigPreset: { content: {}, name: "fake" },
 		});
+
 		const fakeTemplate = defineTemplate<generators.ForgeConfig>({
 			id: "fake/base",
 			framework: "fake",
@@ -312,6 +322,7 @@ describe("generate step", () => {
 				}),
 			],
 		});
+
 		const trpc = defineAddon<generators.ForgeConfig>({
 			id: "trpc",
 			name: "tRPC",
@@ -328,6 +339,7 @@ describe("generate step", () => {
 			when: (config) => config.rpc === "trpc",
 			contribute: () => [],
 		});
+
 		const loadRegistry = vi
 			.spyOn(generators, "loadDefinitionRegistry")
 			.mockReturnValue({

@@ -131,7 +131,6 @@ function checkCurrentRuntime(): EnvironmentCheck {
 	const { id, version } = detectRuntime();
 	const { displayName, minimumMajor } = runtimes[id];
 	const major = parseMajor(version);
-
 	if (major === undefined)
 		return {
 			ok: false,
@@ -208,7 +207,6 @@ export class Environment extends Context.Service<
 }
 
 const environmentLayer = Environment.Default;
-
 export function checkRuntime(): EnvironmentCheck {
 	return Effect.runSync(
 		Environment.checkRuntime.pipe(Effect.provide(environmentLayer)),

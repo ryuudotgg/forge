@@ -35,7 +35,6 @@ const worker = defineAddon<ForgeConfig, "worker">({
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
 		const pm = resolvePackageManager(config);
-
 		return [
 			ensureAppModule("worker", "apps/worker", {
 				framework: "hono",

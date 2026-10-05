@@ -414,6 +414,7 @@ describe("environment", () => {
 		const packageManager = await Effect.runPromise(
 			Environment.checkPackageManager("pnpm").pipe(Effect.provide(layer)),
 		);
+
 		const checked = await Effect.runPromise(
 			checkPackageManager("pnpm").pipe(Effect.provide(layer)),
 		);

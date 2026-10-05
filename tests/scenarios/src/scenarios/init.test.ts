@@ -17,27 +17,32 @@ async function fixture(projectRoot: string) {
 		private: true,
 		scripts: { user: "keep-me" },
 	});
+
 	await writeFile(
 		join(projectRoot, "pnpm-workspace.yaml"),
 		"packages:\n  - 'apps/*'\n  - 'packages/*'\n",
 		"utf-8",
 	);
+
 	await writeFile(
 		join(projectRoot, "pnpm-lock.yaml"),
 		"lockfileVersion: '9.0'\n",
 		"utf-8",
 	);
+
 	await writeFile(join(projectRoot, ".env"), secret, "utf-8");
 	await writeJson(join(projectRoot, "apps/api/package.json"), {
 		dependencies: { hono: "^4.0.0" },
 		name: "@ajito/api",
 		private: true,
 	});
+
 	await writeJson(join(projectRoot, "apps/mobile/package.json"), {
 		dependencies: { expo: "^54.0.0" },
 		name: "@ajito/mobile",
 		private: true,
 	});
+
 	await writeJson(join(projectRoot, "apps/web/package.json"), {
 		dependencies: {
 			next: "^16.0.0",
@@ -48,17 +53,20 @@ async function fixture(projectRoot: string) {
 		private: true,
 		scripts: { custom: "keep-me" },
 	});
+
 	await mkdir(join(projectRoot, "apps/web/app"), { recursive: true });
 	await writeFile(
 		join(projectRoot, "apps/web/app/page.tsx"),
 		"export default function Page() { return <main>User page</main>; }\n",
 		"utf-8",
 	);
+
 	await writeFile(
 		join(projectRoot, "apps/web/app/layout.tsx"),
 		"export default function Layout({ children }: { children: unknown }) { return children; }\n",
 		"utf-8",
 	);
+
 	await writeJson(join(projectRoot, "apps/admin/package.json"), {
 		dependencies: {
 			next: "^16.0.0",
@@ -69,22 +77,26 @@ async function fixture(projectRoot: string) {
 		private: true,
 		scripts: { admin: "keep-me" },
 	});
+
 	await mkdir(join(projectRoot, "apps/admin/app"), { recursive: true });
 	await writeFile(
 		join(projectRoot, "apps/admin/app/page.tsx"),
 		"export default function Page() { return <main>Admin page</main>; }\n",
 		"utf-8",
 	);
+
 	await writeFile(
 		join(projectRoot, "apps/admin/app/layout.tsx"),
 		"export default function Layout({ children }: { children: unknown }) { return children; }\n",
 		"utf-8",
 	);
+
 	await writeJson(join(projectRoot, "packages/db/package.json"), {
 		dependencies: { "drizzle-orm": "1.0.0-rc.4" },
 		name: "@ajito/db",
 		private: true,
 	});
+
 	return secret;
 }
 
@@ -100,6 +112,7 @@ async function snapshotTree(projectRoot: string) {
 			else snapshot.set(fromRoot, await readFile(path, "utf-8"));
 		}
 	};
+
 	await visit(projectRoot);
 	return snapshot;
 }
@@ -128,6 +141,7 @@ async function initConfig(
 		slug: "ajito",
 		web: "nextjs",
 	});
+
 	return path;
 }
 
@@ -143,12 +157,15 @@ describe("init", () => {
 				["init", "--config", configPath, "--dry-run"],
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
+
 			expect(dryRun.stdout + dryRun.stderr).toMatch(
 				/Write marker:\s+apps\/web\/forge\.json/,
 			);
+
 			expect(dryRun.stdout + dryRun.stderr).toMatch(
 				/Write marker:\s+apps\/admin\/forge\.json/,
 			);
+
 			expect(await snapshotTree(workspace.projectRoot)).toEqual(before);
 			expect(await pathExists(join(workspace.projectRoot, ".forge"))).toBe(
 				false,
@@ -157,37 +174,46 @@ describe("init", () => {
 			await runForge(workspace.projectRoot, ["init", "--config", configPath], {
 				workspaceRoot: workspace.workspaceRoot,
 			});
+
 			expect(await snapshotTree(workspace.projectRoot)).toEqual(before);
 			expect(
 				await pathExists(join(workspace.projectRoot, ".forge/manifest.json")),
 			).toBe(true);
+
 			const manifest = await readJson<{
 				modules: Record<string, { root: string }>;
 			}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
 			expect(
 				Object.values(manifest.modules)
 					.map((module) => module.root)
 					.sort(),
 			).toEqual(["apps/admin", "apps/web", "packages/db"]);
+
 			const bases = await readdir(join(workspace.projectRoot, ".forge/bases"));
 			const baseContents = await Promise.all(
 				bases.map((base) =>
 					readFile(join(workspace.projectRoot, ".forge/bases", base), "utf-8"),
 				),
 			);
+
 			expect(baseContents.join("\n")).not.toContain(secret.trim());
 			expect(await readFile(join(workspace.projectRoot, ".env"), "utf-8")).toBe(
 				secret,
 			);
+
 			expect(
 				await pathExists(join(workspace.projectRoot, "apps/web/forge.json")),
 			).toBe(true);
+
 			expect(
 				await pathExists(join(workspace.projectRoot, "apps/admin/forge.json")),
 			).toBe(true);
+
 			expect(
 				await pathExists(join(workspace.projectRoot, "apps/api/forge.json")),
 			).toBe(false);
+
 			expect(
 				await pathExists(join(workspace.projectRoot, "apps/mobile/forge.json")),
 			).toBe(false);
@@ -200,39 +226,49 @@ describe("init", () => {
 				workspace.projectRoot,
 				"apps/admin/app/page.tsx",
 			);
+
 			const adminPage = await readFile(adminPagePath, "utf-8");
 			await runForge(workspace.projectRoot, ["update", "--keep-user"], {
 				workspaceRoot: workspace.workspaceRoot,
 			});
+
 			const updatedLockfile = await readJson<{
 				artifacts: Record<string, { path: string }>;
 			}>(join(workspace.projectRoot, ".forge/lock.json"));
+
 			expect(
 				Object.values(updatedLockfile.artifacts).some(
 					(artifact) => artifact.path === ".env",
 				),
 			).toBe(false);
+
 			expect(
 				Object.keys(updatedLockfile.artifacts).some((artifactId) =>
 					artifactId.endsWith(":rootEnv"),
 				),
 			).toBe(false);
+
 			expect(await readFile(pagePath, "utf-8")).toBe(page);
 			expect(await readFile(layoutPath, "utf-8")).toBe(layout);
 			expect(await readFile(adminPagePath, "utf-8")).toBe(adminPage);
 			const rootPackage = await readJson<{
 				scripts: Record<string, string>;
 			}>(join(workspace.projectRoot, "package.json"));
+
 			const webPackage = await readJson<{
 				scripts: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/web/package.json"));
+
 			const adminPackage = await readJson<{
 				scripts: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/admin/package.json"));
+
 			expect(rootPackage.scripts.user).toBe("keep-me");
 			expect(rootPackage.scripts.build).toBe("turbo run build");
+
 			expect(webPackage.scripts.custom).toBe("keep-me");
 			expect(webPackage.scripts.dev).toContain("next dev");
+
 			expect(adminPackage.scripts.admin).toBe("keep-me");
 			expect(adminPackage.scripts.dev).toContain("next dev");
 			expect(
@@ -240,6 +276,7 @@ describe("init", () => {
 					join(workspace.projectRoot, "apps/web/components.json"),
 				),
 			).toBe(true);
+
 			expect(
 				await pathExists(
 					join(workspace.projectRoot, "apps/admin/components.json"),
@@ -251,6 +288,7 @@ describe("init", () => {
 				["add", "commitlint", "--no-install"],
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
+
 			expect(
 				await pathExists(join(workspace.projectRoot, "commitlint.config.ts")),
 			).toBe(true);
@@ -260,6 +298,7 @@ describe("init", () => {
 				["init", "--config", configPath],
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
+
 			expect(repeated.exitCode).toBe(1);
 			expect(repeated.stdout + repeated.stderr).toContain(
 				'A ".forge" directory already exists here. You need to remove it before running forge init.',
@@ -276,9 +315,11 @@ describe("init", () => {
 				'export default { extends: ["@commitlint/config-conventional"] };\n',
 				"utf-8",
 			);
+
 			const configPath = await initConfig(workspace.workspaceRoot, [
 				"commitlint",
 			]);
+
 			await runForge(workspace.projectRoot, ["init", "--config", configPath], {
 				workspaceRoot: workspace.workspaceRoot,
 			});
@@ -288,10 +329,12 @@ describe("init", () => {
 				["remove", "commitlint"],
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
+
 			expect(refused.exitCode).toBe(1);
 			expect(refused.stdout + refused.stderr).toContain(
 				"Run again with --accept-forge to remove",
 			);
+
 			expect(await pathExists(adoptedPath)).toBe(true);
 
 			await runForge(
@@ -299,6 +342,7 @@ describe("init", () => {
 				["remove", "commitlint", "--accept-forge"],
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
+
 			expect(await pathExists(adoptedPath)).toBe(false);
 		});
 	}, 120_000);
@@ -316,6 +360,7 @@ describe("init", () => {
 						private: true,
 					},
 				);
+
 				const configPath = await initConfig(workspace.workspaceRoot);
 				const result = await tryRunForge(
 					workspace.projectRoot,
@@ -327,6 +372,7 @@ describe("init", () => {
 				expect(result.stdout + result.stderr).toContain(
 					'We can\'t leave "packages/ui" unmanaged because the confirmed configuration requires a ui module there.',
 				);
+
 				expect(await pathExists(join(workspace.projectRoot, ".forge"))).toBe(
 					false,
 				);
@@ -345,6 +391,7 @@ describe("init", () => {
 			const update = await tryRunForge(workspace.projectRoot, ["update"], {
 				workspaceRoot: workspace.workspaceRoot,
 			});
+
 			expect(update.exitCode).toBe(1);
 			const output = update.stdout + update.stderr;
 			expect(output).toContain("was modified after Forge last managed it");
@@ -370,6 +417,7 @@ describe("init", () => {
 			const packageJson = await readJson<{
 				scripts: Record<string, string>;
 			}>(join(workspace.projectRoot, "package.json"));
+
 			expect(packageJson.scripts.user).toBe("keep-me");
 			expect(packageJson.scripts.build).toBe("turbo run build");
 		});

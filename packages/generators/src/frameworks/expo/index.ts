@@ -96,7 +96,6 @@ function buildContributions(config: ForgeConfig) {
 	const pm = resolvePackageManager(config);
 	const origin = appOrigin(config);
 	const useNativewind = config.nativeStyleFramework === "nativewind";
-
 	return [
 		ensureAppModule("mobile", "apps/mobile", {
 			framework: "expo",

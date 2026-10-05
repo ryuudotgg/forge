@@ -73,6 +73,7 @@ function rootEffect(
 		config,
 		frameworks,
 	});
+
 	if (!Effect.isEffect(result))
 		throw new Error("Missing Effect Contribution: root");
 
@@ -97,6 +98,7 @@ function syncContributions(
 		config,
 		frameworks: [nextjsFramework],
 	});
+
 	if (Effect.isEffect(result) || result instanceof Promise)
 		throw new Error(`Unexpected Async Contribution: ${addon.id}`);
 
@@ -162,6 +164,7 @@ describe("package overrides", () => {
 					mobile: "expo",
 					nativeStyleFramework: selected ? "nativewind" : undefined,
 				};
+
 				const packageJson = jsonSurface(
 					await Effect.runPromise(
 						rootEffect(config, [nextjsFramework, expoFramework], {
@@ -172,8 +175,8 @@ describe("package overrides", () => {
 					),
 					"rootPackageJson",
 				);
-				const key = packageManager === "Yarn" ? "resolutions" : "overrides";
 
+				const key = packageManager === "Yarn" ? "resolutions" : "overrides";
 				if (selected && packageManager !== "pnpm")
 					expect(packageJson[key]).toEqual({ lightningcss: "1.30.1" });
 				else expect(packageJson).not.toHaveProperty(key);
@@ -255,6 +258,7 @@ describe("root workspace", () => {
 			node: "22.11.0",
 			pnpm: "10.12.1",
 		};
+
 		const secondVersions = {
 			node: "24.1.0",
 			pnpm: "11.0.0",
@@ -265,6 +269,7 @@ describe("root workspace", () => {
 		const firstPackageJson = firstCreate.writes.find(
 			(write) => write.path === "package.json",
 		)?.content;
+
 		const secondPackageJson = secondCreate.writes.find(
 			(write) => write.path === "package.json",
 		)?.content;
@@ -300,6 +305,7 @@ describe("root workspace", () => {
 			packageManager: "pnpm@10.12.1",
 			engines: { node: "22.11.0", pnpm: "^10.12.1" },
 		});
+
 		expect(packageJson).not.toHaveProperty("workspaces");
 	});
 
@@ -331,6 +337,7 @@ describe("root workspace", () => {
 				build: { env: ["TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN"] },
 			},
 		});
+
 		expect(turso).not.toHaveProperty("tasks.build.outputs");
 
 		const nextjs = jsonSurface(
@@ -343,6 +350,7 @@ describe("root workspace", () => {
 				build: { outputs: [".next/**", "!.next/cache/**"] },
 			},
 		});
+
 		expect(nextjs).not.toHaveProperty("tasks.build.env");
 
 		const bare = jsonSurface(await rootContributions({}), "workspaceConfig");
@@ -356,6 +364,7 @@ describe("root workspace", () => {
 				typecheck: { dependsOn: ["^typecheck"] },
 			},
 		});
+
 		expect(bare).not.toHaveProperty("tasks.build.env");
 		expect(bare).not.toHaveProperty("tasks.build.outputs");
 	});
@@ -371,6 +380,7 @@ describe("root workspace", () => {
 			slots: [],
 			tsconfigPreset: { content: {}, name: "tanstack-start" },
 		});
+
 		const workspace = jsonSurface(
 			await rootContributions({ web: "tanstack-start" }, [framework]),
 			"workspaceConfig",
@@ -397,8 +407,8 @@ describe("root workspace", () => {
 						node: "24.1.0",
 						pnpm: "10.12.1",
 					};
-					const version = versions[command];
 
+					const version = versions[command];
 					return version === undefined
 						? Effect.fail(
 								new CommandProbeError({
@@ -411,11 +421,13 @@ describe("root workspace", () => {
 				},
 			}),
 		);
+
 		const versions = await Effect.runPromise(
 			probeWorkspaceCommandVersions({ runtime: "Bun" }).pipe(
 				Effect.provide(layer),
 			),
 		);
+
 		const contributions = await Effect.runPromise(
 			rootEffect({ runtime: "Bun" }, [nextjsFramework], versions).pipe(
 				Effect.provide(layer),
@@ -444,11 +456,13 @@ describe("root workspace", () => {
 						: Effect.succeed(command === "bun" ? "1.3.2" : "10.12.1"),
 			}),
 		);
+
 		const versions = await Effect.runPromise(
 			probeWorkspaceCommandVersions({ runtime: "Bun" }).pipe(
 				Effect.provide(layer),
 			),
 		);
+
 		const contributions = await Effect.runPromise(
 			rootEffect({ runtime: "Bun" }, [nextjsFramework], versions).pipe(
 				Effect.provide(layer),
@@ -498,9 +512,11 @@ describe("pnpm workspace", () => {
 		expect(yaml).toContain(
 			'packages:\n  - "apps/*"\n  - "packages/*"\n  - "tooling/*"\n',
 		);
+
 		expect(yaml).toContain(
 			`  "@tanstack/react-query": ${versions.tanstackReactQuery.version}`,
 		);
+
 		expect(yaml).toContain(`  next: ${versions.next.version}`);
 		expect(yaml).not.toContain('"next"');
 	});
@@ -511,6 +527,7 @@ describe("pnpm workspace", () => {
 		expect(yaml).toContain(
 			"allowBuilds:\n  esbuild: true\n  lefthook: true\n  msw: true\n  sharp: true\n",
 		);
+
 		expect(yaml.endsWith("  sharp: true\n")).toBe(true);
 		expect(yaml).not.toContain("@prisma/engines");
 		expect(yaml).not.toContain("better-sqlite3: true");
@@ -526,6 +543,7 @@ describe("pnpm workspace", () => {
 		expect(postgres).toContain(
 			'allowBuilds:\n  "@prisma/engines": true\n  esbuild: true\n  lefthook: true\n  msw: true\n  prisma: true\n  sharp: true\n',
 		);
+
 		expect(postgres).not.toContain("better-sqlite3: true");
 
 		const sqlite = leafFile(
@@ -673,9 +691,11 @@ describe("trusted-builds parity", () => {
 				syncContributions(pnpm, config),
 				"pnpm-workspace.yaml",
 			);
+
 			const allowBuildsBlock = pnpmYaml.slice(
 				pnpmYaml.indexOf("allowBuilds:\n") + "allowBuilds:\n".length,
 			);
+
 			const pnpmNames = allowBuildsBlock
 				.split("\n")
 				.filter((line) => line.startsWith("  "))

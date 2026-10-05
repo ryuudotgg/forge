@@ -49,7 +49,6 @@ const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
 
 	async execute(config, interactive) {
 		const smartDefault = getSmartDefault(config.runtime);
-
 		if (!interactive) {
 			const check = await runCliEffectValue(checkPackageManager(smartDefault));
 			if (!check.ok) {

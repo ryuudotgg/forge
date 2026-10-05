@@ -84,9 +84,7 @@ const ui = defineAddon<ForgeConfig, "ui">({
 			{ ...deps.typescript, type: "devDependencies" },
 		];
 
-		if (useBaseUi) {
-			uiDeps.push({ ...deps.baseUiReact, type: "dependencies" });
-		}
+		if (useBaseUi) uiDeps.push({ ...deps.baseUiReact, type: "dependencies" });
 
 		if (useTailwind) {
 			uiDeps.push({ ...deps.tailwindcss, type: "devDependencies" });

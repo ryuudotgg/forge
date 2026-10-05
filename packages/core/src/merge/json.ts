@@ -53,7 +53,6 @@ function threeWayMergeArrays(
 			const baseValue = base[index];
 			const currentValue = current[index];
 			const incomingValue = incoming[index];
-
 			if (jsonEqual(currentValue, incomingValue)) indexed.push(currentValue);
 			else if (jsonEqual(baseValue, currentValue)) indexed.push(incomingValue);
 			else if (jsonEqual(baseValue, incomingValue)) indexed.push(currentValue);
@@ -81,8 +80,8 @@ function threeWayMergeArrays(
 
 	const append = (value: unknown) => {
 		const key = arrayKey(value);
-
 		if (mergedKeys.has(key)) return;
+
 		mergedKeys.add(key);
 
 		merged.push(value);
@@ -178,11 +177,9 @@ export function deepMerge(
 	source: Record<string, unknown>,
 ): Record<string, unknown> {
 	const result: Record<string, unknown> = { ...target };
-
 	for (const key of Object.keys(source)) {
 		const sourceValue = source[key];
 		const targetValue = target[key];
-
 		if (isPlainObject(sourceValue) && isPlainObject(targetValue))
 			result[key] = deepMerge(targetValue, sourceValue);
 		else if (Array.isArray(sourceValue) && Array.isArray(targetValue))
@@ -241,7 +238,6 @@ export function jsonResidue(
 	current: Record<string, unknown>,
 ): Record<string, unknown> {
 	const residue: Record<string, unknown> = {};
-
 	for (const [key, currentValue] of Object.entries(current)) {
 		if (!Object.hasOwn(base, key)) {
 			residue[key] = currentValue;
@@ -249,7 +245,6 @@ export function jsonResidue(
 		}
 
 		const baseValue = base[key];
-
 		if (jsonEqual(baseValue, currentValue)) continue;
 		if (isPlainObject(baseValue) && isPlainObject(currentValue)) {
 			const nested = jsonResidue(baseValue, currentValue);
@@ -300,7 +295,6 @@ function mergeJsonObjects(
 		const baseValue = base[key];
 		const currentValue = current[key];
 		const incomingValue = incoming[key];
-
 		if (
 			basePresent === incomingPresent &&
 			jsonEqual(baseValue, incomingValue)

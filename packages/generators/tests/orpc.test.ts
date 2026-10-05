@@ -672,6 +672,7 @@ describe("oRPC Next.js self host", () => {
 			expect(cors).toContain(
 				'headers.set("Access-Control-Allow-Credentials", "true");',
 			);
+
 			expect(cors).toContain("x-csrf-token");
 			expect(cors).toContain("status: 204");
 			expect(writeContent(plan, "apps/admin/orpc/client.ts")).toContain(

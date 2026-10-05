@@ -7,7 +7,6 @@ export function trpcTemplateVars(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";
 	const usesDb = config.orm !== undefined;
 	const usesAuth = config.authentication === "better-auth";
-
 	return {
 		SLUG: slug,
 		DB_IMPORT: usesDb ? `import { db } from "@${slug}/db/client";\n` : "",
@@ -35,7 +34,6 @@ export function trpcClientMarkers(
 	standalone: boolean,
 ) {
 	const serverUrl = `env.${framework.clientEnvPrefix ?? "VITE_"}SERVER_URL`;
-
 	return {
 		ENV_IMPORT: standalone
 			? framework.id === "nextjs"
@@ -55,7 +53,6 @@ export function trpcRecipeMarkers(
 	standalone: boolean,
 ) {
 	const values = trpcTemplateVars(config);
-
 	return {
 		SLUG: values.SLUG,
 		AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],

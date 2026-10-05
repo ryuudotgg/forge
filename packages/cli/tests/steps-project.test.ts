@@ -29,7 +29,6 @@ vi.mock("@clack/prompts", () => ({
 
 vi.mock("@ryuugg/core", async (importOriginal) => {
 	const original = await importOriginal<typeof import("@ryuugg/core")>();
-
 	return {
 		...original,
 		checkPackageManager: coreMocks.checkPackageManager,
@@ -39,7 +38,6 @@ vi.mock("@ryuugg/core", async (importOriginal) => {
 function rawConfig(values: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
 	for (const [key, value] of Object.entries(values)) config[key] = value;
-
 	return config;
 }
 
@@ -54,6 +52,7 @@ describe("project steps", () => {
 		coreMocks.checkPackageManager.mockReturnValue(
 			Effect.succeed({ ok: true, message: "ok" }),
 		);
+
 		promptMocks.logError.mockReset();
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
@@ -71,6 +70,7 @@ describe("project steps", () => {
 			await expect(
 				packageManagerStep.execute({ runtime: "Deno" }, false),
 			).resolves.toBe("pnpm");
+
 			await expect(packageManagerStep.execute({}, false)).resolves.toBe("pnpm");
 		});
 
@@ -170,6 +170,7 @@ describe("project steps", () => {
 					],
 				}),
 			);
+
 			expect(coreMocks.checkPackageManager).toHaveBeenCalledWith("Bun");
 		});
 
@@ -240,6 +241,7 @@ describe("project steps", () => {
 			expect(validate?.("a".repeat(16))).toBe(
 				"It must be less than 15 characters.",
 			);
+
 			expect(validate?.("!!!")).toBe("We couldn't generate a slug.");
 			expect(validate?.("Acme")).toBeUndefined();
 		});
@@ -294,6 +296,7 @@ describe("project steps", () => {
 			await expect(pathStep.execute({ path: "./custom" }, false)).resolves.toBe(
 				"./custom",
 			);
+
 			await expect(pathStep.execute({ path: "." }, false)).resolves.toBe(".");
 		});
 
@@ -414,12 +417,12 @@ describe("project steps", () => {
 			expect(promptMocks.logWarn).toHaveBeenCalledWith(
 				"We don't support Oxc yet.",
 			);
+
 			expect(promptMocks.select).toHaveBeenCalledTimes(2);
 		});
 
 		it("skips when None is selected", async () => {
 			promptMocks.select.mockResolvedValue("none");
-
 			await expect(linterStep.execute({}, true)).resolves.toBe(SKIP);
 		});
 	});
@@ -472,7 +475,6 @@ describe("project steps", () => {
 
 		it("skips when None is selected", async () => {
 			promptMocks.select.mockResolvedValue("none");
-
 			await expect(catalogsStep.execute({}, true)).resolves.toBe(SKIP);
 		});
 	});

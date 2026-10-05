@@ -69,7 +69,6 @@ function resolveSurfaceMergeKind(
 ): SurfaceMergeKind | undefined {
 	const value = String(path);
 	if (value.endsWith("/.env") || value === ".env") return undefined;
-
 	if (tags.has("ManagedTextSurfaceContribution")) return undefined;
 	if (tags.has("ManagedLinesSurfaceContribution")) {
 		if (value.endsWith("/.gitignore") || value === ".gitignore") return "lines";
@@ -98,7 +97,6 @@ function applyDependencies(
 	format: DependencyFormat,
 ): Record<string, unknown> {
 	const result = { ...json };
-
 	for (const dep of dependencies) {
 		const section = dep.type;
 		const existing =
@@ -181,7 +179,6 @@ function resolveAppSurfacePath(
 		default: {
 			const slotPath = module.slots[surface];
 			if (!slotPath) throw new Error("Module Slot Missing");
-
 			return filePath(`${module.root}/${slotPath}`);
 		}
 	}
@@ -201,7 +198,6 @@ function resolvePackageSurfacePath(
 		default: {
 			const slotPath = module.slots[surface];
 			if (!slotPath) throw new Error("Module Slot Missing");
-
 			return filePath(`${module.root}/${slotPath}`);
 		}
 	}
@@ -276,7 +272,6 @@ function renderTextSurface(inputs: ReadonlyArray<SurfaceRenderContribution>) {
 
 function renderLinesSurface(inputs: ReadonlyArray<SurfaceRenderContribution>) {
 	let content = "";
-
 	for (const input of sortInputs(inputs))
 		if (input.contribution._tag === "ManagedLinesSurfaceContribution")
 			content = appendLines(
@@ -295,7 +290,6 @@ function renderJsonSurface(
 	format: DependencyFormat,
 ) {
 	let json: Record<string, unknown> = {};
-
 	for (const input of sortJsonInputs(inputs)) {
 		switch (input.contribution._tag) {
 			case "ManagedJsonSurfaceContribution": {
@@ -349,7 +343,6 @@ const makeRenderer = Effect.succeed({
 				);
 
 				const groups = new Map<string, SurfaceRenderContribution[]>();
-
 				for (const input of inputs) {
 					const key = buildKey(input.bucket, input.contribution.surface);
 					const existing = groups.get(key) ?? [];
@@ -358,7 +351,6 @@ const makeRenderer = Effect.succeed({
 				}
 
 				const rendered: RenderedArtifact[] = [];
-
 				for (const entries of groups.values()) {
 					const first = entries[0];
 					if (!first) continue;

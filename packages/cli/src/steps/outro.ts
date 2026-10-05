@@ -12,7 +12,6 @@ const outroStep = defineStep({
 
 	async execute(_config, interactive) {
 		if (!interactive) return SKIP;
-
 		outro(`You've forged a ${rainbow("MYTHIC")} grade project!`);
 	},
 });

@@ -74,7 +74,6 @@ export async function runCli(
 	}
 
 	const { values, positionals } = parsed;
-
 	if (values.help) {
 		cli.printHelp();
 		cli.exit(0);
@@ -95,7 +94,6 @@ export async function runCli(
 
 	const subcommand = positionals[0];
 	const cmd = subcommand ? cli.getSubcommand(subcommand) : undefined;
-
 	try {
 		if (isUnknownCommand(subcommand, cmd)) {
 			cli.error(

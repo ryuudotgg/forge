@@ -9,16 +9,15 @@ export interface EmailMessage {
 }
 
 let transport: Transporter | undefined;
-
 export async function sendEmail(message: EmailMessage): Promise<void> {
   if (!env.EMAIL_FROM || !env.SMTP_URL) {
-    if (env.NODE_ENV !== "development") {
+    if (env.NODE_ENV !== "development")
       throw new Error("Email isn't configured. Set EMAIL_FROM and SMTP_URL.");
-    }
 
     console.info(
       `Email to ${message.to}: ${message.subject}\n\n${message.text}`,
     );
+
     return;
   }
 

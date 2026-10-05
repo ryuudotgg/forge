@@ -153,6 +153,7 @@ describe("generated invitations", () => {
 			expect(JSON.stringify(message)).toContain(
 				"Ada Inviter (ada@example.com)",
 			);
+
 			expect(JSON.stringify(message)).toContain("Lumen Works");
 			expect(message).toMatchObject({
 				text: expect.stringMatching(

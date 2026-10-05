@@ -10,6 +10,7 @@ describe("resolution arguments", () => {
 		expect(resolutionArguments({ "keep-user": true })).toEqual([
 			{ resolutionPolicy: "keep-user" },
 		]);
+
 		expect(resolutionArguments({ "accept-forge": true })).toEqual([
 			{ resolutionPolicy: "accept-forge" },
 		]);

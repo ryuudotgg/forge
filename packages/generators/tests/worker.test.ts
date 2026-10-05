@@ -51,6 +51,7 @@ describe("worker addon", () => {
 		expect(entry).toContain(
 			'if ("closeIdleConnections" in server) server.closeIdleConnections()',
 		);
+
 		expect(entry).toContain(
 			"setTimeout(() => process.exit(1), shutdownTimeoutMs)",
 		);
@@ -105,6 +106,7 @@ describe("worker addon", () => {
 		expect(plan.writes.map((write) => write.path)).toContain(
 			"tooling/tsconfig/hono.json",
 		);
+
 		expect(writeContent(plan, "apps/worker/tsconfig.json")).toContain(
 			"@acme/tsconfig/hono.json",
 		);
@@ -154,6 +156,7 @@ describe("worker addon", () => {
 		expect(
 			plan.writes.some((write) => write.path.startsWith("apps/worker/")),
 		).toBe(false);
+
 		expect(
 			plan.writes.some((write) => write.content.includes("WORKER_SECRET")),
 		).toBe(false);
@@ -161,7 +164,6 @@ describe("worker addon", () => {
 
 	it("is opt-in, never recommended", () => {
 		const entry = builtins.addons.find((addon) => addon.id === "worker");
-
 		expect(entry?.when({ ...base, addons: [] })).toBe(false);
 		expect(entry?.when({ ...base, addons: ["worker"] })).toBe(true);
 	});

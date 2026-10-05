@@ -34,6 +34,7 @@ export function authPluginRequirementMessage(
 	const labels = listAnd.format(
 		plugins.map((plugin) => authPlugins.label(plugin)),
 	);
+
 	const methods = new Set(
 		plugins.flatMap((plugin) => {
 			const required = authPluginRequirement(plugin);
@@ -73,6 +74,7 @@ const authPluginsStep = defineStep<typeof authPluginsSchema.Type>({
 				initialValues = selection.filter((plugin) =>
 					authPlugins.available(plugin),
 				);
+
 				continue;
 			}
 

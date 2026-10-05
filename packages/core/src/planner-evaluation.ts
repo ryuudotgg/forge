@@ -151,7 +151,7 @@ function normalizeContributionResult(
 		}
 
 		if (Effect.isEffect(result)) return result;
-		if (result instanceof Promise) {
+		if (result instanceof Promise)
 			return Effect.tryPromise({
 				try: () => result,
 				catch: (cause) =>
@@ -162,7 +162,6 @@ function normalizeContributionResult(
 						cause,
 					}),
 			});
-		}
 
 		return Effect.succeed(result);
 	});
@@ -220,7 +219,6 @@ export const evaluateDefinitions = Effect.fn("Planner.evaluateDefinitions")(
 		commandProbe: Context.Service.Shape<typeof CommandProbe>,
 	) {
 		const ordered = yield* orderDefinitions(definitions);
-
 		return yield* Effect.forEach(ordered, (definition, order) =>
 			normalizeContributionResult(definition.id, () =>
 				definition.contribute({
@@ -262,7 +260,6 @@ export const evaluateAdapters = Effect.fn("Planner.evaluateAdapters")(
 		);
 
 		const adapterEvaluations: EvaluatedDefinition[] = [];
-
 		for (const addon of registry.addons) {
 			const addonAdapters = registry.adapters.filter(
 				(adapter) => adapter.addon === addon.id,

@@ -27,12 +27,15 @@ describe("generator config choices", () => {
 		expect(authenticationProviders.label("better-auth")).toBe("Better Auth");
 		expect(orms.label("drizzle")).toBe("Drizzle ORM");
 		expect(rpcProviders.label("trpc")).toBe("tRPC");
+
 		expect(linters.label("biome")).toBe("Biome");
 		expect(catalogs.label("scoped")).toBe("Scoped");
 		expect(databaseProviders.label("prisma-postgres")).toBe("Prisma Postgres");
+
 		expect(desktopFrameworks.label("electron")).toBe("Electron");
 		expect(mobileFrameworks.label("react-native")).toBe("React Native");
 		expect(nativeStyleFrameworks.label("nativewind")).toBe("NativeWind");
+
 		expect(optionalAddons.label("github-ci")).toBe("GitHub CI");
 		expect(optionalAddons.label("vitest")).toBe("Vitest");
 		expect(optionalAddons.label("vscode")).toBe("VS Code");
@@ -44,6 +47,7 @@ describe("generator config choices", () => {
 		expect(authenticationProviders.normalize("Better Auth")).toBe(
 			"better-auth",
 		);
+
 		expect(orms.normalize("Drizzle ORM")).toBe("drizzle");
 		expect(rpcProviders.normalize("tRPC")).toBe("trpc");
 		expect(linters.normalize("Biome")).toBe("biome");
@@ -51,9 +55,11 @@ describe("generator config choices", () => {
 		expect(databaseProviders.normalize("Prisma Postgres")).toBe(
 			"prisma-postgres",
 		);
+
 		expect(desktopFrameworks.normalize("Electron")).toBe("electron");
 		expect(mobileFrameworks.normalize("React Native")).toBe("react-native");
 		expect(nativeStyleFrameworks.normalize("NativeWind")).toBe("nativewind");
+
 		expect(optionalAddons.normalize("GitHub CI")).toBe("github-ci");
 		expect(optionalAddons.normalize("Vitest")).toBe("vitest");
 		expect(optionalAddons.normalize("VS Code")).toBe("vscode");
@@ -69,6 +75,7 @@ describe("generator config choices", () => {
 		expect(platforms.available("desktop")).toBe(false);
 		expect(mobileFrameworks.availableIds).toEqual(["expo"]);
 		expect(mobileFrameworks.available("react-native")).toBe(false);
+
 		expect(nativeStyleFrameworks.availableIds).toEqual(["nativewind"]);
 		expect(nativeStyleFrameworks.available("nativewind")).toBe(true);
 		expect(nativeStyleFrameworks.available("tamagui")).toBe(false);
@@ -79,6 +86,7 @@ describe("generator config choices", () => {
 			"tanstack-router",
 			"tanstack-start",
 		]);
+
 		expect(authenticationProviders.availableIds).toEqual(["better-auth"]);
 	});
 

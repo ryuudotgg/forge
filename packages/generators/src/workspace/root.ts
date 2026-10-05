@@ -112,7 +112,6 @@ function buildContributions(
 		packageJson.workspaces = ["apps/*", "packages/*", "tooling/*"];
 
 	const overrides = packageOverrides(config);
-
 	if (packageManagerCommandName !== "pnpm" && Object.keys(overrides).length > 0)
 		packageJson[
 			packageManagerCommandName === "yarn" ? "resolutions" : "overrides"

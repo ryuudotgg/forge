@@ -54,6 +54,7 @@ function buildWorkspaceYaml(config: ForgeConfig): string {
 	for (const { group, entries } of groups) {
 		if (group !== first?.group) lines.push("");
 		lines.push(`  # ${group}`);
+
 		for (const entry of entries)
 			lines.push(`  ${quote(entry.name)}: ${entry.version}`);
 	}

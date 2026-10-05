@@ -7,9 +7,9 @@ export interface Section {
 
 export function parseSections(content: string): Section[] {
 	const sections: Section[] = [];
-	let current: Section = { header: "", lines: [] };
 
-	for (const line of content.replaceAll("\r\n", "\n").split("\n")) {
+	let current: Section = { header: "", lines: [] };
+	for (const line of content.replaceAll("\r\n", "\n").split("\n"))
 		if (line.startsWith("# ") && current.lines.length > 0) {
 			sections.push(current);
 			current = { header: line, lines: [] };
@@ -19,7 +19,6 @@ export function parseSections(content: string): Section[] {
 				lines: [],
 			};
 		else if (line.trim() !== "") current.lines.push(line);
-	}
 
 	if (current.header !== "" || current.lines.length > 0) sections.push(current);
 
@@ -64,11 +63,9 @@ function mergeSectionLines(
 
 	const currentOnlyAdds = isSubsequence(base, current);
 	const incomingOnlyAdds = isSubsequence(base, incoming);
-
 	if (currentOnlyAdds && incomingOnlyAdds) {
 		const merged = [...base];
 		const mergedSet = new Set(base);
-
 		for (const line of [...current, ...incoming]) {
 			if (baseSet.has(line) || mergedSet.has(line)) continue;
 			mergedSet.add(line);
@@ -150,7 +147,6 @@ export function threeWayMergeSections(
 	const baseSections = parseSections(base);
 	const currentSections = parseSections(current);
 	const incomingSections = parseSections(incoming);
-
 	if (
 		hasDuplicateHeaders(baseSections) ||
 		hasDuplicateHeaders(currentSections) ||
@@ -181,7 +177,6 @@ export function threeWayMergeSections(
 
 	const conflicts: string[] = [];
 	const conflictValues: LineMergeConflict[] = [];
-
 	for (const header of headers) {
 		const sectionLabel = header === "" ? "unsectioned" : header.slice(2);
 		const result = mergeSectionLines(
@@ -249,7 +244,6 @@ export function sectionResidue(base: string, current: string): string {
 
 function serializeSections(sections: ReadonlyArray<Section>): string {
 	const parts: string[] = [];
-
 	for (const section of sections) {
 		if (section.header !== "") parts.push(section.header);
 		for (const line of section.lines) parts.push(line);
@@ -266,11 +260,9 @@ export function appendLines(
 	position: "start" | "end" = "end",
 ): string {
 	const sections = parseSections(existing);
-
 	if (section) {
 		const header = section.startsWith("# ") ? section : `# ${section}`;
 		const found = sections.find((s) => s.header === header);
-
 		if (found) {
 			const existingSet = new Set(found.lines);
 			for (const line of lines)
@@ -282,7 +274,6 @@ export function appendLines(
 			(() => {
 				const s: Section = { header: "", lines: [] };
 				sections.unshift(s);
-
 				return s;
 			})();
 
@@ -295,7 +286,6 @@ export function appendLines(
 			(() => {
 				const s: Section = { header: "", lines: [] };
 				sections.unshift(s);
-
 				return s;
 			})();
 
@@ -375,7 +365,6 @@ export function threeWayMergeLines(
 	let prevBase = 0;
 	let prevCurrent = 0;
 	let prevIncoming = 0;
-
 	for (const anchor of [...stablePositions, -1]) {
 		const baseEnd = anchor === -1 ? baseLines.length : anchor;
 
@@ -392,17 +381,18 @@ export function threeWayMergeLines(
 		const baseSeg = baseLines.slice(prevBase, baseEnd);
 		const currentSeg = currentLines.slice(prevCurrent, currentEnd);
 		const incomingSeg = incomingLines.slice(prevIncoming, incomingEnd);
-
 		if (linesEqual(currentSeg, incomingSeg)) merged.push(...currentSeg);
 		else if (linesEqual(baseSeg, currentSeg)) merged.push(...incomingSeg);
 		else if (linesEqual(baseSeg, incomingSeg)) merged.push(...currentSeg);
 		else {
 			const baseLabel =
 				baseSeg.length > 0 ? baseSeg.join(", ") : "concurrent insertion";
+
 			const occurrence = (labelOccurrences.get(baseLabel) ?? 0) + 1;
 			labelOccurrences.set(baseLabel, occurrence);
 			const label =
 				occurrence === 1 ? baseLabel : `${baseLabel} (${ordinal(occurrence)})`;
+
 			const conflictResolution = resolveConflict?.(label) ?? resolution;
 			merged.push(
 				...(conflictResolution === "user" ? currentSeg : incomingSeg),
@@ -437,7 +427,6 @@ export function threeWayMergeLines(
 function splitLines(content: string): string[] {
 	const lines = content.split("\n");
 	if (lines.at(-1) === "") lines.pop();
-
 	return lines;
 }
 
@@ -447,7 +436,6 @@ function linesEqual(
 ): boolean {
 	if (a.length !== b.length) return false;
 	for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-
 	return true;
 }
 
@@ -464,24 +452,20 @@ function lcsMatchPairs(
 	for (let i = 1; i <= m; i++) {
 		const row = dp[i];
 		const prevRow = dp[i - 1];
-
 		if (!row || !prevRow) continue;
 
-		for (let j = 1; j <= n; j++) {
+		for (let j = 1; j <= n; j++)
 			if (a[i - 1] === b[j - 1]) row[j] = (prevRow[j - 1] ?? 0) + 1;
 			else row[j] = Math.max(prevRow[j] ?? 0, row[j - 1] ?? 0);
-		}
 	}
 
 	const pairs: Array<[number, number]> = [];
 
 	let i = m;
 	let j = n;
-
 	while (i > 0 && j > 0) {
 		const row = dp[i];
 		const prevRow = dp[i - 1];
-
 		if (!row || !prevRow) break;
 
 		if (a[i - 1] === b[j - 1]) {
