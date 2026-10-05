@@ -19,15 +19,16 @@ import {
 	secondaryClientOrigins,
 	standaloneApiOrigin,
 	webDevOrigin,
-	webOriginsEnvSchema,
+	withServerEnvOrigins,
 } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import { resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
 import { rpcDescriptors } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
+import { standaloneServerScripts } from "../server-scripts";
 
 const honoSlots = {
 	api: "src/routes",
@@ -184,13 +185,11 @@ function buildContributions(config: ForgeConfig) {
 			{ ...deps.typesNode, type: "devDependencies" },
 			{ ...deps.typescript, type: "devDependencies" },
 		]),
-		surfaceScripts(ensuredModuleTarget("server"), "packageJson", {
-			build: pmRun(pm, "with-env", "tsdown"),
-			dev: pmRun(pm, "with-env", "tsx watch src/index.ts"),
-			start: pmRun(pm, "with-env", "node dist/index.js"),
-			typecheck: "tsc --noEmit",
-			"with-env": "dotenv -e ../../.env --",
-		}),
+		surfaceScripts(
+			ensuredModuleTarget("server"),
+			"packageJson",
+			standaloneServerScripts(pm),
+		),
 		surfaceLines(projectTarget(), "rootEnv", envLines, { section: "Hono" }),
 		surfaceLines(projectTarget(), "rootEnvExample", envLines, {
 			section: "Hono",
@@ -208,9 +207,9 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("server"),
 			"env.ts",
-			interpolate(readTemplate("frameworks/hono/env.ts"), vars).replace(
-				`    WEB_URL: z.url().default("${webOrigin}"),\n`,
-				`    WEB_URL: z.url().default("${webOrigin}"),\n${webOriginsEnvSchema(config)}`,
+			withServerEnvOrigins(
+				config,
+				interpolate(readTemplate("frameworks/hono/env.ts"), vars),
 			),
 		),
 		leafTextFile(

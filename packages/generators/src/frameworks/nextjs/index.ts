@@ -5,22 +5,16 @@ import {
 	ensuredModuleTarget,
 	type FrameworkDefinition,
 	leafTextFile,
-	projectTarget,
 	surfaceDependencies,
 	surfaceJson,
-	surfaceLines,
 	surfaceScripts,
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuugg/core";
+import { selfHostedCorsContributions } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
-import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
-import {
-	hasSecondaryClients,
-	nextServerEnvMarkers,
-	secondaryClientOrigins,
-} from "../../origins";
+import { hasSecondaryClients, nextServerEnvMarkers } from "../../origins";
 import { pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
@@ -285,6 +279,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"app/providers.tsx",
 			providers,
 		),
+		...selfHostedCorsContributions(config, instance),
 		...(instance.primary &&
 		(config.backend === undefined || config.backend === "self") &&
 		hasSecondaryClients(config)
@@ -292,41 +287,13 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 					leafTextFile(
 						ensuredModuleTarget(instance.key),
 						"proxy.ts",
-						interpolate(readTemplate("frameworks/nextjs/proxy.ts"), {
-							WEB_ORIGINS: JSON.stringify(secondaryClientOrigins(config)),
-						}).replace(
+						readTemplate("frameworks/nextjs/proxy.ts").replace(
 							'"/api/trpc/:path*"',
 							renderConfig.rpc === "orpc"
 								? '"/api/orpc/:path*"'
 								: '"/api/trpc/:path*"',
 						),
 					),
-					...(config.authentication === "better-auth"
-						? []
-						: [
-								surfaceLines(
-									projectTarget(),
-									"rootEnv",
-									[
-										envFileLine(
-											"WEB_URLS",
-											secondaryClientOrigins(config).join(","),
-										),
-									],
-									{ section: "Web clients" },
-								),
-								surfaceLines(
-									projectTarget(),
-									"rootEnvExample",
-									[
-										envFileLine(
-											"WEB_URLS",
-											secondaryClientOrigins(config).join(","),
-										),
-									],
-									{ section: "Web clients" },
-								),
-							]),
 				]
 			: []),
 	];

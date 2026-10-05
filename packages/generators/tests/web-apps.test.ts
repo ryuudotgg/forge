@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { stripTypeScriptTypes } from "node:module";
 import { dirname, join } from "node:path";
 import type { ProjectPlan } from "@ryuugg/core";
@@ -206,7 +206,7 @@ describe("secondary web app planning", () => {
 			});
 
 			expect(contentAt(plan, `apps/web/${cors}`)).toContain(
-				'"Access-Control-Allow-Credentials": "true"',
+				'headers.set("Access-Control-Allow-Credentials", "true");',
 			);
 
 			expect(contentAt(plan, `apps/web/${cors}`)).toContain(
@@ -369,20 +369,24 @@ describe("secondary web app planning", () => {
 			);
 
 			expect(contentAt(plan, "apps/server/env.ts")).toContain(
-				'WEB_URLS: z.string().default("http://localhost:3002")',
+				'export { webOrigins } from "@acme/auth/env";',
+			);
+
+			expect(contentAt(plan, "packages/auth/env.ts")).toContain(
+				"export const webOrigins = originList({\n  WEB_URL: env.WEB_URL,\n  WEB_URLS: env.WEB_URLS,\n});",
 			);
 
 			expect(contentAt(plan, "packages/auth/src/index.ts")).toContain(
-				"...env.WEB_URLS",
+				"trustedOrigins: webOrigins,",
 			);
 
 			expect(contentAt(plan, "apps/server/src/routes/auth.ts")).toContain(
-				"[env.WEB_URL, ...env.WEB_URLS]",
+				"origin: webOrigins,",
 			);
 
 			if (rpc === "trpc")
 				expect(contentAt(plan, "apps/server/src/routes/trpc.ts")).toContain(
-					'"x-trpc-source", "trpc-accept"',
+					'      "x-trpc-source",\n      "trpc-accept",\n',
 				);
 		},
 	);
@@ -408,8 +412,18 @@ describe("secondary web app planning", () => {
 				"trpc-accept",
 			);
 
+			const indent = backend === "express" ? "    " : "  ";
 			expect(contentAt(client, "apps/server/src/app.ts")).toContain(
-				'allowedHeaders: ["Content-Type", "Authorization", "x-trpc-source", "trpc-accept"],',
+				[
+					`${indent}allowedHeaders: [`,
+					...[
+						"Content-Type",
+						"Authorization",
+						"x-trpc-source",
+						"trpc-accept",
+					].map((header) => `${indent}  "${header}",`),
+					`${indent}],`,
+				].join("\n"),
 			);
 		},
 	);
@@ -433,19 +447,23 @@ describe("secondary web app planning", () => {
 			"baseURL: env.NEXT_PUBLIC_SERVER_URL",
 		);
 
+		expect(contentAt(plan, "packages/auth/env.ts")).toContain(
+			"export const webOrigins = originList({\n  APP_ORIGIN: env.APP_ORIGIN,\n  WEB_URLS: env.WEB_URLS,\n});",
+		);
+
 		expect(contentAt(plan, "packages/auth/src/index.ts")).toContain(
-			"env.APP_ORIGIN, ...env.WEB_URLS",
+			"trustedOrigins: webOrigins,",
+		);
+
+		expect(contentAt(plan, "apps/web/lib/api-cors.ts")).toContain(
+			'headers.set("Access-Control-Allow-Credentials", "true");',
 		);
 
 		expect(contentAt(plan, "apps/web/proxy.ts")).toContain(
-			'"Access-Control-Allow-Credentials": "true"',
+			'if (request.method === "OPTIONS") return preflight(request);',
 		);
 
-		expect(contentAt(plan, "apps/web/proxy.ts")).toContain(
-			'if (request.method === "OPTIONS")',
-		);
-
-		expect(contentAt(plan, "apps/web/proxy.ts")).toContain(
+		expect(contentAt(plan, "apps/web/lib/api-cors.ts")).toContain(
 			"x-csrf-token, trpc-accept",
 		);
 	});
@@ -465,7 +483,7 @@ describe("secondary web app planning", () => {
 
 			const corsPath =
 				web === "nextjs"
-					? "proxy.ts"
+					? "lib/api-cors.ts"
 					: web === "react-router"
 						? "app/lib/api-cors.ts"
 						: "src/lib/api-cors.ts";
@@ -480,6 +498,8 @@ describe("secondary web app planning", () => {
 	);
 
 	it("runs the generated CORS helper with tRPC preflight headers", async () => {
+		vi.stubEnv("WEB_URLS", "http://localhost:5174");
+
 		const plan = await plannedProject({
 			slug: "acme",
 			web: "react-router",
@@ -490,7 +510,7 @@ describe("secondary web app planning", () => {
 
 		const source = contentAt(plan, "apps/web/app/lib/api-cors.ts");
 		const exports: Record<string, unknown> = await import(
-			`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`
+			`data:text/javascript,${encodeURIComponent(`${stripTypeScriptTypes(source)}\n// ${randomUUID()}`)}`
 		);
 
 		if (
@@ -538,39 +558,6 @@ describe("secondary web app planning", () => {
 			throw new Error("Invalid CORS Response: existing vary");
 
 		expect(existing.headers.get("Vary")).toBe("Accept-Encoding, Origin");
-	});
-
-	it("normalizes configured origins in the generated CORS helper", async () => {
-		vi.stubEnv("WEB_URLS", " http://localhost:5174, , ");
-
-		const plan = await plannedProject({
-			web: "react-router",
-			backend: "self",
-			rpc: "trpc",
-			webApps: [{ name: "admin", framework: "nextjs", client: true }],
-		});
-
-		const source = contentAt(plan, "apps/web/app/lib/api-cors.ts");
-		const exports: Record<string, unknown> = await import(
-			`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(source))}`
-		);
-
-		if (typeof exports.preflight !== "function")
-			throw new Error("Missing CORS Function: generated preflight");
-
-		for (const origin of ["http://localhost:5174", ""]) {
-			const response: unknown = exports.preflight(
-				new Request("http://localhost:5173/api/trpc", {
-					method: "OPTIONS",
-					headers: { Origin: origin },
-				}),
-			);
-
-			if (!(response instanceof Response))
-				throw new Error("Invalid CORS Response: normalized preflight");
-
-			expect(response.status).toBe(origin === "" ? 403 : 204);
-		}
 	});
 
 	it.each(

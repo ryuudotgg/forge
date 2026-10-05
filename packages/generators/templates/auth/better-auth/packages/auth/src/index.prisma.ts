@@ -1,5 +1,6 @@
-import { env } from "@__SLUG__/auth/env";
+import { __AUTH_ENV_NAMES__ } from "@__SLUG__/auth/env";
 import { db } from "@__SLUG__/db/client";
+__SCOPED_PLUGIN_IMPORTS__
 import type { BetterAuthOptions } from "better-auth";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -15,6 +16,7 @@ const authSecret = getAuthSecret();
 const cookieDomain = normalizeCookieDomain(env.AUTH_COOKIE_DOMAIN);
 
 const config = {
+  appName: __APP_NAME__,
   secret: authSecret,
   baseURL: normalizeOrigin(env.APP_ORIGIN),
   // __TRUSTED_ORIGINS__

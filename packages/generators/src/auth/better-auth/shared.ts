@@ -9,7 +9,11 @@ import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
-import { hasSecondaryClients, standaloneApiOrigin } from "../../origins";
+import {
+	authEnvOrigins,
+	hasSecondaryClients,
+	standaloneApiOrigin,
+} from "../../origins";
 import { interpolate, readTemplate } from "../../template";
 import {
 	authSocialProviders,
@@ -99,12 +103,14 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 		PASSKEY_ORIGIN:
 			standalone && config.web !== undefined ? "env.WEB_URL" : "env.APP_ORIGIN",
 		PASSKEY_ALLOWED_ORIGINS: hasSecondaryClients(config)
-			? "[relyingParty.origin, ...env.WEB_URLS]"
+			? "webOrigins"
 			: "relyingParty.origin",
 		PASSKEY_RP_ID: secondaryPasskeys
 			? "env.PASSKEY_RP_ID ?? relyingParty.hostname"
 			: "relyingParty.hostname",
-		PASSKEY_NAME: JSON.stringify(config.name ?? slug),
+		APP_NAME: JSON.stringify(config.name ?? slug),
+		AUTH_ENV_NAMES: hasSecondaryClients(config) ? "env, webOrigins" : "env",
+		"__WEB_ORIGINS__\n": authEnvOrigins(config),
 		DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 		DRIZZLE_PROVIDER: drizzleAdapterProvider(provider.dialect),
 		"// __CLIENT_PLUGIN_IMPORTS__\n": authPluginImports(
@@ -115,7 +121,7 @@ export function betterAuthTemplateVars(config: ForgeConfig) {
 				? `\ndeclare global {\n  interface ImportMetaEnv {\n    readonly ${clientEnvPrefix(config)}SERVER_URL: string;\n  }\n\n  interface ImportMeta {\n    readonly env: ImportMetaEnv;\n  }\n}\n`
 				: "",
 		[authClientDeclaration]: authClientCall(config, standalone),
-		"    // __WEB_URL_SCHEMA__\n": `${standalone ? "    WEB_URL: z.url(),\n" : ""}${hasSecondaryClients(config) ? '    WEB_URLS: z.string().transform((value) => value.split(",").map((origin) => origin.trim()).filter(Boolean)),\n' : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: z.string().trim().min(1).optional(),\n" : ""}`,
+		"    // __WEB_URL_SCHEMA__\n": `${standalone ? "    WEB_URL: z.url(),\n" : ""}${hasSecondaryClients(config) ? "    WEB_URLS: z.string().optional(),\n" : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: z.string().trim().min(1).optional(),\n" : ""}`,
 		"    // __WEB_URL_RUNTIME__\n": `${standalone ? "    WEB_URL: process.env.WEB_URL,\n" : ""}${hasSecondaryClients(config) ? "    WEB_URLS: process.env.WEB_URLS,\n" : ""}${secondaryPasskeys ? "    PASSKEY_RP_ID: process.env.PASSKEY_RP_ID,\n" : ""}`,
 		"\n    // __SOCIAL_SCHEMA__\n": providers
 			.map(({ envStem }) =>
@@ -221,13 +227,14 @@ export function betterAuthRecipeVars(
 				: undefined,
 	].filter((plugin) => plugin !== undefined);
 
-	const trustedOrigins = [
-		standaloneApiOrigin(config)
+	const webOrigins = hasSecondaryClients(config)
+		? "...webOrigins"
+		: standaloneApiOrigin(config)
 			? "env.WEB_URL"
-			: hasSecondaryClients(config)
-				? "env.APP_ORIGIN"
-				: undefined,
-		hasSecondaryClients(config) ? "...env.WEB_URLS" : undefined,
+			: undefined;
+
+	const trustedOrigins = [
+		webOrigins,
 		usesMobile ? `"${expoScheme(values.SLUG)}://"` : undefined,
 	].filter((origin) => origin !== undefined);
 
@@ -251,8 +258,13 @@ export function betterAuthRecipeVars(
 		ADAPTER_MODELS: authPluginTables(config)
 			.map(({ model }) => `      ${model}: ${authModels[model].table},\n`)
 			.join(""),
+		SCOPED_PLUGIN_IMPORTS: authPluginImports(
+			pluginImports.filter(({ module }) => module.startsWith("@")),
+		),
 		PLUGIN_IMPORTS: authPluginImports(
-			pluginImports.filter(({ module }) => !module.startsWith(".")),
+			pluginImports.filter(
+				({ module }) => !module.startsWith(".") && !module.startsWith("@"),
+			),
 		),
 		RELATIVE_PLUGIN_IMPORTS: authPluginImports(
 			pluginImports.filter(({ module }) => module.startsWith(".")),
@@ -264,9 +276,11 @@ export function betterAuthRecipeVars(
 					? `  plugins: [${plugins.join(", ")}],\n\n`
 					: `  plugins: [\n${plugins.map((plugin) => `    ${plugin},\n`).join("")}  ],\n\n`,
 		TRUSTED_ORIGINS:
-			trustedOrigins.length > 0
-				? `  trustedOrigins: [${trustedOrigins.join(", ")}],\n`
-				: "",
+			trustedOrigins.length === 0
+				? ""
+				: trustedOrigins.length === 1 && webOrigins === "...webOrigins"
+					? "  trustedOrigins: webOrigins,\n"
+					: `  trustedOrigins: [${trustedOrigins.join(", ")}],\n`,
 		EMAIL_PASSWORD: authUsesPassword(config)
 			? "  emailAndPassword: { enabled: true },\n"
 			: "",

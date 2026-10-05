@@ -317,7 +317,7 @@ export async function expectInstallAndTypecheck(
 	).toBe(0);
 }
 
-export async function expectInstallBuildAndTypecheck(
+export async function expectInstallAndBuild(
 	workspace: ScenarioProject,
 	pm: "pnpm" | "npm" | "yarn" | "bun",
 ) {
@@ -340,6 +340,13 @@ export async function expectInstallBuildAndTypecheck(
 		buildResult.exitCode,
 		`${pm} build failed with code ${buildResult.exitCode}\n${buildResult.stdout}\n${buildResult.stderr}`,
 	).toBe(0);
+}
+
+export async function expectInstallBuildAndTypecheck(
+	workspace: ScenarioProject,
+	pm: "pnpm" | "npm" | "yarn" | "bun",
+) {
+	await expectInstallAndBuild(workspace, pm);
 
 	const typecheckResult = await runCommand(pm, typecheckArgsFor[pm], {
 		cwd: workspace.projectRoot,

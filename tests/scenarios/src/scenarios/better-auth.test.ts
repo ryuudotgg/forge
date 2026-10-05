@@ -205,10 +205,11 @@ describe("better auth", () => {
 
 					expect(auth).toContain("nextCookies()");
 					expect(auth).toContain(
-						"async sendInvitationEmail({ id, email, organization })",
+						"async sendInvitationEmail({ id, email, organization, inviter })",
 					);
 
-					expect(auth).toContain("console.log(`Invitation");
+					expect(auth).toContain("organizationLimit: 5,");
+					expect(auth).toContain("console.warn(");
 
 					for (const plugin of [
 						"twoFactorClient",

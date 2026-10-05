@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { expectEmailAuth } from "../utils/email-auth";
 import {
 	createProject,
+	expectInstallAndBuild,
 	expectInstallAndTypecheck,
 	expectInstallBuildAndTypecheck,
 	type ForgeCommandResult,
@@ -218,13 +219,47 @@ function mysqlDatabaseEnv(name: string): NodeJS.ProcessEnv {
 	return { DATABASE_URL: smokeDatabaseOn(smokeMysqlUrl(), name) };
 }
 
+type ServerLaunch = "node" | "dev" | "start";
+
+function scriptEnvironment(overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const scrubbed: NodeJS.ProcessEnv = {};
+	for (const name of Object.keys(process.env))
+		if (
+			name === "NODE_ENV" ||
+			name === "CI" ||
+			name === "TEST" ||
+			name === "VITEST" ||
+			name.startsWith("VITEST_")
+		)
+			scrubbed[name] = undefined;
+
+	return { ...scrubbed, ...overrides };
+}
+
+function stopProcessGroup(pid: number, signal: NodeJS.Signals) {
+	try {
+		process.kill(-pid, signal);
+	} catch {}
+}
+
+function processGroupAlive(pid: number) {
+	try {
+		process.kill(-pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 async function withGeneratedServer(
 	projectRoot: string,
-	generatedEnv: NodeJS.ProcessEnv,
+	env: NodeJS.ProcessEnv,
 	serverOrigin: string,
 	exercise: (output: () => string) => Promise<void>,
 	host: "server" | "nextjs" = "server",
+	launch: ServerLaunch = "node",
 ) {
+	const cwd = join(projectRoot, host === "nextjs" ? "apps/web" : "apps/server");
 	const ambientEnv = { ...process.env };
 	delete ambientEnv.CI;
 
@@ -233,10 +268,14 @@ async function withGeneratedServer(
 			? ["node_modules/next/dist/bin/next", "start", "--port", "3000"]
 			: ["dist/index.js"];
 
-	const server = spawn("node", args, {
-		cwd: join(projectRoot, host === "nextjs" ? "apps/web" : "apps/server"),
-		env: { ...ambientEnv, ...generatedEnv },
-	});
+	const server =
+		launch === "node"
+			? spawn("node", args, { cwd, env: { ...ambientEnv, ...env } })
+			: spawn("pnpm", ["run", launch], {
+					cwd,
+					detached: true,
+					env: { ...process.env, ...scriptEnvironment(env) },
+				});
 
 	let output = "";
 	const capture = (chunk: Buffer) => {
@@ -251,7 +290,10 @@ async function withGeneratedServer(
 
 	try {
 		let ready = false;
-		for (let attempt = 0; attempt < 50; attempt += 1) {
+		const attempts = launch === "node" ? 50 : 300;
+		for (let attempt = 0; attempt < attempts; attempt += 1) {
+			if (server.exitCode !== null) break;
+
 			try {
 				const response = await fetch(`${serverOrigin}/`);
 				if (response.ok) {
@@ -267,8 +309,21 @@ async function withGeneratedServer(
 
 		await exercise(() => output);
 	} finally {
-		if (server.exitCode === null) server.kill("SIGTERM");
-		await exited;
+		const pid = server.pid;
+		if (launch === "node" || pid === undefined) {
+			if (server.exitCode === null) server.kill("SIGTERM");
+			await exited;
+		} else {
+			stopProcessGroup(pid, "SIGTERM");
+			for (
+				let attempt = 0;
+				attempt < 50 && processGroupAlive(pid);
+				attempt += 1
+			)
+				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+
+			stopProcessGroup(pid, "SIGKILL");
+		}
 	}
 }
 
@@ -278,6 +333,7 @@ async function expectCredentialedGeneratedServer(
 		readonly clientOrigin?: string;
 		readonly emailAuth?: boolean;
 		readonly host?: "server" | "nextjs";
+		readonly launch?: ServerLaunch;
 		readonly passkey?: boolean;
 		readonly polar?: boolean;
 		readonly rpc?: "trpc" | "orpc";
@@ -511,6 +567,7 @@ async function expectCredentialedGeneratedServer(
 			);
 		},
 		options?.host,
+		options?.launch,
 	);
 
 	if (!options?.polar) return;
@@ -1318,6 +1375,487 @@ async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
 		expect(stylesheet, utility).toContain(utility);
 }
 
+function varyIncludesOrigin(response: Response) {
+	return (response.headers.get("vary") ?? "")
+		.split(",")
+		.some((value) => value.trim().toLowerCase() === "origin");
+}
+
+async function waitForOutput(output: () => string, text: string, from = 0) {
+	for (
+		let attempt = 0;
+		attempt < 50 && output().indexOf(text, from) === -1;
+		attempt += 1
+	)
+		await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+}
+
+function cookieHeader(response: Response, previous = "") {
+	const jar = new Map(
+		previous
+			.split("; ")
+			.filter((pair) => pair !== "")
+			.map((pair) => [pair.split("=", 1)[0], pair]),
+	);
+
+	for (const line of response.headers.getSetCookie()) {
+		const pair = line.split(";", 1)[0] ?? "";
+		jar.set(pair.split("=", 1)[0], pair);
+	}
+
+	return [...jar.values()].join("; ");
+}
+
+async function expectProductionEmailSecrets(projectRoot: string) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const origin = generatedEnv.WEB_URL;
+	const serverOrigin = generatedEnv.APP_ORIGIN;
+	if (origin === undefined || serverOrigin === undefined)
+		throw new Error(`Missing Generated Origins: ${projectRoot}`);
+
+	await withGeneratedServer(
+		projectRoot,
+		{},
+		serverOrigin,
+		async (output) => {
+			const headers = { "Content-Type": "application/json", Origin: origin };
+			const signup = await fetch(`${serverOrigin}/api/auth/sign-up/email`, {
+				body: JSON.stringify({
+					email: "prod-signup@example.com",
+					name: "Production Smoke",
+					password: "forge-smoke-password",
+				}),
+				headers,
+				method: "POST",
+			});
+
+			expect(signup.status, `${await signup.text()}\n${output()}`).toBe(200);
+
+			const cookies = signup.headers.getSetCookie();
+			const sessionCookie = cookies.find((cookie) =>
+				cookie.startsWith("__Secure-better-auth.session_token="),
+			);
+
+			expect(sessionCookie, cookies.join("\n")).toMatch(/;\s*Secure(;|$)/i);
+
+			const otp = await fetch(
+				`${serverOrigin}/api/auth/email-otp/send-verification-otp`,
+				{
+					body: JSON.stringify({
+						email: "prod-smoke@example.com",
+						type: "sign-in",
+					}),
+					headers,
+					method: "POST",
+				},
+			);
+
+			expect(otp.status, `${await otp.text()}\n${output()}`).toBe(200);
+
+			const unconfigured = "Email isn't configured.";
+			await waitForOutput(output, unconfigured);
+			expect(output(), "the OTP send never reached sendEmail").toContain(
+				unconfigured,
+			);
+
+			const beforeMagicLink = output().length;
+			const magicLink = await fetch(
+				`${serverOrigin}/api/auth/sign-in/magic-link`,
+				{
+					body: JSON.stringify({
+						email: "prod-smoke@example.com",
+						callbackURL: origin,
+					}),
+					headers,
+					method: "POST",
+				},
+			);
+
+			const magicLinkBody = await magicLink.text();
+			expect(
+				magicLink.ok,
+				`magic link answered ${magicLink.status}: ${magicLinkBody}\n${output()}`,
+			).toBe(false);
+
+			await waitForOutput(output, unconfigured, beforeMagicLink);
+			await new Promise((resolveWait) => setTimeout(resolveWait, 1000));
+
+			const log = output();
+			expect(
+				log.indexOf(unconfigured, beforeMagicLink),
+				`the magic link send never reached sendEmail: ${magicLinkBody}\n${log}`,
+			).not.toBe(-1);
+			expect(log).not.toContain("prod-smoke@example.com");
+			expect(log).not.toContain("magic-link/verify?token=");
+			expect(log).not.toMatch(/code is \d{6}/);
+		},
+		"server",
+		"start",
+	);
+}
+
+async function expectCorsPolicy(
+	serverOrigin: string,
+	paths: ReadonlyArray<string>,
+	allowed: ReadonlyArray<string>,
+	refused: ReadonlyArray<string>,
+) {
+	for (const origin of [...allowed, ...refused]) {
+		const isAllowed = allowed.includes(origin);
+		for (const path of paths) {
+			const label = `${path} from ${origin}`;
+			const preflight = await fetch(`${serverOrigin}${path}`, {
+				headers: {
+					Origin: origin,
+					"Access-Control-Request-Headers": "content-type",
+					"Access-Control-Request-Method": "POST",
+				},
+				method: "OPTIONS",
+			});
+
+			const simple = await fetch(`${serverOrigin}${path}`, {
+				headers: { Origin: origin },
+			});
+
+			expect(preflight.headers.get("access-control-allow-origin"), label).toBe(
+				isAllowed ? origin : null,
+			);
+
+			expect(simple.headers.get("access-control-allow-origin"), label).toBe(
+				isAllowed ? origin : null,
+			);
+
+			expect(varyIncludesOrigin(preflight), label).toBe(true);
+			expect(varyIncludesOrigin(simple), label).toBe(true);
+			if (isAllowed)
+				expect(preflight.headers.get("access-control-max-age"), label).toBe(
+					"600",
+				);
+		}
+
+		const signOut = await fetch(`${serverOrigin}/api/auth/sign-out`, {
+			body: JSON.stringify({}),
+			headers: {
+				"Content-Type": "application/json",
+				Cookie: "probe=1",
+				Origin: origin,
+			},
+			method: "POST",
+		});
+
+		const signOutBody = await signOut.text();
+		if (isAllowed) expect(signOut.status, signOutBody).toBeLessThan(400);
+		else expect(signOut.status, signOutBody).toBe(403);
+	}
+}
+
+async function webOriginsOf(projectRoot: string, env: NodeJS.ProcessEnv) {
+	const probe = await runCommand(
+		"pnpm",
+		[
+			"exec",
+			"dotenv",
+			"-e",
+			"../../.env",
+			"--",
+			"tsx",
+			"-e",
+			'import("@acme/auth/env").then(({ webOrigins }) => console.log(JSON.stringify(webOrigins)))',
+		],
+		{ cwd: join(projectRoot, "apps/server"), env: scriptEnvironment(env) },
+	);
+
+	expect(probe.exitCode, `${probe.stdout}\n${probe.stderr}`).toBe(0);
+	const parsed: unknown = JSON.parse(
+		probe.stdout.trim().split("\n").at(-1) ?? "",
+	);
+	return parsed;
+}
+
+async function expectProductionOrigins(
+	projectRoot: string,
+	options: {
+		readonly host: "server" | "nextjs";
+		readonly paths: ReadonlyArray<string>;
+		readonly passkeyProbe: boolean;
+	},
+) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const serverOrigin = generatedEnv.APP_ORIGIN;
+	if (serverOrigin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	const primary = "https://app.example.test";
+	const production = {
+		APP_ORIGIN:
+			options.host === "nextjs" ? primary : "https://api.example.test",
+		PORT: new URL(serverOrigin).port,
+		WEB_URL: primary,
+		WEB_URLS: "",
+	};
+
+	await withGeneratedServer(
+		projectRoot,
+		production,
+		serverOrigin,
+		async () => {
+			await expectCorsPolicy(
+				serverOrigin,
+				options.paths,
+				[primary],
+				["http://localhost:3002"],
+			);
+		},
+		options.host,
+		"start",
+	);
+
+	if (options.passkeyProbe)
+		expect(await webOriginsOf(projectRoot, production)).toEqual([primary]);
+
+	const first = "https://a.example.test";
+	const second = "https://b.example.test";
+	const ci = {
+		...production,
+		APP_ORIGIN: options.host === "nextjs" ? first : production.APP_ORIGIN,
+		CI: "1",
+		WEB_URL: first,
+		WEB_URLS: `${first}/,${second}`,
+	};
+
+	await withGeneratedServer(
+		projectRoot,
+		ci,
+		serverOrigin,
+		async () => {
+			await expectCorsPolicy(
+				serverOrigin,
+				options.paths,
+				[first, second],
+				["http://localhost:3002", "https://c.example.test"],
+			);
+		},
+		options.host,
+		"start",
+	);
+
+	if (options.passkeyProbe)
+		expect(await webOriginsOf(projectRoot, ci)).toEqual([first, second]);
+
+	await withGeneratedServer(
+		projectRoot,
+		{ ...ci, WEB_URLS: "" },
+		serverOrigin,
+		async (output) => {
+			const session = await fetch(`${serverOrigin}/api/auth/get-session`, {
+				headers: { Origin: first },
+			});
+
+			expect(session.status, output()).toBe(200);
+		},
+		options.host,
+		"start",
+	);
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+	if (typeof value !== "object" || value === null) return undefined;
+
+	const field: unknown = Reflect.get(value, key);
+	return typeof field === "string" ? field : undefined;
+}
+
+const smokePassword = "forge-smoke-password";
+
+function authRequests(origin: string, output: () => string) {
+	const request = async (path: string, cookie: string, body?: unknown) => {
+		const response = await fetch(`${origin}/api/auth${path}`, {
+			...(body === undefined
+				? {}
+				: { body: JSON.stringify(body), method: "POST" }),
+			headers: {
+				"Content-Type": "application/json",
+				Cookie: cookie,
+				Origin: origin,
+			},
+		});
+
+		const text = await response.text();
+		const json: unknown = text === "" ? null : JSON.parse(text);
+		return { json, response, status: response.status, text };
+	};
+
+	const signUp = async (email: string, name: string) => {
+		const result = await request("/sign-up/email", "", {
+			email,
+			name,
+			password: smokePassword,
+		});
+
+		expect(result.status, `${result.text}\n${output()}`).toBe(200);
+		return cookieHeader(result.response);
+	};
+
+	return { request, signUp };
+}
+
+async function expectInvitationFlow(projectRoot: string, projectName: string) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const origin = generatedEnv.APP_ORIGIN;
+	if (origin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	await expectSchemaPush(projectRoot);
+	await withGeneratedServer(
+		projectRoot,
+		{},
+		origin,
+		async (output) => {
+			const { request, signUp } = authRequests(origin, output);
+			const owner = await signUp("owner@example.com", "Ada Owner");
+			const enable = await request("/two-factor/enable", owner, {
+				password: smokePassword,
+			});
+			const totpURI = stringField(enable.json, "totpURI");
+			if (totpURI === undefined)
+				throw new Error(`Missing TOTP URI: ${enable.text}`);
+
+			expect(new URL(totpURI).searchParams.get("issuer")).toBe(projectName);
+			expect(totpURI).not.toContain("Better%20Auth");
+
+			const organizations = [];
+			for (let index = 1; index <= 6; index += 1)
+				organizations.push(
+					await request("/organization/create", owner, {
+						name: `Smoke Org ${index}`,
+						slug: `smoke-org-${index}`,
+					}),
+				);
+
+			expect(
+				organizations.map(({ status }) => status),
+				organizations.map(({ text }) => text).join("\n"),
+			).toEqual([200, 200, 200, 200, 200, 403]);
+
+			expect(organizations[5]?.json).toMatchObject({
+				code: "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_ORGANIZATIONS",
+			});
+
+			const organizationId = stringField(organizations[0]?.json, "id");
+			if (organizationId === undefined)
+				throw new Error("Missing Organization: smoke create");
+
+			const invitations = [];
+			for (let index = 1; index <= 21; index += 1)
+				invitations.push(
+					await request("/organization/invite-member", owner, {
+						email:
+							index === 1
+								? "invitee@example.com"
+								: `invitee-${index}@example.com`,
+						organizationId,
+						role: "member",
+					}),
+				);
+
+			expect(
+				invitations.map(({ status }) => status),
+				invitations.map(({ text }) => text).join("\n"),
+			).toEqual([...Array.from({ length: 20 }, () => 200), 403]);
+
+			expect(invitations[20]?.json).toMatchObject({
+				code: "INVITATION_LIMIT_REACHED",
+			});
+
+			const invitationId = stringField(invitations[0]?.json, "id");
+			if (invitationId === undefined)
+				throw new Error("Missing Invitation: smoke invite");
+
+			const page = await fetch(`${origin}/accept-invitation/${invitationId}`);
+			expect(page.status).toBe(200);
+			expect(await page.text()).toContain("Checking your session.");
+
+			const invitee = await signUp("invitee@example.com", "Grace Invitee");
+			const accepted = await request(
+				"/organization/accept-invitation",
+				invitee,
+				{ invitationId },
+			);
+
+			expect(accepted.status, accepted.text).toBe(200);
+
+			const memberships = await request("/organization/list", invitee);
+			expect(memberships.status, memberships.text).toBe(200);
+			expect(
+				Array.isArray(memberships.json) &&
+					memberships.json.some(
+						(organization) =>
+							stringField(organization, "id") === organizationId,
+					),
+				memberships.text,
+			).toBe(true);
+
+			await waitForOutput(output, "no email provider is configured");
+
+			const log = output();
+			expect(log).toContain(
+				"An invitation was created, but no email provider is configured to deliver it.",
+			);
+			expect(log).not.toMatch(/invitee(-\d+)?@example\.com/);
+		},
+		"nextjs",
+		"start",
+	);
+
+	await withGeneratedServer(
+		projectRoot,
+		{},
+		origin,
+		async (output) => {
+			const { request, signUp } = authRequests(origin, output);
+			const owner = await signUp("dev-owner@example.com", "Lin Developer");
+			const organization = await request("/organization/create", owner, {
+				name: "Dev Guild",
+				slug: "dev-guild",
+			});
+
+			const organizationId = stringField(organization.json, "id");
+			if (organizationId === undefined)
+				throw new Error(`Missing Organization: ${organization.text}`);
+
+			const invitation = await request("/organization/invite-member", owner, {
+				email: "dev-invitee@example.com",
+				organizationId,
+				role: "member",
+			});
+
+			const invitationId = stringField(invitation.json, "id");
+			if (invitationId === undefined)
+				throw new Error(`Missing Invitation: ${invitation.text}`);
+
+			await waitForOutput(output, "Invitation to Dev Guild");
+
+			const logged = output().match(
+				/Invitation to Dev Guild for (\S+) from (\S+): (\S+)/,
+			);
+
+			expect(logged, output()).not.toBeNull();
+			expect(logged?.[1]).toBe("dev-invitee@example.com");
+			expect(logged?.[2]).toBe("dev-owner@example.com");
+
+			const link = new URL(logged?.[3] ?? "");
+			expect(link.origin).toBe(origin);
+			expect(link.pathname).toBe(`/accept-invitation/${invitationId}`);
+
+			const page = await fetch(link);
+			expect(page.status, output()).toBe(200);
+			expect(await page.text()).toContain("Checking your session.");
+		},
+		"nextjs",
+		"dev",
+	);
+}
+
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it.each([
 		{ backend: "hono", web: "nextjs", emailProvider: "resend" },
@@ -1375,7 +1913,10 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 
 					await expectCredentialedGeneratedServer(workspace.projectRoot, {
 						emailAuth: true,
+						launch: "dev",
 					});
+
+					await expectProductionEmailSecrets(workspace.projectRoot);
 				},
 			);
 		},
@@ -1460,6 +2001,15 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 						clientOrigin: "http://localhost:3002",
 						passkey: true,
 					});
+
+					await expectProductionOrigins(workspace.projectRoot, {
+						host: "server",
+						paths:
+							rpc === "trpc"
+								? ["/api/auth/get-session", "/api/trpc/health"]
+								: ["/api/auth/get-session"],
+						passkeyProbe: true,
+					});
 				},
 			);
 		},
@@ -1488,8 +2038,59 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					clientOrigin: "http://localhost:3002",
 					host: "nextjs",
 				});
+
+				const ciBuild = await runCommand("pnpm", ["run", "build"], {
+					cwd: join(workspace.projectRoot, "apps/web"),
+					env: scriptEnvironment({ CI: "1", WEB_URLS: "" }),
+				});
+
+				expect(ciBuild.exitCode, `${ciBuild.stdout}\n${ciBuild.stderr}`).toBe(
+					0,
+				);
+
+				await expectProductionOrigins(workspace.projectRoot, {
+					host: "nextjs",
+					paths: ["/api/auth/get-session", "/api/trpc/health"],
+					passkeyProbe: false,
+				});
 			},
 		);
+	}, 600_000);
+
+	it("invites through the accept page and names the project in authenticators", async () => {
+		await withScenarioWorkspace("smoke-invitations", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				authMethods: ["email-password"],
+				authPlugins: ["two-factor", "organization"],
+				backend: "self",
+				database: "sqlite",
+				linter: "biome",
+				name: "Acme Works",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				style: "tailwind",
+				web: "nextjs",
+			});
+
+			await expectInstallAndBuild(workspace, "pnpm");
+
+			const pageTypecheck = await runCommand(
+				"pnpm",
+				["--filter", "@acme/web", "typecheck"],
+				{
+					cwd: workspace.projectRoot,
+					env: forgeEnvironment(workspace.workspaceRoot),
+				},
+			);
+
+			expect(
+				pageTypecheck.exitCode,
+				`${pageTypecheck.stdout}\n${pageTypecheck.stderr}`,
+			).toBe(0);
+
+			await expectInvitationFlow(workspace.projectRoot, "Acme Works");
+		});
 	}, 600_000);
 
 	it.each(["tanstack-router", "react-router"])(

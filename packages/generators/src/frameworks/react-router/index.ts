@@ -11,6 +11,7 @@ import {
 	surfaceText,
 	type TemplateDefinition,
 } from "@ryuugg/core";
+import { reactRouterInvitationRoute } from "../../auth/better-auth/invitation-page";
 import {
 	selfHostedCorsContributions,
 	selfHostedCorsViteConfig,
@@ -161,11 +162,18 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		},
 	);
 
+	const invitationRoute = instance.primary
+		? reactRouterInvitationRoute(renderConfig)
+		: "";
+
 	const routes = interpolate(
 		readTemplate("frameworks/react-router/app/routes.ts"),
 		{
 			ROUTE_IMPORT:
-				servesApiRoutes && (rpc !== undefined || usesAuth) ? ", route" : "",
+				(servesApiRoutes && (rpc !== undefined || usesAuth)) ||
+				invitationRoute !== ""
+					? ", route"
+					: "",
 			"// __TRPC_ROUTE__\n":
 				renderConfig.rpc !== undefined && servesApiRoutes
 					? reactRouterRpcRoutes[renderConfig.rpc]
@@ -174,6 +182,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 				usesAuth && servesApiRoutes
 					? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
 					: "",
+			"__INVITATION_ROUTE__\n": invitationRoute,
 		},
 	);
 

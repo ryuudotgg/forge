@@ -5,7 +5,7 @@ export const env = createEnv({
   shared: {
     NODE_ENV: z
       .enum(["development", "test", "production"])
-      .default("development"),
+      .default("production"),
   },
 
   server: {

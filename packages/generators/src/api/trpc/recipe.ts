@@ -23,7 +23,11 @@ import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
-import { hasSecondaryClients } from "../../origins";
+import {
+	hasSecondaryClients,
+	serverCorsMarkers,
+	withTrpcStreamingHeader,
+} from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
 import { webAppInstances } from "../../web-apps";
@@ -119,6 +123,7 @@ export const trpcHonoRecipe = defineTemplateRecipe({
 		SLUG: marker.required,
 		AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
 		AUTH_ARG: marker.toggleInline("/* __AUTH_ARG__ */ "),
+		SERVER_ENV_BINDING: marker.required,
 		WEB_ORIGINS: marker.required,
 	},
 	assets: [
@@ -134,21 +139,14 @@ export const trpcHonoAdapters = deriveRecipeAdapters({
 	readTemplate,
 	requiredSlots: ["trpc"],
 	content: (_asset, content, { config }) =>
-		hasSecondaryClients(config)
-			? content.replace(
-					'allowHeaders: ["Content-Type", "Authorization", "x-trpc-source"],',
-					'allowHeaders: ["Content-Type", "Authorization", "x-trpc-source", "trpc-accept"],',
-				)
-			: content,
+		hasSecondaryClients(config) ? withTrpcStreamingHeader(content) : content,
 	markers: ({ config }: AdapterContext<ForgeConfig>) => {
 		const values = trpcTemplateVars(config);
 		return {
 			SLUG: values.SLUG,
 			AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],
 			AUTH_ARG: values["/* __AUTH_ARG__ */ "],
-			WEB_ORIGINS: hasSecondaryClients(config)
-				? "[env.WEB_URL, ...env.WEB_URLS]"
-				: "env.WEB_URL",
+			...serverCorsMarkers(config),
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),

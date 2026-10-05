@@ -161,9 +161,7 @@ describe("passkey generation", () => {
 
 			const options = writeContent(plan, "packages/auth/src/passkey.ts");
 
-			expect(options).toContain(
-				"origin: [relyingParty.origin, ...env.WEB_URLS]",
-			);
+			expect(options).toContain("origin: webOrigins,");
 
 			expect(options).toContain(
 				"rpID: env.PASSKEY_RP_ID ?? relyingParty.hostname",
@@ -182,7 +180,7 @@ describe("passkey generation", () => {
 			);
 
 			expect(writeContent(plan, "packages/auth/src/index.ts")).toContain(
-				"...env.WEB_URLS",
+				"trustedOrigins: webOrigins,",
 			);
 
 			expect(writeContent(plan, "apps/admin/app/lib/auth-client.ts")).toContain(
@@ -205,7 +203,7 @@ describe("passkey generation", () => {
 					'import { type PasskeyOptions, passkey } from "@better-auth/passkey";',
 					"",
 				)
-				.replace('import { env } from "../env";', "")
+				.replace('import { env, webOrigins } from "../env";', "")
 				.replace("export function passkeyPlugin", "function passkeyPlugin");
 
 			const options: unknown = new Script(
@@ -214,9 +212,9 @@ describe("passkey generation", () => {
 				URL,
 				env: {
 					WEB_URL: "https://app.example.com",
-					WEB_URLS: ["https://admin.example.com"],
 					PASSKEY_RP_ID: relyingPartyId,
 				},
+				webOrigins: ["https://app.example.com", "https://admin.example.com"],
 				passkey: (value: unknown) => value,
 			});
 

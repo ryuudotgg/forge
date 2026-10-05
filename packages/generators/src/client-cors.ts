@@ -4,9 +4,13 @@ import {
 	projectTarget,
 	surfaceLines,
 } from "@ryuugg/core";
-import type { ForgeConfig } from "./config";
+import type { ForgeConfig, WebFramework } from "./config";
 import { envFileLine } from "./data/providers";
-import { hasSecondaryClients, secondaryClientOrigins } from "./origins";
+import {
+	hasSecondaryClients,
+	secondaryClientOrigins,
+	selfHostedOriginsSource,
+} from "./origins";
 import { interpolate, readTemplate } from "./template";
 import type { WebAppInstance } from "./web-apps";
 
@@ -47,11 +51,9 @@ export function selfHostedCorsContributions(
 	return [
 		leafTextFile(
 			ensuredModuleTarget(instance.key),
-			instance.framework === "react-router"
-				? "app/lib/api-cors.ts"
-				: "src/lib/api-cors.ts",
+			selfHostedCorsPaths[instance.framework],
 			interpolate(readTemplate("api/client-cors.ts"), {
-				WEB_ORIGINS: JSON.stringify(secondaryClientOrigins(config)),
+				WEB_ORIGINS: selfHostedOriginsSource(config),
 			}),
 		),
 		...(config.authentication === "better-auth"
@@ -66,6 +68,13 @@ export function selfHostedCorsContributions(
 				]),
 	];
 }
+
+const selfHostedCorsPaths: Readonly<Record<WebFramework, string>> = {
+	nextjs: "lib/api-cors.ts",
+	"react-router": "app/lib/api-cors.ts",
+	"tanstack-router": "src/lib/api-cors.ts",
+	"tanstack-start": "src/lib/api-cors.ts",
+};
 
 export function selfHostedCorsRoute(
 	config: ForgeConfig,

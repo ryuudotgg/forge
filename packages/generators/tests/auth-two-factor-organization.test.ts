@@ -436,7 +436,7 @@ describe("two-factor and organization", () => {
 
 		expect(authUsesEmail(config)).toBe(false);
 		expect(server).toContain(
-			"async sendInvitationEmail({ id, email, organization })",
+			"async sendInvitationEmail({ id, email, organization, inviter })",
 		);
 
 		expect(server.includes('import { sendEmail } from "@acme/email";')).toBe(
@@ -447,9 +447,7 @@ describe("two-factor and organization", () => {
 			emailProvider !== undefined,
 		);
 
-		expect(server.includes(`console.log(\`Invitation \${id}`)).toBe(
-			emailProvider === undefined,
-		);
+		expect(server.includes("console.warn(")).toBe(emailProvider === undefined);
 
 		expect(manifest.includes('"@acme/email": "workspace:*"')).toBe(
 			emailProvider !== undefined,

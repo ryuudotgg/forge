@@ -40,6 +40,7 @@ import {
 	authPluginsBlockDeclarations,
 	authSendsEmail,
 } from "../plugins";
+import { invitationPageContributions } from "./invitation-page";
 import { renderBetterAuthTemplate, renderSecondaryAuthClient } from "./shared";
 
 const betterAuthConsumer: ApiHostConsumer = {
@@ -210,6 +211,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 						]),
 					];
 				}),
+			...invitationPageContributions(config),
 			...authPluginFiles(config).map((path) =>
 				leafTextFile(
 					ensuredModuleTarget("auth"),
