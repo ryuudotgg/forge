@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -33,14 +33,16 @@ const REPOSITORY_SETUP_ACTION = join(
 	"action.yml",
 );
 
-const readActionMajors = (path: string) => {
+const REPOSITORY_CI_WORKFLOW = join(ROOT_DIR, ".github", "workflows", "ci.yml");
+
+const readActionPins = (path: string) => {
 	const actions = new Map<string, string>();
 	for (const match of readFileSync(path, "utf-8").matchAll(
-		/^\s*- uses:\s+(?<depName>[\w.-]+\/[\w.-]+)@(?:[0-9a-f]{40}\s+#\s+)?v(?<major>\d+)(?:\.\d+)*\s*$/gm,
+		/^\s*-? *uses:\s+(?<depName>[\w.-]+\/[\w.-]+)@(?<pin>\S+(?:\s+#\s+\S+)?)\s*$/gm,
 	)) {
 		const depName = match.groups?.depName;
-		const major = match.groups?.major;
-		if (depName && major) actions.set(depName, major);
+		const pin = match.groups?.pin;
+		if (depName && pin) actions.set(depName, pin);
 	}
 
 	return actions;
@@ -132,32 +134,45 @@ describe("readTemplate", () => {
 });
 
 describe("GitHub Actions templates", () => {
-	it("matches shared action majors with Forge's setup action", () => {
-		const repositoryActions = readActionMajors(REPOSITORY_SETUP_ACTION);
-		const sharedTemplateActions = new Map([
+	const templateNames = readdirSync(GITHUB_TEMPLATE_DIR).filter((name) =>
+		name.endsWith(".yml"),
+	);
+
+	it("pins every action to a commit SHA with its release tag", () => {
+		for (const templateName of templateNames) {
+			const actions = readActionPins(join(GITHUB_TEMPLATE_DIR, templateName));
+
+			for (const [actionName, pin] of actions) {
+				expect(pin, `${templateName} ${actionName}`).toMatch(
+					/^[0-9a-f]{40} # v\d+\.\d+\.\d+$/,
+				);
+			}
+		}
+	});
+
+	it("matches the action pins Forge uses itself", () => {
+		const repositoryActions = new Map([
+			...readActionPins(REPOSITORY_CI_WORKFLOW),
+			...readActionPins(REPOSITORY_SETUP_ACTION),
+		]);
+
+		const templateActions = new Map([
+			["ci.yml", ["actions/checkout"]],
 			["setup-action.pnpm.yml", ["pnpm/action-setup", "actions/setup-node"]],
 			["setup-action.npm.yml", ["actions/setup-node"]],
 			["setup-action.bun.yml", ["oven-sh/setup-bun", "actions/setup-node"]],
 			["setup-action.yarn.yml", ["actions/setup-node"]],
 		]);
 
-		for (const [templateName, actionNames] of sharedTemplateActions) {
-			const templateActions = readActionMajors(
-				join(GITHUB_TEMPLATE_DIR, templateName),
-			);
+		for (const [templateName, actionNames] of templateActions) {
+			const actions = readActionPins(join(GITHUB_TEMPLATE_DIR, templateName));
 
 			for (const actionName of actionNames) {
-				const repositoryMajor = repositoryActions.get(actionName);
-				const templateMajor = templateActions.get(actionName);
+				const repositoryPin = repositoryActions.get(actionName);
 
-				expect(repositoryMajor, `${actionName} is used by Forge`).toBeDefined();
-				expect(
-					templateMajor,
-					`${templateName} uses ${actionName}`,
-				).toBeDefined();
-
-				expect(templateMajor, `${templateName} ${actionName}`).toBe(
-					repositoryMajor,
+				expect(repositoryPin, `${actionName} is used by Forge`).toBeDefined();
+				expect(actions.get(actionName), `${templateName} ${actionName}`).toBe(
+					repositoryPin,
 				);
 			}
 		}
