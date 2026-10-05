@@ -45,6 +45,7 @@ describe("summary step", () => {
 		);
 
 		const [body] = promptMocks.note.mock.calls[0] ?? [];
+		expect(body).toContain("Framework: TanStack Router");
 		expect(body).toContain(
 			"Web apps: web (TanStack Router), admin (Next.js), and docs (React Router)",
 		);

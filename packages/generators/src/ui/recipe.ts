@@ -19,7 +19,6 @@ import { tanstackRouterFramework } from "../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../registry/recipe-adapters";
 import { readTemplate } from "../template";
-import { hasNextjsWebApp } from "../web-apps";
 import { renderUiTemplate, uiComponentsJson, uiStyle } from "./shared";
 
 export const uiRecipe = defineTemplateRecipe({
@@ -118,11 +117,7 @@ export const uiAdapters = deriveRecipeAdapters({
 			leafTextFile(
 				ensuredModuleTarget("ui"),
 				"components.json",
-				`${JSON.stringify(
-					uiComponentsJson(context.config, hasNextjsWebApp(context.config)),
-					null,
-					2,
-				)}\n`,
+				`${JSON.stringify(uiComponentsJson(context.config), null, 2)}\n`,
 			),
 		);
 

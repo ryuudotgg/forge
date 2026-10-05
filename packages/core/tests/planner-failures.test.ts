@@ -136,7 +136,7 @@ describe("planner defensive failures", () => {
 
 			expect(error.reason).toBe("multiple-templates-selected");
 			expect(error.category).toBe("web");
-			expect(error.detail).toBe(
+			expect(error.message).toBe(
 				"Multiple Templates Selected: first in web: first/base and second/base",
 			);
 		});

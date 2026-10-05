@@ -825,9 +825,7 @@ describe("secondary web app planning", () => {
 				contentAt(plan, join(uiRoot, "components.json")),
 			);
 
-			expect(uiComponents.rsc).toBe(
-				primary === "nextjs" || secondary === "nextjs",
-			);
+			expect(uiComponents.rsc).toBe(true);
 
 			const admin = Schema.decodeSync(appPackageSchema)(
 				contentAt(plan, join(adminRoot, "package.json")),

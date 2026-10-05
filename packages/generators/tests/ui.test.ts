@@ -208,7 +208,7 @@ describe("ui addon", () => {
 		});
 	});
 
-	it("disables React Server Components outside Next.js", () => {
+	it("disables React Server Components in apps outside Next.js", () => {
 		const nonRscFrameworks: ReadonlyArray<"react-router" | "tanstack-start"> = [
 			"react-router",
 			"tanstack-start",
@@ -224,7 +224,7 @@ describe("ui addon", () => {
 				leafFile(contributions, "web", "components.json").content,
 			);
 
-			expect(uiJson).toMatchObject({ rsc: false });
+			expect(uiJson).toMatchObject({ rsc: true });
 			expect(appJson).toMatchObject({
 				rsc: false,
 				aliases: { components: "@/components", hooks: "@/hooks", lib: "@/lib" },
