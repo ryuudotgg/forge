@@ -200,11 +200,33 @@ export const orpcRequestAdapters = deriveRecipeAdapters({
 				moduleTarget(module),
 				rendered.destination,
 				asset.name === "client"
-					? renderOrpcTemplate(config, "request/client.ts")
+					? renderOrpcTemplate(
+							config,
+							framework.id === "tanstack-start"
+								? "request/client.tanstack-start.ts"
+								: "request/client.ts",
+						)
 					: rendered.content,
 			);
 		}),
-	after: ({ config, module }) => [
+	after: ({ config, framework, module }) => [
+		...(framework.id === "tanstack-start"
+			? [
+					leafTextFile(
+						moduleTarget(module),
+						"src/routes/orpc-example.tsx",
+						interpolate(
+							renderOrpcTemplate(
+								config,
+								config.authentication === "better-auth"
+									? "routes/tanstack-start/orpc-example.auth.tsx"
+									: "routes/tanstack-start/orpc-example.tsx",
+							),
+							{ PROJECT_NAME: config.name ?? config.slug ?? "my-app" },
+						),
+					),
+				]
+			: []),
 		surfaceDependencies(moduleTarget(module), "packageJson", [
 			{
 				name: `@${config.slug ?? "my-app"}/orpc`,

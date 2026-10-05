@@ -186,6 +186,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		},
 		{ ...deps.tanstackReactRouter, type: "dependencies" },
 		{ ...deps.tanstackReactStart, type: "dependencies" },
+		{ ...deps.srvx, type: "dependencies" },
 		{ ...catalogRef("react", config), type: "dependencies" },
 		{ ...catalogRef("reactDom", config), type: "dependencies" },
 		{ ...deps.nextThemes, type: "dependencies" },
@@ -202,7 +203,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		{ ...deps.typesNode, type: "devDependencies" },
 		{ ...deps.typesReact, type: "devDependencies" },
 		{ ...deps.typesReactDom, type: "devDependencies" },
-		{ ...deps.dotenvCli, type: "devDependencies" },
+		{ ...deps.dotenvCli, type: "dependencies" },
 		{ ...deps.typescript, type: "devDependencies" },
 	];
 
@@ -269,6 +270,8 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			postinstall: pmRun(pm, "generate-routes"),
 			pretypecheck: pmRun(pm, "generate-routes"),
 			preview: pmRun(pm, "with-env", "vite preview"),
+			start:
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- srvx --prod -s ../client dist/server/server.js",
 			typecheck: "tsc --noEmit",
 			"with-env": "dotenv -e ../../.env --",
 		}),
@@ -280,6 +283,11 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 				readTemplate("frameworks/tanstack-start/env.ts"),
 				viteServerEnvMarkers(config, instance),
 			),
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			".env.production",
+			`PORT=${instance.port}\n`,
 		),
 		leafTextFile(
 			ensuredModuleTarget(instance.key),

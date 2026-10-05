@@ -866,6 +866,83 @@ describe("oRPC request hosts", () => {
 	);
 });
 
+describe("oRPC TanStack Start loaders", () => {
+	it.each([false, true])(
+		"calls the router in process during server rendering with auth: %s",
+		async (usesAuth) => {
+			const plan = await plannedProject({
+				...supportedConfig,
+				backend: "self",
+				web: "tanstack-start",
+				...(usesAuth
+					? ({
+							authentication: "better-auth",
+							orm: "drizzle",
+							database: "sqlite",
+						} satisfies Partial<ForgeConfig>)
+					: {}),
+			});
+
+			const client = writeContent(plan, "apps/web/src/orpc/client.ts");
+			const example = writeContent(
+				plan,
+				"apps/web/src/routes/orpc-example.tsx",
+			);
+
+			expect(client).toContain("createIsomorphicFn()");
+			expect(client).toContain(
+				'import { getRequest } from "@tanstack/react-start/server"',
+			);
+
+			expect(client).toContain("createRouterClient(appRouter, {");
+			expect(client).toContain(
+				`createORPCContext({ ${usesAuth ? "auth, " : ""}headers })`,
+			);
+
+			expect(client).toContain('new URL("/api/orpc", window.location.origin)');
+
+			expect(client.includes('import { auth } from "@acme/auth"')).toBe(
+				usesAuth,
+			);
+
+			expect(example).toContain('createFileRoute("/orpc-example")');
+			expect(example).toContain("loader: ");
+			expect(example).toContain('import { client } from "../orpc/client"');
+			expect(example).toContain(usesAuth ? "client.me()" : "client.health()");
+
+			expect(example).toContain(
+				usesAuth ? 'data-testid="orpc-me"' : 'data-testid="orpc-health"',
+			);
+
+			for (const write of plan.writes)
+				expect(write.content, write.path).not.toMatch(/__[A-Z_]+__/);
+		},
+	);
+
+	it("keeps the React Router browser client and loader caller", async () => {
+		const plan = await plannedProject({
+			...supportedConfig,
+			backend: "self",
+			web: "react-router",
+			authentication: "better-auth",
+			orm: "drizzle",
+			database: "sqlite",
+		});
+
+		expect(writeContent(plan, "apps/web/app/orpc/client.ts")).not.toContain(
+			"createIsomorphicFn",
+		);
+
+		expect(writeContent(plan, "apps/web/app/orpc/server.ts")).toContain(
+			"createServerCaller(request: Request)",
+		);
+
+		expect(
+			plan.writes.some((write) => write.path.includes("orpc-example")),
+		).toBe(false);
+	});
+});
+
 describe("rpcProviderError", () => {
 	it.each<ForgeConfig>([
 		{ backend: "express", web: "nextjs" },

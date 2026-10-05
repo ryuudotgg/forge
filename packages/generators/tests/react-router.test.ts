@@ -323,7 +323,8 @@ export default [
 			dev: "pnpm with-env react-router dev",
 			postinstall: "pnpm typegen",
 			pretypecheck: "pnpm with-env react-router typegen",
-			start: "pnpm with-env react-router-serve ./build/server/index.js",
+			start:
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- react-router-serve ./build/server/index.js",
 			typecheck: "tsc --noEmit",
 			typegen: "pnpm with-env react-router typegen",
 			"with-env": "dotenv -e ../../.env --",
