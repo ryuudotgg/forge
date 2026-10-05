@@ -4620,4 +4620,655 @@ describe("apply", () => {
 			});
 		});
 	});
+
+	describe("removed roots", () => {
+		const opaque = async (path: string, content: string) => ({
+			definitionIds: ["fixture"],
+			hash: await hashContent(content),
+			kind: "file" as const,
+			path,
+		});
+
+		async function writeRemovedAppFixture(directory: string) {
+			const packageBase = '{\n\t"name": "@acme/admin"\n}\n';
+			const packageEdited =
+				'{\n\t"name": "@acme/admin",\n\t"private": true\n}\n';
+
+			const adopted = "export const adopted = true;\n";
+			const files: Record<string, string> = {
+				"apps/admin/forge.json": '{"edited":true}\n',
+				"apps/admin/app/layout.tsx": "export const layout = 1;\n",
+				"apps/admin/app/page.tsx": "export const page = 1;\n// my edit\n",
+				"apps/admin/package.json": packageEdited,
+				"apps/admin/adopted.ts": adopted,
+				"apps/web/app/page.tsx": "export const web = 1;\n// web edit\n",
+			};
+
+			for (const [path, content] of Object.entries(files))
+				await writeText(join(directory, path), content);
+
+			const packageHash = await hashContent(packageBase);
+			const adoptedHash = await hashContent(adopted);
+			const lockfile: Lockfile = {
+				schemaVersion: 1,
+				artifacts: {
+					"module:admin:file:forge.json": await opaque(
+						"apps/admin/forge.json",
+						"{}\n",
+					),
+					"module:admin:file:app/layout.tsx": await opaque(
+						"apps/admin/app/layout.tsx",
+						"export const layout = 1;\n",
+					),
+					"module:admin:file:app/page.tsx": await opaque(
+						"apps/admin/app/page.tsx",
+						"export const page = 1;\n",
+					),
+					"module:admin:surface:packageJson": {
+						base: {
+							hash: packageHash,
+							mergeKind: "json",
+							semanticsVersion: 1,
+						},
+						definitionIds: ["fixture"],
+						hash: packageHash,
+						kind: "surface",
+						path: "apps/admin/package.json",
+					},
+					"module:admin:file:adopted.ts": {
+						base: {
+							hash: adoptedHash,
+							mergeKind: "opaque",
+							origin: "adopted",
+							semanticsVersion: 1,
+						},
+						definitionIds: ["fixture"],
+						hash: adoptedHash,
+						kind: "file",
+						path: "apps/admin/adopted.ts",
+					},
+					"module:web:file:app/page.tsx": await opaque(
+						"apps/web/app/page.tsx",
+						"export const web = 1;\n",
+					),
+				},
+			};
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					yield* State.writeBase(directory, packageHash, packageBase);
+					yield* State.writeBase(directory, adoptedHash, adopted);
+					yield* State.writeLockfile(directory, lockfile);
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			return { files, lockfile };
+		}
+
+		const removedAppPaths = [
+			"apps/admin/forge.json",
+			"apps/admin/app/layout.tsx",
+			"apps/admin/app/page.tsx",
+			"apps/admin/package.json",
+			"apps/admin/adopted.ts",
+		];
+
+		const webPage = (content: string) => ({
+			artifactId: "module:web:file:app/page.tsx",
+			content,
+			path: "apps/web/app/page.tsx",
+		});
+
+		const removalPlan = async (
+			removedRoots?: ReadonlyArray<string>,
+		): Promise<ApplyPlan> => ({
+			lockfile: {
+				artifacts: {
+					"module:web:file:app/page.tsx": await opaque(
+						"apps/web/app/page.tsx",
+						"export const web = 1;\n",
+					),
+				},
+			},
+			manifest: { config: {}, installs: [], modules: {} },
+			removals: removedAppPaths,
+			...(removedRoots === undefined ? {} : { removedRoots }),
+			writes: [webPage("export const web = 1;\n")],
+		});
+
+		it("keeps edited and adopted files inside a removed root and reports them", async () => {
+			await withTempDir("apply-removed-root-retain", async (directory) => {
+				const { files } = await writeRemovedAppFixture(directory);
+				await writeText(
+					join(directory, "apps/web/app/page.tsx"),
+					"export const web = 1;\n",
+				);
+
+				const result = await Effect.runPromise(
+					Apply.applyPlan(directory, await removalPlan(["apps/admin"])).pipe(
+						Effect.provide(coreLayer),
+					),
+				);
+
+				expect(result.retained).toEqual([
+					"apps/admin/adopted.ts",
+					"apps/admin/app/page.tsx",
+					"apps/admin/package.json",
+				]);
+
+				for (const path of result.retained)
+					expect(await readFile(join(directory, path), "utf-8")).toBe(
+						files[path],
+					);
+
+				expect(await pathExists(join(directory, "apps/admin/forge.json"))).toBe(
+					false,
+				);
+
+				expect(
+					await pathExists(join(directory, "apps/admin/app/layout.tsx")),
+				).toBe(false);
+
+				const lockfile = await readJson<Lockfile>(
+					join(directory, ".forge/lock.json"),
+				);
+
+				expect(
+					Object.values(lockfile.artifacts).map((artifact) => artifact.path),
+				).toEqual(["apps/web/app/page.tsx"]);
+			});
+		});
+
+		it("still refuses edited removals without a removed root", async () => {
+			await withTempDir("apply-removed-root-unscoped", async (directory) => {
+				const { files, lockfile } = await writeRemovedAppFixture(directory);
+				await writeText(
+					join(directory, "apps/web/app/page.tsx"),
+					"export const web = 1;\n",
+				);
+
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(directory, await removalPlan()).pipe(
+							Effect.provide(coreLayer),
+						),
+					),
+				);
+
+				expect(error).toMatchObject({
+					_tag: "ApplyError",
+					reason: "preflight-failed",
+				});
+
+				for (const [path, content] of Object.entries(files))
+					if (path !== "apps/web/app/page.tsx")
+						expect(await readFile(join(directory, path), "utf-8")).toBe(
+							content,
+						);
+
+				expect(await readJson(join(directory, ".forge/lock.json"))).toEqual(
+					lockfile,
+				);
+			});
+		});
+
+		it("limits accept-forge to the removed root", async () => {
+			await withTempDir("apply-removed-root-force", async (directory) => {
+				const { files } = await writeRemovedAppFixture(directory);
+
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(directory, await removalPlan(["apps/admin"]), {
+							resolutionPolicy: "accept-forge",
+						}).pipe(Effect.provide(coreLayer)),
+					),
+				);
+
+				expect(error).toMatchObject({
+					_tag: "ApplyError",
+					path: "apps/web/app/page.tsx",
+					reason: "managed-file-modified",
+				});
+
+				for (const [path, content] of Object.entries(files))
+					expect(await readFile(join(directory, path), "utf-8")).toBe(content);
+
+				const resolved = await Effect.runPromise(
+					Apply.applyPlan(directory, await removalPlan(["apps/admin"]), {
+						conflictResolutions: {
+							"apps/web/app/page.tsx": { resolution: "user" },
+						},
+						resolutionPolicy: "accept-forge",
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(resolved.retained).toEqual([]);
+
+				for (const path of removedAppPaths)
+					expect(await pathExists(join(directory, path))).toBe(false);
+
+				expect(
+					await readFile(join(directory, "apps/web/app/page.tsx"), "utf-8"),
+				).toBe(files["apps/web/app/page.tsx"]);
+			});
+		});
+
+		it("explains that accept-forge leaves rewritten files outside the removed root alone", async () => {
+			await withTempDir("apply-removed-root-guidance", async (directory) => {
+				await writeRemovedAppFixture(directory);
+
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(directory, await removalPlan(["apps/admin"]), {
+							resolutionPolicy: "accept-forge",
+						}).pipe(Effect.provide(coreLayer)),
+					),
+				);
+
+				if (!(error instanceof ApplyError))
+					throw new Error("Expected ApplyError");
+
+				expect(formatApplyError(error)).toBe(
+					[
+						"Forge cannot safely update these files:",
+						"apps/web/app/page.tsx was modified after Forge last managed it.",
+						"apps/web/app/page.tsx sits outside the app you're removing, so --accept-forge leaves it alone.",
+						"Run again with --keep-user to keep your edits to apps/web/app/page.tsx.",
+					].join("\n"),
+				);
+			});
+		});
+
+		it("explains that edited deletions outside the removed root need reverting", async () => {
+			await withTempDir(
+				"apply-removed-root-removal-guidance",
+				async (directory) => {
+					const shared = "packages/shared/src/index.ts";
+					const tools = "packages/tools/src/index.ts";
+					await writeText(join(directory, shared), "edited\n");
+					await writeText(join(directory, tools), "edited\n");
+					await Effect.runPromise(
+						State.writeLockfile(directory, {
+							schemaVersion: 1,
+							artifacts: {
+								shared: await opaque(shared, "original\n"),
+								tools: await opaque(tools, "original\n"),
+							},
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					const error = await Effect.runPromise(
+						Effect.flip(
+							Apply.applyPlan(
+								directory,
+								{
+									lockfile: { artifacts: {} },
+									manifest: { config: {}, installs: [], modules: {} },
+									removals: [shared, tools],
+									removedRoots: ["apps/admin"],
+									writes: [],
+								},
+								{ resolutionPolicy: "accept-forge" },
+							).pipe(Effect.provide(coreLayer)),
+						),
+					);
+
+					if (!(error instanceof ApplyError))
+						throw new Error("Expected ApplyError");
+
+					const message = formatApplyError(error);
+					expect(message).toContain(
+						`${shared} and ${tools} sit outside the app you're removing, so --accept-forge leaves them alone.`,
+					);
+
+					expect(message).toContain(
+						`Revert your changes to ${shared} and ${tools} first, since neither flag resolves them.`,
+					);
+
+					expect(message).not.toContain("Run again with --accept-forge");
+					expect(message).not.toContain("--keep-user");
+				},
+			);
+		});
+
+		it("refuses accept-forge everywhere when the removal scope is empty", async () => {
+			await withTempDir("apply-removed-root-empty", async (directory) => {
+				const { files } = await writeRemovedAppFixture(directory);
+				const plan = await removalPlan([]);
+
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(
+							directory,
+							{ ...plan, removals: [] },
+							{ resolutionPolicy: "accept-forge" },
+						).pipe(Effect.provide(coreLayer)),
+					),
+				);
+
+				expect(error).toMatchObject({
+					path: "apps/web/app/page.tsx",
+					reason: "managed-file-modified",
+				});
+
+				expect(
+					await readFile(join(directory, "apps/web/app/page.tsx"), "utf-8"),
+				).toBe(files["apps/web/app/page.tsx"]);
+			});
+		});
+
+		it("does not treat a sibling with the same prefix as removed", async () => {
+			await withTempDir("apply-removed-root-prefix", async (directory) => {
+				const path = "apps/admin-tools/page.tsx";
+				await writeText(join(directory, path), "edited\n");
+				await Effect.runPromise(
+					State.writeLockfile(directory, {
+						schemaVersion: 1,
+						artifacts: { tools: await opaque(path, "original\n") },
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(
+							directory,
+							{
+								lockfile: { artifacts: {} },
+								manifest: { config: {}, installs: [], modules: {} },
+								removals: [path],
+								removedRoots: ["apps/admin"],
+								writes: [],
+							},
+							{ resolutionPolicy: "accept-forge" },
+						).pipe(Effect.provide(coreLayer)),
+					),
+				);
+
+				expect(error).toMatchObject({
+					path,
+					reason: "managed-file-modified",
+				});
+			});
+		});
+
+		it("retains relocated edits under the disk root", async () => {
+			await withTempDir("apply-removed-root-relocated", async (directory) => {
+				await writeText(join(directory, "apps/dashboard/page.tsx"), "edited\n");
+
+				await Effect.runPromise(
+					State.writeLockfile(directory, {
+						schemaVersion: 1,
+						artifacts: {
+							page: await opaque("apps/admin/page.tsx", "original\n"),
+						},
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const result = await Effect.runPromise(
+					Apply.applyPlan(directory, {
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removalRootRelocations: { "apps/admin": "apps/dashboard" },
+						removals: ["apps/admin/page.tsx"],
+						removedRoots: ["apps/dashboard"],
+						writes: [],
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(result.retained).toEqual(["apps/dashboard/page.tsx"]);
+				expect(
+					await readFile(join(directory, "apps/dashboard/page.tsx"), "utf-8"),
+				).toBe("edited\n");
+			});
+		});
+	});
+
+	describe("preserved files", () => {
+		const routeTree = "apps/web/src/routeTree.gen.ts";
+		const stub = "export const routeTree = stub;\n";
+		const generated = "export const routeTree = generated;\n";
+
+		const preservedPlan = async (): Promise<ApplyPlan> => ({
+			lockfile: {
+				artifacts: {
+					"module:web:file:src/routeTree.gen.ts": {
+						definitionIds: ["tanstack-router/base"],
+						hash: await hashContent(stub),
+						kind: "file",
+						path: routeTree,
+					},
+				},
+			},
+			manifest: { config: {}, installs: [], modules: {} },
+			removals: [],
+			writes: [
+				{
+					artifactId: "module:web:file:src/routeTree.gen.ts",
+					content: stub,
+					path: routeTree,
+					preserveExisting: true,
+				},
+			],
+		});
+
+		it("writes a preserved file only when it is missing", async () => {
+			await withTempDir("apply-preserve-missing", async (directory) => {
+				await Effect.runPromise(
+					Apply.applyPlan(directory, await preservedPlan()).pipe(
+						Effect.provide(coreLayer),
+					),
+				);
+
+				expect(await readFile(join(directory, routeTree), "utf-8")).toBe(stub);
+			});
+		});
+
+		it.each(["refuse", "keep-user", "accept-forge"] as const)(
+			"keeps an existing preserved file under %s",
+			async (resolutionPolicy) => {
+				await withTempDir("apply-preserve-existing", async (directory) => {
+					await writeText(join(directory, routeTree), generated);
+					const previous: Lockfile = {
+						schemaVersion: 1,
+						artifacts: {
+							"module:web:file:src/routeTree.gen.ts": {
+								definitionIds: ["tanstack-router/base"],
+								hash: await hashContent(stub),
+								kind: "file",
+								path: routeTree,
+							},
+						},
+					};
+
+					await Effect.runPromise(
+						State.writeLockfile(directory, previous).pipe(
+							Effect.provide(coreLayer),
+						),
+					);
+
+					await Effect.runPromise(
+						Apply.applyPlan(directory, await preservedPlan(), {
+							resolutionPolicy,
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					expect(await readFile(join(directory, routeTree), "utf-8")).toBe(
+						generated,
+					);
+
+					expect(await readJson(join(directory, ".forge/lock.json"))).toEqual(
+						previous,
+					);
+				});
+			},
+		);
+
+		it("keeps an adopted base on a preserved file until its app is removed", async () => {
+			await withTempDir("apply-preserve-adopted", async (directory) => {
+				const generatedHash = await hashContent(generated);
+				const adopted: LockfileArtifact = {
+					base: {
+						hash: generatedHash,
+						mergeKind: "opaque",
+						origin: "adopted",
+						semanticsVersion: 1,
+					},
+					definitionIds: ["tanstack-router/base"],
+					hash: generatedHash,
+					kind: "file",
+					path: routeTree,
+				};
+
+				await writeText(join(directory, routeTree), generated);
+				await Effect.runPromise(
+					Effect.gen(function* () {
+						yield* State.writeBase(directory, generatedHash, generated);
+						yield* State.writeLockfile(directory, {
+							schemaVersion: 1,
+							artifacts: { "module:web:file:src/routeTree.gen.ts": adopted },
+						});
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, await preservedPlan()).pipe(
+						Effect.provide(coreLayer),
+					),
+				);
+
+				const lockfile = await readJson<Lockfile>(
+					join(directory, ".forge/lock.json"),
+				);
+
+				expect(
+					lockfile.artifacts["module:web:file:src/routeTree.gen.ts"],
+				).toEqual(adopted);
+
+				const removed = await Effect.runPromise(
+					Apply.applyPlan(directory, {
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [routeTree],
+						removedRoots: ["apps/web"],
+						writes: [],
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(removed.retained).toEqual([routeTree]);
+				expect(await readFile(join(directory, routeTree), "utf-8")).toBe(
+					generated,
+				);
+			});
+		});
+
+		it("keeps a relocated preserved file's artifact", async () => {
+			await withTempDir("apply-preserve-relocated", async (directory) => {
+				const movedTree = "apps/site/src/routeTree.gen.ts";
+				const previous: LockfileArtifact = {
+					definitionIds: ["tanstack-router/base"],
+					hash: await hashContent(stub),
+					kind: "file",
+					path: routeTree,
+				};
+
+				await writeText(join(directory, movedTree), generated);
+				await Effect.runPromise(
+					Effect.gen(function* () {
+						yield* State.writeLockfile(directory, {
+							schemaVersion: 1,
+							artifacts: { "module:web:file:src/routeTree.gen.ts": previous },
+						});
+
+						yield* State.writeManifest(directory, {
+							config: {},
+							installs: [],
+							modules: {
+								web: {
+									definitionIds: ["tanstack-router/base"],
+									root: "apps/web",
+								},
+							},
+						});
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const plan = await preservedPlan();
+				await Effect.runPromise(
+					Apply.applyPlan(directory, {
+						...plan,
+						lockfile: {
+							artifacts: {
+								"module:web:file:src/routeTree.gen.ts": {
+									...previous,
+									path: movedTree,
+								},
+							},
+						},
+						manifest: {
+							config: {},
+							installs: [],
+							modules: {
+								web: {
+									definitionIds: ["tanstack-router/base"],
+									root: "apps/site",
+								},
+							},
+						},
+						writes: plan.writes.map((write) => ({ ...write, path: movedTree })),
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const lockfile = await readJson<Lockfile>(
+					join(directory, ".forge/lock.json"),
+				);
+
+				expect(
+					lockfile.artifacts["module:web:file:src/routeTree.gen.ts"],
+				).toEqual({ ...previous, path: movedTree });
+
+				expect(await readFile(join(directory, movedTree), "utf-8")).toBe(
+					generated,
+				);
+			});
+		});
+
+		it("still refuses an edited neighbour of a preserved file", async () => {
+			await withTempDir("apply-preserve-neighbour", async (directory) => {
+				const router = "apps/web/src/router.tsx";
+				await writeText(join(directory, routeTree), generated);
+				await writeText(join(directory, router), "edited\n");
+				await Effect.runPromise(
+					State.writeLockfile(directory, {
+						schemaVersion: 1,
+						artifacts: {
+							router: {
+								definitionIds: ["tanstack-router/base"],
+								hash: await hashContent("original\n"),
+								kind: "file",
+								path: router,
+							},
+						},
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const plan = await preservedPlan();
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(directory, {
+							...plan,
+							writes: [
+								...plan.writes,
+								{ artifactId: "router", content: "original\n", path: router },
+							],
+						}).pipe(Effect.provide(coreLayer)),
+					),
+				);
+
+				expect(error).toMatchObject({
+					path: router,
+					reason: "managed-file-modified",
+				});
+			});
+		});
+	});
 });

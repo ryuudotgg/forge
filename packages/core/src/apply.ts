@@ -37,6 +37,7 @@ export interface PlannedWrite {
 	readonly artifactId?: string;
 	readonly content: string;
 	readonly path: string;
+	readonly preserveExisting?: boolean;
 }
 
 export interface ApplyPlan {
@@ -45,7 +46,12 @@ export interface ApplyPlan {
 	readonly manifest: ManifestInput;
 	readonly removalRootRelocations?: Readonly<Record<string, string>>;
 	readonly removals: ReadonlyArray<string>;
+	readonly removedRoots?: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedWrite>;
+}
+
+export interface ApplyResult {
+	readonly retained: ReadonlyArray<string>;
 }
 
 export type ResolutionPolicy = "accept-forge" | "keep-user" | "refuse";
@@ -92,6 +98,7 @@ interface PreflightClassification {
 	readonly hasUnmanagedRefusals: boolean;
 	readonly hasUnmanagedRemovals: boolean;
 	readonly refusals: ReadonlyArray<ApplyRefusal>;
+	readonly removalScoped?: boolean;
 }
 
 type ApplyReasons<Reason extends ApplyError["reason"]> = ReadonlyArray<Reason>;
@@ -380,6 +387,54 @@ function preflightMessage(
 	return sections.join("\n");
 }
 
+const listAnd = new Intl.ListFormat("en", { type: "conjunction" });
+function removalScopeGuidance(
+	refusals: ReadonlyArray<ApplyRefusal>,
+	conflicts: ReadonlyArray<Pick<ApplyConflict, "label">>,
+): string {
+	const rewritten = [
+		...new Set([
+			...refusals
+				.filter(
+					(refusal) =>
+						refusal.operation === "write" &&
+						refusal.reason === "managed-file-modified",
+				)
+				.map((refusal) => refusal.path),
+			...conflicts.map((conflict) => conflict.label.split(" -> ")[0] ?? ""),
+		]),
+	];
+
+	const unresolvable = [
+		...new Set(
+			refusals
+				.filter(
+					(refusal) =>
+						refusal.operation === "removal" ||
+						refusal.reason === "unmanaged-file-exists",
+				)
+				.map((refusal) => refusal.path),
+		),
+	];
+
+	const outside = [...new Set([...rewritten, ...unresolvable])];
+	const sentences = [
+		`${listAnd.format(outside)} ${outside.length === 1 ? "sits" : "sit"} outside the app you're removing, so --accept-forge leaves ${outside.length === 1 ? "it" : "them"} alone.`,
+	];
+
+	if (rewritten.length > 0)
+		sentences.push(
+			`Run again with --keep-user to keep your edits to ${listAnd.format(rewritten)}.`,
+		);
+
+	if (unresolvable.length > 0)
+		sentences.push(
+			`Revert your changes to ${listAnd.format(unresolvable)} first, since neither flag resolves ${unresolvable.length === 1 ? "it" : "them"}.`,
+		);
+
+	return sentences.join("\n");
+}
+
 export function formatApplyError(
 	error: ApplyError,
 	options: FormatApplyErrorOptions = {},
@@ -414,6 +469,12 @@ export function formatApplyError(
 		return report;
 
 	if (options.includeResolutionGuidance === false) return report;
+
+	if (classification.removalScoped === true)
+		return `${report}\n${removalScopeGuidance(
+			classification.refusals ?? [],
+			classification.conflicts ?? [],
+		)}`;
 
 	const guidance: string[] = [];
 	if (
@@ -657,22 +718,39 @@ const makeApply = Effect.gen(function* () {
 		plan: ApplyPlan,
 		options: ApplyOptions = {},
 	) {
-		const resolutionPolicy = options.resolutionPolicy ?? "refuse";
-		const mergeResolution =
-			resolutionPolicy === "refuse"
+		const requestedPolicy = options.resolutionPolicy ?? "refuse";
+		const removedRoots = plan.removedRoots ?? [];
+		const isInRemovedRoot = (path: string) =>
+			removedRoots.some((root) => path === root || path.startsWith(`${root}/`));
+
+		const policyFor = (path: string): ResolutionPolicy =>
+			requestedPolicy === "accept-forge" &&
+			plan.removedRoots !== undefined &&
+			!isInRemovedRoot(path)
+				? "refuse"
+				: requestedPolicy;
+
+		const mergeResolutionFor = (path: string) => {
+			const policy = policyFor(path);
+			return policy === "refuse"
 				? undefined
-				: resolutionPolicy === "keep-user"
+				: policy === "keep-user"
 					? "user"
 					: "forge";
+		};
 
 		const requestedResolutions = new Map(
 			Object.entries(options.conflictResolutions ?? {}),
 		);
 
 		const consumedResolutionLabels = new Set<string>();
-		const resolutionFor = (label: string, conflict?: ApplyConflict) => {
+		const resolutionFor = (
+			path: string,
+			label = path,
+			conflict?: ApplyConflict,
+		) => {
 			const request = requestedResolutions.get(label);
-			if (request === undefined) return mergeResolution;
+			if (request === undefined) return mergeResolutionFor(path);
 
 			consumedResolutionLabels.add(label);
 
@@ -705,6 +783,8 @@ const makeApply = Effect.gen(function* () {
 
 		const writesToApply: PreflightPhaseContract["result"]["writes"] = [];
 		const removalsToApply: PreflightPhaseContract["result"]["removals"] = [];
+		const retained: Array<string> = [];
+		const preservedBaseContents = new Map<string, string>();
 
 		const conflicts: ApplyConflict[] = [];
 		const refusals: ApplyRefusal[] = [];
@@ -726,9 +806,10 @@ const makeApply = Effect.gen(function* () {
 			if (isUserOwnedEnv(relativePath)) continue;
 			if (!(yield* pathExists(fullPath, relativePath))) continue;
 
+			const inRemovedRoot = isInRemovedRoot(relativePath);
 			const previousArtifact = previousArtifacts.get(plannedPath);
 			if (previousArtifact === undefined) {
-				if (resolutionPolicy === "accept-forge") {
+				if (policyFor(relativePath) === "accept-forge") {
 					removalsToApply.push(relativePath);
 					continue;
 				}
@@ -754,12 +835,21 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
+			if (
+				basename(relativePath) === "forge.json" &&
+				removedRoots.includes(dirname(relativePath))
+			) {
+				removalsToApply.push(relativePath);
+				continue;
+			}
+
 			const currentContent = yield* readFile(fullPath, relativePath);
 			const currentHash = yield* hashContent(currentContent);
 
 			const fileResolution = resolutionFor(relativePath);
 			if (previousArtifact.base?.origin === "adopted") {
 				if (fileResolution === "forge") removalsToApply.push(relativePath);
+				else if (inRemovedRoot) retained.push(relativePath);
 				else
 					refusals.push({
 						path: relativePath,
@@ -785,7 +875,12 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (resolutionPolicy === "keep-user") {
+			if (inRemovedRoot) {
+				retained.push(relativePath);
+				continue;
+			}
+
+			if (policyFor(relativePath) === "keep-user") {
 				refusals.push({
 					path: relativePath,
 					reason: "managed-file-modified",
@@ -872,6 +967,7 @@ const makeApply = Effect.gen(function* () {
 			const currentHash = yield* hashContent(currentContent);
 			const nextHash = yield* hashContent(file.content);
 
+			const filePolicy = policyFor(file.path);
 			const fileResolution = resolutionFor(file.path);
 
 			const previousArtifact = previousArtifacts.get(file.path);
@@ -895,6 +991,33 @@ const makeApply = Effect.gen(function* () {
 					: committedArtifacts[file.artifactId];
 
 			const managedArtifact = previousArtifact ?? movedArtifact;
+			if (file.preserveExisting === true) {
+				if (file.artifactId === undefined) continue;
+
+				if (managedArtifact === undefined) {
+					delete committedArtifacts[file.artifactId];
+					continue;
+				}
+
+				committedArtifacts[file.artifactId] = {
+					...(managedArtifact.base === undefined
+						? {}
+						: { base: managedArtifact.base }),
+					definitionIds: managedArtifact.definitionIds,
+					hash: managedArtifact.hash,
+					kind: managedArtifact.kind,
+					path: file.path,
+				};
+
+				if (managedArtifact.base !== undefined)
+					preservedBaseContents.set(
+						file.artifactId,
+						yield* readBase(projectRoot, managedArtifact, managedArtifact.base),
+					);
+
+				continue;
+			}
+
 			const isModuleMarker = /^module:[^:]+:file:forge\.json$/.test(
 				file.artifactId ?? "",
 			);
@@ -943,7 +1066,7 @@ const makeApply = Effect.gen(function* () {
 
 			if (adoptMatchingContent(nextHash)) continue;
 			if (managedArtifact === undefined) {
-				if (resolutionPolicy === "accept-forge") {
+				if (filePolicy === "accept-forge") {
 					writesToApply.push(file);
 					continue;
 				}
@@ -975,7 +1098,7 @@ const makeApply = Effect.gen(function* () {
 			}
 
 			if (
-				resolutionPolicy !== "accept-forge" &&
+				filePolicy !== "accept-forge" &&
 				currentHash === managedArtifact.hash &&
 				previousBase !== undefined &&
 				previousBase.hash === nextHash
@@ -1078,8 +1201,8 @@ const makeApply = Effect.gen(function* () {
 					mergeBase,
 					currentContent,
 					file.content,
-					mergeResolution,
-					(label) => resolutionFor(`${file.path} -> ${label}`),
+					mergeResolutionFor(file.path),
+					(label) => resolutionFor(file.path, `${file.path} -> ${label}`),
 				),
 			);
 
@@ -1127,7 +1250,8 @@ const makeApply = Effect.gen(function* () {
 				}
 
 			const unresolvedConflicts = discoveredConflicts.filter(
-				(conflict) => resolutionFor(conflict.label, conflict) === undefined,
+				(conflict) =>
+					resolutionFor(file.path, conflict.label, conflict) === undefined,
 			);
 
 			conflicts.push(...unresolvedConflicts);
@@ -1135,7 +1259,7 @@ const makeApply = Effect.gen(function* () {
 				discoveredConflicts.length > 0 && unresolvedConflicts.length === 0;
 
 			if (merged.conflicts.length === 0 || conflictsResolved) {
-				if (mergeResolution !== undefined || conflictsResolved)
+				if (mergeResolutionFor(file.path) !== undefined || conflictsResolved)
 					policyReadHashes.set(file.path, currentHash);
 
 				const mergedWrite = { ...file, content: merged.merged };
@@ -1159,7 +1283,11 @@ const makeApply = Effect.gen(function* () {
 					detail: `Resolution Label Unknown: ${label}`,
 				});
 
-		const preflight = classifyPreflight(refusals, conflicts);
+		const preflight = {
+			...classifyPreflight(refusals, conflicts),
+			...(plan.removedRoots === undefined ? {} : { removalScoped: true }),
+		};
+
 		const refusal = refusals.length === 1 ? refusals[0] : undefined;
 		if (refusal !== undefined && conflicts.length === 0)
 			return yield* new ApplyError({
@@ -1201,7 +1329,10 @@ const makeApply = Effect.gen(function* () {
 			),
 		);
 
-		for (const [artifactId, content] of Object.entries(plan.baseContents ?? {}))
+		for (const [artifactId, content] of [
+			...Object.entries(plan.baseContents ?? {}),
+			...preservedBaseContents,
+		])
 			pureWritesById.set(artifactId, content);
 
 		const bases: PreflightPhaseContract["result"]["bases"] = new Map();
@@ -1559,6 +1690,8 @@ const makeApply = Effect.gen(function* () {
 				directory = dirname(directory);
 			}
 		}
+
+		return { retained: retained.sort() } satisfies ApplyResult;
 	});
 
 	return { applyPlan };

@@ -20,7 +20,11 @@ import {
 import { Result, Schema } from "effect";
 import type { ParsedValues, SubcommandDef } from "./commands/registry";
 import { webSchema } from "./steps/platforms/web";
-import { webAppsSchema } from "./steps/platforms/web-apps";
+import {
+	firstPartyAddonIds,
+	webAppNameIssue,
+	webAppsSchema,
+} from "./steps/platforms/web-apps";
 import type { PartialConfig } from "./steps/types";
 
 interface CLIOption {
@@ -412,6 +416,12 @@ export function buildFlagOverrides(values: ParsedValues): PartialConfig {
 			const result = Schema.decodeUnknownResult(webAppsSchema)(apps);
 			if (Result.isFailure(result))
 				throw new Error(`CLI Args Invalid: ${result.failure.message}`);
+
+			const addonIds = firstPartyAddonIds();
+			for (const app of result.success) {
+				const issue = webAppNameIssue(app.name, addonIds);
+				if (issue !== undefined) throw new Error(`CLI Args Invalid: ${issue}`);
+			}
 
 			if (result.success.length !== 0) overrides.webApps = result.success;
 

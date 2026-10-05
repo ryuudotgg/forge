@@ -295,6 +295,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			ensuredModuleTarget(instance.key),
 			"src/routeTree.gen.ts",
 			readTemplate("frameworks/tanstack-start/src/routeTree.gen.ts"),
+			{ preserveExisting: true },
 		),
 		...selfHostedCorsContributions(config, instance),
 	];

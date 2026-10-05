@@ -1,3 +1,4 @@
+import { loadDefinitionRegistry } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildFlagOverrides, parseCliArgs } from "../src/cli";
@@ -215,6 +216,41 @@ describe("secondary web apps step", () => {
 		expect(first?.validate("settings")).toBeUndefined();
 
 		expect(second?.validate("admin")).toBeDefined();
+	});
+
+	it("refuses every first-party addon id as a new app name", async () => {
+		promptMocks.confirm.mockResolvedValueOnce(true);
+		promptMocks.text.mockResolvedValue(Symbol("cancel"));
+		promptMocks.isCancel.mockImplementation(
+			(value) => typeof value === "symbol",
+		);
+
+		await expect(
+			webAppsStep.execute({ web: "tanstack-router" }, true),
+		).rejects.toThrow("Cancelled");
+
+		const validate = promptMocks.text.mock.calls[0]?.[0].validate;
+		const addonIds = loadDefinitionRegistry().registry.addons.map(
+			(addon) => addon.id,
+		);
+
+		expect(addonIds).toEqual(
+			expect.arrayContaining(["biome", "tailwind", "drizzle"]),
+		);
+
+		for (const id of addonIds) expect(validate?.(id)).toBeDefined();
+
+		expect(validate?.("biome")).toBe(
+			"biome is an addon id. Pick another name for this web app.",
+		);
+
+		expect(() =>
+			buildFlagOverrides(
+				parseCliArgs(["--web", "nextjs", "--web", "tailwind=nextjs"]).values,
+			),
+		).toThrow(
+			"CLI Args Invalid: tailwind is an addon id. Pick another name for this web app.",
+		);
 	});
 
 	it("produces the same secondary config as repeatable web flags", async () => {

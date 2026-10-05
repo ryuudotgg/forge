@@ -258,6 +258,7 @@ export interface LeafTextFileContribution {
 	readonly target: TargetRef;
 	readonly path: string | SlotPath;
 	readonly content: string;
+	readonly preserveExisting?: boolean;
 }
 
 export type Contribution<Capability extends CapabilityId = CapabilityId> =
@@ -396,8 +397,15 @@ export function leafTextFile(
 	target: TargetRef,
 	path: string | SlotPath,
 	content: string,
+	options: { readonly preserveExisting?: boolean } = {},
 ): LeafTextFileContribution {
-	return { _tag: "LeafTextFileContribution", target, path, content };
+	return {
+		_tag: "LeafTextFileContribution",
+		target,
+		path,
+		content,
+		...(options.preserveExisting === true ? { preserveExisting: true } : {}),
+	};
 }
 
 export function resolveSlotPath(

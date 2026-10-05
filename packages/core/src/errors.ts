@@ -693,6 +693,7 @@ const ApplyPreflightSchema = Schema.Struct({
 	hasManagedRefusals: Schema.Boolean,
 	hasUnmanagedRefusals: Schema.Boolean,
 	hasUnmanagedRemovals: Schema.Boolean,
+	removalScoped: Schema.optional(Schema.Boolean),
 	refusals: Schema.optional(
 		Schema.Array(
 			Schema.Struct({

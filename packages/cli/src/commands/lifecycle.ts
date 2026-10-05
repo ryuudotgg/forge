@@ -5,6 +5,7 @@ import {
 	ApplyError,
 	type ApplyOptions,
 	type ApplyPlan,
+	type ApplyResult,
 	ConfigStore,
 	type DiscoveredModule,
 	formatApplyError,
@@ -121,12 +122,12 @@ export async function applyLifecyclePlan(
 	projectRoot: string,
 	plan: ApplyPlan,
 	options: ApplyOptions,
-): Promise<void> {
+): Promise<ApplyResult> {
 	const apply = (applyOptions: ApplyOptions) =>
 		Apply.applyPlan(projectRoot, plan, applyOptions);
 
 	const exit = await runCliEffect(apply(options));
-	if (Exit.isSuccess(exit)) return;
+	if (Exit.isSuccess(exit)) return exit.value;
 
 	const failure = failureFromCause(exit.cause);
 	if (
@@ -141,7 +142,7 @@ export async function applyLifecyclePlan(
 
 		if (Exit.isSuccess(retry)) {
 			log.success(resolution.summary);
-			return;
+			return retry.value;
 		}
 
 		return reportLifecycleFailure(
@@ -365,7 +366,7 @@ export async function applyInstalledPlan(
 		"We couldn't plan this change.",
 	);
 
-	await applyLifecyclePlan(
+	return await applyLifecyclePlan(
 		projectRoot,
 		{
 			lockfile: plan.lockfile,
@@ -374,10 +375,14 @@ export async function applyInstalledPlan(
 				? {}
 				: { removalRootRelocations: plan.removalRootRelocations }),
 			removals: plan.removals,
+			...(plan.removedRoots === undefined
+				? {}
+				: { removedRoots: plan.removedRoots }),
 			writes: plan.writes.map((write) => ({
 				artifactId: write.artifactId,
 				content: write.content,
 				path: write.path,
+				...(write.preserveExisting === true ? { preserveExisting: true } : {}),
 			})),
 		},
 		options,

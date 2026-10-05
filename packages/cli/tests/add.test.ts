@@ -11,6 +11,7 @@ import {
 	listVisibleAddons,
 	loadDefinitionRegistry,
 	type RegistryUnit,
+	reservedWebAppNames,
 } from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAdd } from "../src/commands/add";
@@ -171,7 +172,8 @@ describe("add command", () => {
 			process.stdout.isTTY = true;
 			delete process.env.CI;
 
-			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+			const project = managedProject();
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
 			promptMocks.text.mockResolvedValue(cancelled ? Symbol("cancel") : "site");
 			promptMocks.isCancel.mockReturnValue(cancelled);
 
@@ -192,6 +194,12 @@ describe("add command", () => {
 						[],
 						undefined,
 						undefined,
+						{},
+						{
+							additions: [{ framework: "nextjs", root: "apps/site" }],
+							modules: project.modules,
+							records: project.manifest.modules,
+						},
 					);
 				}
 
@@ -200,6 +208,11 @@ describe("add command", () => {
 						message: "What is the name of this web app?",
 						validate: expect.any(Function),
 					}),
+				);
+
+				const validate = promptMocks.text.mock.calls[0]?.[0].validate;
+				expect(validate?.("biome")).toBe(
+					"biome is an addon id. Pick another name for this web app.",
 				);
 			} finally {
 				exit.mockRestore();
@@ -263,6 +276,12 @@ describe("add command", () => {
 				project.manifest.installs,
 				undefined,
 				undefined,
+				{},
+				{
+					additions: [{ framework, root: "apps/site" }],
+					modules: project.modules,
+					records: project.manifest.modules,
+				},
 			);
 
 			expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
@@ -296,6 +315,76 @@ describe("add command", () => {
 			}
 		},
 	);
+
+	it("refuses every addon id in the project registry as an app name", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		const firstParty = loadDefinitionRegistry();
+		const projectAddon = defineAddon<ForgeConfig>({
+			id: "sentry",
+			name: "Sentry",
+			version: "1.0.0",
+			category: "tooling",
+			exclusive: false,
+			targetMode: "multiple",
+			when: () => false,
+			contribute: () => [],
+		});
+
+		lifecycleMocks.loadProjectRegistry.mockResolvedValue({
+			...firstParty,
+			descriptors: [
+				{
+					apiVersion: 1,
+					id: "@acme/forge-sentry",
+					source: "npm",
+					units: [{ id: projectAddon.id, kind: "addon" }],
+					version: "1.0.0",
+				},
+			],
+			registry: {
+				...firstParty.registry,
+				addons: [...firstParty.registry.addons, projectAddon],
+			},
+		});
+
+		const addonIds = [
+			...firstParty.registry.addons.map((addon) => addon.id),
+			projectAddon.id,
+		];
+
+		const namedLikeAddons = addonIds.filter(
+			(id) =>
+				/^[a-z][a-z0-9-]*$/.test(id) &&
+				!reservedWebAppNames.some((name) => name === id),
+		);
+
+		expect(namedLikeAddons).toEqual(
+			expect.arrayContaining(["biome", "tailwind", "sentry"]),
+		);
+
+		try {
+			for (const id of addonIds) {
+				lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+				promptMocks.logError.mockReset();
+
+				await expect(runAdd("nextjs", { name: id, yes: true })).rejects.toThrow(
+					"exit:1",
+				);
+
+				if (namedLikeAddons.includes(id))
+					expect(promptMocks.logError).toHaveBeenCalledWith(
+						`${id} is an addon id. Pick another name for this web app.`,
+					);
+			}
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
 
 	it("requires an app name with --yes", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {

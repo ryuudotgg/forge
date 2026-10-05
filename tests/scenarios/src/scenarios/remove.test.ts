@@ -1,5 +1,14 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import {
+	appendFile,
+	mkdir,
+	readdir,
+	readFile,
+	rename,
+	rm,
+	writeFile,
+} from "node:fs/promises";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	addAddon,
@@ -12,6 +21,30 @@ import {
 	withScenarioWorkspace,
 	writeJson,
 } from "../utils/harness";
+
+async function treeHashes(projectRoot: string, excludedRoot?: string) {
+	const entries = await readdir(projectRoot, {
+		recursive: true,
+		withFileTypes: true,
+	});
+
+	const hashes: Record<string, string> = {};
+	for (const entry of entries) {
+		const path = relative(projectRoot, join(entry.parentPath, entry.name));
+		if (
+			!entry.isFile() ||
+			path.startsWith(".forge/") ||
+			(excludedRoot !== undefined && path.startsWith(`${excludedRoot}/`))
+		)
+			continue;
+
+		hashes[path] = createHash("sha256")
+			.update(await readFile(join(projectRoot, path)))
+			.digest("hex");
+	}
+
+	return hashes;
+}
 
 interface PackageJson {
 	readonly dependencies?: Record<string, string>;
@@ -100,25 +133,64 @@ describe("remove", () => {
 					{ workspaceRoot: workspace.workspaceRoot },
 				);
 
-				const refused = await tryRunForge(workspace.projectRoot, [
-					"remove",
-					"admin",
-				]);
-
-				expect(refused.exitCode).toBe(1);
-				expect(`${refused.stdout}${refused.stderr}`).toContain(
-					"--accept-forge",
+				const adopted = await treeHashes(workspace.projectRoot);
+				const forced = await tryRunForge(
+					workspace.projectRoot,
+					["remove", "admin", "--accept-forge"],
+					{ workspaceRoot: workspace.workspaceRoot },
 				);
 
-				expect(await pathExists(join(adoptedRoot, "forge.json"))).toBe(true);
+				expect(forced.exitCode).toBe(1);
+				expect(forced.stdout + forced.stderr).toContain(
+					"pnpm-workspace.yaml sits outside the app you're removing, so --accept-forge leaves it alone.",
+				);
 
-				await runForge(workspace.projectRoot, [
-					"remove",
-					"admin",
-					"--accept-forge",
-				]);
+				expect(forced.stdout + forced.stderr).toContain(
+					"Run again with --keep-user to keep your edits to pnpm-workspace.yaml.",
+				);
+
+				expect(forced.stdout + forced.stderr).not.toContain("sites/admin/");
+				expect(await treeHashes(workspace.projectRoot)).toEqual(adopted);
+
+				const update = await tryRunForge(
+					workspace.projectRoot,
+					["update", "--keep-user", "--no-install"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(update.exitCode, update.stdout + update.stderr).toBe(0);
+
+				const packageKey = relative(workspace.projectRoot, packagePath);
+				const withoutPackage = (hashes: Record<string, string>) =>
+					Object.fromEntries(
+						Object.entries(hashes).filter(([path]) => path !== packageKey),
+					);
+
+				expect(withoutPackage(await treeHashes(workspace.projectRoot))).toEqual(
+					withoutPackage(adopted),
+				);
+
+				expect(await readJson<{ name: string }>(packagePath)).toMatchObject({
+					name: "legacy-console",
+				});
+
+				const removed = await tryRunForge(
+					workspace.projectRoot,
+					["remove", "admin"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(removed.exitCode, removed.stdout + removed.stderr).toBe(0);
+				expect(removed.stdout + removed.stderr).toContain(
+					"We kept your edited file at sites/admin/package.json.",
+				);
 
 				expect(await pathExists(join(adoptedRoot, "forge.json"))).toBe(false);
+				expect(await readJson<{ name: string }>(packagePath)).toMatchObject({
+					name: "legacy-console",
+				});
+
+				expect(await readFile(workspacePath, "utf-8")).toContain("sites/*");
 				expect(
 					await pathExists(join(workspace.projectRoot, "apps/web/forge.json")),
 				).toBe(true);
@@ -126,7 +198,7 @@ describe("remove", () => {
 		);
 	}, 120_000);
 
-	it("removes an addon before a same-named secondary app", async () => {
+	it("removes a legacy secondary named after an addon before the addon", async () => {
 		await withScenarioWorkspace(
 			"remove-app-addon-collision",
 			async (workspace) => {
@@ -134,35 +206,306 @@ describe("remove", () => {
 					packageManager: "pnpm",
 					web: "nextjs",
 					linter: "biome",
-					webApps: [{ name: "biome", framework: "nextjs" }],
+					webApps: [{ name: "legacy", framework: "nextjs" }],
 				});
+
+				const legacyRoot = join(workspace.projectRoot, "apps/biome");
+				await rename(join(workspace.projectRoot, "apps/legacy"), legacyRoot);
+				await rm(join(workspace.projectRoot, ".forge"), { recursive: true });
+
+				for (const root of ["apps/web", "apps/biome", "packages/ui"])
+					await rm(join(workspace.projectRoot, root, "forge.json"));
+
+				const initConfigPath = join(workspace.workspaceRoot, "forge.init.json");
+				await writeJson(initConfigPath, {
+					name: "acme",
+					slug: "acme",
+					path: ".",
+					packageManager: "pnpm",
+					platforms: ["web"],
+					runtime: "Node.js",
+					web: "nextjs",
+					linter: "biome",
+					modules: [
+						{ kind: "web-app", root: "apps/biome" },
+						{ kind: "web-app", root: "apps/web" },
+						{ kind: "ui", root: "packages/ui" },
+					],
+				});
+
+				await runForge(
+					workspace.projectRoot,
+					["init", "--config", initConfigPath, "--no-install"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				const adopted = await readJson<{
+					config: { webApps?: ReadonlyArray<{ name: string }> };
+				}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+				expect(adopted.config.webApps).toEqual([
+					{ name: "biome", framework: "nextjs" },
+				]);
 
 				await removeAddon(workspace.projectRoot, "biome");
 
 				const manifest = await readJson<{
 					config: { linter?: string; webApps: ReadonlyArray<{ name: string }> };
+					installs: ReadonlyArray<{ definitionId: string }>;
 				}>(join(workspace.projectRoot, ".forge/manifest.json"));
 
-				expect(manifest.config.linter).toBeUndefined();
-				expect(manifest.config.webApps).toEqual([
-					{ name: "biome", framework: "nextjs" },
-				]);
-
+				expect(manifest.config.linter).toBe("biome");
+				expect(manifest.config.webApps).toEqual([]);
 				expect(
-					await pathExists(
-						join(workspace.projectRoot, "apps/biome/forge.json"),
-					),
+					manifest.installs.some((install) => install.definitionId === "biome"),
 				).toBe(true);
 
-				await removeAddon(workspace.projectRoot, "apps/biome");
-
 				expect(
-					await pathExists(
-						join(workspace.projectRoot, "apps/biome/forge.json"),
-					),
-				).toBe(false);
+					await pathExists(join(workspace.projectRoot, "biome.json")),
+				).toBe(true);
+
+				expect(await pathExists(join(legacyRoot, "forge.json"))).toBe(false);
+
+				const refused = await tryRunForge(
+					workspace.projectRoot,
+					["add", "nextjs", "--name", "biome", "--no-install"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(refused.exitCode).toBe(1);
+				expect(refused.stdout + refused.stderr).toContain(
+					"biome is an addon id. Pick another name for this web app.",
+				);
+
+				expect(await pathExists(join(legacyRoot, "forge.json"))).toBe(false);
+
+				const createConfigPath = join(workspace.workspaceRoot, "biome.json");
+				await writeJson(createConfigPath, {
+					name: "other",
+					path: "./other",
+					platforms: ["web"],
+					runtime: "Node.js",
+					slug: "other",
+					packageManager: "pnpm",
+					web: "nextjs",
+					webApps: [{ name: "biome", framework: "nextjs" }],
+				});
+
+				const created = await tryRunForge(
+					workspace.workspaceRoot,
+					["create", "--config", createConfigPath, "--no-install", "--no-git"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(created.exitCode).toBe(1);
+				expect(created.stdout + created.stderr).toContain(
+					"biome is an addon id. Pick another name for this web app.",
+				);
+
+				expect(await pathExists(join(workspace.workspaceRoot, "other"))).toBe(
+					false,
+				);
 			},
 		);
+	}, 120_000);
+
+	it("removes a secondary whose directory is gone and keeps it gone", async () => {
+		await withScenarioWorkspace("remove-missing-web-app", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				style: "tailwind",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			});
+
+			const adminRoot = join(workspace.projectRoot, "apps/admin");
+			await rm(adminRoot, { force: true, recursive: true });
+			await removeAddon(workspace.projectRoot, "admin");
+
+			const update = await tryRunForge(
+				workspace.projectRoot,
+				["update", "--no-install"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(update.exitCode, update.stdout + update.stderr).toBe(0);
+			expect(await pathExists(adminRoot)).toBe(false);
+
+			const manifest = await readJson<{
+				config: { webApps?: ReadonlyArray<{ name: string }> };
+				modules: Record<string, { readonly root?: string }>;
+			}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+			expect(manifest.config.webApps ?? []).toEqual([]);
+			expect(
+				Object.values(manifest.modules).map((module) => module.root),
+			).not.toContain("apps/admin");
+
+			const lockfile = await readJson<{
+				artifacts: Record<string, { readonly path: string }>;
+			}>(join(workspace.projectRoot, ".forge/lock.json"));
+
+			expect(
+				Object.values(lockfile.artifacts).filter((artifact) =>
+					artifact.path.startsWith("apps/admin/"),
+				),
+			).toEqual([]);
+		});
+	}, 120_000);
+
+	it("keeps an edited file when it removes its app", async () => {
+		await withScenarioWorkspace("remove-edited-web-app", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			});
+
+			const page = join(workspace.projectRoot, "apps/admin/app/page.tsx");
+			await appendFile(page, "// my edit\n");
+			const edited = await readFile(page, "utf-8");
+
+			const removed = await tryRunForge(
+				workspace.projectRoot,
+				["remove", "admin"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(removed.exitCode, removed.stdout + removed.stderr).toBe(0);
+			expect(removed.stdout + removed.stderr).toContain(
+				"We kept your edited file at apps/admin/app/page.tsx.",
+			);
+
+			expect(await readFile(page, "utf-8")).toBe(edited);
+			expect(
+				await pathExists(join(workspace.projectRoot, "apps/admin/forge.json")),
+			).toBe(false);
+
+			expect(
+				await pathExists(
+					join(workspace.projectRoot, "apps/admin/app/layout.tsx"),
+				),
+			).toBe(false);
+
+			const update = await tryRunForge(
+				workspace.projectRoot,
+				["update", "--no-install"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(update.exitCode, update.stdout + update.stderr).toBe(0);
+			expect(await readFile(page, "utf-8")).toBe(edited);
+			expect(
+				await pathExists(join(workspace.projectRoot, "apps/admin/forge.json")),
+			).toBe(false);
+		});
+	}, 120_000);
+
+	it("limits accept-forge to the removed app", async () => {
+		await withScenarioWorkspace("remove-scoped-force", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+				webApps: [
+					{ name: "docs", framework: "nextjs" },
+					{ name: "admin", framework: "nextjs" },
+				],
+			});
+
+			const adminPage = join(workspace.projectRoot, "apps/admin/app/page.tsx");
+			const webPage = join(workspace.projectRoot, "apps/web/app/page.tsx");
+			const webOriginal = await readFile(webPage, "utf-8");
+			await appendFile(adminPage, "// admin edit\n");
+			await appendFile(webPage, "// web edit\n");
+			const survivorsBefore = await treeHashes(
+				workspace.projectRoot,
+				"apps/admin",
+			);
+
+			const refused = await tryRunForge(
+				workspace.projectRoot,
+				["remove", "admin", "--accept-forge"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(refused.exitCode).toBe(1);
+			expect(refused.stdout + refused.stderr).toContain(
+				"apps/web/app/page.tsx was modified after Forge last managed it.",
+			);
+
+			expect(await treeHashes(workspace.projectRoot, "apps/admin")).toEqual(
+				survivorsBefore,
+			);
+
+			expect(await readFile(adminPage, "utf-8")).toContain("// admin edit");
+
+			await writeFile(webPage, webOriginal);
+			const survivorsClean = await treeHashes(
+				workspace.projectRoot,
+				"apps/admin",
+			);
+
+			await runForge(
+				workspace.projectRoot,
+				["remove", "admin", "--accept-forge"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(await pathExists(adminPage)).toBe(false);
+			expect(await treeHashes(workspace.projectRoot, "apps/admin")).toEqual(
+				survivorsClean,
+			);
+		});
+	}, 120_000);
+
+	it("keeps generated TanStack route trees through update and remove", async () => {
+		await withScenarioWorkspace("remove-route-tree", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "tanstack-router",
+				webApps: [{ name: "site", framework: "tanstack-router" }],
+			});
+
+			const generated = "// generated by tsr\n";
+			const webTree = join(
+				workspace.projectRoot,
+				"apps/web/src/routeTree.gen.ts",
+			);
+
+			const siteTree = join(
+				workspace.projectRoot,
+				"apps/site/src/routeTree.gen.ts",
+			);
+
+			await writeFile(webTree, generated);
+			await writeFile(siteTree, generated);
+
+			const update = await tryRunForge(
+				workspace.projectRoot,
+				["update", "--no-install"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(update.exitCode, update.stdout + update.stderr).toBe(0);
+			expect(await readFile(webTree, "utf-8")).toBe(generated);
+
+			const removed = await tryRunForge(
+				workspace.projectRoot,
+				["remove", "site"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(removed.exitCode, removed.stdout + removed.stderr).toBe(0);
+			expect(removed.stdout + removed.stderr).toContain(
+				"We kept your edited file at apps/site/src/routeTree.gen.ts.",
+			);
+
+			expect(await readFile(webTree, "utf-8")).toBe(generated);
+			expect(await readFile(siteTree, "utf-8")).toBe(generated);
+			expect(
+				await pathExists(join(workspace.projectRoot, "apps/site/forge.json")),
+			).toBe(false);
+		});
 	}, 120_000);
 
 	it("removes a secondary at its moved root", async () => {

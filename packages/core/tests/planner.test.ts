@@ -1,4 +1,4 @@
-import { readFile, rename, rm } from "node:fs/promises";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option, Result, Schema } from "effect";
@@ -23,6 +23,7 @@ import {
 	ensuredModuleTarget,
 	ensurePackageModule,
 	GeneratorError,
+	type InstalledPlanningSeed,
 	type InstallRecord,
 	leafTextFile,
 	type ModuleRecord,
@@ -54,6 +55,7 @@ import { readJson, withTempDir, writeJson, writeText } from "./harness";
 interface TestConfig extends Record<string, unknown> {
 	readonly audit?: boolean;
 	readonly auth?: boolean;
+	readonly backend?: "hono";
 	readonly collision?: boolean;
 	readonly database?: "postgres" | "sqlite";
 	readonly dual?: boolean;
@@ -115,6 +117,30 @@ function planInstalledEffect(
 			registries,
 		),
 	).pipe(Effect.provide(coreLayer));
+}
+
+function planInstalledWithSeedEffect(
+	directory: string,
+	config: TestConfig,
+	installs: ReadonlyArray<InstallRecord>,
+	registry: DefinitionRegistry<TestConfig>,
+	seed: Pick<InstalledPlanningSeed, "additions" | "removedRoots">,
+) {
+	return Effect.gen(function* () {
+		const planner = yield* Planner;
+		const modules = yield* ConfigStore.discover(directory);
+		const manifest = yield* State.readManifestOrDefault(directory);
+		return yield* planner.planInstalled(
+			directory,
+			config,
+			installs,
+			registry,
+			{},
+			undefined,
+			undefined,
+			{ modules, records: manifest.modules, ...seed },
+		);
+	}).pipe(Effect.provide(coreLayer));
 }
 
 function planInstalledWithDiscoveryEffect(
@@ -3259,11 +3285,12 @@ describe("planner", () => {
 			}));
 
 			const installed = await Effect.runPromise(
-				planInstalledEffect(
+				planInstalledWithSeedEffect(
 					directory,
 					{ web: "nextjs", dual: true, audit: true },
 					narrowedInstalls,
 					registry,
+					{ additions: [{ framework: "nextjs", root: "apps/site" }] },
 				),
 			);
 
@@ -3283,6 +3310,323 @@ describe("planner", () => {
 					(write) => write.path === "apps/web/integration.txt",
 				),
 			).toBe(true);
+		});
+	});
+
+	describe("deleted template modules", () => {
+		function lifecycleRegistry() {
+			const nextjs = defineFramework({
+				id: "nextjs",
+				configFile: "next.config.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Next.js",
+				sourceRoot: "",
+				slots: ["page"],
+				tsconfigPreset: { content: {}, name: "nextjs" },
+			});
+
+			const hono = defineFramework({
+				id: "hono",
+				configFile: "src/index.ts",
+				buildOutputs: [],
+				ignoreDirs: [],
+				name: "Hono",
+				sourceRoot: "src",
+				slots: ["entry"],
+				tsconfigPreset: { content: {}, name: "hono" },
+			});
+
+			const app = (key: string, role?: "primary") => [
+				ensureAppModule(key, `apps/${key}`, {
+					framework: "nextjs",
+					template: { id: "nextjs/base", version: 1 },
+					slots: {},
+					...(role === undefined ? {} : { role }),
+				}),
+				leafTextFile(ensuredModuleTarget(key), "app/page.tsx", `${key}\n`),
+				surfaceJson(ensuredModuleTarget(key), "packageJson", {
+					name: `@acme/${key}`,
+				}),
+			];
+
+			const web = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				framework: "nextjs",
+				name: "Base",
+				version: 1,
+				category: "web",
+				when: (config) => config.web === "nextjs",
+				contribute: ({ config }) => [
+					...app("web", config.dual || config.audit ? "primary" : undefined),
+					...(config.dual ? app("admin") : []),
+					...(config.audit ? app("site") : []),
+				],
+			});
+
+			const server = defineTemplate<TestConfig>({
+				id: "hono/base",
+				framework: "hono",
+				name: "Hono",
+				version: 1,
+				category: "backend",
+				when: (config) => config.backend === "hono",
+				contribute: () => [
+					ensureAppModule("server", "apps/server", {
+						framework: "hono",
+						template: { id: "hono/base", version: 1 },
+						slots: {},
+					}),
+					leafTextFile(
+						ensuredModuleTarget("server"),
+						"src/index.ts",
+						"export const server = true;\n",
+					),
+				],
+			});
+
+			return defineRegistry({
+				addons: [],
+				frameworks: [nextjs, hono],
+				templates: [web, server],
+			});
+		}
+
+		const plannedRoots = (plan: ProjectPlan) =>
+			Object.values(plan.manifest.modules)
+				.map((module) => module.root)
+				.sort();
+
+		const writesUnder = (plan: ProjectPlan, root: string) =>
+			plan.writes.filter((write) => write.path.startsWith(`${root}/`));
+
+		it("keeps a deleted backend absent without an addition", async () => {
+			await withTempDir("planner-deleted-backend", async (directory) => {
+				const registry = lifecycleRegistry();
+				const config: TestConfig = { web: "nextjs", backend: "hono" };
+				const created = await Effect.runPromise(
+					planCreateEffect(directory, config, registry),
+				);
+
+				await Effect.runPromise(applyPlanEffect(directory, created));
+				expect(plannedRoots(created)).toEqual(["apps/server", "apps/web"]);
+
+				await rm(join(directory, "apps/server"), {
+					force: true,
+					recursive: true,
+				});
+
+				const updated = await Effect.runPromise(
+					planInstalledEffect(directory, config, [], registry),
+				);
+
+				expect(plannedRoots(updated)).toEqual(["apps/web"]);
+				expect(writesUnder(updated, "apps/server")).toEqual([]);
+			});
+		});
+
+		it("keeps a deleted sibling absent while its template still runs", async () => {
+			await withTempDir("planner-deleted-sibling", async (directory) => {
+				const registry = lifecycleRegistry();
+				const created = await Effect.runPromise(
+					planCreateEffect(directory, { web: "nextjs", dual: true }, registry),
+				);
+
+				await Effect.runPromise(applyPlanEffect(directory, created));
+				await rm(join(directory, "apps/admin"), {
+					force: true,
+					recursive: true,
+				});
+
+				const updated = await Effect.runPromise(
+					planInstalledEffect(
+						directory,
+						{ web: "nextjs", dual: true },
+						[],
+						registry,
+					),
+				);
+
+				expect(plannedRoots(updated)).toEqual(["apps/web"]);
+				expect(writesUnder(updated, "apps/admin")).toEqual([]);
+				expect(
+					writesUnder(updated, "apps/web").map((write) => write.path),
+				).toContain("apps/web/app/page.tsx");
+			});
+		});
+
+		it("creates only the added root when a sibling is also missing", async () => {
+			await withTempDir("planner-addition-root", async (directory) => {
+				const registry = lifecycleRegistry();
+				const created = await Effect.runPromise(
+					planCreateEffect(directory, { web: "nextjs", dual: true }, registry),
+				);
+
+				await Effect.runPromise(applyPlanEffect(directory, created));
+				await rm(join(directory, "apps/admin"), {
+					force: true,
+					recursive: true,
+				});
+
+				const added = await Effect.runPromise(
+					planInstalledWithSeedEffect(
+						directory,
+						{ web: "nextjs", dual: true, audit: true },
+						[],
+						registry,
+						{ additions: [{ framework: "nextjs", root: "apps/site" }] },
+					),
+				);
+
+				expect(plannedRoots(added)).toEqual(["apps/site", "apps/web"]);
+				expect(writesUnder(added, "apps/admin")).toEqual([]);
+
+				const restored = await Effect.runPromise(
+					planInstalledWithSeedEffect(
+						directory,
+						{ web: "nextjs", dual: true },
+						[],
+						registry,
+						{ additions: [{ framework: "nextjs", root: "apps/admin" }] },
+					),
+				);
+
+				expect(plannedRoots(restored)).toEqual(["apps/admin", "apps/web"]);
+			});
+		});
+
+		it("keeps a moved and renamed sibling that adoption resolves", async () => {
+			await withTempDir("planner-moved-renamed", async (directory) => {
+				const registry = lifecycleRegistry();
+				const config: TestConfig = { web: "nextjs", dual: true };
+				const created = await Effect.runPromise(
+					planCreateEffect(directory, config, registry),
+				);
+
+				await Effect.runPromise(applyPlanEffect(directory, created));
+				await mkdir(join(directory, "sites"));
+				await rename(
+					join(directory, "apps/admin"),
+					join(directory, "sites/admin"),
+				);
+
+				await writeJson(join(directory, "sites/admin/package.json"), {
+					name: "legacy-console",
+				});
+
+				const moved = await Effect.runPromise(
+					planInstalledEffect(directory, config, [], registry),
+				);
+
+				expect(plannedRoots(moved)).toEqual(["apps/web", "sites/admin"]);
+				expect(
+					writesUnder(moved, "sites/admin").map((write) => write.path),
+				).toContain("sites/admin/app/page.tsx");
+
+				expect(
+					moved.removals.filter((path) => path.startsWith("sites/admin/")),
+				).toEqual([]);
+
+				await Effect.runPromise(applyPlanEffect(directory, moved));
+
+				const settled = await Effect.runPromise(
+					planInstalledEffect(directory, config, [], registry),
+				);
+
+				expect(plannedRoots(settled)).toEqual(["apps/web", "sites/admin"]);
+				expect(settled.removals).toEqual([]);
+			});
+		});
+
+		it("selects a new framework only through an addition", async () => {
+			await withTempDir("planner-addition-framework", async (directory) => {
+				const registry = lifecycleRegistry();
+				const created = await Effect.runPromise(
+					planCreateEffect(directory, { web: "nextjs" }, registry),
+				);
+
+				await Effect.runPromise(applyPlanEffect(directory, created));
+
+				const updated = await Effect.runPromise(
+					planInstalledEffect(
+						directory,
+						{ web: "nextjs", backend: "hono" },
+						[],
+						registry,
+					),
+				);
+
+				expect(plannedRoots(updated)).toEqual(["apps/web"]);
+
+				const added = await Effect.runPromise(
+					planInstalledWithSeedEffect(
+						directory,
+						{ web: "nextjs", backend: "hono" },
+						[],
+						registry,
+						{ additions: [{ framework: "hono", root: "apps/server" }] },
+					),
+				);
+
+				expect(plannedRoots(added)).toEqual(["apps/server", "apps/web"]);
+			});
+		});
+
+		it("threads removed roots and preserved leaf files into the plan", async () => {
+			await withTempDir("planner-removed-roots", async (directory) => {
+				const template = defineTemplate<TestConfig>({
+					id: "nextjs/base",
+					framework: "nextjs",
+					name: "Base",
+					version: 1,
+					category: "web",
+					when: () => true,
+					contribute: () => [
+						ensureAppModule("web", "apps/web", {
+							framework: "nextjs",
+							template: { id: "nextjs/base", version: 1 },
+							slots: {},
+						}),
+						leafTextFile(
+							ensuredModuleTarget("web"),
+							"src/routeTree.gen.ts",
+							"stub\n",
+							{ preserveExisting: true },
+						),
+						leafTextFile(ensuredModuleTarget("web"), "src/router.tsx", "r\n"),
+					],
+				});
+
+				const registry = defineRegistry({
+					addons: [],
+					frameworks: lifecycleRegistry().frameworks,
+					templates: [template],
+				});
+
+				const created = await Effect.runPromise(
+					planCreateEffect(directory, { web: "nextjs" }, registry),
+				);
+
+				expect(
+					created.writes
+						.filter((write) => write.preserveExisting === true)
+						.map((write) => write.path),
+				).toEqual(["apps/web/src/routeTree.gen.ts"]);
+
+				await Effect.runPromise(applyPlanEffect(directory, created));
+
+				const removed = await Effect.runPromise(
+					planInstalledWithSeedEffect(
+						directory,
+						{ web: "nextjs" },
+						[],
+						registry,
+						{ removedRoots: ["apps/admin"] },
+					),
+				);
+
+				expect(removed.removedRoots).toEqual(["apps/admin"]);
+			});
 		});
 	});
 
