@@ -88,6 +88,19 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				webApps: [{ name: "admin", framework: "nextjs" }],
 			},
 		},
+		{
+			name: "self-host-client",
+			config: {
+				addons: ["commitlint", "github-ci", "lefthook", "vscode"],
+				authentication: "better-auth",
+				backend: "self",
+				database: "sqlite",
+				orm: "drizzle",
+				rpc: "orpc",
+				web: "tanstack-start",
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+			},
+		},
 	])(
 		"passes its own Oxc check on a fresh $name project",
 		async ({ name, config }) => {
