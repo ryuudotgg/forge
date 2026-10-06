@@ -812,6 +812,100 @@ export async function expectClientIpRateLimit(
 		);
 }
 
+async function expectStartRefusal(projectRoot: string, variable: string) {
+	await withPortLock(async () => {
+		const server = spawn("pnpm", ["run", "start"], {
+			cwd: join(projectRoot, "apps/server"),
+			detached: true,
+			env: { ...process.env, ...scriptEnvironment({ WEB_URL: undefined }) },
+		});
+
+		let output = "";
+		const capture = (chunk: Buffer) => {
+			output += chunk.toString();
+		};
+
+		server.stdout.on("data", capture);
+		server.stderr.on("data", capture);
+		const exitCode = await new Promise<number | null | "running">(
+			(resolveExit) => {
+				const timer = setTimeout(() => resolveExit("running"), 30_000);
+				server.once("exit", (code) => {
+					clearTimeout(timer);
+					resolveExit(code);
+				});
+			},
+		);
+
+		if (exitCode === "running" && server.pid !== undefined)
+			await stopDetached(server.pid);
+
+		expect(exitCode, output).not.toBe("running");
+		expect(exitCode, output).not.toBe(0);
+		expect(output).toContain(variable);
+	});
+}
+
+async function preflightAllowOrigin(serverOrigin: string, origin: string) {
+	const preflight = await fetch(`${serverOrigin}/api/trpc/health`, {
+		method: "OPTIONS",
+		headers: {
+			Origin: origin,
+			"Access-Control-Request-Headers": "x-trpc-source",
+			"Access-Control-Request-Method": "GET",
+		},
+	});
+
+	return {
+		credentials: preflight.headers.get("access-control-allow-credentials"),
+		origin: preflight.headers.get("access-control-allow-origin"),
+	};
+}
+
+export async function expectProductionOriginsRequired(projectRoot: string) {
+	const serverOrigin = "http://localhost:3001";
+	const deployedOrigin = "https://app.example.com";
+	const devOrigin = "http://localhost:3000";
+	const envPath = join(projectRoot, ".env");
+	const generatedEnv = await readFile(envPath, "utf-8");
+
+	expect(generatedEnv).toMatch(/^WEB_URL=/m);
+	await writeFile(envPath, generatedEnv.replace(/^WEB_URL=.*\n/m, ""));
+
+	await expectStartRefusal(projectRoot, "WEB_URL");
+
+	await withGeneratedServer(
+		projectRoot,
+		{ WEB_URL: deployedOrigin },
+		serverOrigin,
+		async () => {
+			expect(await preflightAllowOrigin(serverOrigin, deployedOrigin)).toEqual({
+				credentials: "true",
+				origin: deployedOrigin,
+			});
+
+			expect(
+				(await preflightAllowOrigin(serverOrigin, devOrigin)).origin,
+			).toBeNull();
+		},
+		"server",
+		"start",
+	);
+
+	await withGeneratedServer(
+		projectRoot,
+		{ CI: "true", PORT: "3001", WEB_URL: undefined },
+		serverOrigin,
+		async () => {
+			expect(
+				(await preflightAllowOrigin(serverOrigin, devOrigin)).origin,
+			).toBeNull();
+		},
+		"server",
+		"start",
+	);
+}
+
 export async function expectEmailPreview(projectRoot: string) {
 	return withPortLock(async () => {
 		const port = 3883;

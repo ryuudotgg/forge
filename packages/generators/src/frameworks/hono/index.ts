@@ -130,7 +130,6 @@ function buildContributions(config: ForgeConfig) {
 
 	const vars = {
 		SLUG: slug,
-		WEB_ORIGIN: webOrigin,
 		"// __TRPC_IMPORT__\n":
 			rpcRoutes !== undefined
 				? `import { ${rpcRoutes.name} } from "${rpcRoutes.module}";\n`

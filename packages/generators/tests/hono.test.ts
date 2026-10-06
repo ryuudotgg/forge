@@ -264,9 +264,9 @@ describe("Hono backend", () => {
 			const expected = `WEB_URL="${origin}"`;
 			expect(writeContent(plan, ".env")).toContain(expected);
 			expect(writeContent(plan, ".env.example")).toContain(expected);
-			expect(writeContent(plan, "apps/server/env.ts")).toContain(
-				`WEB_URL: z.url().default("${origin}")`,
-			);
+			const serverEnv = writeContent(plan, "apps/server/env.ts");
+			expect(serverEnv).toContain("    WEB_URL: z.url(),\n");
+			expect(serverEnv).not.toContain(origin);
 
 			expect(writeContent(plan, "apps/server/env.ts")).not.toMatch(
 				markerPattern,

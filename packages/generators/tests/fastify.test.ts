@@ -104,7 +104,8 @@ describe("Fastify backend", () => {
 
 			const app = writeContent(plan, "apps/server/src/app.ts");
 			expect(app).toContain('import cors from "@fastify/cors"');
-			expect(app).toContain("origin: env.WEB_URL");
+			expect(app).toContain('import { webOrigins } from "../env.js";');
+			expect(app).toContain("origin: webOrigins,");
 			expect(app).toContain('"x-trpc-source"');
 			expect(app).not.toMatch(markerPattern);
 			expect(app.includes("registerTrpcRoutes(app);")).toBe(

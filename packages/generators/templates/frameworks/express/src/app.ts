@@ -1,7 +1,7 @@
 import cors from "cors";
 import type { Express } from "express";
 import express from "express";
-import { env } from "../env.js";
+import { webOrigins } from "../env.js";
 // __AUTH_IMPORT__
 // __TRPC_IMPORT__
 
@@ -14,7 +14,7 @@ app.use(
     exposedHeaders: ["Content-Length"],
     maxAge: 600,
     methods: ["GET", "POST", "OPTIONS"],
-    origin: env.WEB_URL,
+    origin: webOrigins,
   }),
 );
 

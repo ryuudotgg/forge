@@ -24,7 +24,6 @@ import { honoFramework } from "../../frameworks/hono";
 import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
-import { serverCorsMarkers } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
@@ -140,8 +139,6 @@ export const betterAuthHonoRecipe = defineTemplateRecipe({
 	addon: "better-auth",
 	markers: {
 		...betterAuthServerMarkers,
-		SERVER_ENV_BINDING: marker.required,
-		WEB_ORIGINS: marker.required,
 	},
 	assets: [
 		sharedAsset("index-drizzle", {
@@ -165,7 +162,6 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 	requiredSlots: ["auth"],
 	markers: ({ config }: AdapterContext<ForgeConfig>) => ({
 		...betterAuthRecipeVars(config, honoFramework),
-		...serverCorsMarkers(config),
 	}),
 	include: (asset, { config }) =>
 		asset._tag === "SlotAssetDefinition" ||

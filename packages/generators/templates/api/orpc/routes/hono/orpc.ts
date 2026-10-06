@@ -4,14 +4,14 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { SimpleCsrfProtectionHandlerPlugin } from "@orpc/server/plugins";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { __SERVER_ENV_BINDING__ } from "../../env.js";
+import { webOrigins } from "../../env.js";
 
 export const orpcRoutes = new Hono();
 
 orpcRoutes.use(
   "/api/orpc/*",
   cors({
-    origin: __WEB_ORIGINS__,
+    origin: webOrigins,
     allowHeaders: ["Content-Type", "x-csrf-token"],
     allowMethods: ["GET", "POST", "OPTIONS"],
     exposeHeaders: ["Content-Length"],

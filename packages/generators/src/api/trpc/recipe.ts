@@ -23,7 +23,6 @@ import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
-import { serverCorsMarkers } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate, renderHeadersFromRequest } from "../../template";
 import { webAppInstances } from "../../web-apps";
@@ -119,8 +118,6 @@ export const trpcHonoRecipe = defineTemplateRecipe({
 		SLUG: marker.required,
 		AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
 		AUTH_ARG: marker.toggleInline("/* __AUTH_ARG__ */ "),
-		SERVER_ENV_BINDING: marker.required,
-		WEB_ORIGINS: marker.required,
 	},
 	assets: [
 		slotAsset("trpc", {
@@ -140,7 +137,6 @@ export const trpcHonoAdapters = deriveRecipeAdapters({
 			SLUG: values.SLUG,
 			AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],
 			AUTH_ARG: values["/* __AUTH_ARG__ */ "],
-			...serverCorsMarkers(config),
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
