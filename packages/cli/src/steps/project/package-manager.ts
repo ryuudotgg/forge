@@ -1,7 +1,9 @@
+import { tmpdir } from "node:os";
 import { isCancel, log, select } from "@clack/prompts";
 import {
 	buildPackageManagerCheck,
 	checkPackageManager,
+	checkPackageManagerInstalled,
 	packageManagers,
 } from "@ryuugg/core";
 import { Result, Schema } from "effect";
@@ -35,13 +37,20 @@ async function requirePackageManager(
 	packageManager: typeof packageManagerSchema.Type,
 	pin: PinnedPackageManager | undefined,
 ) {
-	const check =
+	const checks =
 		pin?.packageManager === packageManager
-			? buildPackageManagerCheck(packageManager, pin.version)
-			: await runCliEffectValue(checkPackageManager(packageManager));
+			? [
+					buildPackageManagerCheck(packageManager, pin.version),
+					// Probing inside a pinned pnpm project makes pnpm write pnpm-lock.yaml.
+					await runCliEffectValue(
+						checkPackageManagerInstalled(packageManager, tmpdir()),
+					),
+				]
+			: [await runCliEffectValue(checkPackageManager(packageManager))];
 
-	if (!check.ok) {
-		log.error(check.message);
+	const failed = checks.find((check) => !check.ok);
+	if (failed !== undefined) {
+		log.error(failed.message);
 		process.exit(1);
 	}
 }

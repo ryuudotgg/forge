@@ -144,6 +144,7 @@ export type {
 export {
 	buildPackageManagerCheck,
 	checkPackageManager,
+	checkPackageManagerInstalled,
 	checkRuntime,
 	dependencyFormatFor,
 	Environment,

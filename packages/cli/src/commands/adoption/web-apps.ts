@@ -20,16 +20,19 @@ import type { CommandPins, ConfirmedModule } from "./mapping";
 export type ScriptPort =
 	| { readonly kind: "absent" }
 	| { readonly kind: "literal"; readonly port: number }
-	| { readonly kind: "conflict"; readonly ports: ReadonlyArray<number> };
-
-export type RpcClientEvidence = "none" | "client" | "conflict";
+	| {
+			readonly kind: "ambiguous";
+			readonly script: string;
+			readonly ports: ReadonlyArray<number>;
+	  }
+	| { readonly kind: "conflict"; readonly dev: number; readonly start: number };
 
 export interface WebAppObservation {
 	readonly root: string;
 	readonly packageName?: string;
 	readonly frameworks: ReadonlyArray<WebFramework>;
 	readonly scriptPort: ScriptPort;
-	readonly client: RpcClientEvidence;
+	readonly rpcPackages: ReadonlyArray<string>;
 }
 
 export interface AdoptedWebApp extends WebAppConfig {
@@ -84,23 +87,37 @@ const portPatterns = [
 export function scriptPort(
 	scripts: Readonly<Record<string, string>> | undefined,
 ): ScriptPort {
-	const ports = [
-		...new Set(
-			["dev", "start"].flatMap((name) =>
+	const [dev, start] = ["dev", "start"].map((script) => ({
+		script,
+		ports: [
+			...new Set(
 				portPatterns.flatMap((pattern) =>
-					[...(scripts?.[name] ?? "").matchAll(pattern)].map((match) =>
+					[...(scripts?.[script] ?? "").matchAll(pattern)].map((match) =>
 						Number(match[1]),
 					),
 				),
 			),
-		),
-	];
+		],
+	}));
 
-	const [port, ...others] = ports;
-	if (port === undefined) return { kind: "absent" };
-	if (others.length === 0) return { kind: "literal", port };
+	const ambiguous = [dev, start].find(
+		(entry) => entry !== undefined && entry.ports.length > 1,
+	);
 
-	return { kind: "conflict", ports };
+	if (ambiguous !== undefined)
+		return {
+			kind: "ambiguous",
+			script: ambiguous.script,
+			ports: ambiguous.ports,
+		};
+
+	const devPort = dev?.ports[0];
+	const startPort = start?.ports[0];
+	if (devPort !== undefined && startPort !== undefined && devPort !== startPort)
+		return { kind: "conflict", dev: devPort, start: startPort };
+
+	const port = devPort ?? startPort;
+	return port === undefined ? { kind: "absent" } : { kind: "literal", port };
 }
 
 export function webRoots(
@@ -177,9 +194,18 @@ function appPort(
 	if (observed.kind === "conflict")
 		return Effect.fail(
 			refuse(
-				`We couldn't adopt ${root} because its dev and start scripts use different ports, ${listAnd.format(observed.ports.map(String))}. Use one port in both and run forge init again.`,
+				`We couldn't adopt ${root} because its dev script uses port ${observed.dev} but its start script uses port ${observed.start}. Use one port in both and run forge init again.`,
 			),
 		);
+
+	if (observed.kind === "ambiguous")
+		return requested !== undefined && observed.ports.includes(requested)
+			? Effect.succeed(requested)
+			: Effect.fail(
+					refuse(
+						`We couldn't adopt ${root} because its ${observed.script} script names several ports, ${listAnd.format(observed.ports.map(String))}, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.`,
+					),
+				);
 
 	if (
 		observed.kind === "literal" &&
@@ -217,18 +243,20 @@ const resolveSecondary = Effect.fn("resolveSecondary")(function* (
 			`We couldn't adopt ${observation.root} as ${label(requested.framework)} because its dependencies say ${label(framework)}. Fix webApps in your init config and run forge init again.`,
 		);
 
-	if (observation.client === "conflict")
-		return yield* refuse(
-			`We couldn't adopt ${observation.root} because we found both a tRPC and an oRPC package, and Forge manages one RPC provider.`,
-		);
-
 	const port = yield* appPort(
 		observation.root,
 		observation.scriptPort,
 		requested?.port,
 	);
 
-	const client = observation.client === "client" || requested?.client === true;
+	const adoptedRpcRoots = input.confirmed
+		.filter((module) => module.kind === "trpc" || module.kind === "orpc")
+		.map((module) => module.root);
+
+	const client =
+		observation.rpcPackages.some((root) => adoptedRpcRoots.includes(root)) ||
+		requested?.client === true;
+
 	return {
 		root: observation.root,
 		...(observation.packageName === undefined
@@ -297,12 +325,16 @@ function unmatchedEntriesRefusal(
 export const resolveWebAppAdoption = Effect.fn("resolveWebAppAdoption")(
 	function* (input: WebAppAdoptionInput) {
 		const roots = new Set(webRoots(input.confirmed));
-		if (roots.size === 0)
+		if (roots.size === 0) {
+			const unmatched = unmatchedEntriesRefusal([], input.requested);
+			if (unmatched !== undefined) return yield* unmatched;
+
 			return {
 				webApps: [],
 				secondaries: [],
 				prototypeRoots: new Map(),
 			} satisfies ResolvedWebApps;
+		}
 
 		const primaryRoot = input.primaryRoot;
 		if (primaryRoot === undefined || !roots.has(primaryRoot))
@@ -353,13 +385,24 @@ export const resolveWebAppAdoption = Effect.fn("resolveWebAppAdoption")(
 
 		const webApps = ordered.map((secondary) => secondary.app);
 		const decoded = Schema.decodeUnknownResult(webAppsSchema)(webApps);
+		const primaryScriptPort = input.observations.find(
+			(observation) => observation.root === primaryRoot,
+		)?.scriptPort;
+
+		const sharingPrimaryPort =
+			primaryScriptPort?.kind === "literal"
+				? webApps.find((app) => app.port === primaryScriptPort.port)
+				: undefined;
+
 		const refusal =
 			unmatchedEntriesRefusal(ordered, input.requested) ??
 			canonicalRootRefusal(ordered, input.confirmed) ??
 			portRefusal(
 				Result.isFailure(decoded)
 					? formatSchemaError(decoded.failure, webApps)[0]?.message
-					: undefined,
+					: sharingPrimaryPort === undefined
+						? undefined
+						: `web and ${sharingPrimaryPort.name} both use port ${sharingPrimaryPort.port}.`,
 			);
 
 		if (refusal !== undefined) return yield* refusal;

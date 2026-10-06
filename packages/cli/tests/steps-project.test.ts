@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { Effect, Result, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import catalogsStep from "../src/steps/project/catalogs";
@@ -19,6 +20,7 @@ const promptMocks = vi.hoisted(() => ({
 
 const coreMocks = vi.hoisted(() => ({
 	checkPackageManager: vi.fn(),
+	checkPackageManagerInstalled: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -34,6 +36,7 @@ vi.mock("@ryuugg/core", async (importOriginal) => {
 	return {
 		...original,
 		checkPackageManager: coreMocks.checkPackageManager,
+		checkPackageManagerInstalled: coreMocks.checkPackageManagerInstalled,
 	};
 });
 
@@ -52,6 +55,11 @@ describe("project steps", () => {
 	beforeEach(() => {
 		coreMocks.checkPackageManager.mockReset();
 		coreMocks.checkPackageManager.mockReturnValue(
+			Effect.succeed({ ok: true, message: "ok" }),
+		);
+
+		coreMocks.checkPackageManagerInstalled.mockReset();
+		coreMocks.checkPackageManagerInstalled.mockReturnValue(
 			Effect.succeed({ ok: true, message: "ok" }),
 		);
 
@@ -142,6 +150,47 @@ describe("project steps", () => {
 				expect(promptMocks.logError).not.toHaveBeenCalled();
 			},
 		);
+
+		it("checks a pinned package manager runs from outside the project", async () => {
+			const step = createPackageManagerStep({
+				packageManager: "Yarn",
+				version: "4.5.0",
+			});
+
+			await step.validate?.("Yarn", {});
+			expect(coreMocks.checkPackageManagerInstalled).toHaveBeenCalledWith(
+				"Yarn",
+				tmpdir(),
+			);
+		});
+
+		it("refuses a pinned package manager that isn't installed", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			coreMocks.checkPackageManagerInstalled.mockReturnValue(
+				Effect.succeed({
+					ok: false,
+					message:
+						"You don't have Yarn installed, please install it and try again.",
+				}),
+			);
+
+			try {
+				const step = createPackageManagerStep({
+					packageManager: "Yarn",
+					version: "4.5.0",
+				});
+
+				await expect(step.execute({}, false)).rejects.toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"You don't have Yarn installed, please install it and try again.",
+				);
+			} finally {
+				exit.mockRestore();
+			}
+		});
 
 		it("refuses a project pinned below the supported pnpm", async () => {
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {

@@ -214,6 +214,21 @@ const makeEnvironment = Effect.succeed({
 	},
 	readPackageManagerVersion: (pm: PackageManager) =>
 		CommandProbe.readVersion(packageManagerCommand(pm)),
+	checkPackageManagerInstalled: (pm: PackageManager, cwd: string) => {
+		const displayName = packageManagers[pmCommandMap[pm]].displayName;
+		return CommandProbe.readVersion(packageManagerCommand(pm), { cwd }).pipe(
+			Effect.as<EnvironmentCheck>({
+				ok: true,
+				message: `${displayName} is installed.`,
+			}),
+			Effect.catchTag("CommandProbeError", () =>
+				Effect.succeed<EnvironmentCheck>({
+					ok: false,
+					message: `You don't have ${displayName} installed, please install it and try again.`,
+				}),
+			),
+		);
+	},
 });
 
 type EnvironmentService = Effect.Success<typeof makeEnvironment>;
@@ -243,4 +258,10 @@ export function checkRuntime(): EnvironmentCheck {
 
 export function checkPackageManager(pm: PackageManager) {
 	return Environment.checkPackageManager(pm);
+}
+
+export function checkPackageManagerInstalled(pm: PackageManager, cwd: string) {
+	return Environment.use((service) =>
+		service.checkPackageManagerInstalled(pm, cwd),
+	);
 }

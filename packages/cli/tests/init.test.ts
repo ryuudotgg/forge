@@ -1240,6 +1240,44 @@ describe("init command", () => {
 		});
 	});
 
+	it("adopts a client of the confirmed provider when the other is declined", async () => {
+		await withTempDir("init-declined-provider", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "apps/site/package.json"), {
+				dependencies: { "@acme/trpc": "workspace:*", next: "^16.0.0" },
+				name: "@acme/site",
+				scripts: { dev: "next dev --port 3002" },
+			});
+
+			for (const provider of ["trpc", "orpc"])
+				await writeJson(join(directory, `packages/${provider}/package.json`), {
+					dependencies: { [`@${provider}/server`]: "^1.0.0" },
+					name: `@acme/${provider}`,
+				});
+
+			const configPath = join(directory, "forge.init.json");
+			await writeJson(configPath, {
+				...config,
+				rpc: "trpc",
+				modules: [
+					{ kind: "web-app", root: "apps/web" },
+					{ kind: "web-app", root: "apps/site" },
+					{ kind: "db", root: "packages/db" },
+					{ kind: "trpc", root: "packages/trpc" },
+				],
+			});
+
+			await runInit({ config: configPath }, directory);
+			const manifest = JSON.parse(
+				await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
+			);
+
+			expect(manifest.config.webApps).toEqual([
+				{ name: "site", framework: "nextjs", client: true, port: 3002 },
+			]);
+		});
+	}, 30_000);
+
 	it("refuses unbindable apps under yes before announcing them", async () => {
 		await withTempDir("init-early-refusal", async (directory) => {
 			await writeJson(join(directory, "package.json"), { name: "acme" });

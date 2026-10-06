@@ -426,13 +426,13 @@ describe("AdoptionDetector", () => {
 
 				expect(result.webApps).toEqual([
 					{
-						client: "none",
+						rpcPackages: [],
 						frameworks: ["nextjs"],
 						root: "apps/admin",
 						scriptPort: { kind: "absent" },
 					},
 					{
-						client: "none",
+						rpcPackages: [],
 						frameworks: ["nextjs"],
 						root: "apps/web",
 						scriptPort: { kind: "absent" },
@@ -1143,14 +1143,14 @@ describe("AdoptionDetector", () => {
 					expect(result.config.backend).toBe("self");
 					expect(result.webApps).toEqual([
 						{
-							client: "none",
+							rpcPackages: [],
 							frameworks: [dependency === "next" ? "nextjs" : "react-router"],
 							packageName: "@acme/admin",
 							root: "apps/admin",
 							scriptPort: { kind: "literal", port: 3003 },
 						},
 						{
-							client: "none",
+							rpcPackages: [],
 							frameworks: ["nextjs"],
 							root: "apps/web",
 							scriptPort: { kind: "absent" },
@@ -1246,13 +1246,15 @@ describe("AdoptionDetector", () => {
 				).toMatchObject({ proposal: provider });
 
 				expect(
-					result.webApps.find((app) => app.root === "apps/site")?.client,
-				).toBe(fixture.expected);
+					result.webApps.find((app) => app.root === "apps/site")?.rpcPackages,
+				).toEqual(
+					fixture.expected === "client" ? [`packages/${provider}`] : [],
+				);
 			},
 		);
 	});
 
-	it("marks a client ambiguous when both RPC packages exist", async () => {
+	it("records the RPC package an app depends on when both providers exist", async () => {
 		await withFixture(
 			"rpc-client-both",
 			{
@@ -1274,8 +1276,8 @@ describe("AdoptionDetector", () => {
 				const result = await detect(root);
 				expect(result.config).not.toHaveProperty("rpc");
 				expect(
-					result.webApps.find((app) => app.root === "apps/site")?.client,
-				).toBe("conflict");
+					result.webApps.find((app) => app.root === "apps/site")?.rpcPackages,
+				).toEqual(["packages/trpc"]);
 			},
 		);
 	});

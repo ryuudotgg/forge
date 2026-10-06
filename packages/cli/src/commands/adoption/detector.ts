@@ -42,11 +42,7 @@ import {
 	webFrameworkCandidates,
 	webFrameworkFromPackage,
 } from "./mapping";
-import {
-	type RpcClientEvidence,
-	scriptPort,
-	type WebAppObservation,
-} from "./web-apps";
+import { scriptPort, type WebAppObservation } from "./web-apps";
 import {
 	AdoptionFileParseError,
 	AdoptionFileReadError,
@@ -537,26 +533,15 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			),
 		);
 
-		const rpcPackages = new Map(
-			modules.flatMap(
-				(module): ReadonlyArray<readonly [string, ModuleKind]> => {
-					const name = packageJsonByRoot.get(module.root)?.name;
-					return (module.proposal === "trpc" || module.proposal === "orpc") &&
-						name !== undefined
-						? [[name, module.proposal]]
-						: [];
-				},
-			),
+		const rpcPackageRoots = new Map(
+			modules.flatMap((module): ReadonlyArray<readonly [string, string]> => {
+				const name = packageJsonByRoot.get(module.root)?.name;
+				return (module.proposal === "trpc" || module.proposal === "orpc") &&
+					name !== undefined
+					? [[name, module.root]]
+					: [];
+			}),
 		);
-
-		const rpcClient = (packageJson: PackageJson): RpcClientEvidence => {
-			if (
-				![...dependencyNames(packageJson)].some((name) => rpcPackages.has(name))
-			)
-				return "none";
-
-			return new Set(rpcPackages.values()).size > 1 ? "conflict" : "client";
-		};
 
 		const webApps = roots.flatMap((root): ReadonlyArray<WebAppObservation> => {
 			const packageJson = packageJsonByRoot.get(root) ?? {};
@@ -575,7 +560,10 @@ const makeAdoptionDetector = Effect.gen(function* () {
 						: { packageName: packageJson.name }),
 					frameworks,
 					scriptPort: scriptPort(packageJson.scripts),
-					client: rpcClient(packageJson),
+					rpcPackages: [...dependencyNames(packageJson)].flatMap((name) => {
+						const rpcRoot = rpcPackageRoots.get(name);
+						return rpcRoot === undefined ? [] : [rpcRoot];
+					}),
 				},
 			];
 		});

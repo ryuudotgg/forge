@@ -4,6 +4,7 @@ import {
 	CommandProbe,
 	CommandProbeError,
 	checkPackageManager,
+	checkPackageManagerInstalled,
 	checkRuntime,
 	defaultDependencyFormat,
 	dependencyFormatFor,
@@ -175,6 +176,43 @@ describe("environment", () => {
 		expect(result).toEqual({
 			ok: true,
 			message: "pnpm v10.4.0",
+		});
+	});
+
+	it("checks that a pinned package manager runs from the directory it is given", async () => {
+		const probes: Array<{ readonly command: string; readonly cwd?: string }> =
+			[];
+
+		const recordingLayer = Layer.succeed(
+			CommandProbe,
+			CommandProbe.of({
+				readVersion: (command, options) =>
+					Effect.sync(() => {
+						probes.push({ command, ...options });
+						return "1.22.22";
+					}),
+			}),
+		);
+
+		const installed = await Effect.runPromise(
+			checkPackageManagerInstalled("Yarn", "/outside").pipe(
+				Effect.provide(Layer.mergeAll(recordingLayer, Environment.Default)),
+			),
+		);
+
+		expect(installed).toEqual({ ok: true, message: "Yarn is installed." });
+		expect(probes).toEqual([{ command: "yarn", cwd: "/outside" }]);
+
+		const missing = await Effect.runPromise(
+			checkPackageManagerInstalled("Yarn", "/outside").pipe(
+				Effect.provide(Layer.mergeAll(failingProbeLayer, Environment.Default)),
+			),
+		);
+
+		expect(missing).toEqual({
+			ok: false,
+			message:
+				"You don't have Yarn installed, please install it and try again.",
 		});
 	});
 

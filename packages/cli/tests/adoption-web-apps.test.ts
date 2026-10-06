@@ -22,8 +22,11 @@ function observed(
 	return {
 		root,
 		frameworks: ["nextjs"],
-		scriptPort: { kind: "literal", port: 3002 },
-		client: "none",
+		scriptPort:
+			root === "apps/web"
+				? { kind: "absent" }
+				: { kind: "literal", port: 3002 },
+		rpcPackages: [],
 		...overrides,
 	};
 }
@@ -256,15 +259,103 @@ describe("web app adoption", () => {
 				start: "next start --port 3003",
 			});
 
-			expect(conflict).toEqual({ kind: "conflict", ports: [3002, 3003] });
+			expect(conflict).toEqual({ kind: "conflict", dev: 3002, start: 3003 });
 			expect(
 				await refusal([
 					observed("apps/web"),
 					observed("apps/site", { scriptPort: conflict }),
 				]),
 			).toBe(
-				"We couldn't adopt apps/site because its dev and start scripts use different ports, 3002 and 3003. Use one port in both and run forge init again.",
+				"We couldn't adopt apps/site because its dev script uses port 3002 but its start script uses port 3003. Use one port in both and run forge init again.",
 			);
+		});
+
+		it("reads one script that names several ports as ambiguous", () => {
+			expect(
+				scriptPort({
+					dev: "next dev --port 3002 && node proxy.js --port 9000",
+					start: "next start --port 3002",
+				}),
+			).toEqual({ kind: "ambiguous", script: "dev", ports: [3002, 9000] });
+		});
+
+		it("refuses an ambiguous script and points at the init config", async () => {
+			expect(
+				await refusal([
+					observed("apps/web"),
+					observed("apps/site", {
+						scriptPort: {
+							kind: "ambiguous",
+							script: "dev",
+							ports: [3002, 9000],
+						},
+					}),
+				]),
+			).toBe(
+				"We couldn't adopt apps/site because its dev script names several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.",
+			);
+		});
+
+		it.each([
+			[3002, undefined],
+			[
+				4000,
+				"We couldn't adopt apps/site because its dev script names several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.",
+			],
+		])(
+			"settles an ambiguous script with the init config port %i",
+			async (port, message) => {
+				const effect = resolve(
+					[
+						observed("apps/web"),
+						observed("apps/site", {
+							scriptPort: {
+								kind: "ambiguous",
+								script: "dev",
+								ports: [3002, 9000],
+							},
+						}),
+					],
+					{
+						requested: {
+							webApps: [{ name: "site", framework: "nextjs", port }],
+						},
+					},
+				);
+
+				if (message === undefined)
+					expect((await Effect.runPromise(effect)).webApps).toEqual([
+						{ name: "site", framework: "nextjs", port: 3002 },
+					]);
+				else
+					expect((await Effect.runPromise(Effect.flip(effect))).message).toBe(
+						message,
+					);
+			},
+		);
+
+		it("refuses a secondary on the primary's own script port", async () => {
+			expect(
+				await refusal([
+					observed("apps/site", {
+						scriptPort: { kind: "literal", port: 4000 },
+					}),
+					observed("apps/web", { scriptPort: { kind: "literal", port: 4000 } }),
+				]),
+			).toBe(
+				"We couldn't adopt these web apps: web and site both use port 4000. Give each app its own port in its dev script and run forge init again.",
+			);
+		});
+
+		it("adopts a primary whose script port differs from the default", async () => {
+			const result = await resolved([
+				observed("apps/site"),
+				observed("apps/web", { scriptPort: { kind: "literal", port: 4000 } }),
+			]);
+
+			expect(result.webApps).toEqual([
+				{ name: "site", framework: "nextjs", port: 3002 },
+			]);
 		});
 
 		it("refuses an app with no port evidence and names the fix", async () => {
@@ -518,6 +609,19 @@ describe("web app adoption", () => {
 			);
 		});
 
+		it("refuses entries when no web app is adopted at all", async () => {
+			expect(
+				await refusal([], {
+					confirmed: [{ kind: "db", root: "packages/db" }],
+					requested: {
+						webApps: [{ name: "admin", framework: "nextjs" }],
+					},
+				}),
+			).toBe(
+				"Your init config lists admin under webApps, but no web app being adopted has that name. Forge isn't adopting any secondary web app here. Fix webApps in your init config and run forge init again.",
+			);
+		});
+
 		it("refuses entries when no secondary is adopted", async () => {
 			expect(
 				await refusal([observed("apps/web")], {
@@ -553,15 +657,40 @@ describe("web app adoption", () => {
 	});
 
 	describe("clients", () => {
-		it("records client when the app depends on the project's RPC package", async () => {
-			const result = await resolved([
-				observed("apps/web"),
-				observed("apps/site", { client: "client" }),
-			]);
+		it("records client when the app depends on a confirmed RPC package", async () => {
+			const result = await resolved(
+				[
+					observed("apps/web"),
+					observed("apps/site", { rpcPackages: ["packages/trpc"] }),
+				],
+				{
+					confirmed: [
+						...web("apps/web", "apps/site"),
+						{ kind: "trpc", root: "packages/trpc" },
+					],
+				},
+			);
 
 			expect(result.webApps).toEqual([
 				{ name: "site", framework: "nextjs", port: 3002, client: true },
 			]);
+		});
+
+		it("records no client when the RPC package it uses isn't adopted", async () => {
+			const result = await resolved(
+				[
+					observed("apps/web"),
+					observed("apps/site", { rpcPackages: ["packages/trpc"] }),
+				],
+				{
+					confirmed: [
+						...web("apps/web", "apps/site"),
+						{ kind: "orpc", root: "packages/orpc" },
+					],
+				},
+			);
+
+			expect(result.webApps[0]?.client).toBeUndefined();
 		});
 
 		it("keeps an explicit client from the init config", async () => {
@@ -575,17 +704,6 @@ describe("web app adoption", () => {
 			);
 
 			expect(result.webApps[0]?.client).toBe(true);
-		});
-
-		it("refuses a client when both RPC packages exist", async () => {
-			expect(
-				await refusal([
-					observed("apps/web"),
-					observed("apps/site", { client: "conflict" }),
-				]),
-			).toBe(
-				"We couldn't adopt apps/site because we found both a tRPC and an oRPC package, and Forge manages one RPC provider.",
-			);
 		});
 	});
 
@@ -621,7 +739,10 @@ describe("web app adoption", () => {
 		it("promotes the chosen root with its own framework", async () => {
 			const result = await resolved(
 				[
-					observed("apps/admin", { frameworks: ["react-router"] }),
+					observed("apps/admin", {
+						frameworks: ["react-router"],
+						scriptPort: { kind: "absent" },
+					}),
 					observed("apps/frontend"),
 				],
 				{ primaryRoot: "apps/admin" },

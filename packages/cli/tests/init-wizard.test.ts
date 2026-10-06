@@ -348,13 +348,13 @@ describe("init wizard", () => {
 				],
 				[
 					{
-						client: "none",
+						rpcPackages: [],
 						frameworks: ["react-router"],
 						root: "apps/admin",
 						scriptPort: { kind: "absent" },
 					},
 					{
-						client: "none",
+						rpcPackages: [],
 						frameworks: ["nextjs"],
 						root: "apps/frontend",
 						scriptPort: { kind: "absent" },
