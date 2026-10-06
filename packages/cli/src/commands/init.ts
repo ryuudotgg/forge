@@ -45,6 +45,7 @@ import { steps } from "../steps";
 import { createAuthMethodsStep } from "../steps/auth/methods";
 import { firstPartyAddonIds, webAppsSchema } from "../steps/platforms/web-apps";
 import { createPackageManagerStep } from "../steps/project/package-manager";
+import { createPathStep } from "../steps/project/path";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import { slugify } from "../utils/slugify";
@@ -99,7 +100,9 @@ function initSteps(commandPins: CommandPins) {
 				? createAuthMethodsStep({ email: false })
 				: step.id === "packageManager"
 					? createPackageManagerStep(commandPins.packageManager)
-					: step,
+					: step.id === "path"
+						? createPathStep("existing")
+						: step,
 		);
 }
 
