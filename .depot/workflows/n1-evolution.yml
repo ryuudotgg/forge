@@ -22,7 +22,7 @@ env:
 jobs:
   evolution:
     name: N-1 Evolution
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read

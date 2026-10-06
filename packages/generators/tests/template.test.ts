@@ -33,7 +33,7 @@ const REPOSITORY_SETUP_ACTION = join(
 	"action.yml",
 );
 
-const REPOSITORY_CI_WORKFLOW = join(ROOT_DIR, ".github", "workflows", "ci.yml");
+const REPOSITORY_CI_WORKFLOW = join(ROOT_DIR, ".depot", "workflows", "ci.yml");
 
 const readActionPins = (path: string) => {
 	const actions: Array<[string, string]> = [];
@@ -141,12 +141,10 @@ describe("GitHub Actions templates", () => {
 	it("pins every action to a commit SHA with its release tag", () => {
 		for (const templateName of templateNames) {
 			const actions = readActionPins(join(GITHUB_TEMPLATE_DIR, templateName));
-
-			for (const [actionName, pin] of actions) {
+			for (const [actionName, pin] of actions)
 				expect(pin, `${templateName} ${actionName}`).toMatch(
 					/^[0-9a-f]{40} # v\d+\.\d+\.\d+$/,
 				);
-			}
 		}
 	});
 
@@ -166,7 +164,6 @@ describe("GitHub Actions templates", () => {
 
 		for (const [templateName, actionNames] of templateActions) {
 			const actions = readActionPins(join(GITHUB_TEMPLATE_DIR, templateName));
-
 			for (const actionName of actionNames) {
 				const repositoryPin = repositoryActions.get(actionName);
 				const pins = actions
@@ -176,9 +173,8 @@ describe("GitHub Actions templates", () => {
 				expect(repositoryPin, `${actionName} is used by Forge`).toBeDefined();
 				expect(pins, `${templateName} uses ${actionName}`).not.toHaveLength(0);
 
-				for (const pin of pins) {
+				for (const pin of pins)
 					expect(pin, `${templateName} ${actionName}`).toBe(repositoryPin);
-				}
 			}
 		}
 	});
