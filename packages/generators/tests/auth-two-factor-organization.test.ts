@@ -115,6 +115,24 @@ describe("two-factor and organization", () => {
 		).toEqual([]);
 	});
 
+	it("refuses two-factor beside email sign-ins at the generator boundary", () => {
+		expect(() =>
+			resolveAuthPlugins({
+				...baseConfig,
+				authMethods: ["email-password", "email-otp", "magic-link"],
+				authPlugins: ["two-factor"],
+			}),
+		).toThrow("Two Factor Conflict: email-otp, magic-link");
+
+		expect(
+			resolveAuthPlugins({
+				...baseConfig,
+				authMethods: ["email-password", "email-otp"],
+				authPlugins: ["organization"],
+			}),
+		).toEqual(["organization"]);
+	});
+
 	describe.each(variants)("$name", (variant) => {
 		it.each(selections)(
 			"renders selection %j across server, web and Expo",

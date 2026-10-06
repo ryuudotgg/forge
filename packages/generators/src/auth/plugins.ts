@@ -304,6 +304,10 @@ export function resolveAuthPlugins(
 	if (missing !== undefined)
 		throw new Error(`Auth Plugin Requirement: ${missing}`);
 
+	const skipping = twoFactorSkippingMethods(config);
+	if (skipping.length > 0)
+		throw new Error(`Two Factor Conflict: ${skipping.join(", ")}`);
+
 	return plugins;
 }
 

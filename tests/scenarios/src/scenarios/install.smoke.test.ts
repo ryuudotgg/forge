@@ -1437,7 +1437,6 @@ async function expectServerOnlyCodeOutOfClientBundle(
 ) {
 	const client = await bundleText(bundles.client);
 	const server = await bundleText(bundles.server);
-
 	for (const marker of markers) {
 		expect(server, marker).toContain(marker);
 		expect(client, marker).not.toContain(marker);
@@ -2246,22 +2245,39 @@ async function expectProductionEmailSecrets(projectRoot: string) {
 				`the magic link send never reached sendEmail: ${magicLinkBody}\n${output()}`,
 			).not.toBe(-1);
 
-			for (const email of [
-				"prod-signup@example.com",
-				"prod-smoke@example.com",
-			]) {
-				const otp = await fetch(
-					`${serverOrigin}/api/auth/email-otp/send-verification-otp`,
-					{
-						body: JSON.stringify({ email, type: "forget-password" }),
-						headers,
-						method: "POST",
-					},
-				);
+			const sessionToken = sessionCookie?.split(";", 1)[0];
+			if (sessionToken === undefined)
+				throw new Error(`Missing Session Cookie: ${cookies.join("\n")}`);
+
+			const otpSends = [
+				...["prod-signup@example.com", "prod-smoke@example.com"].flatMap(
+					(email) => [
+						{
+							path: "email-otp/send-verification-otp",
+							body: { email, type: "forget-password" },
+						},
+						{ path: "email-otp/request-password-reset", body: { email } },
+						{ path: "forget-password/email-otp", body: { email } },
+					],
+				),
+				{
+					path: "email-otp/request-email-change",
+					body: { newEmail: "prod-change@example.com" },
+					cookie: sessionToken,
+				},
+			];
+
+			for (const send of otpSends) {
+				const otp = await fetch(`${serverOrigin}/api/auth/${send.path}`, {
+					body: JSON.stringify(send.body),
+					headers:
+						"cookie" in send ? { ...headers, Cookie: send.cookie } : headers,
+					method: "POST",
+				});
 
 				expect(
 					{ status: otp.status, body: await otp.text() },
-					`the OTP send for ${email} must fail like magic link\n${output()}`,
+					`${send.path} with ${JSON.stringify(send.body)} must fail like magic link\n${output()}`,
 				).toEqual({ status: magicLink.status, body: magicLinkBody });
 			}
 
