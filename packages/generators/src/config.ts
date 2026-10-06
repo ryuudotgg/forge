@@ -1,4 +1,4 @@
-import type { PackageManager, Runtime } from "@ryuugg/core";
+import type { AddonDefinition, PackageManager, Runtime } from "@ryuugg/core";
 import type { WebAppConfig } from "./web-apps";
 
 function defineChoices<const T extends Record<string, string>>(
@@ -315,21 +315,47 @@ export function configWithoutInstall(
 	return next;
 }
 
-export function installConflict(
+export function configWithSwitch(
+	config: ForgeConfig,
+	holderId: string,
+	addonId: string,
+): ForgeConfig {
+	return configWithInstall(configWithoutInstall(config, holderId), addonId);
+}
+
+export type InstallChange =
+	| { readonly _tag: "Open" }
+	| { readonly _tag: "Blocked"; readonly holderId: string }
+	| { readonly _tag: "Switch"; readonly holderId: string };
+
+export function installChange(
 	addonId: string,
 	installedIds: ReadonlyArray<string>,
-): string | undefined {
+	addons: ReadonlyArray<AddonDefinition<ForgeConfig>>,
+): InstallChange {
 	const binding = addonConfigBindings[addonId];
-	if (binding === undefined) return undefined;
+	if (binding === undefined) return { _tag: "Open" };
 
 	const fields = Object.keys(binding);
 
-	return Object.entries(addonConfigBindings).find(
+	const holderId = Object.entries(addonConfigBindings).find(
 		([id, other]) =>
 			id !== addonId &&
 			installedIds.includes(id) &&
 			Object.keys(other).some((field) => fields.includes(field)),
 	)?.[0];
+
+	if (holderId === undefined) return { _tag: "Open" };
+
+	const requested = addons.find((addon) => addon.id === addonId);
+	const holder = addons.find((addon) => addon.id === holderId);
+	const switchable =
+		requested?.exclusive === true &&
+		requested.switching !== undefined &&
+		holder?.exclusive === true &&
+		holder.switching !== undefined;
+
+	return { _tag: switchable ? "Switch" : "Blocked", holderId };
 }
 
 export interface ForgeConfig {

@@ -22,7 +22,7 @@ import {
 	addWebAppConfig,
 	configWithInstall,
 	type ForgeConfig,
-	installConflict,
+	installChange,
 	type LoadedDefinitionRegistry,
 	loadAddonDefinition,
 	matchQuery,
@@ -47,6 +47,7 @@ import {
 } from "./lifecycle";
 import { resolveRegistryRelease } from "./registry-release";
 import { resolutionArguments } from "./resolution";
+import { runSwitch } from "./switch";
 
 function mergeInstallRecord(
 	existing: ReadonlyArray<InstallRecord>,
@@ -480,6 +481,93 @@ function buildProjectInstallRecord(
 	return { definitionId: addon.id, targets: [{ kind: "project" }] };
 }
 
+function selectInstallRecord(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	addon: AddonDefinition<ForgeConfig>,
+	loaded: LoadedDefinitionRegistry,
+): InstallRecord {
+	const registry = loaded.registry;
+	const hasAdapters = registry.adapters.some(
+		(adapter) => adapter.addon === addon.id,
+	);
+
+	let record: InstallRecord;
+	if (addon.compatibility === undefined && !hasAdapters)
+		record = buildProjectInstallRecord(addon);
+	else {
+		const targets = project.modules.filter(
+			(module) =>
+				(addon.target?.(project.config satisfies ForgeConfig, module) ??
+					true) &&
+				isAddonCompatibleWithModule(
+					addon,
+					module,
+					registry.frameworks,
+					registry.adapters,
+				),
+		);
+
+		if (targets.length === 0) {
+			const unsupportedApp = hasAdapters
+				? project.modules.find(
+						(module) =>
+							module.type === "app" &&
+							!addonDeclaresFramework(addon, module.framework) &&
+							!registry.adapters.some(
+								(adapter) =>
+									adapter.addon === addon.id &&
+									adapter.framework === module.framework,
+							),
+					)
+				: undefined;
+
+			const unsupportedFramework =
+				unsupportedApp?.type === "app"
+					? registry.frameworks.find(
+							(framework) => framework.id === unsupportedApp.framework,
+						)
+					: undefined;
+
+			if (unsupportedApp?.type === "app") {
+				const frameworkName =
+					unsupportedFramework?.name ??
+					unsupportedApp.framework
+						.split("-")
+						.map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+						.join(" ");
+
+				log.error(`${addon.name} does not support ${frameworkName} yet.`);
+				process.exit(1);
+			}
+
+			log.error(`We couldn't find a compatible target for "${addon.name}".`);
+			process.exit(1);
+		}
+
+		if (targets.length === 1 || addon.targetMode === "single") {
+			const target = targets[0];
+			if (!target) {
+				log.error(`We couldn't find a compatible target for "${addon.name}".`);
+				process.exit(1);
+			}
+
+			record = {
+				definitionId: addon.id,
+				targets: [{ kind: "module", moduleId: target.id }],
+			};
+		} else
+			record = {
+				definitionId: addon.id,
+				targets: targets.map((target): InstallRecord["targets"][number] => ({
+					kind: "module",
+					moduleId: target.id,
+				})),
+			};
+	}
+
+	return record;
+}
+
 async function addWebApp(
 	project: Awaited<ReturnType<typeof loadManagedProject>>,
 	framework: NonNullable<ForgeConfig["web"]>,
@@ -742,97 +830,41 @@ export async function runAdd(
 		process.exit(1);
 	}
 
-	const conflictId = installConflict(
+	const change = installChange(
 		addon.id,
 		project.manifest.installs.map((entry) => entry.definitionId),
+		loadedRegistry.registry.addons,
 	);
 
-	if (conflictId !== undefined) {
+	if (change._tag === "Blocked") {
 		const conflict =
-			addonFromRegistry(loadedRegistry, conflictId) ??
-			loadAddonDefinition(conflictId).addon;
+			addonFromRegistry(loadedRegistry, change.holderId) ??
+			loadAddonDefinition(change.holderId).addon;
 
 		log.error(`This project already uses ${conflict.name}.`);
 		process.exit(1);
 	}
 
-	const registry = loadedRegistry.registry;
-	const hasAdapters = registry.adapters.some(
-		(adapter) => adapter.addon === addon.id,
-	);
+	const record = selectInstallRecord(project, addon, loadedRegistry);
 
-	let record: InstallRecord;
-	if (addon.compatibility === undefined && !hasAdapters)
-		record = buildProjectInstallRecord(addon);
-	else {
-		const targets = project.modules.filter(
-			(module) =>
-				(addon.target?.(project.config satisfies ForgeConfig, module) ??
-					true) &&
-				isAddonCompatibleWithModule(
-					addon,
-					module,
-					registry.frameworks,
-					registry.adapters,
-				),
-		);
+	if (change._tag === "Switch") {
+		const holder =
+			addonFromRegistry(loadedRegistry, change.holderId) ??
+			loadAddonDefinition(change.holderId).addon;
 
-		if (targets.length === 0) {
-			const unsupportedApp = hasAdapters
-				? project.modules.find(
-						(module) =>
-							module.type === "app" &&
-							!addonDeclaresFramework(addon, module.framework) &&
-							!registry.adapters.some(
-								(adapter) =>
-									adapter.addon === addon.id &&
-									adapter.framework === module.framework,
-							),
-					)
-				: undefined;
-
-			const unsupportedFramework =
-				unsupportedApp?.type === "app"
-					? registry.frameworks.find(
-							(framework) => framework.id === unsupportedApp.framework,
-						)
-					: undefined;
-
-			if (unsupportedApp?.type === "app") {
-				const frameworkName =
-					unsupportedFramework?.name ??
-					unsupportedApp.framework
-						.split("-")
-						.map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-						.join(" ");
-
-				log.error(`${addon.name} does not support ${frameworkName} yet.`);
-				process.exit(1);
-			}
-
-			log.error(`We couldn't find a compatible target for "${addon.name}".`);
-			process.exit(1);
-		}
-
-		if (targets.length === 1 || addon.targetMode === "single") {
-			const target = targets[0];
-			if (!target) {
-				log.error(`We couldn't find a compatible target for "${addon.name}".`);
-				process.exit(1);
-			}
-
-			record = {
-				definitionId: addon.id,
-				targets: [{ kind: "module", moduleId: target.id }],
-			};
-		} else
-			record = {
-				definitionId: addon.id,
-				targets: targets.map((target): InstallRecord["targets"][number] => ({
-					kind: "module",
-					moduleId: target.id,
-				})),
-			};
+		await runSwitch(project, {
+			addon,
+			holder,
+			installs: mergeInstallRecord(
+				baseInstalls.filter((entry) => entry.definitionId !== holder.id),
+				record,
+				addon.targetMode,
+			),
+			registryIds,
+			noInstall: values["no-install"] === true,
+			resolution,
+		});
+		return;
 	}
 
 	const nextConfig = configWithInstall(project.config, addon.id);

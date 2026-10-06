@@ -23,7 +23,7 @@ import {
 	type ScenarioProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
-import { expectFreshLinterCheck } from "../utils/linter";
+import { expectFreshLinterCheck, expectLinterSwitch } from "../utils/linter";
 import { expectPasskeyCeremony } from "../utils/passkey";
 
 const postgresProviderCells = [
@@ -3622,6 +3622,56 @@ export async function GET() {
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 		});
 	}, 600_000);
+
+	it.each([
+		{
+			from: "biome",
+			to: "oxc",
+			surfaces: {
+				configFiles: [".oxlintrc.json", ".oxfmtrc.json"],
+				devDependencies: ["oxlint", "oxfmt"],
+				absentConfigFiles: ["biome.json"],
+				absentDevDependencies: ["@biomejs/biome"],
+			},
+		},
+		{
+			from: "oxc",
+			to: "biome",
+			surfaces: {
+				configFiles: ["biome.json"],
+				devDependencies: ["@biomejs/biome"],
+				absentConfigFiles: [".oxlintrc.json", ".oxfmtrc.json"],
+				absentDevDependencies: ["oxlint", "oxfmt"],
+			},
+		},
+	])(
+		"switches $from to $to on the default preset",
+		async ({ from, to, surfaces }) => {
+			await withScenarioWorkspace(
+				`smoke-switch-${from}-${to}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						addons: ["commitlint", "github-ci", "lefthook", "vscode"],
+						authentication: "better-auth",
+						backend: "self",
+						catalogs: "scoped",
+						database: "postgresql",
+						databaseProvider: "neon",
+						orm: "drizzle",
+						rpc: "trpc",
+						style: "tailwind",
+						uiLibrary: "base-ui",
+						web: "nextjs",
+						linter: from,
+						packageManager: "pnpm",
+					});
+
+					await expectLinterSwitch(workspace, { to, surfaces });
+				},
+			);
+		},
+		600_000,
+	);
 
 	it.each([
 		{

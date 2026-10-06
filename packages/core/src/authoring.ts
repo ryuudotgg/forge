@@ -1041,6 +1041,13 @@ export interface TemplateDefinition<
 	) => ContributionResult;
 }
 
+export interface AddonSwitching {
+	readonly reformat: {
+		readonly bin: string;
+		readonly args: ReadonlyArray<string>;
+	};
+}
+
 export interface AddonDefinition<
 	Config,
 	Id extends AddonId = AddonId,
@@ -1053,6 +1060,7 @@ export interface AddonDefinition<
 	readonly version: string;
 	readonly category: GeneratorCategory;
 	readonly exclusive: boolean;
+	readonly switching?: AddonSwitching;
 	readonly dependencies: ReadonlyArray<DependencyRef>;
 	readonly targetMode: TargetMode;
 	readonly target?: (
@@ -1145,6 +1153,7 @@ export function defineAddon<
 	readonly version: string;
 	readonly category: GeneratorCategory;
 	readonly exclusive: boolean;
+	readonly switching?: AddonSwitching;
 	readonly dependencies?: ReadonlyArray<DependencyRef>;
 	readonly targetMode: TargetMode;
 	readonly target?: (

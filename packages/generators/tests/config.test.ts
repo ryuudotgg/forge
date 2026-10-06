@@ -5,11 +5,13 @@ import {
 	catalogs,
 	configWithInstall,
 	configWithoutInstall,
+	configWithSwitch,
 	databaseProviders,
 	databases,
 	desktopFrameworks,
-	installConflict,
+	installChange,
 	linters,
+	loadDefinitionRegistry,
 	mobileFrameworks,
 	nativeStyleFrameworks,
 	optionalAddons,
@@ -165,13 +167,95 @@ describe("install config reconciliation", () => {
 	});
 
 	it("flags installs that fight over the same config field", () => {
-		expect(installConflict("prisma", ["drizzle", "trpc"])).toBe("drizzle");
-		expect(installConflict("drizzle", ["prisma"])).toBe("prisma");
+		const { addons } = loadDefinitionRegistry().registry;
+
+		expect(installChange("prisma", ["drizzle", "trpc"], addons)).toEqual({
+			_tag: "Blocked",
+			holderId: "drizzle",
+		});
+
+		expect(installChange("drizzle", ["prisma"], addons)).toEqual({
+			_tag: "Blocked",
+			holderId: "prisma",
+		});
 	});
 
 	it("allows re-adding the same addon and unrelated addons", () => {
-		expect(installConflict("prisma", ["prisma"])).toBe(undefined);
-		expect(installConflict("tailwind", ["drizzle"])).toBe(undefined);
-		expect(installConflict("commitlint", ["lefthook"])).toBe(undefined);
+		const { addons } = loadDefinitionRegistry().registry;
+
+		expect(installChange("prisma", ["prisma"], addons)).toEqual({
+			_tag: "Open",
+		});
+
+		expect(installChange("biome", ["biome"], addons)).toEqual({ _tag: "Open" });
+		expect(installChange("tailwind", ["drizzle"], addons)).toEqual({
+			_tag: "Open",
+		});
+
+		expect(installChange("commitlint", ["lefthook"], addons)).toEqual({
+			_tag: "Open",
+		});
+	});
+
+	it.each([
+		["biome", "oxc"],
+		["oxc", "biome"],
+	])("switches %s over %s", (addonId, holderId) => {
+		const { addons } = loadDefinitionRegistry().registry;
+
+		expect(installChange(addonId, [holderId], addons)).toEqual({
+			_tag: "Switch",
+			holderId,
+		});
+	});
+
+	it.each([
+		{ requested: "oxc", holder: "biome" },
+		{ requested: "biome", holder: "oxc" },
+	])(
+		"blocks $requested over $holder unless biome opts into switching",
+		({ requested, holder }) => {
+			const { addons } = loadDefinitionRegistry().registry;
+			const withoutBiomeSwitching = addons.map((addon) =>
+				addon.id === "biome" ? { ...addon, switching: undefined } : addon,
+			);
+
+			expect(installChange(requested, [holder], withoutBiomeSwitching)).toEqual(
+				{ _tag: "Blocked", holderId: holder },
+			);
+		},
+	);
+
+	it.each([
+		{ requested: "oxc", holder: "biome" },
+		{ requested: "biome", holder: "oxc" },
+	])(
+		"blocks $requested over $holder unless oxc is exclusive",
+		({ requested, holder }) => {
+			const { addons } = loadDefinitionRegistry().registry;
+			const nonExclusiveOxc = addons.map((addon) =>
+				addon.id === "oxc" ? { ...addon, exclusive: false } : addon,
+			);
+
+			expect(installChange(requested, [holder], nonExclusiveOxc)).toEqual({
+				_tag: "Blocked",
+				holderId: holder,
+			});
+		},
+	);
+
+	it("switches the binding without changing other config fields", () => {
+		expect(
+			configWithSwitch(
+				{ linter: "biome", orm: "drizzle", slug: "acme", addons: ["vscode"] },
+				"biome",
+				"oxc",
+			),
+		).toEqual({
+			linter: "oxc",
+			orm: "drizzle",
+			slug: "acme",
+			addons: ["vscode"],
+		});
 	});
 });
