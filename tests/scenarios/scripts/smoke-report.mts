@@ -80,7 +80,11 @@ function readReport(path: string): string {
 const path = process.argv[2];
 if (!path) throw new Error("Missing Smoke Report Path");
 
-const markdown = renderReport(decodeReport(JSON.parse(readReport(path))));
+const report = decodeReport(JSON.parse(readReport(path)));
+if (report.testResults.length === 0)
+	throw new Error(`Empty Smoke Report: ${path}`);
+
+const markdown = renderReport(report);
 process.stdout.write(markdown);
 
 if (process.env.GITHUB_STEP_SUMMARY)
