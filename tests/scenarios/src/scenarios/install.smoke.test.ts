@@ -2,8 +2,10 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { createContext, Script } from "node:vm";
+import { ManifestSchema } from "@ryuugg/core";
+import { Schema } from "effect";
 import { build } from "vite";
 import { describe, expect, it } from "vitest";
 import { expectEmailAuth } from "../utils/email-auth";
@@ -119,6 +121,72 @@ async function readGeneratedEnv(projectRoot: string) {
 	}
 
 	return env;
+}
+
+type WebApp = {
+	root: string;
+	framework: string;
+	port: number;
+	primary: boolean;
+};
+
+function unknownArray(value: unknown): value is readonly unknown[] {
+	return Array.isArray(value);
+}
+
+async function webAppsOf(projectRoot: string): Promise<WebApp[]> {
+	const manifest = Schema.decodeUnknownSync(ManifestSchema)(
+		await readJson<unknown>(join(projectRoot, ".forge/manifest.json")),
+	);
+
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const secondaryApps = manifest.config.webApps;
+	const apps: WebApp[] = [];
+	for (const module of Object.values(manifest.modules)) {
+		const root = module.root;
+		if (root === undefined) continue;
+
+		const metadataPath = join(projectRoot, root, "forge.json");
+		if (!(await pathExists(metadataPath))) continue;
+
+		const metadata = await readJson<unknown>(metadataPath);
+		const framework = stringField(metadata, "framework");
+		if (
+			framework === undefined ||
+			!["nextjs", "react-router", "tanstack-router", "tanstack-start"].includes(
+				framework,
+			)
+		)
+			continue;
+
+		const primary =
+			stringField(metadata, "role") === "primary" || root === "apps/web";
+
+		let port: unknown;
+		if (primary && generatedEnv.WEB_URL !== undefined) {
+			const originPort = new URL(generatedEnv.WEB_URL).port;
+			if (originPort !== "") port = Number(originPort);
+		} else if (!primary && unknownArray(secondaryApps)) {
+			const secondary = secondaryApps.find(
+				(app) => stringField(app, "name") === basename(root),
+			);
+
+			if (typeof secondary === "object" && secondary !== null)
+				port = Reflect.get(secondary, "port");
+		}
+
+		if (
+			typeof port !== "number" ||
+			!Number.isInteger(port) ||
+			port < 1 ||
+			port > 65535
+		)
+			throw new Error(`Missing Web App Port: ${root}`);
+
+		apps.push({ root, framework, port, primary });
+	}
+
+	return apps;
 }
 
 const authPluginConfig = {
@@ -1200,6 +1268,75 @@ async function startSelfHostedServer(
 
 		stopProcessGroup(pid, "SIGKILL");
 	});
+}
+
+async function withWebApp(
+	projectRoot: string,
+	app: WebApp,
+	exercise: (output: () => string) => Promise<void>,
+) {
+	const cwd = join(projectRoot, app.root);
+	const packageJson = await readJson<unknown>(join(cwd, "package.json"));
+	const scripts: unknown =
+		typeof packageJson === "object" && packageJson !== null
+			? Reflect.get(packageJson, "scripts")
+			: undefined;
+
+	const args =
+		stringField(scripts, "start") !== undefined
+			? ["run", "start"]
+			: ["run", "preview", "--port", String(app.port), "--strictPort"];
+
+	await expectPortFree(app.port);
+
+	const child = spawn("pnpm", args, {
+		cwd,
+		detached: true,
+		env: { ...process.env, ...scriptEnvironment({}) },
+	});
+
+	const server = launchedServer(
+		child,
+		`http://localhost:${app.port}`,
+		async () => {
+			const pid = child.pid;
+			if (pid === undefined) return;
+
+			stopProcessGroup(pid, "SIGTERM");
+
+			for (
+				let attempt = 0;
+				attempt < 50 && processGroupAlive(pid);
+				attempt += 1
+			)
+				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+
+			stopProcessGroup(pid, "SIGKILL");
+		},
+	);
+
+	try {
+		let ready = false;
+		for (let attempt = 0; attempt < 300; attempt += 1) {
+			if (child.exitCode !== null || server.failure() !== undefined) break;
+
+			try {
+				const response = await fetch(`${server.origin}/`);
+				if (response.status === 200) {
+					ready = true;
+					break;
+				}
+			} catch {}
+
+			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+		}
+
+		expect(ready, server.output()).toBe(true);
+
+		await exercise(server.output);
+	} finally {
+		await server.stop();
+	}
 }
 
 async function expectSelfHostedRpc(
@@ -2342,6 +2479,113 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		},
 		600_000,
 	);
+
+	it("builds, starts, and signs up from a TanStack Router primary beside a Next.js secondary on Hono", async () => {
+		await withScenarioWorkspace("smoke-web-apps-started", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				authMethods: ["email-password"],
+				backend: "hono",
+				database: "sqlite",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				linter: "biome",
+				web: "tanstack-router",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+
+			const projectRoot = workspace.projectRoot;
+			const apps = await webAppsOf(projectRoot);
+			expect(apps).toHaveLength(2);
+			expect(apps.filter((app) => app.primary)).toHaveLength(1);
+
+			const primary = apps.find((app) => app.primary);
+			const secondary = apps.find((app) => !app.primary);
+			if (primary === undefined || secondary === undefined)
+				throw new Error(`Missing Web Apps: ${projectRoot}`);
+
+			expect(primary.framework).toBe("tanstack-router");
+			expect(secondary.framework).toBe("nextjs");
+			expect(primary.port).not.toBe(secondary.port);
+
+			const generatedEnv = await readGeneratedEnv(projectRoot);
+			const apiOrigin = generatedEnv.APP_ORIGIN;
+			if (apiOrigin === undefined)
+				throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+			expect(
+				await bundleText(join(projectRoot, primary.root, "dist")),
+			).toContain(apiOrigin);
+
+			await expectSchemaPush(projectRoot);
+
+			await withGeneratedServer(
+				projectRoot,
+				generatedEnv,
+				apiOrigin,
+				async (output) => {
+					await withWebApp(projectRoot, primary, async (primaryOutput) => {
+						await withWebApp(
+							projectRoot,
+							secondary,
+							async (secondaryOutput) => {
+								for (const app of apps) {
+									const page = await fetch(`http://localhost:${app.port}/`);
+									const html = await page.text();
+									expect(
+										page.status,
+										`${primaryOutput()}\n${secondaryOutput()}`,
+									).toBe(200);
+
+									expect(page.headers.get("content-type")).toContain(
+										"text/html",
+									);
+
+									expect(html).toMatch(/<html[\s>]/i);
+								}
+
+								const primaryOrigin = `http://localhost:${primary.port}`;
+								const session = await signUpSession(
+									apiOrigin,
+									primaryOrigin,
+									"web-apps@example.com",
+									output,
+								);
+
+								const health = await fetch(
+									`${apiOrigin}/api/trpc/health?input=%7B%7D`,
+									{
+										headers: {
+											Cookie: session.cookie,
+											Origin: primaryOrigin,
+											"x-trpc-source": "smoke",
+										},
+									},
+								);
+
+								expect(
+									health.status,
+									`${await health.text()}\n${output()}`,
+								).toBe(200);
+
+								expect(health.headers.get("access-control-allow-origin")).toBe(
+									primaryOrigin,
+								);
+
+								expect(
+									health.headers.get("access-control-allow-credentials"),
+								).toBe("true");
+							},
+						);
+					});
+				},
+			);
+		});
+	}, 600_000);
 
 	it("accepts a client added later once .env holds the printed WEB_URLS", async () => {
 		await withScenarioWorkspace("smoke-added-client", async (workspace) => {
