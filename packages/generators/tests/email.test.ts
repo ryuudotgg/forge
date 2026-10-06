@@ -2,10 +2,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Contribution } from "@ryuugg/core";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EmailProvider, ForgeConfig } from "../src/config";
 import email, { emailMetadata } from "../src/email";
+import { emailPreviewPort } from "../src/origins";
 import { readTemplate } from "../src/template";
 import { versions } from "../src/versions";
 import { plannedDefinitionIds, plannedProject } from "./planner-harness";
@@ -439,6 +440,89 @@ function templatePaths(config: ForgeConfig) {
 }
 
 describe("email templates", () => {
+	it.each([{ addons: [] }, { addons: ["vitest"] }] satisfies ReadonlyArray<
+		Pick<ForgeConfig, "addons">
+	>)(
+		"plans preview tooling independently of addons $addons",
+		async ({ addons }) => {
+			const plan = await plannedProject({
+				...allMessages,
+				addons,
+				backend: "self",
+				database: "postgresql",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				platforms: ["web"],
+				web: "nextjs",
+			});
+
+			const packageFile = plan.writes.find(
+				(write) => write.path === "packages/email/package.json",
+			);
+
+			if (packageFile === undefined)
+				throw new Error("Missing Planned File: packages/email/package.json");
+
+			const packageJson = Schema.decodeSync(
+				Schema.fromJsonString(
+					Schema.Struct({
+						scripts: Schema.Struct({ dev: Schema.String }),
+						devDependencies: Schema.Record(Schema.String, Schema.String),
+						dependencies: Schema.Record(Schema.String, Schema.String),
+					}),
+				),
+			)(packageFile.content);
+
+			expect(packageJson.scripts.dev).toBe(
+				`email dev --dir src/templates --port ${emailPreviewPort}`,
+			);
+
+			for (const dependency of [versions.reactEmail, versions.reactEmailUi]) {
+				expect(packageJson.devDependencies[dependency.name]).toBe("catalog:");
+				expect(packageJson.dependencies).not.toHaveProperty(dependency.name);
+				expect(contributionsOf({ ...allMessages, addons })).toEqual(
+					expect.arrayContaining([
+						expect.objectContaining({
+							dependencies: expect.arrayContaining([
+								{
+									name: dependency.name,
+									version: dependency.version,
+									catalog: "",
+									type: "devDependencies",
+								},
+							]),
+						}),
+					]),
+				);
+			}
+		},
+	);
+
+	it("omits preview tooling without email auth templates", () => {
+		const contributions = contributionsOf({
+			emailProvider: "resend",
+			authentication: "better-auth",
+			authMethods: ["email-password"],
+		});
+
+		expect(
+			contributions.filter(
+				(contribution) =>
+					contribution._tag === "ManagedScriptsSurfaceContribution",
+			),
+		).toEqual([]);
+
+		expect(contributions).not.toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					dependencies: expect.arrayContaining([
+						expect.objectContaining({ name: "react-email" }),
+					]),
+				}),
+			]),
+		);
+	});
+
 	it.each([
 		{ config: { emailProvider: "postmark" }, templates: [] },
 		{
@@ -487,6 +571,11 @@ describe("email templates", () => {
 			"packages/email/src/templates/magic-link.tsx",
 			"packages/email/src/templates/verification-code.tsx",
 		]);
+
+		for (const write of plan.writes.filter((write) =>
+			write.path.startsWith("packages/email/src/templates/"),
+		))
+			expect(write.content, write.path).toContain(".PreviewProps =");
 
 		const auth = plan.writes.find(
 			(write) => write.path === "packages/auth/src/index.ts",

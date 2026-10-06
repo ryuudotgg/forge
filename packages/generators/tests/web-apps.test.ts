@@ -15,6 +15,7 @@ import {
 	webFrameworks,
 	withWebAppPorts,
 } from "../src";
+import { emailPreviewPort } from "../src/origins";
 import { plannedProject } from "./planner-harness";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -69,6 +70,27 @@ function stablePlan(plan: ProjectPlan): string {
 }
 
 describe("webAppInstances", () => {
+	it("reserves the email preview port when adding secondary apps", () => {
+		let config: ForgeConfig = { web: "nextjs" };
+		for (let index = 0; index < emailPreviewPort - 3002; index += 1)
+			config = addWebAppConfig(config, {
+				name: `secondary-${index}`,
+				framework: "nextjs",
+			});
+
+		expect(config.webApps?.at(-1)?.port).toBe(emailPreviewPort - 1);
+
+		const added = addWebAppConfig(config, {
+			name: "after-preview",
+			framework: "nextjs",
+		});
+
+		expect(added.webApps?.at(-1)?.port).toBe(emailPreviewPort + 1);
+		expect(
+			webAppInstances(added).map((instance) => instance.port),
+		).not.toContain(emailPreviewPort);
+	});
+
 	it("has no instances without a primary web framework", () => {
 		expect(webAppInstances({})).toEqual([]);
 		expect(
@@ -323,6 +345,16 @@ describe("web app ports", () => {
 				],
 			}),
 		).toBe("admin and docs both use port 3003.");
+
+		const previewClash: ForgeConfig = {
+			web: "nextjs",
+			webApps: [{ name: "admin", framework: "nextjs", port: emailPreviewPort }],
+		};
+
+		expect(webAppPortIssue(previewClash)).toBeUndefined();
+		expect(webAppPortIssue({ ...previewClash, emailProvider: "resend" })).toBe(
+			`the email preview and admin both use port ${emailPreviewPort}.`,
+		);
 	});
 });
 

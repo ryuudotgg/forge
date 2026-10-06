@@ -1,5 +1,9 @@
 import type { ForgeConfig, WebFramework } from "./config";
-import { standaloneBackendDevPort, webDevPort } from "./origins";
+import {
+	emailPreviewPort,
+	standaloneBackendDevPort,
+	webDevPort,
+} from "./origins";
 
 export interface WebAppConfig {
 	readonly name: string;
@@ -98,6 +102,7 @@ export function addWebAppConfig(
 	const stamped = withWebAppPorts(config);
 	const usedPorts = new Set([
 		standaloneBackendDevPort,
+		emailPreviewPort,
 		...webAppInstances(stamped).map((instance) => instance.port),
 	]);
 
@@ -125,7 +130,12 @@ export function removeWebAppConfig(
 }
 
 export function webAppPortIssue(config: ForgeConfig): string | undefined {
-	const owners = new Map<number, string>();
+	const owners = new Map<number, string>(
+		config.emailProvider === undefined
+			? []
+			: [[emailPreviewPort, "the email preview"]],
+	);
+
 	for (const instance of webAppInstances(config)) {
 		const owner = owners.get(instance.port);
 		if (owner !== undefined)

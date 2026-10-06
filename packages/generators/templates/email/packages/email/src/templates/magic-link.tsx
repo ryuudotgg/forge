@@ -29,3 +29,7 @@ export default function MagicLink({ url }: MagicLinkProps) {
     </Layout>
   );
 }
+
+MagicLink.PreviewProps = {
+  url: "https://app.example.com/api/auth/magic-link/verify?token=abc",
+} satisfies MagicLinkProps;

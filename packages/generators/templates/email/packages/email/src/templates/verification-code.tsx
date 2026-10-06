@@ -39,3 +39,8 @@ export default function VerificationCode(props: VerificationCodeProps) {
     </Layout>
   );
 }
+
+VerificationCode.PreviewProps = {
+  code: "123456",
+  type: "sign-in",
+} satisfies VerificationCodeProps;
