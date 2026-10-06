@@ -1,10 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	createProject,
 	pathExists,
 	readJson,
+	runForge,
 	tryRunForge,
 	withScenarioWorkspace,
 	writeJson,
@@ -23,6 +24,42 @@ async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 	}
 
 	return files.sort();
+}
+
+async function snapshotTree(root: string) {
+	const entries = await readdir(root, { recursive: true, withFileTypes: true });
+	const files = entries
+		.filter((entry) => entry.isFile())
+		.map((entry) => relative(root, join(entry.parentPath, entry.name)))
+		.sort();
+
+	return Object.fromEntries(
+		await Promise.all(
+			files.map(async (file) => [
+				file,
+				(await readFile(join(root, file))).toString("base64"),
+			]),
+		),
+	);
+}
+
+async function rerunCreate(workspaceRoot: string) {
+	const configPath = join(workspaceRoot, "forge.config.json");
+
+	await writeJson(configPath, {
+		name: "acme",
+		packageManager: "pnpm",
+		path: "./project",
+		platforms: ["web"],
+		slug: "acme",
+		web: "nextjs",
+	});
+
+	return await tryRunForge(
+		workspaceRoot,
+		["create", "--config", configPath, "--no-install", "--no-git"],
+		{ workspaceRoot },
+	);
 }
 
 describe("create", () => {
@@ -711,5 +748,56 @@ describe("create", () => {
 				);
 			},
 		);
+	}, 120_000);
+
+	it("refuses a target that already holds a Forge project", async () => {
+		await withScenarioWorkspace("create-occupied-forge", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			await runForge(
+				workspace.projectRoot,
+				["add", "lefthook", "--no-install"],
+				{
+					workspaceRoot: workspace.workspaceRoot,
+				},
+			);
+
+			const before = await snapshotTree(workspace.projectRoot);
+			expect(before["lefthook.yml"]).toBeDefined();
+
+			const result = await rerunCreate(workspace.workspaceRoot);
+
+			expect(result.exitCode).not.toBe(0);
+			expect(result.stdout + result.stderr).toContain(
+				'"./project" already holds a Forge project. Run forge add or forge update inside it instead.',
+			);
+
+			expect(await snapshotTree(workspace.projectRoot)).toEqual(before);
+		});
+	}, 120_000);
+
+	it("refuses a target that holds the user's own files", async () => {
+		await withScenarioWorkspace("create-occupied-user", async (workspace) => {
+			await writeJson(join(workspace.projectRoot, "package.json"), {
+				name: "mine",
+			});
+
+			const before = await snapshotTree(workspace.projectRoot);
+			const result = await rerunCreate(workspace.workspaceRoot);
+			const output = result.stdout + result.stderr;
+
+			expect(result.exitCode).not.toBe(0);
+			expect(output).toContain(
+				'"./project" already holds package.json. Pick a new or empty directory, or run forge init inside it to adopt your project.',
+			);
+
+			expect(output).not.toMatch(
+				/Generation Failed|--accept-forge|--keep-user/,
+			);
+			expect(await snapshotTree(workspace.projectRoot)).toEqual(before);
+		});
 	}, 120_000);
 });

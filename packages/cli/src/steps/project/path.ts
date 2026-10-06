@@ -1,8 +1,10 @@
-import { normalize } from "node:path";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join, normalize } from "node:path";
 import { isCancel, log, text } from "@clack/prompts";
 import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
+import { listAnd } from "../../utils/list";
 import { defineStep, SKIP } from "../types";
 
 export const pathSchema = Schema.Trim.pipe(
@@ -21,56 +23,110 @@ export const pathSchema = Schema.Trim.pipe(
 	),
 );
 
-const pathStep = defineStep<string>({
-	id: "path",
-	group: "project",
-	schema: pathSchema,
-	configKey: "path",
+export type PathTarget = "new" | "existing";
 
-	dependencies: ["name"],
+const shownEntryLimit = 3;
 
-	shouldRun: () => true,
+function readEntries(path: string) {
+	try {
+		return statSync(path).isDirectory() ? readdirSync(path).sort() : "file";
+	} catch {
+		return "unreadable";
+	}
+}
 
-	validate(value) {
-		const result = Schema.decodeUnknownResult(pathSchema)(value);
-		if (Result.isSuccess(result)) return;
+export function occupiedTargetIssue(path: string): string | undefined {
+	if (!existsSync(path)) return;
 
-		const issues = formatSchemaError(result.failure);
-		log.error(issues[0]?.message ?? "You need to provide a valid path.");
+	const target =
+		normalize(path) === "." ? "The current directory" : `"${path}"`;
 
-		process.exit(1);
-	},
+	const entries = readEntries(path);
+	if (entries === "file")
+		return `${target} is a file, so we can't create your project there. Pick another path.`;
 
-	async execute(config, interactive) {
-		const slug = config.slug ?? "my-app";
-		if (!interactive) {
-			const value = config.path ?? `./${slug}`;
+	if (entries === "unreadable")
+		return `${target} can't be read, so we can't create your project there. Pick another path.`;
 
-			const result = Schema.decodeResult(pathSchema)(value);
-			if (Result.isFailure(result)) return SKIP;
+	if (entries.length === 0) return;
 
-			return result.success;
-		}
+	if (existsSync(join(path, ".forge", "manifest.json")))
+		return `${target} already holds a Forge project. Run forge add or forge update inside it instead.`;
 
-		const defaultValue = `./${slug}`;
+	const shown =
+		entries.length > shownEntryLimit
+			? [
+					...entries.slice(0, shownEntryLimit),
+					`${entries.length - shownEntryLimit} more`,
+				]
+			: entries;
 
-		const path = await text({
-			message: "Where do you want us to create your project?",
-			defaultValue,
-			placeholder: defaultValue,
-			validate: (value) => {
-				const result = Schema.decodeResult(pathSchema)(value || defaultValue);
-				if (Result.isFailure(result)) {
-					const issues = formatSchemaError(result.failure);
-					return issues[0]?.message;
+	return `${target} already holds ${listAnd.format(shown)}. Pick a new or empty directory, or run forge init inside it to adopt your project.`;
+}
+
+function pathIssue(value: unknown, target: PathTarget) {
+	const result = Schema.decodeUnknownResult(pathSchema)(value);
+	if (Result.isFailure(result))
+		return (
+			formatSchemaError(result.failure)[0]?.message ??
+			"You need to provide a valid path."
+		);
+
+	if (target === "new") return occupiedTargetIssue(result.success);
+}
+
+export function createPathStep(target: PathTarget) {
+	return defineStep<string>({
+		id: "path",
+		group: "project",
+		schema: pathSchema,
+		configKey: "path",
+
+		dependencies: ["name"],
+
+		shouldRun: () => true,
+
+		validate(value) {
+			const issue = pathIssue(value, target);
+			if (issue === undefined) return;
+
+			log.error(issue);
+			process.exit(1);
+		},
+
+		async execute(config, interactive) {
+			const slug = config.slug ?? "my-app";
+			if (!interactive) {
+				const value = config.path ?? `./${slug}`;
+
+				const result = Schema.decodeResult(pathSchema)(value);
+				if (Result.isFailure(result)) return SKIP;
+
+				const issue =
+					target === "new" ? occupiedTargetIssue(result.success) : undefined;
+
+				if (issue !== undefined) {
+					log.error(issue);
+					process.exit(1);
 				}
-			},
-		});
 
-		if (isCancel(path)) cancel();
+				return result.success;
+			}
 
-		return path;
-	},
-});
+			const defaultValue = `./${slug}`;
 
-export default pathStep;
+			const path = await text({
+				message: "Where do you want us to create your project?",
+				defaultValue,
+				placeholder: defaultValue,
+				validate: (value) => pathIssue(value || defaultValue, target),
+			});
+
+			if (isCancel(path)) cancel();
+
+			return path;
+		},
+	});
+}
+
+export default createPathStep("new");
