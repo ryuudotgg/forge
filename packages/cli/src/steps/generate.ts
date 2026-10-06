@@ -2,10 +2,10 @@ import { log } from "@clack/prompts";
 import { Apply, ApplyError, formatApplyError, Planner } from "@ryuugg/core";
 import {
 	authenticationProviders,
-	type ForgeConfig,
 	loadDefinitionRegistry,
 	orms,
 	probeWorkspaceCommandVersions,
+	withWebAppPorts,
 } from "@ryuugg/generators";
 import { Effect } from "effect";
 import { runCliEffectValue } from "../runtime";
@@ -32,8 +32,9 @@ const generateStep = defineStep({
 
 		const projectRoot = String(config.path ?? ".");
 		const { webApps, ...withoutWebApps } = config;
-		const forgeConfig: ForgeConfig =
-			Array.isArray(webApps) && webApps.length === 0 ? withoutWebApps : config;
+		const forgeConfig = withWebAppPorts(
+			Array.isArray(webApps) && webApps.length === 0 ? withoutWebApps : config,
+		);
 
 		try {
 			const loadedRegistry = await loadDefinitionRegistry();

@@ -86,6 +86,7 @@ const promptMocks = vi.hoisted(() => ({
 	intro: vi.fn(),
 	isCancel: vi.fn((_value: unknown) => false),
 	logError: vi.fn(),
+	logInfo: vi.fn(),
 	logSuccess: vi.fn(),
 	logWarn: vi.fn(),
 	multiselect: vi.fn(),
@@ -116,6 +117,7 @@ vi.mock("@clack/prompts", () => ({
 	isCancel: promptMocks.isCancel,
 	log: {
 		error: promptMocks.logError,
+		info: promptMocks.logInfo,
 		success: promptMocks.logSuccess,
 		warn: promptMocks.logWarn,
 	},
@@ -189,7 +191,7 @@ describe("add command", () => {
 						{
 							slug: "acme",
 							web: "nextjs",
-							webApps: [{ name: "site", framework: "nextjs" }],
+							webApps: [{ name: "site", framework: "nextjs", port: 3002 }],
 						},
 						[],
 						undefined,
@@ -271,7 +273,7 @@ describe("add command", () => {
 				project.projectRoot,
 				{
 					...project.config,
-					webApps: [{ name: "site", framework, client: true }],
+					webApps: [{ name: "site", framework, client: true, port: 3002 }],
 				},
 				project.manifest.installs,
 				undefined,
@@ -285,8 +287,84 @@ describe("add command", () => {
 			);
 
 			expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
+			expect(promptMocks.logSuccess.mock.calls).toEqual([
+				["We added the site web app."],
+			]);
+
+			expect(promptMocks.logInfo.mock.calls).toEqual([
+				[
+					'Set WEB_URLS="http://localhost:3002" in .env so site can call the API.',
+				],
+			]);
 		},
 	);
+
+	it.each([
+		{
+			client: true,
+			info: [
+				[
+					'Set WEB_URLS="http://localhost:3002,http://localhost:3004" in .env so admin and portal can call the API.',
+				],
+			],
+		},
+		{ client: false, info: [] },
+	])(
+		"stamps existing ports and names every client when adding a client $client app",
+		async ({ client, info }) => {
+			const project = managedProject({
+				config: {
+					slug: "acme",
+					web: "nextjs",
+					webApps: [
+						{ name: "admin", framework: "nextjs", client: true },
+						{ name: "docs", framework: "nextjs" },
+					],
+				},
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runAdd("tanstack-router", {
+				name: "portal",
+				yes: true,
+				...(client ? { client: true } : {}),
+			});
+
+			expect(lifecycleMocks.applyInstalledPlan.mock.calls[0]?.[1]).toEqual({
+				slug: "acme",
+				web: "nextjs",
+				webApps: [
+					{ name: "admin", framework: "nextjs", client: true, port: 3002 },
+					{ name: "docs", framework: "nextjs", port: 3003 },
+					{
+						name: "portal",
+						framework: "tanstack-router",
+						...(client ? { client: true } : {}),
+						port: 3004,
+					},
+				],
+			});
+
+			expect(promptMocks.logSuccess.mock.calls).toEqual([
+				["We added the portal web app."],
+			]);
+
+			expect(promptMocks.logInfo.mock.calls).toEqual(info);
+		},
+	);
+
+	it("prints nothing when the add fails to apply", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+		lifecycleMocks.applyInstalledPlan.mockRejectedValue(new Error("exit:1"));
+
+		await expect(
+			runAdd("nextjs", { name: "site", yes: true, client: true }),
+		).rejects.toThrow("exit:1");
+
+		expect(promptMocks.logSuccess).not.toHaveBeenCalled();
+		expect(promptMocks.logInfo).not.toHaveBeenCalled();
+	});
 
 	it.each(["web", "server", "auth", "../site", "Site", "site"])(
 		"rejects reserved, invalid or duplicate app name %s",
@@ -472,6 +550,7 @@ describe("add command", () => {
 		promptMocks.isCancel.mockReset();
 
 		promptMocks.logError.mockReset();
+		promptMocks.logInfo.mockReset();
 		promptMocks.logSuccess.mockReset();
 		promptMocks.logWarn.mockReset();
 

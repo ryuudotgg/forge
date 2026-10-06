@@ -87,6 +87,65 @@ describe("assembleSchema", () => {
 		);
 	});
 
+	it.each([
+		{
+			webApps: [{ name: "admin", framework: "nextjs", port: 70000 }],
+			message: "admin needs a port between 1 and 65535.",
+		},
+		{
+			webApps: [{ name: "admin", framework: "nextjs", port: 3002.5 }],
+			message: "admin needs a port between 1 and 65535.",
+		},
+		{
+			webApps: [{ name: "admin", framework: "nextjs", port: 3001 }],
+			message: "admin can't use port 3001, which the API server uses.",
+		},
+		{
+			webApps: [
+				{ name: "admin", framework: "nextjs", port: 3004 },
+				{ name: "docs", framework: "nextjs", port: 3004 },
+			],
+			message: "admin and docs both use port 3004.",
+		},
+		{
+			webApps: [{ name: "admin", framework: "nextjs", port: 3000 }],
+			message: "web and admin both use port 3000.",
+		},
+		{
+			webApps: [
+				{ name: "admin", framework: "nextjs", port: 3003 },
+				{ name: "docs", framework: "nextjs" },
+			],
+			message: "admin and docs both use port 3003.",
+		},
+	])("rejects the secondary ports in $message", ({ webApps, message }) => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps,
+		});
+
+		expect(decodeMessages(result)).toContain(message);
+	});
+
+	it("accepts explicit secondary ports beside positional ones", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [
+				{ name: "admin", framework: "nextjs", port: 3002 },
+				{ name: "docs", framework: "nextjs" },
+				{ name: "site", framework: "nextjs", port: 3004 },
+			],
+		});
+
+		expect(Result.getOrThrow(result)).toMatchObject({
+			webApps: [{ port: 3002 }, { name: "docs" }, { port: 3004 }],
+		});
+	});
+
 	it("accepts a secondary framework different from the primary", () => {
 		const result = decodeConfig({
 			name: "Acme",

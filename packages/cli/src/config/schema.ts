@@ -1,4 +1,7 @@
-import { unmetAuthPluginRequirements } from "@ryuugg/generators";
+import {
+	unmetAuthPluginRequirements,
+	webAppPortIssue,
+} from "@ryuugg/generators";
 import { Effect, Schema } from "effect";
 import { authPluginRequirementMessage } from "../steps/auth/plugins";
 import * as schemas from "../steps/schemas";
@@ -41,9 +44,13 @@ export function assembleSchema(steps: Step[]) {
 	return Schema.Struct(fields).pipe(
 		Schema.check(
 			Schema.makeFilter((data) => {
-				if (Schema.is(webAppsConfigSchema)(data))
+				if (Schema.is(webAppsConfigSchema)(data)) {
 					if (data.web === undefined && data.webApps.length !== 0)
 						return "Secondary web apps need a web framework.";
+
+					const portIssue = webAppPortIssue(data);
+					if (portIssue !== undefined) return portIssue;
+				}
 
 				if (
 					data.authMethods !== undefined &&

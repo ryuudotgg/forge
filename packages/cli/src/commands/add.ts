@@ -19,6 +19,7 @@ import {
 } from "@ryuugg/core";
 import {
 	type AddonCatalogEntry,
+	addWebAppConfig,
 	configWithInstall,
 	type ForgeConfig,
 	installConflict,
@@ -34,6 +35,7 @@ import { runCliEffectValue } from "../runtime";
 import { webAppNameIssue, webAppsSchema } from "../steps/platforms/web-apps";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
+import { webClientEnvMessage } from "../utils/web-apps";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
@@ -500,11 +502,14 @@ async function addWebApp(
 	];
 
 	const existingApps = config.webApps ?? [];
+	const draftApp = (name: string) => ({
+		name,
+		framework,
+		...(values.client === true ? { client: true } : {}),
+	});
+
 	const decodeApps = (name: string) =>
-		Schema.decodeResult(webAppsSchema)([
-			...existingApps,
-			{ name, framework, ...(values.client === true ? { client: true } : {}) },
-		]);
+		Schema.decodeResult(webAppsSchema)([...existingApps, draftApp(name)]);
 
 	let name = typeof values.name === "string" ? values.name : undefined;
 	if (name === undefined) {
@@ -551,9 +556,10 @@ async function addWebApp(
 		process.exit(1);
 	}
 
+	const nextConfig = addWebAppConfig(config, draftApp(name));
 	await applyInstalledPlan(
 		project.projectRoot,
-		{ ...project.config, webApps: decoded.success },
+		nextConfig,
 		project.manifest.installs,
 		undefined,
 		project.manifest.registries,
@@ -564,6 +570,9 @@ async function addWebApp(
 			records: project.manifest.modules,
 		},
 	);
+
+	log.success(`We added the ${name} web app.`);
+	if (values.client === true) log.info(webClientEnvMessage(nextConfig));
 }
 
 export async function runAdd(

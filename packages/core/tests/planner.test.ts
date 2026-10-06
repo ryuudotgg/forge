@@ -874,6 +874,82 @@ describe("planner", () => {
 		});
 	});
 
+	it.each([
+		{ label: "on its root", root: "apps/web" },
+		{ label: "after a move", root: "apps/site" },
+	])(
+		"drops the primary role $label once no secondary app remains",
+		async ({ root }) => {
+			await withTempDir("planner-primary-role-cleared", async (directory) => {
+				const baseRegistry = testRegistry([]);
+				const registry: DefinitionRegistry<TestConfig> = {
+					...baseRegistry,
+					templates: baseRegistry.templates.map((template) => ({
+						...template,
+						contribute: ({ config }) => [
+							ensureAppModule("web", "apps/web", {
+								framework: "nextjs",
+								template: { id: "nextjs/base", version: 1 },
+								slots: { layout: "app/layout.tsx" },
+								...(config.dual === true ? { role: "primary" as const } : {}),
+							}),
+							surfaceJson(ensuredModuleTarget("web"), "packageJson", {
+								name: "@acme/web",
+							}),
+							surfaceText(ensuredModuleTarget("web"), "layout", "web-layout"),
+						],
+					})),
+				};
+
+				const createPlan = await Effect.runPromise(
+					planCreateEffect(directory, { web: "nextjs", dual: true }, registry),
+				);
+
+				await Effect.runPromise(applyPlanEffect(directory, createPlan));
+
+				if (root !== "apps/web")
+					await rename(join(directory, "apps/web"), join(directory, root));
+
+				const plan = await Effect.runPromise(
+					planInstalledEffect(directory, { web: "nextjs" }, [], registry),
+				);
+
+				const marker = plan.writes.find(
+					(write) => write.path === `${root}/forge.json`,
+				)?.content;
+
+				expect(marker).toBeDefined();
+				expect(marker).not.toContain('"role"');
+			});
+		},
+	);
+
+	it("keeps a discovered role on a clone and clears it on the declared instance", () => {
+		const discovered = {
+			framework: "nextjs",
+			id: "adopted-web",
+			role: "primary",
+			root: "apps/adopted",
+			slots: { layout: "app/layout.tsx" },
+			template: { id: "nextjs/base", version: 1 },
+			type: "app",
+		} satisfies DiscoveredModule;
+
+		const ensure = ensureAppModule("web", "apps/web", {
+			framework: "nextjs",
+			template: { id: "nextjs/base", version: 1 },
+			slots: { layout: "app/layout.tsx" },
+		});
+
+		expect(
+			retargetAdoptedContribution(ensure, "web", discovered, "web:adopted-web"),
+		).toMatchObject({ module: { role: "primary" } });
+
+		expect(
+			retargetAdoptedContribution(ensure, "web", discovered, "web"),
+		).not.toMatchObject({ module: { role: "primary" } });
+	});
+
 	it("retargets adopted template contributions and preserves other targets", () => {
 		const adopted = {
 			framework: "nextjs",
