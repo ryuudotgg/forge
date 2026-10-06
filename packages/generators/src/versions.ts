@@ -347,6 +347,11 @@ export const versions = {
 	resend: { name: "resend", version: "^6.32.0", group: "Utilities" },
 	postmark: { name: "postmark", version: "^5.1.0", group: "Utilities" },
 	nodemailer: { name: "nodemailer", version: "^10.0.13", group: "Utilities" },
+	reactEmailComponents: {
+		name: "@react-email/components",
+		version: "^1.0.12",
+		group: "Utilities",
+	},
 	classVarianceAuthority: {
 		name: "class-variance-authority",
 		version: "^0.7.1",

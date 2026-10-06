@@ -8,23 +8,144 @@ import {
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,
+	surfaceScripts,
 } from "@ryuugg/core";
+import { resolveAuthMethods } from "../auth/methods";
+import { resolveAuthPlugins } from "../auth/plugins";
 import type { EmailProvider, ForgeConfig } from "../config";
 import { deps } from "../deps";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { readTemplate } from "../template";
+import vitest from "../tooling/vitest";
+import { catalogRef } from "../versions";
 
 const providers: Record<
 	EmailProvider,
 	{
 		dependency: { name: string; version: string; catalog: string };
 		keyVar: string;
+		mock: ReadonlyArray<string>;
 	}
 > = {
-	resend: { dependency: deps.resend, keyVar: "RESEND_API_KEY" },
-	postmark: { dependency: deps.postmark, keyVar: "POSTMARK_SERVER_TOKEN" },
-	smtp: { dependency: deps.nodemailer, keyVar: "SMTP_URL" },
+	resend: {
+		dependency: deps.resend,
+		keyVar: "RESEND_API_KEY",
+		mock: [
+			'vi.mock("resend", () => ({',
+			"  Resend: class {",
+			"    emails = {",
+			"      send: async (payload: { html: string; text: string }) => {",
+			"        sent.push(payload);",
+			"        return { error: null };",
+			"      },",
+			"    };",
+			"  },",
+			"}));",
+		],
+	},
+	postmark: {
+		dependency: deps.postmark,
+		keyVar: "POSTMARK_SERVER_TOKEN",
+		mock: [
+			'vi.mock("postmark", () => ({',
+			"  ServerClient: class {",
+			"    sendEmail = async (payload: { HtmlBody: string; TextBody: string }) => {",
+			"      sent.push({ html: payload.HtmlBody, text: payload.TextBody });",
+			"    };",
+			"  },",
+			"}));",
+		],
+	},
+	smtp: {
+		dependency: deps.nodemailer,
+		keyVar: "SMTP_URL",
+		mock: [
+			'vi.mock("nodemailer", () => ({',
+			"  createTransport: () => ({",
+			"    sendMail: async (payload: { html: string; text: string }) => {",
+			"      sent.push(payload);",
+			"    },",
+			"  }),",
+			"}));",
+		],
+	},
 };
+
+const messageTemplates = [
+	{
+		name: "invitation",
+		file: "invitation",
+		sample: [
+			'      email: "invitee@example.com",',
+			'      inviterName: "Ada",',
+			'      inviterEmail: "ada@example.com",',
+			'      organizationName: "Lumen Works",',
+			'      invitationId: "inv_123",',
+			'      url: "https://app.example.com/accept-invitation/inv_123",',
+		],
+		expected: "https://app.example.com/accept-invitation/inv_123",
+		enabled: (config: ForgeConfig) =>
+			resolveAuthPlugins(config).includes("organization"),
+	},
+	{
+		name: "magicLink",
+		file: "magic-link",
+		sample: [
+			'      url: "https://app.example.com/api/auth/magic-link/verify?token=abc",',
+		],
+		expected: "https://app.example.com/api/auth/magic-link/verify?token=abc",
+		enabled: (config: ForgeConfig) =>
+			resolveAuthMethods(config).includes("magic-link"),
+	},
+	{
+		name: "verificationCode",
+		file: "verification-code",
+		sample: ['      code: "123456",', '      type: "forget-password",'],
+		expected: "123456",
+		enabled: (config: ForgeConfig) =>
+			resolveAuthMethods(config).includes("email-otp"),
+	},
+] as const;
+
+export function emailTemplates(config: ForgeConfig) {
+	if (config.authentication !== "better-auth") return [];
+	return messageTemplates.filter((template) => template.enabled(config));
+}
+
+function messagesSource(config: ForgeConfig): string {
+	const templates = emailTemplates(config);
+	const imports = templates.map(
+		(template) =>
+			`import * as ${template.name} from "./templates/${template.file}";\n`,
+	);
+
+	const names = templates.map((template) => template.name);
+	return interpolate(readTemplate("email/packages/email/src/messages.ts"), {
+		IMPORTS: imports.join(""),
+		MODULES: names.length === 0 ? "{}" : `{ ${names.join(", ")} }`,
+	});
+}
+
+function testSource(config: ForgeConfig, provider: EmailProvider): string {
+	const cases = emailTemplates(config).flatMap((template) => [
+		"  {",
+		"    message: {",
+		'      to: "reader@example.com",',
+		`      template: "${template.name}",`,
+		"      props: {",
+		...template.sample.map((line) => `  ${line}`),
+		"      },",
+		"    },",
+		`    expected: "${template.expected}",`,
+		"  },",
+	]);
+
+	return interpolate(readTemplate("email/packages/email/src/index.test.ts"), {
+		MOCK: providers[provider].mock.join("\n"),
+		KEY: providers[provider].keyVar,
+		CASES: cases.join("\n"),
+	});
+}
 
 const email = defineAddon<ForgeConfig, "email">({
 	id: "email",
@@ -66,6 +187,9 @@ const email = defineAddon<ForgeConfig, "email">({
 			}),
 			surfaceDependencies(ensuredModuleTarget("email"), "packageJson", [
 				{ ...provider.dependency, type: "dependencies" },
+				{ ...deps.reactEmailComponents, type: "dependencies" },
+				{ ...catalogRef("react", config), type: "dependencies" },
+				{ ...catalogRef("reactDom", config), type: "dependencies" },
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
 				{ ...deps.zod, type: "dependencies" },
 				{
@@ -74,6 +198,7 @@ const email = defineAddon<ForgeConfig, "email">({
 					type: "devDependencies",
 				},
 				{ ...deps.typesNode, type: "devDependencies" },
+				{ ...deps.typesReact, type: "devDependencies" },
 				{ ...deps.typescript, type: "devDependencies" },
 			]),
 			leafTextFile(
@@ -90,6 +215,42 @@ const email = defineAddon<ForgeConfig, "email">({
 					`email/packages/email/src/index.${config.emailProvider}.ts`,
 				),
 			),
+			leafTextFile(
+				ensuredModuleTarget("email"),
+				"src/messages.ts",
+				messagesSource(config),
+			),
+			leafTextFile(
+				ensuredModuleTarget("email"),
+				"src/layout.tsx",
+				readTemplate("email/packages/email/src/layout.tsx"),
+				{ preserveExisting: true },
+			),
+			...emailTemplates(config).map((template) =>
+				leafTextFile(
+					ensuredModuleTarget("email"),
+					`src/templates/${template.file}.tsx`,
+					readTemplate(
+						`email/packages/email/src/templates/${template.file}.tsx`,
+					),
+					{ preserveExisting: true },
+				),
+			),
+			...(vitest.when(config) && emailTemplates(config).length > 0
+				? [
+						surfaceDependencies(ensuredModuleTarget("email"), "packageJson", [
+							{ ...deps.vitest, type: "devDependencies" },
+						]),
+						surfaceScripts(ensuredModuleTarget("email"), "packageJson", {
+							test: "vitest run",
+						}),
+						leafTextFile(
+							ensuredModuleTarget("email"),
+							"src/index.test.ts",
+							testSource(config, config.emailProvider),
+						),
+					]
+				: []),
 			surfaceLines(projectTarget(), "rootEnv", lines, { section: "Email" }),
 			surfaceLines(projectTarget(), "rootEnvExample", lines, {
 				section: "Email",

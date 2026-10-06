@@ -2179,6 +2179,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				`smoke-email-auth-${backend}`,
 				async (workspace) => {
 					await createProject(workspace, {
+						addons: ["vitest"],
 						authentication: "better-auth",
 						authMethods: ["email-password", "email-otp", "magic-link"],
 						backend,
@@ -2204,6 +2205,17 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					);
 
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+
+					const emailTest = await runCommand("pnpm", ["test"], {
+						cwd: join(workspace.projectRoot, "packages/email"),
+					});
+
+					expect(
+						emailTest.exitCode,
+						`${emailTest.stdout}\n${emailTest.stderr}`,
+					).toBe(0);
+
+					expect(emailTest.stdout).toMatch(/Tests\s+2 passed/);
 
 					const declarations = await runCommand(
 						"pnpm",

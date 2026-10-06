@@ -25,17 +25,19 @@ function invitationUrl(base: InvitationLinkBase): string {
 function invitationEmail(
 	base: InvitationLinkBase | undefined,
 ): ReadonlyArray<string> {
-	const action =
-		base === undefined
-			? "Your invitation ID is ${id}."
-			: "Sign in as ${email}, then open the link below to accept the invitation.\\n\\n${url}";
-
 	return [
 		...(base === undefined ? [] : [invitationUrl(base), ""]),
 		"        await sendEmail({",
 		"          to: email,",
-		"          subject: `${inviter.user.name} invited you to ${organization.name}`,",
-		`          text: \`\${inviter.user.name} (\${inviter.user.email}) invited you to join \${organization.name}. ${action}\`,`,
+		'          template: "invitation",',
+		"          props: {",
+		"            email,",
+		"            inviterName: inviter.user.name,",
+		"            inviterEmail: inviter.user.email,",
+		"            organizationName: organization.name,",
+		"            invitationId: id,",
+		...(base === undefined ? [] : ["            url: url.href,"]),
+		"          },",
 		"        });",
 	];
 }

@@ -26,21 +26,21 @@ const emailMethods: ReadonlyArray<{
 	server: string;
 	client: string;
 	callback: string;
-	text: string;
+	template: string;
 }> = [
 	{
 		method: "email-otp",
 		server: "emailOTP",
 		client: "emailOTPClient",
 		callback: "async sendVerificationOTP({ email, otp, type })",
-		text: `text: \`Your \${type} code is \${otp}.\`,`,
+		template: 'template: "verificationCode",',
 	},
 	{
 		method: "magic-link",
 		server: "magicLink",
 		client: "magicLinkClient",
 		callback: "async sendMagicLink({ email, url })",
-		text: `text: \`Sign in using this link: \${url}\`,`,
+		template: 'template: "magicLink",',
 	},
 ];
 
@@ -145,7 +145,7 @@ describe("email authentication methods", () => {
 				for (const method of emailMethods) {
 					expect(server).toContain(`${method.server}({`);
 					expect(server).toContain(method.callback);
-					expect(server).toContain(method.text);
+					expect(server).toContain(method.template);
 					expect(client).toContain(`${method.client}()`);
 				}
 
