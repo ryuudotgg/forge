@@ -336,6 +336,63 @@ async function withGeneratedServer(
 	}
 }
 
+async function expectEmailPreview(projectRoot: string) {
+	const port = 3883;
+	await expectPortFree(port);
+
+	const server = spawn("pnpm", ["run", "dev"], {
+		cwd: join(projectRoot, "packages/email"),
+		detached: true,
+		env: { ...process.env, ...scriptEnvironment({}) },
+	});
+
+	let output = "";
+	const capture = (chunk: Buffer) => {
+		output += chunk.toString();
+	};
+
+	server.stdout.on("data", capture);
+	server.stderr.on("data", capture);
+	server.on("error", (error) => {
+		output += error.message;
+	});
+
+	try {
+		let ready = false;
+		const deadline = Date.now() + 30_000;
+		while (Date.now() < deadline && server.exitCode === null) {
+			try {
+				const response = await fetch(`http://localhost:${port}/`, {
+					signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+				});
+
+				if (response.status === 200) {
+					ready = true;
+					break;
+				}
+			} catch {}
+
+			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+		}
+
+		expect(ready, output).toBe(true);
+	} finally {
+		const pid = server.pid;
+		if (pid !== undefined) {
+			stopProcessGroup(pid, "SIGTERM");
+
+			for (
+				let attempt = 0;
+				attempt < 50 && processGroupAlive(pid);
+				attempt += 1
+			)
+				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+
+			stopProcessGroup(pid, "SIGKILL");
+		}
+	}
+}
+
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
@@ -1005,7 +1062,6 @@ async function expectServerOnlyCodeOutOfClientBundle(projectRoot: string) {
 	const dist = join(projectRoot, "apps/web/dist");
 	const client = await bundleText(join(dist, "client"));
 	const server = await bundleText(join(dist, "server"));
-
 	for (const marker of ["AUTH_SECRET", "DATABASE_URL", "@libsql"]) {
 		expect(server, marker).toContain(marker);
 		expect(client, marker).not.toContain(marker);
@@ -1014,7 +1070,6 @@ async function expectServerOnlyCodeOutOfClientBundle(projectRoot: string) {
 
 async function expectBrowserOrpcClientBundle(projectRoot: string) {
 	const client = await bundleText(join(projectRoot, "apps/web/dist/client"));
-
 	for (const pattern of [
 		/\/api\/orpc/,
 		/["'`]x-csrf-token["'`]/,
@@ -1135,7 +1190,6 @@ async function startSelfHostedServer(
 ) {
 	const webRoot = join(projectRoot, "apps/web");
 	const generatedEnv = await readGeneratedEnv(projectRoot);
-
 	if (web === "nextjs") {
 		const port = await reservePort();
 		const origin = `http://127.0.0.1:${port}`;
@@ -1218,8 +1272,8 @@ async function expectSelfHostedRpc(
 		web,
 		options.injectPort === true,
 	);
-	const { origin, output } = server;
 
+	const { origin, output } = server;
 	try {
 		let ready = false;
 		for (let attempt = 0; attempt < 300; attempt += 1) {
@@ -2221,6 +2275,8 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 
 					expect(emailTest.stdout).toMatch(/Tests\s+2 passed/);
 
+					await expectEmailPreview(workspace.projectRoot);
+
 					const declarations = await runCommand(
 						"pnpm",
 						[
@@ -2572,6 +2628,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					});
 
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+
 					if (rpc === "trpc")
 						await expectCredentialedGeneratedServer(workspace.projectRoot, {
 							webOrigin: "http://localhost:5173",

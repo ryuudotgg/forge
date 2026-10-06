@@ -14,6 +14,7 @@ import { resolveAuthMethods } from "../auth/methods";
 import { resolveAuthPlugins } from "../auth/plugins";
 import type { EmailProvider, ForgeConfig } from "../config";
 import { deps } from "../deps";
+import { emailPreviewPort } from "../origins";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { readTemplate } from "../template";
 import vitest from "../tooling/vitest";
@@ -242,6 +243,17 @@ const email = defineAddon<ForgeConfig, "email">({
 					{ preserveExisting: true },
 				),
 			),
+			...(emailTemplates(config).length > 0
+				? [
+						surfaceDependencies(ensuredModuleTarget("email"), "packageJson", [
+							{ ...deps.reactEmail, type: "devDependencies" },
+							{ ...deps.reactEmailUi, type: "devDependencies" },
+						]),
+						surfaceScripts(ensuredModuleTarget("email"), "packageJson", {
+							dev: `email dev --dir src/templates --port ${emailPreviewPort}`,
+						}),
+					]
+				: []),
 			...(vitest.when(config) && emailTemplates(config).length > 0
 				? [
 						surfaceDependencies(ensuredModuleTarget("email"), "packageJson", [

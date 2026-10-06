@@ -1,5 +1,9 @@
 import type { ForgeConfig, WebFramework } from "./config";
-import { standaloneBackendDevPort, webDevPort } from "./origins";
+import {
+	emailPreviewPort,
+	standaloneBackendDevPort,
+	webDevPort,
+} from "./origins";
 
 export interface WebAppConfig {
 	readonly name: string;
@@ -98,6 +102,7 @@ export function addWebAppConfig(
 	const stamped = withWebAppPorts(config);
 	const usedPorts = new Set([
 		standaloneBackendDevPort,
+		emailPreviewPort,
 		...webAppInstances(stamped).map((instance) => instance.port),
 	]);
 

@@ -2,6 +2,7 @@ import type { ForgeConfig, WebFramework } from "./config";
 import { type WebAppInstance, webAppInstances } from "./web-apps";
 
 export const standaloneBackendDevPort = 3001;
+export const emailPreviewPort = 3883;
 
 export function webDevPort(framework?: WebFramework): number {
 	return framework === "react-router" ? 5173 : 3000;
@@ -176,7 +177,6 @@ function clientApiOrigin(
 	instance: WebAppInstance,
 ): string | undefined {
 	if (instance.client === true) return appOrigin(config);
-
 	return instance.primary ? standaloneApiOrigin(config) : undefined;
 }
 
@@ -185,7 +185,6 @@ export function viteServerEnvMarkers(
 	instance: WebAppInstance,
 ) {
 	const origin = clientApiOrigin(config, instance);
-
 	return {
 		"  // __SERVER_ENV__\n  client: {},\n":
 			origin === undefined
@@ -199,7 +198,6 @@ export function nextServerEnvMarkers(
 	instance: WebAppInstance,
 ) {
 	const origin = clientApiOrigin(config, instance);
-
 	return {
 		"  // __SERVER_ENV__\n":
 			origin === undefined

@@ -365,6 +365,12 @@ export const versions = {
 		version: "^1.0.12",
 		group: "Utilities",
 	},
+	reactEmail: { name: "react-email", version: "6.11.0", group: "Utilities" },
+	reactEmailUi: {
+		name: "@react-email/ui",
+		version: "6.11.0",
+		group: "Utilities",
+	},
 	classVarianceAuthority: {
 		name: "class-variance-authority",
 		version: "^0.7.1",

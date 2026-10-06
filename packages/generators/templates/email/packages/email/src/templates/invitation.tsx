@@ -51,3 +51,12 @@ export default function Invitation({
     </Layout>
   );
 }
+
+Invitation.PreviewProps = {
+  email: "invitee@example.com",
+  inviterName: "Ada",
+  inviterEmail: "ada@example.com",
+  organizationName: "Lumen Works",
+  invitationId: "inv_123",
+  url: "https://app.example.com/accept-invitation/inv_123",
+} satisfies InvitationProps;
