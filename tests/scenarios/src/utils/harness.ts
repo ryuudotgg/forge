@@ -419,6 +419,8 @@ export async function expectInstallAndBuild(
 		buildResult.exitCode,
 		`${pm} build failed with code ${buildResult.exitCode}\n${buildResult.stdout}\n${buildResult.stderr}`,
 	).toBe(0);
+
+	return installResult;
 }
 
 export async function expectInstallBuildAndTypecheck(
@@ -426,7 +428,7 @@ export async function expectInstallBuildAndTypecheck(
 	pm: "pnpm" | "npm" | "yarn" | "bun",
 	installEnv?: NodeJS.ProcessEnv,
 ) {
-	await expectInstallAndBuild(workspace, pm, installEnv);
+	const installResult = await expectInstallAndBuild(workspace, pm, installEnv);
 
 	const typecheckResult = await runCommand(pm, typecheckArgsFor[pm], {
 		cwd: workspace.projectRoot,
@@ -439,6 +441,8 @@ export async function expectInstallBuildAndTypecheck(
 		typecheckResult.exitCode,
 		`${pm} typecheck failed with code ${typecheckResult.exitCode}\n${typecheckResult.stdout}\n${typecheckResult.stderr}`,
 	).toBe(0);
+
+	return installResult;
 }
 
 export async function renameModuleRoot(

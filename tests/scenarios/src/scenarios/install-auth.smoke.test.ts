@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
 	createProject,
@@ -67,11 +68,24 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 						].join("\n"),
 					);
 
-					await expectInstallBuildAndTypecheck(
+					const installResult = await expectInstallBuildAndTypecheck(
 						workspace,
 						"pnpm",
 						watchedInstallEnv,
 					);
+
+					const deprecatedEmailLines = stripVTControlCharacters(
+						`${installResult.stdout}\n${installResult.stderr}`,
+					)
+						.split("\n")
+						.filter(
+							(line) => /deprecated/i.test(line) && /react-email/.test(line),
+						);
+
+					expect(
+						deprecatedEmailLines,
+						`Deprecated React Email packages during install:\n${deprecatedEmailLines.join("\n")}`,
+					).toEqual([]);
 
 					const emailTest = await runCommand("pnpm", ["test"], {
 						cwd: join(workspace.projectRoot, "packages/email"),

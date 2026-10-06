@@ -467,6 +467,91 @@ function templatePaths(config: ForgeConfig) {
 }
 
 describe("email templates", () => {
+	it.each(providers)(
+		"plans React Email runtime imports for $id",
+		async (provider) => {
+			const config: ForgeConfig = {
+				...allMessages,
+				emailProvider: provider.id,
+				backend: "self",
+				database: "postgresql",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				platforms: ["web"],
+				web: "nextjs",
+			};
+
+			const plan = await plannedProject(config);
+			for (const write of plan.writes)
+				expect(write.content, write.path).not.toContain(
+					"@react-email/components",
+				);
+
+			const sourcePaths = [
+				"packages/email/src/messages.ts",
+				"packages/email/src/layout.tsx",
+				...templatePaths(config).map((path) => `packages/email/${path}`),
+			];
+
+			for (const path of sourcePaths)
+				expect(
+					plan.writes.find((write) => write.path === path)?.content,
+					path,
+				).toContain('from "react-email"');
+
+			const packageFile = plan.writes.find(
+				(write) => write.path === "packages/email/package.json",
+			);
+
+			if (packageFile === undefined)
+				throw new Error("Missing Planned File: packages/email/package.json");
+
+			const packageJson = Schema.decodeSync(
+				Schema.fromJsonString(
+					Schema.Struct({
+						dependencies: Schema.Record(Schema.String, Schema.String),
+					}),
+				),
+			)(packageFile.content);
+
+			expect(packageJson.dependencies["react-email"]).toBe("catalog:");
+
+			const contributions = contributionsOf(config);
+			expect(contributions).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						dependencies: expect.arrayContaining([
+							expect.objectContaining({
+								name: "react-email",
+								version: versions.reactEmail.version,
+								type: "dependencies",
+							}),
+						]),
+					}),
+				]),
+			);
+
+			for (const path of [
+				"src/layout.tsx",
+				...templatePaths(config),
+				"src/custom.ts",
+			]) {
+				const file = contributions.find(
+					(contribution) =>
+						contribution._tag === "LeafTextFileContribution" &&
+						contribution.path === path,
+				);
+
+				if (file?._tag !== "LeafTextFileContribution")
+					throw new Error(`Missing Leaf File: ${path}`);
+
+				expect(file.preserveExisting, path).toBe(
+					path === "src/custom.ts" ? true : undefined,
+				);
+			}
+		},
+	);
+
 	it.each([{ addons: [] }, { addons: ["vitest"] }] satisfies ReadonlyArray<
 		Pick<ForgeConfig, "addons">
 	>)(
@@ -504,9 +589,24 @@ describe("email templates", () => {
 				`email dev --dir src/templates --port ${emailPreviewPort}`,
 			);
 
-			for (const dependency of [versions.reactEmail, versions.reactEmailUi]) {
-				expect(packageJson.devDependencies[dependency.name]).toBe("catalog:");
-				expect(packageJson.dependencies).not.toHaveProperty(dependency.name);
+			for (const { dependency, type, absentType } of [
+				{
+					dependency: versions.reactEmail,
+					type: "dependencies",
+					absentType: "devDependencies",
+				},
+				{
+					dependency: versions.reactEmailUi,
+					type: "devDependencies",
+					absentType: "dependencies",
+				},
+			] satisfies ReadonlyArray<{
+				dependency: { name: string; version: string };
+				type: "dependencies" | "devDependencies";
+				absentType: "dependencies" | "devDependencies";
+			}>) {
+				expect(packageJson[type][dependency.name]).toBe("catalog:");
+				expect(packageJson[absentType]).not.toHaveProperty(dependency.name);
 				expect(contributionsOf({ ...allMessages, addons })).toEqual(
 					expect.arrayContaining([
 						expect.objectContaining({
@@ -515,7 +615,7 @@ describe("email templates", () => {
 									name: dependency.name,
 									version: dependency.version,
 									catalog: "",
-									type: "devDependencies",
+									type,
 								},
 							]),
 						}),
@@ -543,7 +643,7 @@ describe("email templates", () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					dependencies: expect.arrayContaining([
-						expect.objectContaining({ name: "react-email" }),
+						expect.objectContaining({ name: "@react-email/ui" }),
 					]),
 				}),
 			]),
@@ -680,7 +780,7 @@ describe("email templates", () => {
 			join(directory, "src/templates/welcome.tsx"),
 			[
 				"/** @jsxRuntime automatic */",
-				'import { Text } from "@react-email/components";',
+				'import { Text } from "react-email";',
 				'import { Layout } from "../layout";',
 				"",
 				'export const subject = () => "Welcome";',
