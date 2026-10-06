@@ -56,7 +56,7 @@ jobs:
               packages/cli/tests/* | packages/core/tests/* | packages/generators/tests/*)
                 continue
                 ;;
-              .depot/workflows/smoke.yml | package.json | .nvmrc | tooling/github/setup/* | packages/cli/* | packages/core/* | packages/generators/* | pnpm-lock.yaml | pnpm-workspace.yaml | tests/scenarios/package.json | tests/scenarios/turbo.json | tests/scenarios/vitest.config.ts | tests/scenarios/src/scenarios/install.smoke.test.ts | tests/scenarios/src/scenarios/multi-pm.smoke.test.ts | tests/scenarios/src/scenarios/registry.smoke.test.ts | tests/scenarios/src/scenarios/tarball.smoke.test.ts | tests/scenarios/src/utils/* | examples/registry-package/*)
+              .depot/workflows/smoke.yml | package.json | .nvmrc | tooling/github/setup/* | packages/cli/* | packages/core/* | packages/generators/* | pnpm-lock.yaml | pnpm-workspace.yaml | tests/scenarios/package.json | tests/scenarios/turbo.json | tests/scenarios/vitest.config.ts | tests/scenarios/src/scenarios/install.smoke.test.ts | tests/scenarios/src/scenarios/multi-pm.smoke.test.ts | tests/scenarios/src/scenarios/registry.smoke.test.ts | tests/scenarios/src/scenarios/tarball.smoke.test.ts | tests/scenarios/src/utils/* | tests/scenarios/scripts/* | examples/registry-package/*)
                 relevant=true
                 break
                 ;;
@@ -109,12 +109,23 @@ jobs:
         run: pnpm build --filter=@ryuugg/forge
 
       - name: Smoke Test
-        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install.smoke.test.ts
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install.smoke.test.ts --reporter=default --reporter=github-actions --reporter=json --outputFile.json=.cache/install-smoke.json
         env:
           FORGE_SMOKE: "1"
           FORGE_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
           FORGE_SMOKE_MYSQL_URL: mysql://root:mysql@127.0.0.1:3306
           TURBO_FORCE: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+
+      - name: Smoke Timing Report
+        if: ${{ !cancelled() }}
+        run: node tests/scenarios/scripts/smoke-report.mts tests/scenarios/.cache/install-smoke.json
+
+      - name: Upload Smoke Report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: install-smoke-report
+          path: tests/scenarios/.cache/install-smoke.json
 
       - name: Tarball Smoke
         run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/tarball.smoke.test.ts
