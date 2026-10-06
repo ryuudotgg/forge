@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createProject, withScenarioWorkspace } from "../utils/harness";
+import { passkeySchemaBlock } from "../utils/schema";
 
 const variants = [
 	{ name: "drizzle postgres", orm: "drizzle", database: "postgresql" },
@@ -61,6 +62,11 @@ describe("passkey", () => {
 					expect(options).toContain("PasskeyOptions");
 					expect(workspaceYaml).toContain("@better-auth/passkey");
 
+					const passkeyTable = passkeySchemaBlock(
+						schema,
+						config.orm === "drizzle" ? "drizzle" : "prisma",
+					);
+
 					for (const field of [
 						"name",
 						"publicKey",
@@ -73,20 +79,19 @@ describe("passkey", () => {
 						"createdAt",
 						"aaguid",
 					])
-						expect(schema).toContain(field);
+						expect(passkeyTable).toContain(field);
 
 					if (config.orm === "drizzle") {
 						expect(auth).toContain("passkey: passkeys");
-						expect(schema).toContain("passkeys_credential_id_idx");
-						expect(schema.includes("passkeys_user_id_idx")).toBe(
+						expect(passkeyTable).toContain("passkeys_credential_id_idx");
+						expect(passkeyTable.includes("passkeys_user_id_idx")).toBe(
 							config.database !== "mysql" ||
 								config.databaseProvider === "planetscale",
 						);
 					} else {
-						expect(schema).toContain("model Passkey {");
 						expect(schema).toMatch(/passkeys\s+Passkey\[\]/);
-						expect(schema).toContain("@@index([credentialID");
-						expect(schema).toContain("@@index([userId");
+						expect(passkeyTable).toContain("@@index([credentialID");
+						expect(passkeyTable).toContain("@@index([userId");
 					}
 
 					for (const content of [auth, client, options, schema])

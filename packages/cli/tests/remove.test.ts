@@ -4,6 +4,7 @@ import {
 	defineAddon,
 } from "@ryuugg/core";
 import {
+	type AuthMethod,
 	type ForgeConfig,
 	type LoadedDefinitionRegistry,
 	loadDefinitionRegistry,
@@ -1779,6 +1780,89 @@ describe("remove command", () => {
 		} finally {
 			exit.mockRestore();
 		}
+	});
+
+	const emailRemovals: ReadonlyArray<{
+		readonly authMethods: ReadonlyArray<AuthMethod>;
+		readonly message: string;
+	}> = [
+		{
+			authMethods: ["email-password", "magic-link", "email-otp"],
+			message:
+				"We can't remove email until you remove these sign-in methods: Magic link and Email OTP.",
+		},
+		{
+			authMethods: ["email-otp"],
+			message:
+				"We can't remove email until you remove this sign-in method: Email OTP.",
+		},
+	];
+
+	it.each(emailRemovals)(
+		"refuses to remove email while $authMethods sign in with it",
+		async ({ authMethods, message }) => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				lifecycleMocks.loadManagedProject.mockResolvedValue(
+					managedProject({
+						config: {
+							authentication: "better-auth",
+							authMethods,
+							emailProvider: "resend",
+							orm: "drizzle",
+							slug: "acme",
+							web: "nextjs",
+						},
+						installs: [
+							{ definitionId: "better-auth", targets: [{ kind: "project" }] },
+							{ definitionId: "drizzle", targets: [{ kind: "project" }] },
+							{ definitionId: "email", targets: [{ kind: "project" }] },
+						],
+					}),
+				);
+
+				await expect(runRemove("email", {})).rejects.toThrow("exit:1");
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(message);
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
+
+	it("removes email once no sign-in method uses it", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					authentication: "better-auth",
+					authMethods: ["email-password"],
+					emailProvider: "resend",
+					slug: "acme",
+					web: "nextjs",
+				},
+				installs: [{ definitionId: "email", targets: [{ kind: "project" }] }],
+			}),
+		);
+
+		await runRemove("email", {});
+
+		expect(promptMocks.logError).not.toHaveBeenCalled();
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{
+				authentication: "better-auth",
+				authMethods: ["email-password"],
+				slug: "acme",
+				web: "nextjs",
+			},
+			[],
+			undefined,
+			undefined,
+		);
 	});
 
 	it("refuses to remove addons the app template depends on", async () => {

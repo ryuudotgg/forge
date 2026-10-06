@@ -6,7 +6,7 @@ import {
 } from "../config";
 import { deps } from "../deps";
 import { organizationServerCall } from "./invitations";
-import { authUsesEmail, resolveAuthMethods } from "./methods";
+import { authEmailMethods, authUsesEmail, resolveAuthMethods } from "./methods";
 import {
 	type AuthTable,
 	organizationTables,
@@ -58,7 +58,7 @@ interface AuthPluginDefinition {
 	readonly tables?: ReadonlyArray<AuthTable>;
 	readonly files?: ReadonlyArray<string>;
 	readonly requires?: AuthMethod;
-	readonly fields: Partial<Record<AuthModel, AuthFieldGroup>>;
+	readonly fields?: Partial<Record<AuthModel, AuthFieldGroup>>;
 	readonly env?: ReadonlyArray<AuthPluginEnvEntry>;
 	readonly emitsNamelessTypes?: true;
 	readonly packages?: Partial<
@@ -97,6 +97,7 @@ const authPluginDefinitions = {
 				name: "emailOTP",
 				call: [
 					"emailOTP({",
+					'      storeOTP: "hashed",',
 					"      async sendVerificationOTP({ email, otp, type }) {",
 					"        await sendEmail({",
 					"          to: email,",
@@ -109,7 +110,6 @@ const authPluginDefinitions = {
 			},
 		],
 		client: [{ module: "better-auth/client/plugins", name: "emailOTPClient" }],
-		fields: {},
 	},
 	"magic-link": {
 		server: [
@@ -118,6 +118,7 @@ const authPluginDefinitions = {
 				name: "magicLink",
 				call: [
 					"magicLink({",
+					'      storeToken: "hashed",',
 					"      async sendMagicLink({ email, url }) {",
 					"        await sendEmail({",
 					"          to: email,",
@@ -130,13 +131,11 @@ const authPluginDefinitions = {
 			},
 		],
 		client: [{ module: "better-auth/client/plugins", name: "magicLinkClient" }],
-		fields: {},
 	},
 	passkey: {
 		server: [{ module: "./passkey", name: "passkeyPlugin" }],
 		client: [{ module: "@better-auth/passkey/client", name: "passkeyClient" }],
 		expo: [],
-		fields: {},
 		tables: [passkeyTable],
 		files: ["src/passkey.ts"],
 		packages: { auth: [deps.betterAuthPasskey] },
@@ -172,7 +171,6 @@ const authPluginDefinitions = {
 			{ module: "./polar", name: "polarAvailability" },
 		],
 		client: [{ module: "@polar-sh/better-auth/client", name: "polarClient" }],
-		fields: {},
 		emitsNamelessTypes: true,
 		packages: {
 			auth: [deps.polarBetterAuth, deps.polarSdk],
@@ -290,6 +288,14 @@ export function unmetAuthPluginRequirements(
 	});
 }
 
+export function twoFactorSkippingMethods(
+	config: ForgeConfig,
+): ReadonlyArray<AuthMethod> {
+	return selectedAuthPlugins(config).includes("two-factor")
+		? authEmailMethods(config)
+		: [];
+}
+
 export function resolveAuthPlugins(
 	config: ForgeConfig,
 ): ReadonlyArray<AuthPlugin> {
@@ -297,6 +303,10 @@ export function resolveAuthPlugins(
 	const missing = unmetAuthPluginRequirements(config)[0];
 	if (missing !== undefined)
 		throw new Error(`Auth Plugin Requirement: ${missing}`);
+
+	const skipping = twoFactorSkippingMethods(config);
+	if (skipping.length > 0)
+		throw new Error(`Two Factor Conflict: ${skipping.join(", ")}`);
 
 	return plugins;
 }
@@ -307,7 +317,7 @@ export function authPluginFields(
 ): ReadonlyArray<AuthFieldGroup> {
 	return resolveAuthPlugins(config).flatMap((plugin) => {
 		const definition: AuthPluginDefinition = authPluginDefinitions[plugin];
-		const group = definition.fields[model];
+		const group = definition.fields?.[model];
 		return group === undefined ? [] : [group];
 	});
 }

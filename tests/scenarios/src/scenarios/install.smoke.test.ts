@@ -2,7 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createContext, Script } from "node:vm";
 import { ManifestSchema } from "@ryuugg/core";
@@ -614,6 +614,57 @@ async function expectEmailPreview(projectRoot: string) {
 	}
 }
 
+function sqliteDatabasePath(projectRoot: string, env: NodeJS.ProcessEnv) {
+	const url = env.DATABASE_URL;
+	if (url === undefined || !url.startsWith("file:"))
+		throw new Error(`Missing SQLite Database: ${projectRoot}`);
+
+	return resolve(projectRoot, "apps/server", url.slice("file:".length));
+}
+
+async function expectRelocatedPasskeyCeremony(projectRoot: string) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const serverOrigin = generatedEnv.APP_ORIGIN;
+	if (serverOrigin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	const rpID = "forge.test";
+	const origin = "http://admin.forge.test:3002";
+	expect(new URL(serverOrigin).hostname).not.toBe(rpID);
+
+	await withGeneratedServer(
+		projectRoot,
+		{
+			PASSKEY_RP_ID: rpID,
+			PORT: new URL(serverOrigin).port,
+			WEB_URL: "http://app.forge.test:3000",
+			WEB_URLS: origin,
+		},
+		serverOrigin,
+		async (output) => {
+			const signup = await fetch(`${serverOrigin}/api/auth/sign-up/email`, {
+				body: JSON.stringify({
+					email: "relocated-passkey@example.com",
+					name: "Relocated Passkey",
+					password: "forge-smoke-password",
+				}),
+				headers: { "Content-Type": "application/json", Origin: origin },
+				method: "POST",
+			});
+
+			expect(signup.status, `${await signup.text()}\n${output()}`).toBe(200);
+
+			const cookie = signup.headers.get("set-cookie")?.split(";", 1)[0];
+			if (cookie === undefined)
+				throw new Error("Missing Session Cookie: relocated passkey sign-up");
+
+			await expectPasskeyCeremony(serverOrigin, origin, cookie, output, rpID);
+		},
+		"server",
+		"start",
+	);
+}
+
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
@@ -750,7 +801,12 @@ async function expectCredentialedGeneratedServer(
 				await expectPasskeyCeremony(serverOrigin, origin, cookie, output);
 
 			if (options?.emailAuth)
-				await expectEmailAuth(serverOrigin, origin, output);
+				await expectEmailAuth(
+					serverOrigin,
+					origin,
+					output,
+					sqliteDatabasePath(projectRoot, generatedEnv),
+				);
 
 			if (options?.polar) {
 				const checkout = await fetch(`${serverOrigin}/api/auth/checkout`, {
@@ -1381,7 +1437,6 @@ async function expectServerOnlyCodeOutOfClientBundle(
 ) {
 	const client = await bundleText(bundles.client);
 	const server = await bundleText(bundles.server);
-
 	for (const marker of markers) {
 		expect(server, marker).toContain(marker);
 		expect(client, marker).not.toContain(marker);
@@ -2164,26 +2219,7 @@ async function expectProductionEmailSecrets(projectRoot: string) {
 
 			expect(sessionCookie, cookies.join("\n")).toMatch(/;\s*Secure(;|$)/i);
 
-			const otp = await fetch(
-				`${serverOrigin}/api/auth/email-otp/send-verification-otp`,
-				{
-					body: JSON.stringify({
-						email: "prod-smoke@example.com",
-						type: "sign-in",
-					}),
-					headers,
-					method: "POST",
-				},
-			);
-
-			expect(otp.status, `${await otp.text()}\n${output()}`).toBe(200);
-
 			const unconfigured = "Email isn't configured.";
-			await waitForOutput(output, unconfigured);
-			expect(output(), "the OTP send never reached sendEmail").toContain(
-				unconfigured,
-			);
-
 			const beforeMagicLink = output().length;
 			const magicLink = await fetch(
 				`${serverOrigin}/api/auth/sign-in/magic-link`,
@@ -2204,14 +2240,50 @@ async function expectProductionEmailSecrets(projectRoot: string) {
 			).toBe(false);
 
 			await waitForOutput(output, unconfigured, beforeMagicLink);
+			expect(
+				output().indexOf(unconfigured, beforeMagicLink),
+				`the magic link send never reached sendEmail: ${magicLinkBody}\n${output()}`,
+			).not.toBe(-1);
+
+			const sessionToken = sessionCookie?.split(";", 1)[0];
+			if (sessionToken === undefined)
+				throw new Error(`Missing Session Cookie: ${cookies.join("\n")}`);
+
+			const otpSends = [
+				...["prod-signup@example.com", "prod-smoke@example.com"].flatMap(
+					(email) => [
+						{
+							path: "email-otp/send-verification-otp",
+							body: { email, type: "forget-password" },
+						},
+						{ path: "email-otp/request-password-reset", body: { email } },
+						{ path: "forget-password/email-otp", body: { email } },
+					],
+				),
+				{
+					path: "email-otp/request-email-change",
+					body: { newEmail: "prod-change@example.com" },
+					cookie: sessionToken,
+				},
+			];
+
+			for (const send of otpSends) {
+				const otp = await fetch(`${serverOrigin}/api/auth/${send.path}`, {
+					body: JSON.stringify(send.body),
+					headers:
+						"cookie" in send ? { ...headers, Cookie: send.cookie } : headers,
+					method: "POST",
+				});
+
+				expect(
+					{ status: otp.status, body: await otp.text() },
+					`${send.path} with ${JSON.stringify(send.body)} must fail like magic link\n${output()}`,
+				).toEqual({ status: magicLink.status, body: magicLinkBody });
+			}
+
 			await new Promise((resolveWait) => setTimeout(resolveWait, 1000));
 
 			const log = output();
-			expect(
-				log.indexOf(unconfigured, beforeMagicLink),
-				`the magic link send never reached sendEmail: ${magicLinkBody}\n${log}`,
-			).not.toBe(-1);
-
 			expect(log).not.toContain("prod-smoke@example.com");
 			expect(log).not.toContain("magic-link/verify?token=");
 			expect(log).not.toMatch(/code is \d{6}/);
@@ -2832,6 +2904,8 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 						clientOrigin: "http://localhost:3002",
 						passkey: true,
 					});
+
+					await expectRelocatedPasskeyCeremony(workspace.projectRoot);
 
 					await expectProductionOrigins(workspace.projectRoot, {
 						host: "server",

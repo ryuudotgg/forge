@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderBetterAuthTemplate } from "../src/auth/better-auth/shared";
-import { authUsesEmail } from "../src/auth/methods";
+import { authEmailMethods, authUsesEmail } from "../src/auth/methods";
 import {
 	authPluginBindings,
 	authPluginFiles,
@@ -26,23 +26,45 @@ const emailMethods: ReadonlyArray<{
 	server: string;
 	client: string;
 	callback: string;
+	storage: string;
 	template: string;
+	label: string;
 }> = [
 	{
 		method: "email-otp",
 		server: "emailOTP",
 		client: "emailOTPClient",
 		callback: "async sendVerificationOTP({ email, otp, type })",
+		storage: 'emailOTP({\n      storeOTP: "hashed",',
 		template: 'template: "verificationCode",',
+		label: "Email OTP",
 	},
 	{
 		method: "magic-link",
 		server: "magicLink",
 		client: "magicLinkClient",
 		callback: "async sendMagicLink({ email, url })",
+		storage: 'magicLink({\n      storeToken: "hashed",',
 		template: 'template: "magicLink",',
+		label: "Magic link",
 	},
 ];
+
+const otpSendHook = [
+	"  hooks: {",
+	"    before: createAuthMiddleware(async (ctx) => {",
+	"      const sendsOTP = [",
+	'        "/email-otp/send-verification-otp",',
+	'        "/email-otp/request-password-reset",',
+	'        "/forget-password/email-otp",',
+	'        "/email-otp/request-email-change",',
+	"      ].includes(ctx.path);",
+	"",
+	"      if (sendsOTP && !canSendEmail())",
+	`        throw new Error("Email isn't configured.");`,
+	"    }),",
+	"  },",
+].join("\n");
 
 const providers: ReadonlyArray<EmailProvider> = ["resend", "postmark", "smtp"];
 const variants: ReadonlyArray<{ name: string; config: ForgeConfig }> = [
@@ -111,7 +133,7 @@ describe("email authentication methods", () => {
 
 	it.each(emailMethods)(
 		"rejects $method without email at the generator boundary",
-		async ({ method }) => {
+		async ({ method, label }) => {
 			await expect(
 				plannedProject({
 					...baseConfig,
@@ -119,9 +141,20 @@ describe("email authentication methods", () => {
 					database: "sqlite",
 					authMethods: [method],
 				}),
-			).rejects.toThrow("Email Provider Required: email-otp and magic-link");
+			).rejects.toThrow(`${label} needs an email provider.`);
 		},
 	);
+
+	it("names both email methods when neither has a provider", async () => {
+		await expect(
+			plannedProject({
+				...baseConfig,
+				orm: "drizzle",
+				database: "sqlite",
+				authMethods: ["email-password", "magic-link", "email-otp"],
+			}),
+		).rejects.toThrow("Magic link and Email OTP need an email provider.");
+	});
 
 	it.each(variants)(
 		"generates both methods on $name with every email provider",
@@ -137,7 +170,6 @@ describe("email authentication methods", () => {
 				const server = writeContent(plan, "packages/auth/src/index.ts");
 				const client = writeContent(plan, "packages/auth/src/client.ts");
 
-				expect(server).toContain('import { sendEmail } from "@acme/email";');
 				expect(server).toContain(
 					'import { emailOTP, magicLink } from "better-auth/plugins";',
 				);
@@ -145,10 +177,20 @@ describe("email authentication methods", () => {
 				for (const method of emailMethods) {
 					expect(server).toContain(`${method.server}({`);
 					expect(server).toContain(method.callback);
+					expect(server).toContain(method.storage);
 					expect(server).toContain(method.template);
 					expect(client).toContain(`${method.client}()`);
 				}
 
+				expect(server).toContain(
+					'import { canSendEmail, sendEmail } from "@acme/email";',
+				);
+
+				expect(server).toContain(
+					'import { createAuthMiddleware } from "better-auth/api";',
+				);
+
+				expect(server).toContain(otpSendHook);
 				expect(server).toContain("await sendEmail({");
 				expect(server).toContain("to: email,");
 				expect(server).not.toContain("emailAndPassword:");
@@ -190,6 +232,16 @@ describe("email authentication methods", () => {
 			expect(writeContent(plan, "packages/auth/src/index.ts")).not.toContain(
 				`${other.server}({`,
 			);
+
+			expect(
+				writeContent(plan, "packages/auth/src/index.ts").includes(otpSendHook),
+			).toBe(method === "email-otp");
+
+			expect(
+				writeContent(plan, "packages/auth/src/index.ts").includes(
+					"canSendEmail",
+				),
+			).toBe(method === "email-otp");
 
 			expect(writeContent(plan, "packages/auth/src/client.ts")).toContain(
 				`${client}()`,
@@ -287,6 +339,18 @@ describe("email authentication methods", () => {
 			expect(writeContent(withEmail, path)).toBe(writeContent(baseline, path));
 
 		expect(authUsesEmail(config)).toBe(false);
+		expect(authEmailMethods(config)).toEqual([]);
+		expect(
+			authEmailMethods({
+				...config,
+				authMethods: ["magic-link", "google", "email-otp"],
+			}),
+		).toEqual(["magic-link", "email-otp"]);
+
+		expect(
+			authEmailMethods({ authentication: "clerk", authMethods: ["email-otp"] }),
+		).toEqual([]);
+
 		expect(
 			authUsesEmail({ authentication: "clerk", authMethods: ["email-otp"] }),
 		).toBe(false);

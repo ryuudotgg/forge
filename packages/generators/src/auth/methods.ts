@@ -50,13 +50,18 @@ export function authPasskeyIssue(config: ForgeConfig): string | undefined {
 	return undefined;
 }
 
-export function authUsesEmail(config: ForgeConfig): boolean {
-	return (
-		config.authentication === "better-auth" &&
-		resolveAuthMethods(config).some(
-			(method) => method === "email-otp" || method === "magic-link",
-		)
+export function authEmailMethods(
+	config: ForgeConfig,
+): ReadonlyArray<AuthMethod> {
+	if (config.authentication !== "better-auth") return [];
+
+	return resolveAuthMethods(config).filter(
+		(method) => method === "email-otp" || method === "magic-link",
 	);
+}
+
+export function authUsesEmail(config: ForgeConfig): boolean {
+	return authEmailMethods(config).length > 0;
 }
 
 const socialProviders = [

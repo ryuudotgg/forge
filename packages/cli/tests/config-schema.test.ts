@@ -294,8 +294,40 @@ describe("assembleSchema", () => {
 
 	it.each([
 		{
+			authMethods: ["email-password", "email-otp"],
+			message:
+				"Two-factor doesn't work with Email OTP, because that sign-in skips the second factor.",
+		},
+		{
+			authMethods: ["email-password", "magic-link", "email-otp"],
+			message:
+				"Two-factor doesn't work with Magic link or Email OTP, because those sign-ins skip the second factor.",
+		},
+	])(
+		"refuses two-factor beside email sign-ins $authMethods",
+		({ authMethods, message }) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authMethods,
+				authPlugins: ["two-factor", "organization"],
+				emailProvider: "resend",
+			});
+
+			expect(decodeMessages(result)).toEqual([message]);
+		},
+	);
+
+	it.each([
+		{
 			authPlugins: ["two-factor", "organization"],
 			authMethods: ["email-password"],
+		},
+		{
+			authPlugins: ["organization"],
+			authMethods: ["email-password", "email-otp", "magic-link"],
+			emailProvider: "resend",
 		},
 		{ authPlugins: ["organization"], authMethods: ["google"] },
 		{ authPlugins: ["organization"] },

@@ -37,6 +37,8 @@ __ADAPTER_MODELS__
 
   // __PLUGINS__
 
+  // __HOOKS__
+
   // __DATABASE_HOOKS__
 
   session: {

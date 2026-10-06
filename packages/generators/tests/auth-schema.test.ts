@@ -299,16 +299,27 @@ const stores: ReadonlyArray<{
 	{ name: "Prisma SQLite", config: { orm: "prisma", database: "sqlite" } },
 ];
 
+const emailSignIns: ReadonlyArray<AuthMethod> = ["email-otp", "magic-link"];
+
 const selections: ReadonlyArray<{
 	readonly name: string;
 	readonly config: ForgeConfig;
 }> = [
 	{ name: "the default methods", config: {} },
 	{
-		name: "every method and plugin",
+		name: "every plugin",
+		config: {
+			authMethods: authMethods.ids.filter(
+				(method) => !emailSignIns.includes(method),
+			),
+			authPlugins: authPlugins.ids,
+		},
+	},
+	{
+		name: "every method",
 		config: {
 			authMethods: authMethods.ids,
-			authPlugins: authPlugins.ids,
+			authPlugins: authPlugins.ids.filter((plugin) => plugin !== "two-factor"),
 			emailProvider: "resend",
 		},
 	},

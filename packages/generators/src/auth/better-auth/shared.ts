@@ -17,6 +17,7 @@ import {
 } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
 import {
+	authEmailMethods,
 	authSocialProviders,
 	authUsesPasskey,
 	authUsesPassword,
@@ -222,6 +223,7 @@ export function betterAuthRecipeVars(
 				)
 			: [];
 
+	const guardsOTPSends = authEmailMethods(config).includes("email-otp");
 	const pluginImports = [
 		...authPluginBindings(config, "server"),
 		...(authRefusesInvitations(config)
@@ -229,6 +231,12 @@ export function betterAuthRecipeVars(
 			: []),
 		...(authSendsEmail(config)
 			? [{ module: `@${values.SLUG}/email`, name: "sendEmail" }]
+			: []),
+		...(guardsOTPSends
+			? [
+					{ module: "better-auth/api", name: "createAuthMiddleware" },
+					{ module: `@${values.SLUG}/email`, name: "canSendEmail" },
+				]
 			: []),
 		...(usesMobile ? [{ module: "@better-auth/expo", name: "expo" }] : []),
 		...(isNextjs
@@ -310,6 +318,25 @@ export function betterAuthRecipeVars(
 				: `import { eq } from "@${values.SLUG}/db";\n`,
 		EMAIL_PASSWORD: authUsesPassword(config)
 			? "  emailAndPassword: { enabled: true },\n"
+			: "",
+		HOOKS: guardsOTPSends
+			? [
+					"  hooks: {",
+					"    before: createAuthMiddleware(async (ctx) => {",
+					"      const sendsOTP = [",
+					'        "/email-otp/send-verification-otp",',
+					'        "/email-otp/request-password-reset",',
+					'        "/forget-password/email-otp",',
+					'        "/email-otp/request-email-change",',
+					"      ].includes(ctx.path);",
+					"",
+					"      if (sendsOTP && !canSendEmail())",
+					`        throw new Error("Email isn't configured.");`,
+					"    }),",
+					"  },",
+					"",
+					"",
+				].join("\n")
 			: "",
 		DATABASE_HOOKS:
 			userDeleteTargets.length === 0

@@ -4,9 +4,16 @@ import { type EmailMessage, renderMessage } from "./messages";
 
 export type { EmailMessage } from "./messages";
 
+export function canSendEmail(): boolean {
+  return (
+    env.NODE_ENV === "development" ||
+    Boolean(env.EMAIL_FROM && env.RESEND_API_KEY)
+  );
+}
+
 export async function sendEmail(message: EmailMessage): Promise<void> {
   if (!env.EMAIL_FROM || !env.RESEND_API_KEY) {
-    if (env.NODE_ENV !== "development")
+    if (!canSendEmail())
       throw new Error(
         "Email isn't configured. Set EMAIL_FROM and RESEND_API_KEY.",
       );

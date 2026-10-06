@@ -131,7 +131,8 @@ describe("email addon", () => {
 				`Email isn't configured. Set EMAIL_FROM and ${provider.key}.`,
 			);
 
-			expect(source).toContain('env.NODE_ENV !== "development"');
+			expect(source).toContain('env.NODE_ENV === "development" ||');
+			expect(source).toContain("if (!canSendEmail())");
 			expect(source).toContain("await renderMessage(message)");
 
 			if (provider.id === "resend")
@@ -282,8 +283,10 @@ async function renderedEmail(
 		renderMessage: async () => rendering,
 	}));
 
-	const rendered: { sendEmail: (message: EmailMessage) => Promise<void> } =
-		await import(sourcePath);
+	const rendered: {
+		canSendEmail: () => boolean;
+		sendEmail: (message: EmailMessage) => Promise<void>;
+	} = await import(sourcePath);
 
 	return { ...rendered, construct, send };
 }
@@ -334,6 +337,30 @@ describe.each(providers)("generated $id sendEmail", (provider) => {
 			);
 
 			expect(rendered.construct).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		{ environment: { NODE_ENV: "development" }, expected: true },
+		{ environment: { NODE_ENV: "production" }, expected: false },
+		{ environment: { NODE_ENV: undefined }, expected: false },
+		{
+			environment: { NODE_ENV: "production", EMAIL_FROM: "sender@example.com" },
+			expected: false,
+		},
+		{
+			environment: {
+				NODE_ENV: "production",
+				EMAIL_FROM: "sender@example.com",
+				[provider.key]: "configured-key",
+			},
+			expected: true,
+		},
+	])(
+		"answers whether email can be sent under $environment",
+		async ({ environment, expected }) => {
+			const rendered = await renderedEmail(provider, environment);
+			expect(rendered.canSendEmail()).toBe(expected);
 		},
 	);
 

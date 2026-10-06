@@ -10,10 +10,15 @@ export {
 	rpcProviderError,
 } from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
-export { authPasskeyIssue, resolveAuthMethods } from "./auth/methods";
+export {
+	authEmailMethods,
+	authPasskeyIssue,
+	resolveAuthMethods,
+} from "./auth/methods";
 export {
 	authPluginRequirement,
 	resolveAuthPlugins,
+	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
 } from "./auth/plugins";
 export type {

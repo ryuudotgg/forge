@@ -25,6 +25,8 @@ const config = {
   // __EMAIL_PASSWORD__
   // __PLUGINS__
 
+  // __HOOKS__
+
   session: {
     expiresIn: SESSION_EXPIRES_IN,
     updateAge: SESSION_UPDATE_AGE,

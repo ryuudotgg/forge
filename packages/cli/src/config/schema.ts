@@ -1,10 +1,14 @@
 import {
 	authPasskeyIssue,
+	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
 	webAppPortIssue,
 } from "@ryuugg/generators";
 import { Effect, Schema } from "effect";
-import { authPluginRequirementMessage } from "../steps/auth/plugins";
+import {
+	authPluginRequirementMessage,
+	twoFactorSkippedMessage,
+} from "../steps/auth/plugins";
 import * as schemas from "../steps/schemas";
 import type { Step } from "../steps/types";
 
@@ -77,6 +81,9 @@ export function assembleSchema(steps: Step[]) {
 					const missing = unmetAuthPluginRequirements(data);
 					if (missing.length !== 0)
 						return authPluginRequirementMessage(missing);
+
+					const skipping = twoFactorSkippingMethods(data);
+					if (skipping.length !== 0) return twoFactorSkippedMessage(skipping);
 				}
 
 				const platforms = Array.isArray(data.platforms)

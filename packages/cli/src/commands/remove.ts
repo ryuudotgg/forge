@@ -14,6 +14,8 @@ import {
 } from "@ryuugg/core";
 import {
 	type AddonCatalogEntry,
+	authEmailMethods,
+	authMethods,
 	configWithoutInstall,
 	type ForgeConfig,
 	findRemovalBlockers,
@@ -89,6 +91,21 @@ function assertNoRemovalBlockers(
 	);
 
 	const label = addon.category === "orm" ? "the ORM" : addon.name;
+	const emailMethods = addon.id === "email" ? authEmailMethods(config) : [];
+	if (emailMethods.length > 0) {
+		const methods = listAnd.format(
+			emailMethods.map((method) => authMethods.label(method)),
+		);
+
+		log.error(
+			emailMethods.length === 1
+				? `We can't remove email until you remove this sign-in method: ${methods}.`
+				: `We can't remove email until you remove these sign-in methods: ${methods}.`,
+		);
+
+		process.exit(1);
+	}
+
 	if (blockers.frameworks.length > 0) {
 		log.error(
 			`We can't remove ${label} because your ${listAnd.format(blockers.frameworks)} app needs it.`,
