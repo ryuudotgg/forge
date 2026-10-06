@@ -24,14 +24,10 @@ export type ScriptPort =
 	| { readonly kind: "literal"; readonly port: number }
 	| {
 			readonly kind: "ambiguous";
-			readonly scripts: ReadonlyArray<PortScript>;
-			readonly ports: ReadonlyArray<number>;
-	  }
-	| {
-			readonly kind: "conflict";
 			readonly dev: ReadonlyArray<number>;
 			readonly start: ReadonlyArray<number>;
-	  };
+	  }
+	| { readonly kind: "conflict"; readonly dev: number; readonly start: number };
 
 export interface WebAppObservation {
 	readonly root: string;
@@ -100,28 +96,21 @@ function namedPorts(command: string | undefined): ReadonlyArray<number> {
 	];
 }
 
-const portScripts: ReadonlyArray<PortScript> = ["dev", "start"];
 export function scriptPort(
 	scripts: Readonly<Record<string, string>> | undefined,
 ): ScriptPort {
-	const named = {
-		dev: namedPorts(scripts?.dev),
-		start: namedPorts(scripts?.start),
-	};
+	const dev = namedPorts(scripts?.dev);
+	const start = namedPorts(scripts?.start);
+	if (dev.length > 1 || start.length > 1)
+		return { kind: "ambiguous", dev, start };
 
-	const naming = portScripts.filter((script) => named[script].length > 0);
-	const [first, ...rest] = naming.map((script) => named[script]);
-	if (first === undefined) return { kind: "absent" };
+	const [devPort] = dev;
+	const [startPort] = start;
+	if (devPort !== undefined && startPort !== undefined && devPort !== startPort)
+		return { kind: "conflict", dev: devPort, start: startPort };
 
-	const candidates = first.filter((port) =>
-		rest.every((ports) => ports.includes(port)),
-	);
-
-	const [port, ...others] = candidates;
-	if (port === undefined) return { kind: "conflict", ...named };
-	if (others.length === 0) return { kind: "literal", port };
-
-	return { kind: "ambiguous", scripts: naming, ports: candidates };
+	const port = devPort ?? startPort;
+	return port === undefined ? { kind: "absent" } : { kind: "literal", port };
 }
 
 export function webRoots(
@@ -196,6 +185,26 @@ function portsPhrase(ports: ReadonlyArray<number>) {
 		: `ports ${listAnd.format(ports.map(String))}`;
 }
 
+const portScripts: ReadonlyArray<PortScript> = ["dev", "start"];
+function namedPortsClause(observed: {
+	readonly dev: ReadonlyArray<number>;
+	readonly start: ReadonlyArray<number>;
+}) {
+	const naming = portScripts
+		.map((script) => ({ script, ports: observed[script] }))
+		.filter(({ ports }) => ports.length > 0);
+
+	const [only, ...others] = naming;
+	if (only !== undefined && others.length === 0)
+		return `its ${only.script} script names several ports, ${listAnd.format(only.ports.map(String))}`;
+
+	return naming
+		.map(
+			({ script, ports }) => `its ${script} script names ${portsPhrase(ports)}`,
+		)
+		.join(" and ");
+}
+
 function appPort(
 	root: string,
 	observed: ScriptPort,
@@ -204,16 +213,17 @@ function appPort(
 	if (observed.kind === "conflict")
 		return Effect.fail(
 			refuse(
-				`We couldn't adopt ${root} because its dev script uses ${portsPhrase(observed.dev)} but its start script uses ${portsPhrase(observed.start)}. Use one port in both and run forge init again.`,
+				`We couldn't adopt ${root} because its dev script uses port ${observed.dev} but its start script uses port ${observed.start}. Use one port in both and run forge init again.`,
 			),
 		);
 
 	if (observed.kind === "ambiguous")
-		return requested !== undefined && observed.ports.includes(requested)
+		return requested !== undefined &&
+			[...observed.dev, ...observed.start].includes(requested)
 			? Effect.succeed(requested)
 			: Effect.fail(
 					refuse(
-						`We couldn't adopt ${root} because its ${listAnd.format(observed.scripts)} ${observed.scripts.length === 1 ? "script names" : "scripts name"} several ports, ${listAnd.format(observed.ports.map(String))}, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.`,
+						`We couldn't adopt ${root} because ${namedPortsClause(observed)}, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.`,
 					),
 				);
 

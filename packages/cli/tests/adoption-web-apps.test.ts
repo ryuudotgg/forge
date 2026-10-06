@@ -259,12 +259,7 @@ describe("web app adoption", () => {
 				start: "next start --port 3003",
 			});
 
-			expect(conflict).toEqual({
-				kind: "conflict",
-				dev: [3002],
-				start: [3003],
-			});
-
+			expect(conflict).toEqual({ kind: "conflict", dev: 3002, start: 3003 });
 			expect(
 				await refusal([
 					observed("apps/web"),
@@ -275,148 +270,78 @@ describe("web app adoption", () => {
 			);
 		});
 
-		it("refuses a dev script with several ports none of which start serves", async () => {
-			const conflict = scriptPort({
-				dev: "next dev --port 3002 && node proxy.js --port 9000",
-				start: "next start --port 4000",
-			});
-
-			expect(conflict).toEqual({
-				kind: "conflict",
-				dev: [3002, 9000],
-				start: [4000],
-			});
-
-			expect(
-				await refusal(
-					[
-						observed("apps/web"),
-						observed("apps/site", { scriptPort: conflict }),
-					],
-					{
-						requested: {
-							webApps: [{ name: "site", framework: "nextjs", port: 3002 }],
-						},
-					},
-				),
-			).toBe(
-				"We couldn't adopt apps/site because its dev script uses ports 3002 and 9000 but its start script uses port 4000. Use one port in both and run forge init again.",
-			);
-		});
-
-		it("takes the one port dev and start share", async () => {
-			const shared = scriptPort({
-				dev: "next dev --port 3002 && node proxy.js --port 9000",
-				start: "next start --port 3002",
-			});
-
-			expect(shared).toEqual({ kind: "literal", port: 3002 });
-			expect(
-				(
-					await resolved([
-						observed("apps/web"),
-						observed("apps/site", { scriptPort: shared }),
-					])
-				).webApps,
-			).toEqual([{ name: "site", framework: "nextjs", port: 3002 }]);
-		});
-
-		it("refuses an init config port start doesn't serve", async () => {
-			expect(
-				await refusal(
-					[
-						observed("apps/web"),
-						observed("apps/site", {
-							scriptPort: scriptPort({
-								dev: "next dev --port 3002 && node proxy.js --port 9000",
-								start: "next start --port 3002",
-							}),
-						}),
-					],
-					{
-						requested: {
-							webApps: [{ name: "site", framework: "nextjs", port: 9000 }],
-						},
-					},
-				),
-			).toBe(
-				"We couldn't adopt apps/site because its scripts use port 3002 but your init config sets port 9000. Make them match and run forge init again.",
-			);
-		});
-
 		it.each([
 			[
 				{ dev: "next dev --port 3002 && node proxy.js --port 9000" },
-				{ kind: "ambiguous", scripts: ["dev"], ports: [3002, 9000] },
+				{ kind: "ambiguous", dev: [3002, 9000], start: [] },
 			],
 			[
 				{
 					dev: "next dev --port 3002 && node proxy.js --port 9000",
+					start: "next start --port 3002",
+				},
+				{ kind: "ambiguous", dev: [3002, 9000], start: [3002] },
+			],
+			[
+				{
+					dev: "next dev --port 3002",
 					start: "PORT=9000 next start --port 3002",
 				},
-				{ kind: "ambiguous", scripts: ["dev", "start"], ports: [3002, 9000] },
+				{ kind: "ambiguous", dev: [3002], start: [3002, 9000] },
 			],
-		])("reads several shared ports in %o as ambiguous", (scripts, port) => {
+		])("reads %o as ambiguous without inferring a port", (scripts, port) => {
 			expect(scriptPort(scripts)).toEqual(port);
 		});
 
-		it.each([
-			[
-				["dev"],
-				"We couldn't adopt apps/site because its dev script names several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.",
-			],
-			[
-				["dev", "start"],
-				"We couldn't adopt apps/site because its dev and start scripts name several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.",
-			],
-		] satisfies ReadonlyArray<
-			readonly [ReadonlyArray<"dev" | "start">, string]
-		>)(
-			"refuses ambiguous %o scripts and points at the init config",
-			async (scripts, message) => {
-				expect(
-					await refusal([
-						observed("apps/web"),
-						observed("apps/site", {
-							scriptPort: { kind: "ambiguous", scripts, ports: [3002, 9000] },
-						}),
-					]),
-				).toBe(message);
-			},
-		);
+		const proxied = "next dev --port 3002 && node proxy.js --port 9000";
+		const severalPortsRefusal = (start: string) =>
+			`We couldn't adopt apps/site because its dev script names ports 3002 and 9000 and its start script names port ${start}, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.`;
+
+		const singleScriptRefusal =
+			"We couldn't adopt apps/site because its dev script names several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.";
 
 		it.each([
-			[3002, undefined],
-			[
-				4000,
-				"We couldn't adopt apps/site because its dev script names several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.",
-			],
+			["next start --port 9000", undefined, severalPortsRefusal("9000")],
+			["next start --port 9000", 3002, 3002],
+			["next start --port 9000", 7000, severalPortsRefusal("9000")],
+			["next start --port 3002", undefined, severalPortsRefusal("3002")],
+			["next start --port 3002", 3002, 3002],
+			["next start --port 3002", 9000, 9000],
+			["next start --port 4000", undefined, severalPortsRefusal("4000")],
+			["next start --port 4000", 3002, 3002],
+			["next start --port 4000", 4000, 4000],
+			[undefined, undefined, singleScriptRefusal],
+			[undefined, 3002, 3002],
+			[undefined, 4000, singleScriptRefusal],
 		])(
-			"settles an ambiguous script with the init config port %i",
-			async (port, message) => {
+			"settles a proxied dev script with start %s and config port %s",
+			async (start, port, expected) => {
 				const effect = resolve(
 					[
 						observed("apps/web"),
 						observed("apps/site", {
 							scriptPort: scriptPort({
-								dev: "next dev --port 3002 && node proxy.js --port 9000",
+								dev: proxied,
+								...(start === undefined ? {} : { start }),
 							}),
 						}),
 					],
-					{
-						requested: {
-							webApps: [{ name: "site", framework: "nextjs", port }],
-						},
-					},
+					port === undefined
+						? {}
+						: {
+								requested: {
+									webApps: [{ name: "site", framework: "nextjs", port }],
+								},
+							},
 				);
 
-				if (message === undefined)
+				if (typeof expected === "number")
 					expect((await Effect.runPromise(effect)).webApps).toEqual([
-						{ name: "site", framework: "nextjs", port: 3002 },
+						{ name: "site", framework: "nextjs", port: expected },
 					]);
 				else
 					expect((await Effect.runPromise(Effect.flip(effect))).message).toBe(
-						message,
+						expected,
 					);
 			},
 		);
