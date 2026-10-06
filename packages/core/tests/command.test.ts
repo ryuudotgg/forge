@@ -36,31 +36,6 @@ describe("CommandProbe", () => {
 
 		expect(version).toBe(process.versions.node);
 	});
-
-	it("runs in a directory only when the caller names one", async () => {
-		const runs: Array<{ readonly cwd?: string }> = [];
-		const recordingLayer = CommandProbe.Default.pipe(
-			Layer.provide(
-				Layer.succeed(Subprocess, {
-					run: (input) =>
-						Effect.sync(() => {
-							runs.push(input);
-							return { exitCode: 0, output: "v12.6.0\n" };
-						}),
-				}),
-			),
-		);
-
-		await Effect.runPromise(
-			Effect.all([
-				CommandProbe.readVersion("pnpm"),
-				CommandProbe.readVersion("pnpm", { cwd: "/outside" }),
-			]).pipe(Effect.provide(recordingLayer)),
-		);
-
-		expect(runs[0]).not.toHaveProperty("cwd");
-		expect(runs[1]).toMatchObject({ cwd: "/outside" });
-	});
 });
 
 async function readPersisted(

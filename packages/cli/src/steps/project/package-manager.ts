@@ -1,4 +1,3 @@
-import { tmpdir } from "node:os";
 import { isCancel, log, select } from "@clack/prompts";
 import {
 	buildPackageManagerCheck,
@@ -41,10 +40,7 @@ async function requirePackageManager(
 		pin?.packageManager === packageManager
 			? [
 					buildPackageManagerCheck(packageManager, pin.version),
-					// Probing inside a pinned pnpm project makes pnpm write pnpm-lock.yaml.
-					await runCliEffectValue(
-						checkPackageManagerInstalled(packageManager, tmpdir()),
-					),
+					await runCliEffectValue(checkPackageManagerInstalled(packageManager)),
 				]
 			: [await runCliEffectValue(checkPackageManager(packageManager))];
 

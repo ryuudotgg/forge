@@ -25,13 +25,11 @@ const makeCommandProbe = Effect.gen(function* () {
 	const subprocess = yield* Subprocess;
 	const readVersion = Effect.fn("CommandProbe.readVersion")(function* (
 		command: string,
-		options: { readonly cwd?: string } = {},
 	) {
 		return yield* subprocess
 			.run({
 				command,
 				args: ["--version"],
-				...(options.cwd === undefined ? {} : { cwd: options.cwd }),
 				timeoutMs: PROBE_TIMEOUT_MS,
 				maxOutputBytes: PROBE_MAX_OUTPUT_BYTES,
 				outputMode: "capture",

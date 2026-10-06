@@ -1,4 +1,3 @@
-import { tmpdir } from "node:os";
 import { Effect, Result, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import catalogsStep from "../src/steps/project/catalogs";
@@ -151,7 +150,7 @@ describe("project steps", () => {
 			},
 		);
 
-		it("checks a pinned package manager runs from outside the project", async () => {
+		it("checks a pinned package manager is installed without running it", async () => {
 			const step = createPackageManagerStep({
 				packageManager: "Yarn",
 				version: "4.5.0",
@@ -160,7 +159,6 @@ describe("project steps", () => {
 			await step.validate?.("Yarn", {});
 			expect(coreMocks.checkPackageManagerInstalled).toHaveBeenCalledWith(
 				"Yarn",
-				tmpdir(),
 			);
 		});
 

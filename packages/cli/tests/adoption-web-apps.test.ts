@@ -259,7 +259,12 @@ describe("web app adoption", () => {
 				start: "next start --port 3003",
 			});
 
-			expect(conflict).toEqual({ kind: "conflict", dev: 3002, start: 3003 });
+			expect(conflict).toEqual({
+				kind: "conflict",
+				dev: [3002],
+				start: [3003],
+			});
+
 			expect(
 				await refusal([
 					observed("apps/web"),
@@ -270,31 +275,115 @@ describe("web app adoption", () => {
 			);
 		});
 
-		it("reads one script that names several ports as ambiguous", () => {
-			expect(
-				scriptPort({
-					dev: "next dev --port 3002 && node proxy.js --port 9000",
-					start: "next start --port 3002",
-				}),
-			).toEqual({ kind: "ambiguous", script: "dev", ports: [3002, 9000] });
-		});
+		it("refuses a dev script with several ports none of which start serves", async () => {
+			const conflict = scriptPort({
+				dev: "next dev --port 3002 && node proxy.js --port 9000",
+				start: "next start --port 4000",
+			});
 
-		it("refuses an ambiguous script and points at the init config", async () => {
+			expect(conflict).toEqual({
+				kind: "conflict",
+				dev: [3002, 9000],
+				start: [4000],
+			});
+
 			expect(
-				await refusal([
-					observed("apps/web"),
-					observed("apps/site", {
-						scriptPort: {
-							kind: "ambiguous",
-							script: "dev",
-							ports: [3002, 9000],
+				await refusal(
+					[
+						observed("apps/web"),
+						observed("apps/site", { scriptPort: conflict }),
+					],
+					{
+						requested: {
+							webApps: [{ name: "site", framework: "nextjs", port: 3002 }],
 						},
-					}),
-				]),
+					},
+				),
 			).toBe(
-				"We couldn't adopt apps/site because its dev script names several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.",
+				"We couldn't adopt apps/site because its dev script uses ports 3002 and 9000 but its start script uses port 4000. Use one port in both and run forge init again.",
 			);
 		});
+
+		it("takes the one port dev and start share", async () => {
+			const shared = scriptPort({
+				dev: "next dev --port 3002 && node proxy.js --port 9000",
+				start: "next start --port 3002",
+			});
+
+			expect(shared).toEqual({ kind: "literal", port: 3002 });
+			expect(
+				(
+					await resolved([
+						observed("apps/web"),
+						observed("apps/site", { scriptPort: shared }),
+					])
+				).webApps,
+			).toEqual([{ name: "site", framework: "nextjs", port: 3002 }]);
+		});
+
+		it("refuses an init config port start doesn't serve", async () => {
+			expect(
+				await refusal(
+					[
+						observed("apps/web"),
+						observed("apps/site", {
+							scriptPort: scriptPort({
+								dev: "next dev --port 3002 && node proxy.js --port 9000",
+								start: "next start --port 3002",
+							}),
+						}),
+					],
+					{
+						requested: {
+							webApps: [{ name: "site", framework: "nextjs", port: 9000 }],
+						},
+					},
+				),
+			).toBe(
+				"We couldn't adopt apps/site because its scripts use port 3002 but your init config sets port 9000. Make them match and run forge init again.",
+			);
+		});
+
+		it.each([
+			[
+				{ dev: "next dev --port 3002 && node proxy.js --port 9000" },
+				{ kind: "ambiguous", scripts: ["dev"], ports: [3002, 9000] },
+			],
+			[
+				{
+					dev: "next dev --port 3002 && node proxy.js --port 9000",
+					start: "PORT=9000 next start --port 3002",
+				},
+				{ kind: "ambiguous", scripts: ["dev", "start"], ports: [3002, 9000] },
+			],
+		])("reads several shared ports in %o as ambiguous", (scripts, port) => {
+			expect(scriptPort(scripts)).toEqual(port);
+		});
+
+		it.each([
+			[
+				["dev"],
+				"We couldn't adopt apps/site because its dev script names several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.",
+			],
+			[
+				["dev", "start"],
+				"We couldn't adopt apps/site because its dev and start scripts name several ports, 3002 and 9000, and Forge can't tell which one the app serves on. Set webApps[].port in the init config to that port and run forge init again.",
+			],
+		] satisfies ReadonlyArray<
+			readonly [ReadonlyArray<"dev" | "start">, string]
+		>)(
+			"refuses ambiguous %o scripts and points at the init config",
+			async (scripts, message) => {
+				expect(
+					await refusal([
+						observed("apps/web"),
+						observed("apps/site", {
+							scriptPort: { kind: "ambiguous", scripts, ports: [3002, 9000] },
+						}),
+					]),
+				).toBe(message);
+			},
+		);
 
 		it.each([
 			[3002, undefined],
@@ -309,11 +398,9 @@ describe("web app adoption", () => {
 					[
 						observed("apps/web"),
 						observed("apps/site", {
-							scriptPort: {
-								kind: "ambiguous",
-								script: "dev",
-								ports: [3002, 9000],
-							},
+							scriptPort: scriptPort({
+								dev: "next dev --port 3002 && node proxy.js --port 9000",
+							}),
 						}),
 					],
 					{
