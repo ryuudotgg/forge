@@ -1,5 +1,5 @@
-import { createCaller, createTRPCContext } from "@__SLUG__/trpc";
 // __AUTH_IMPORT__
+import { createCaller, createTRPCContext } from "@__SLUG__/trpc";
 
 export async function createServerCaller(request: Request) {
   const headers = new Headers(request.headers);

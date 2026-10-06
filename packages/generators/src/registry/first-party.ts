@@ -86,6 +86,7 @@ import tanstackStartBaseTemplate, {
 	tanstackStartFrameworkMetadata,
 } from "../frameworks/tanstack-start";
 import biome, { biomeMetadata } from "../linters/biome";
+import oxc, { oxcMetadata } from "../linters/oxc";
 import drizzle, { drizzleMetadata } from "../orm/drizzle";
 import prisma, { prismaMetadata } from "../orm/prisma";
 import shared, { sharedMetadata } from "../shared";
@@ -156,6 +157,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		bun,
 		typescript,
 		biome,
+		oxc,
 		gitignore,
 		commitlint,
 		lefthook,
@@ -233,6 +235,7 @@ export const firstPartyCatalog = [
 		firstPartyRegistry.adapters,
 	),
 	addonCatalogEntry(biome, biomeMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(oxc, oxcMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(gitignore, gitignoreMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(
 		commitlint,

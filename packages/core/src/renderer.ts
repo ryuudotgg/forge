@@ -139,6 +139,12 @@ function resolveProjectSurfacePath(surface: ProjectSurfaceName) {
 		case "biomeConfig":
 			return filePath("biome.json");
 
+		case "oxlintConfig":
+			return filePath(".oxlintrc.json");
+
+		case "oxfmtConfig":
+			return filePath(".oxfmtrc.json");
+
 		case "gitignore":
 			return filePath(".gitignore");
 

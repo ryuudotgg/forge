@@ -31,10 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./tooling/github/setup
 
-      - name: Format & Lint
-        run: __CHECK_COMMAND__
-
-      - name: Lint Workspace
+__CHECK_STEP__      - name: Lint Workspace
         run: __CHECK_WS_COMMAND__
 
   typecheck:

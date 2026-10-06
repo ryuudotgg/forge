@@ -3,10 +3,31 @@ import {
 	projectTarget,
 	surfaceDependencies,
 	surfaceJson,
+	surfaceScripts,
 } from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
+import { pmRun } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
+import { houseIgnores } from "./ignores";
+import type { LinterTooling } from "./tooling";
+
+export const biomeTooling: LinterTooling = {
+	scripts: { check: "biome check .", "check:fix": "biome check --write ." },
+	preCommit: (pm) => [
+		pmRun(pm, "check:fix", "--staged --no-errors-on-unmatched"),
+	],
+	editor: {
+		extension: "biomejs.biome",
+		formatter: "biomejs.biome",
+		fixAllAction: "source.fixAll.biome",
+		proseOverrides: {
+			markdown: "esbenp.prettier-vscode",
+			mdx: "esbenp.prettier-vscode",
+			yaml: "esbenp.prettier-vscode",
+		},
+	},
+};
 
 const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 	id: "biome",
@@ -63,27 +84,13 @@ const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 				parser: { allowComments: true, allowTrailingCommas: true },
 			},
 			files: {
-				includes: [
-					"**",
-					"!**/node_modules",
-					"!**/.next",
-					"!**/.turbo",
-					"!**/.vercel",
-					"!**/.expo",
-					"!**/.cache",
-					"!**/.forge",
-					"!**/coverage",
-					"!**/dist",
-					"!**/build",
-					"!**/out",
-					"!**/.env",
-					"!**/.env.*",
-				],
+				includes: ["**", ...houseIgnores.map((path) => `!**/${path}`)],
 			},
 		}),
 		surfaceDependencies(projectTarget(), "rootPackageJson", [
 			{ ...deps.biome, type: "devDependencies" },
 		]),
+		surfaceScripts(projectTarget(), "rootPackageJson", biomeTooling.scripts),
 	],
 });
 

@@ -381,9 +381,9 @@ describe("project steps", () => {
 		});
 
 		it("skips an unavailable linter when non-interactive", async () => {
-			await expect(linterStep.execute({ linter: "oxc" }, false)).resolves.toBe(
-				SKIP,
-			);
+			await expect(
+				linterStep.execute({ linter: "eslint-prettier" }, false),
+			).resolves.toBe(SKIP);
 		});
 
 		it("returns the selected linter", async () => {
@@ -395,7 +395,7 @@ describe("project steps", () => {
 				expect.objectContaining({
 					options: [
 						{ label: "Biome", value: "biome" },
-						{ label: "Oxc", value: "oxc", hint: "coming soon" },
+						{ label: "Oxc", value: "oxc" },
 						{
 							label: "ESLint + Prettier",
 							value: "eslint-prettier",
@@ -409,13 +409,13 @@ describe("project steps", () => {
 
 		it("warns and re-prompts when an unavailable linter is selected", async () => {
 			promptMocks.select
-				.mockResolvedValueOnce("oxc")
+				.mockResolvedValueOnce("eslint-prettier")
 				.mockResolvedValueOnce("biome");
 
 			await expect(linterStep.execute({}, true)).resolves.toBe("biome");
 
 			expect(promptMocks.logWarn).toHaveBeenCalledWith(
-				"We don't support Oxc yet.",
+				"We don't support ESLint + Prettier yet.",
 			);
 
 			expect(promptMocks.select).toHaveBeenCalledTimes(2);

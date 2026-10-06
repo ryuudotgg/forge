@@ -54,7 +54,7 @@ describe("printHelp", () => {
 				"        --runtime <value>              Node.js · Bun · Deno",
 				"        --package-manager <value>      pnpm · npm · Yarn · Bun",
 				"        --catalogs <value>             Flat · Scoped",
-				"        --linter <value>               Biome · Oxc (soon) · ESLint + Prettier (soon)",
+				"        --linter <value>               Biome · Oxc · ESLint + Prettier (soon)",
 				"        --web <value>                  Next.js · React Router · TanStack Router · TanStack Start",
 				"        --desktop <value> (soon)       Electron · Tauri",
 				"        --mobile <value>               Expo · React Native (soon)",

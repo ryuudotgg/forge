@@ -784,6 +784,67 @@ describe("remove", () => {
 		});
 	}, 120_000);
 
+	it("removes Oxc from every linter surface", async () => {
+		await withScenarioWorkspace("remove-oxc", async (workspace) => {
+			await createProject(workspace, {
+				addons: ["github-ci", "lefthook", "vscode"],
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			const surfaces = [
+				".github/workflows/ci.yml",
+				".vscode/extensions.json",
+				".vscode/settings.json",
+				"lefthook.yml",
+				"package.json",
+				"pnpm-workspace.yaml",
+			];
+
+			const readSurfaces = () =>
+				Promise.all(
+					surfaces.map((path) =>
+						readFile(join(workspace.projectRoot, path), "utf-8"),
+					),
+				);
+
+			const before = await readSurfaces();
+			await addAddon(workspace.projectRoot, "oxc");
+
+			for (const file of [".oxlintrc.json", ".oxfmtrc.json"])
+				expect(await pathExists(join(workspace.projectRoot, file))).toBe(true);
+
+			const rootAfterAdd = await readJson<PackageJson>(
+				join(workspace.projectRoot, "package.json"),
+			);
+
+			expect(rootAfterAdd.devDependencies?.oxlint).toBe("catalog:");
+			expect(rootAfterAdd.devDependencies?.oxfmt).toBe("catalog:");
+			expect(rootAfterAdd.scripts?.check).toBe("oxlint && oxfmt --check");
+			expect(
+				await readFile(join(workspace.projectRoot, "lefthook.yml"), "utf-8"),
+			).toContain("oxfmt");
+
+			await removeAddon(workspace.projectRoot, "oxc");
+
+			const manifest = await readJson<{
+				config: { linter?: string };
+				installs: Array<{ definitionId: string }>;
+			}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+			expect(
+				manifest.installs.some((entry) => entry.definitionId === "oxc"),
+			).toBe(false);
+
+			expect(manifest.config.linter).toBe(undefined);
+
+			for (const file of [".oxlintrc.json", ".oxfmtrc.json"])
+				expect(await pathExists(join(workspace.projectRoot, file))).toBe(false);
+
+			expect(await readSurfaces()).toEqual(before);
+		});
+	}, 120_000);
+
 	it("refuses to remove the orm while better-auth depends on it", async () => {
 		await withScenarioWorkspace("remove-orm-blocked", async (workspace) => {
 			await createProject(workspace, {

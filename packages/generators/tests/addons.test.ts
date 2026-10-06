@@ -22,6 +22,7 @@ import {
 	gitignore,
 	loadAddonDefinition,
 	nativewind,
+	oxc,
 	shared,
 	tailwind,
 	trpc,
@@ -787,7 +788,10 @@ describe("gitignore addon", () => {
 
 describe("lefthook addon", () => {
 	it("emits only the pre-commit hook without commitlint", () => {
-		const contributions = contributionsOf(lefthook, { addons: ["lefthook"] });
+		const contributions = contributionsOf(lefthook, {
+			addons: ["lefthook"],
+			linter: "biome",
+		});
 
 		expect(leafFile(contributions, "lefthook.yml").content).toBe(
 			`pre-commit:
@@ -800,6 +804,7 @@ describe("lefthook addon", () => {
 
 	it("prepends the commit-msg hook when commitlint is selected", () => {
 		const contributions = contributionsOf(lefthook, {
+			linter: "biome",
 			addons: ["commitlint", "lefthook"],
 			packageManager: "npm",
 		});
@@ -941,6 +946,7 @@ describe("github-ci addon", () => {
 
 	it("interpolates the npm commands into ci.yml", () => {
 		const contributions = contributionsOf(githubCi, {
+			linter: "biome",
 			addons: ["github-ci"],
 			packageManager: "npm",
 			slug: "acme",
@@ -1025,10 +1031,144 @@ describe("shared addon", () => {
 	});
 });
 
+describe("oxc addon", () => {
+	it("contributes both configs, catalog dependencies and scripts", () => {
+		const contributions = contributionsOf(oxc, { linter: "oxc" });
+		expect(contributions).toHaveLength(4);
+		expect(jsonSurface(contributions, "oxlintConfig").value).toMatchObject({
+			plugins: ["typescript", "unicorn", "oxc", "import", "react"],
+			categories: { correctness: "error" },
+			rules: {
+				"no-unused-vars": [
+					"warn",
+					{ argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+				],
+			},
+			ignorePatterns: expect.arrayContaining(["routeTree.gen.ts"]),
+		});
+
+		expect(jsonSurface(contributions, "oxfmtConfig").value).toMatchObject({
+			printWidth: 80,
+			trailingComma: "all",
+			sortPackageJson: false,
+			sortImports: {
+				newlinesBetween: false,
+				partitionByNewline: true,
+				groups: [
+					"builtin",
+					"external",
+					["internal", "subpath"],
+					["parent", "sibling", "index"],
+					"unknown",
+				],
+			},
+			ignorePatterns: expect.arrayContaining(["routeTree.gen.ts"]),
+		});
+
+		expect(projectDependencySurface(contributions).dependencies).toEqual([
+			expect.objectContaining({
+				name: "oxlint",
+				version: versions.oxlint.version,
+				type: "devDependencies",
+			}),
+			expect.objectContaining({
+				name: "oxfmt",
+				version: versions.oxfmt.version,
+				type: "devDependencies",
+			}),
+		]);
+
+		expect(
+			ofTag(contributions, "ManagedScriptsSurfaceContribution")[0]?.scripts,
+		).toEqual({
+			check: "oxlint && oxfmt --check",
+			"check:fix": "oxlint --fix && oxfmt",
+		});
+	});
+
+	it.each([
+		{ packageManager: "pnpm", exec: "pnpm exec", run: "pnpm check:fix" },
+		{ packageManager: "npm", exec: "npx", run: "npm run check:fix --" },
+		{ packageManager: "Yarn", exec: "yarn exec", run: "yarn check:fix" },
+		{ packageManager: "Bun", exec: "bunx", run: "bun run check:fix" },
+	] satisfies ReadonlyArray<{
+		packageManager: ForgeConfig["packageManager"];
+		exec: string;
+		run: string;
+	}>)(
+		"renders staged hooks for $packageManager",
+		({ packageManager, exec, run }) => {
+			const oxcHooks = leafFile(
+				contributionsOf(lefthook, {
+					addons: ["lefthook"],
+					linter: "oxc",
+					packageManager,
+				}),
+				"lefthook.yml",
+			).content;
+
+			expect(oxcHooks).toBe(
+				`pre-commit:\n  jobs:\n    - run: ${exec} oxlint --fix --no-error-on-unmatched-pattern {staged_files}\n    - run: ${exec} oxfmt --no-error-on-unmatched-pattern {staged_files}\n    - run: git update-index --again\n`,
+			);
+
+			const biomeHooks = leafFile(
+				contributionsOf(lefthook, {
+					addons: ["lefthook"],
+					linter: "biome",
+					packageManager,
+				}),
+				"lefthook.yml",
+			).content;
+
+			expect(biomeHooks).toBe(
+				`pre-commit:\n  jobs:\n    - run: ${run} --staged --no-errors-on-unmatched\n    - run: git update-index --again\n`,
+			);
+		},
+	);
+
+	it("omits linter hooks and CI checks without a linter", () => {
+		expect(
+			leafFile(
+				contributionsOf(lefthook, { addons: ["lefthook"] }),
+				"lefthook.yml",
+			).content,
+		).toBe("{}\n");
+
+		const hooks = leafFile(
+			contributionsOf(lefthook, { addons: ["lefthook", "commitlint"] }),
+			"lefthook.yml",
+		).content;
+
+		expect(hooks).toBe(
+			readTemplate("tooling/lefthook/commit-msg.yml").replace(
+				"__COMMITLINT_COMMAND__",
+				"pnpm exec commitlint",
+			),
+		);
+
+		const ci = leafFile(
+			contributionsOf(githubCi, { addons: ["github-ci"] }),
+			".github/workflows/ci.yml",
+		).content;
+
+		expect(ci).not.toContain("- name: Format & Lint");
+		expect(ci).toContain("run: pnpm check:ws");
+	});
+});
+
 describe("biome addon", () => {
+	it("contributes its own check scripts", () => {
+		expect(
+			ofTag(
+				contributionsOf(biome, { linter: "biome" }),
+				"ManagedScriptsSurfaceContribution",
+			)[0]?.scripts,
+		).toEqual({ check: "biome check .", "check:fix": "biome check --write ." });
+	});
+
 	it("pins the biome config surface and dev dependency", () => {
 		const contributions = contributionsOf(biome, { linter: "biome" });
-		expect(contributions).toHaveLength(2);
+		expect(contributions).toHaveLength(3);
 
 		const config = jsonSurface(contributions, "biomeConfig");
 		expect(config.target).toEqual({ _tag: "ProjectTarget" });
@@ -1040,6 +1180,9 @@ describe("biome addon", () => {
 		});
 
 		expect(config.value).not.toHaveProperty("linter.rules.recommended");
+		expect(config.value).toMatchObject({
+			files: { includes: expect.arrayContaining(["!**/routeTree.gen.ts"]) },
+		});
 
 		expect(projectDependencySurface(contributions).dependencies).toEqual([
 			expect.objectContaining({
@@ -1073,17 +1216,65 @@ describe("commitlint addon", () => {
 });
 
 describe("vscode addon", () => {
-	it("copies both editor files from the templates", () => {
+	it.each(["biome", "oxc"] satisfies ReadonlyArray<ForgeConfig["linter"]>)(
+		"renders settings for %s",
+		(linter) => {
+			const contributions = contributionsOf(vscode, {
+				addons: ["vscode"],
+				linter,
+			});
+
+			const extension = linter === "biome" ? "biomejs.biome" : "oxc.oxc-vscode";
+			const settings = leafFile(contributions, ".vscode/settings.json").content;
+			const extensions = leafFile(
+				contributions,
+				".vscode/extensions.json",
+			).content;
+
+			expect(JSON.parse(settings)).toHaveProperty(
+				"editor.defaultFormatter",
+				extension,
+			);
+
+			expect(JSON.parse(extensions)).toEqual({
+				recommendations: [
+					extension,
+					"bradlc.vscode-tailwindcss",
+					"typescriptteam.native-preview",
+					"yoavbls.pretty-ts-errors",
+				],
+			});
+
+			expect(settings).toContain(`"editor.defaultFormatter": "${extension}"`);
+			expect(settings).toContain(`"source.fixAll.${linter}": "explicit"`);
+
+			if (linter === "biome") {
+				expect(settings).toBe(
+					'{\n  "editor.defaultFormatter": "biomejs.biome",\n  "[markdown]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },\n  "[mdx]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },\n  "[yaml]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },\n  "editor.formatOnSave": true,\n  "editor.codeActionsOnSave": { "source.fixAll.biome": "explicit" },\n  "files.associations": { "*.css": "tailwindcss", "*.json": "jsonc" },\n  "tailwindCSS.experimental.classRegex": [\n    ["cva\\\\(([^)]*)\\\\)", "[\\"\'`]([^\\"\'`]*).*?[\\"\'`]"],\n    ["cx\\\\(([^)]*)\\\\)", "(?:\'|\\"|`)([^\']*)(?:\'|\\"|`)"]\n  ],\n  "tailwindCSS.classFunctions": ["cn", "cva", "cx"],\n  "js/ts.experimental.useTsgo": true,\n  "js/ts.tsdk.path": "./node_modules/typescript"\n}\n',
+				);
+
+				expect(extensions).toBe(
+					'{\n  "recommendations": [\n    "biomejs.biome",\n    "bradlc.vscode-tailwindcss",\n    "typescriptteam.native-preview",\n    "yoavbls.pretty-ts-errors"\n  ]\n}\n',
+				);
+			}
+
+			expect(settings.includes('"[markdown]"')).toBe(linter === "biome");
+			expect(settings.includes('"[mdx]"')).toBe(linter === "biome");
+			expect(settings.includes('"[yaml]"')).toBe(linter === "biome");
+			expect(
+				leafFile(contributions, ".vscode/extensions.json").content,
+			).toContain(extension);
+		},
+	);
+
+	it("renders both editor files without a linter", () => {
 		const contributions = contributionsOf(vscode, { addons: ["vscode"] });
 		expect(contributions).toHaveLength(2);
 
 		for (const path of [".vscode/settings.json", ".vscode/extensions.json"]) {
 			const file = leafFile(contributions, path);
-			expect(file.content, path).toBe(
-				readTemplate(`tooling/vscode/${path.replace(".vscode/", "")}`),
-			);
-
-			expect(() => parseJson(file.content), path).not.toThrow();
+			expect(file.content).not.toContain("biome");
+			expect(() => JSON.parse(file.content), path).not.toThrow();
 		}
 	});
 });

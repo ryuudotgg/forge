@@ -6,6 +6,8 @@ function dep(key: VersionKey) {
 
 export const deps = {
 	biome: dep("biome"),
+	oxlint: dep("oxlint"),
+	oxfmt: dep("oxfmt"),
 	commitlintCli: dep("commitlintCli"),
 	commitlintConfigConventional: dep("commitlintConfigConventional"),
 	commitlintTypes: dep("commitlintTypes"),

@@ -1,14 +1,15 @@
 import "./env";
 
-import { tanstackRouter } from "@tanstack/router-plugin/vite";
 // __TAILWIND_IMPORT__
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
   plugins: [
-    /* __TAILWIND_PLUGIN__ */ tanstackRouter({
+    __TAILWIND_PLUGIN__
+    tanstackRouter({
       autoCodeSplitting: true,
       target: "react",
     }),

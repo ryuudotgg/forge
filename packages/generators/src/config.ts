@@ -176,7 +176,7 @@ export const linters = defineChoices(
 		oxc: "Oxc",
 		"eslint-prettier": "ESLint + Prettier",
 	} as const,
-	{ unavailable: ["oxc", "eslint-prettier"] },
+	{ unavailable: ["eslint-prettier"] },
 );
 
 export type Linter = keyof typeof linters.definitions;
@@ -272,6 +272,7 @@ export const addonConfigBindings: Readonly<
 > = {
 	"better-auth": { authentication: "better-auth" },
 	biome: { linter: "biome" },
+	oxc: { linter: "oxc" },
 	drizzle: { orm: "drizzle" },
 	prisma: { orm: "prisma" },
 	nativewind: { nativeStyleFramework: "nativewind" },

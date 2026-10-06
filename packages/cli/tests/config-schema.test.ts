@@ -412,10 +412,12 @@ describe("assembleSchema", () => {
 			path: "./acme",
 			platforms: ["web"],
 			web: "nextjs",
-			linter: "oxc",
+			linter: "eslint-prettier",
 		});
 
-		expect(decodeMessages(result)).toContain("We don't support Oxc yet.");
+		expect(decodeMessages(result)).toContain(
+			"We don't support ESLint + Prettier yet.",
+		);
 	});
 
 	it("rejects unavailable style frameworks with a friendly sentence", () => {

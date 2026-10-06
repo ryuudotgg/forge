@@ -54,6 +54,8 @@ export const projectSurfaceNames = {
 	rootTsconfig: "rootTsconfig",
 	workspaceConfig: "workspaceConfig",
 	biomeConfig: "biomeConfig",
+	oxlintConfig: "oxlintConfig",
+	oxfmtConfig: "oxfmtConfig",
 	gitignore: "gitignore",
 	rootEnv: "rootEnv",
 	rootEnvExample: "rootEnvExample",

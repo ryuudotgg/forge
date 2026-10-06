@@ -380,6 +380,29 @@ describe("init", () => {
 		);
 	}, 120_000);
 
+	it("records Oxc as the linter when both Oxc configs are present", async () => {
+		await withScenarioWorkspace("init-oxc", async (workspace) => {
+			await fixture(workspace.projectRoot);
+			await writeJson(join(workspace.projectRoot, ".oxlintrc.json"), {});
+			await writeJson(join(workspace.projectRoot, ".oxfmtrc.json"), {});
+
+			const configPath = await initConfig(workspace.workspaceRoot);
+			const { linter: _linter, ...detectedLinter } =
+				await readJson<Record<string, unknown>>(configPath);
+
+			await writeJson(configPath, detectedLinter);
+			await runForge(workspace.projectRoot, ["init", "--config", configPath], {
+				workspaceRoot: workspace.workspaceRoot,
+			});
+
+			const manifest = await readJson<{
+				readonly config: { readonly linter?: string };
+			}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+			expect(manifest.config.linter).toBe("oxc");
+		});
+	}, 120_000);
+
 	it("surfaces the ordinary resolution guidance for an opaque file", async () => {
 		await withScenarioWorkspace("init-opaque", async (workspace) => {
 			await fixture(workspace.projectRoot);

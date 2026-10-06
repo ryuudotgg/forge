@@ -1,4 +1,5 @@
 import appCss from "@__SLUG__/ui/globals.css?url";
+import type { ReactNode } from "react";
 import {
   isRouteErrorResponse,
   Links,
@@ -7,7 +8,6 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import type { ReactNode } from "react";
 
 import type { Route } from "./+types/root";
 import { Providers } from "./providers";

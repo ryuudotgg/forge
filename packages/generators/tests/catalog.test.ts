@@ -28,6 +28,7 @@ const visibleAddonIds = [
 	"gitignore",
 	"lefthook",
 	"nativewind",
+	"oxc",
 	"pnpm",
 	"prisma",
 	"shared",

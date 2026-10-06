@@ -3,15 +3,37 @@ import { describe, expect, it } from "vitest";
 import { catalogEntries, catalogRef, versions } from "../src/versions";
 
 describe("catalogEntries", () => {
+	it.each([
+		{ linter: "biome", kept: ["@biomejs/biome"], dropped: ["oxfmt", "oxlint"] },
+		{ linter: "oxc", kept: ["oxfmt", "oxlint"], dropped: ["@biomejs/biome"] },
+		{
+			linter: undefined,
+			kept: [],
+			dropped: ["@biomejs/biome", "oxfmt", "oxlint"],
+		},
+	] as const)(
+		"pins only the $linter linter tools",
+		({ linter, kept, dropped }) => {
+			const names = catalogEntries({ linter })
+				.flatMap((group) => group.entries)
+				.map((entry) => entry.name);
+
+			for (const name of kept) expect(names).toContain(name);
+			for (const name of dropped) expect(names).not.toContain(name);
+		},
+	);
+
 	it("emits every selected pinned dependency exactly once", () => {
 		const flattened = catalogEntries({
 			rpc: "orpc",
 			authentication: "better-auth",
 			authMethods: ["passkey"],
+			linter: "oxc",
 		}).flatMap((group) => group.entries);
 
 		const names = flattened.map((entry) => entry.name).sort();
 		const expected = Object.values(versions)
+			.filter((entry) => !("linter" in entry) || entry.linter === "oxc")
 			.map((entry) => entry.name)
 			.sort();
 
