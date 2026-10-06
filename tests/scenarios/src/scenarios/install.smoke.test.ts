@@ -2480,7 +2480,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		600_000,
 	);
 
-	it("builds, starts, and signs up from a TanStack Router primary beside a Next.js secondary on Hono", async () => {
+	it("starts TanStack Router and Next.js apps on their ports and accepts sign up from the primary origin on Hono", async () => {
 		await withScenarioWorkspace("smoke-web-apps-started", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
