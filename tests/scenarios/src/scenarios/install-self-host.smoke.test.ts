@@ -105,7 +105,13 @@ export async function GET() {
 		{ web: "react-router", rpc: "orpc", orm: "drizzle", secondary: false },
 		{ web: "tanstack-start", rpc: "orpc", orm: "drizzle", secondary: true },
 		{ web: "react-router", rpc: "orpc", orm: "drizzle", secondary: true },
-		{ web: "tanstack-start", rpc: "trpc", orm: "drizzle", secondary: false },
+		{
+			web: "tanstack-start",
+			rpc: "trpc",
+			orm: "drizzle",
+			secondary: false,
+			injectPort: true,
+		},
 		{
 			web: "react-router",
 			rpc: "trpc",

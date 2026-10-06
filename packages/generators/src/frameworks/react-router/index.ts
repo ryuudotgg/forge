@@ -235,7 +235,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		{ ...catalogRef("reactDom", config), type: "dependencies" },
 		{ ...deps.reactRouter, type: "dependencies" },
 		{ ...deps.reactRouterNode, type: "dependencies" },
-		{ ...deps.reactRouterServe, type: "dependencies" },
+		{ ...deps.srvx, type: "dependencies" },
 		{ ...deps.isbot, type: "dependencies" },
 		{ ...deps.nextThemes, type: "dependencies" },
 		{ ...deps.t3OssEnvCore, type: "dependencies" },
@@ -312,7 +312,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			postinstall: pmRun(pm, "typegen"),
 			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
 			start:
-				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- react-router-serve ./build/server/index.js",
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs",
 			typecheck: "tsc --noEmit",
 			typegen: pmRun(pm, "with-env", "react-router typegen"),
 			"with-env": "dotenv -e ../../.env --",
@@ -330,6 +330,11 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			ensuredModuleTarget(instance.key),
 			".env.production",
 			`PORT=${instance.port}\n`,
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"server.mjs",
+			readTemplate("frameworks/react-router/server.mjs"),
 		),
 		leafTextFile(
 			ensuredModuleTarget(instance.key),

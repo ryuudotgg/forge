@@ -271,7 +271,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			pretypecheck: pmRun(pm, "generate-routes"),
 			preview: pmRun(pm, "with-env", "vite preview"),
 			start:
-				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- srvx --prod -s ../client dist/server/server.js",
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs",
 			typecheck: "tsc --noEmit",
 			"with-env": "dotenv -e ../../.env --",
 		}),
@@ -288,6 +288,11 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			ensuredModuleTarget(instance.key),
 			".env.production",
 			`PORT=${instance.port}\n`,
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"server.mjs",
+			readTemplate("frameworks/tanstack-start/server.mjs"),
 		),
 		leafTextFile(
 			ensuredModuleTarget(instance.key),

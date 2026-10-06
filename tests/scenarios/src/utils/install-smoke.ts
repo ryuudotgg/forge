@@ -1883,6 +1883,8 @@ export async function expectSelfHostedRpc(
 
 			expect(await healthResponse.json()).toEqual(health.result);
 
+			if (web !== "nextjs") await expectQuietProductionServer(origin, output);
+
 			if (web === "nextjs") {
 				const page = await fetch(`${origin}/orpc-example`);
 				const html = await page.text();
@@ -1996,6 +1998,44 @@ export async function expectSelfHostedRpc(
 	return options.web !== "nextjs" && options.injectPort !== true
 		? withPortLock(run)
 		: run();
+}
+
+const secretRequestPaths = {
+	SMOKE_SECRET_A: "/api/auth/magic-link/verify?token=SMOKE_SECRET_A",
+	SMOKE_SECRET_B: "/api/auth/reset-password/SMOKE_SECRET_B",
+	SMOKE_SECRET_C: "/api/auth/callback/google?code=SMOKE_SECRET_C&state=x",
+} as const;
+
+async function expectQuietProductionServer(
+	origin: string,
+	output: () => string,
+) {
+	for (const path of Object.values(secretRequestPaths))
+		await fetch(`${origin}${path}`, { redirect: "manual" }).then((response) =>
+			response.arrayBuffer(),
+		);
+
+	const page = await fetch(`${origin}/`);
+	const html = await page.text();
+
+	expect(page.status, output()).toBe(200);
+	expect(page.headers.get("content-type")).toContain("text/html");
+	expect(page.headers.get("content-encoding")).toBe("gzip");
+
+	const asset = /(?:src|href)="(\/assets\/[^"]+\.js)"/.exec(html)?.[1];
+	if (asset === undefined) throw new Error(`Missing Client Asset: ${html}`);
+
+	const file = await fetch(`${origin}${asset}`);
+
+	expect(file.status, output()).toBe(200);
+	expect(file.headers.get("cache-control")).toContain("immutable");
+
+	await file.arrayBuffer();
+
+	await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+
+	for (const secret of Object.keys(secretRequestPaths))
+		expect(output()).not.toContain(secret);
 }
 
 const generatedOrpcClientProbe = `import { client } from "__CLIENT_IMPORT__";

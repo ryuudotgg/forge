@@ -295,18 +295,8 @@ export default [
 		);
 
 		const versionKeys: ReadonlyArray<
-			| "reactRouter"
-			| "reactRouterDev"
-			| "reactRouterNode"
-			| "reactRouterServe"
-			| "isbot"
-		> = [
-			"reactRouter",
-			"reactRouterDev",
-			"reactRouterNode",
-			"reactRouterServe",
-			"isbot",
-		];
+			"reactRouter" | "reactRouterDev" | "reactRouterNode" | "srvx" | "isbot"
+		> = ["reactRouter", "reactRouterDev", "reactRouterNode", "srvx", "isbot"];
 
 		for (const key of versionKeys)
 			expect(dependencyVersions.get(versions[key].name)).toBe(
@@ -324,7 +314,7 @@ export default [
 			postinstall: "pnpm typegen",
 			pretypecheck: "pnpm with-env react-router typegen",
 			start:
-				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- react-router-serve ./build/server/index.js",
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs",
 			typecheck: "tsc --noEmit",
 			typegen: "pnpm with-env react-router typegen",
 			"with-env": "dotenv -e ../../.env --",
