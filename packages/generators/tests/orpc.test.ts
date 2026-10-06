@@ -997,12 +997,13 @@ describe("oRPC route bodies and errors", () => {
 			expect(orpc).toContain(
 				`console.error(\`❌ oRPC failed on \${path}:\`, error)`,
 			);
+
 			expect(orpc).toMatch(
 				/\} catch \(error\) \{\s*if \(error instanceof ORPCError && error\.status < 500\) throw error;\s*reportServerError\(error, path\.join\("\."\)\);\s*throw reported\(error\);/,
 			);
 
 			expect(writeContent(plan, "packages/orpc/src/index.ts")).toContain(
-				"reportServerError",
+				'export { protectedProcedure, publicProcedure, reportServerError } from "./orpc";\n',
 			);
 		},
 	);
