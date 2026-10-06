@@ -11,7 +11,10 @@ import {
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { expect } from "vitest";
+
+const turboCacheSummaryPattern = /^\s*Cached:\s+(\d+ cached, \d+ total)/m;
 
 export const repoRoot = resolve(process.cwd(), "..", "..");
 
@@ -32,6 +35,21 @@ export interface ForgeCommandResult {
 export interface ScenarioProject {
 	readonly projectRoot: string;
 	readonly workspaceRoot: string;
+}
+
+function reportTurboCache(
+	workspace: ScenarioProject,
+	script: "build" | "typecheck",
+	result: ForgeCommandResult,
+) {
+	const stdout = stripVTControlCharacters(result.stdout);
+	const summary =
+		stdout.match(turboCacheSummaryPattern)?.[1] ?? "no cache summary";
+
+	const project =
+		expect.getState().currentTestName ?? basename(workspace.workspaceRoot);
+
+	console.log(`turbo ${script}: ${summary} (${project})`);
 }
 
 export function forgeEnvironment(workspaceRoot: string): NodeJS.ProcessEnv {
@@ -311,6 +329,8 @@ export async function expectInstallAndTypecheck(
 		env: forgeEnvironment(workspace.workspaceRoot),
 	});
 
+	reportTurboCache(workspace, "typecheck", result);
+
 	expect(
 		result.exitCode,
 		`${pm} typecheck failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
@@ -336,6 +356,8 @@ export async function expectInstallAndBuild(
 		env: forgeEnvironment(workspace.workspaceRoot),
 	});
 
+	reportTurboCache(workspace, "build", buildResult);
+
 	expect(
 		buildResult.exitCode,
 		`${pm} build failed with code ${buildResult.exitCode}\n${buildResult.stdout}\n${buildResult.stderr}`,
@@ -352,6 +374,8 @@ export async function expectInstallBuildAndTypecheck(
 		cwd: workspace.projectRoot,
 		env: forgeEnvironment(workspace.workspaceRoot),
 	});
+
+	reportTurboCache(workspace, "typecheck", typecheckResult);
 
 	expect(
 		typecheckResult.exitCode,

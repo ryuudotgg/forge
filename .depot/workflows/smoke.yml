@@ -114,6 +114,7 @@ jobs:
           FORGE_SMOKE: "1"
           FORGE_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
           FORGE_SMOKE_MYSQL_URL: mysql://root:mysql@127.0.0.1:3306
+          TURBO_FORCE: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
       - name: Tarball Smoke
         run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/tarball.smoke.test.ts
@@ -130,6 +131,7 @@ jobs:
         run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/multi-pm.smoke.test.ts
         env:
           FORGE_SMOKE: "1"
+          TURBO_FORCE: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
   gate:
     name: Install Smoke Gate
