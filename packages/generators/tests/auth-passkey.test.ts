@@ -2,7 +2,7 @@ import { stripTypeScriptTypes } from "node:module";
 import { Script } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { renderBetterAuthTemplate } from "../src/auth/better-auth/shared";
-import { authUsesPasskey } from "../src/auth/methods";
+import { authPasskeyIssue, authUsesPasskey } from "../src/auth/methods";
 import {
 	authPluginBindings,
 	authPluginFiles,
@@ -69,6 +69,38 @@ function writeContent(
 }
 
 describe("passkey selection", () => {
+	it("checks configured methods without substituting defaults", () => {
+		const absentMethods: ReadonlyArray<ForgeConfig["authMethods"]> = [
+			undefined,
+			[],
+			["email-password"],
+		];
+
+		for (const authMethods of absentMethods)
+			expect(authPasskeyIssue({ ...baseConfig, authMethods })).toBeUndefined();
+
+		const passkeyOnlyMethods: ReadonlyArray<ForgeConfig["authMethods"]> = [
+			["passkey"],
+			["passkey", "passkey"],
+		];
+
+		for (const authMethods of passkeyOnlyMethods) {
+			expect(authPasskeyIssue({ ...baseConfig, authMethods })).toBe(
+				"Passkeys need another sign-in method to create accounts.",
+			);
+
+			expect(
+				authPasskeyIssue({ ...baseConfig, authMethods, web: undefined }),
+			).toBe("Passkeys need another sign-in method to create accounts.");
+		}
+
+		expect(
+			authPasskeyIssue({ ...baseConfig, web: undefined, mobile: "expo" }),
+		).toBe("Passkeys need a web app.");
+
+		expect(authPasskeyIssue(baseConfig)).toBeUndefined();
+	});
+
 	it("uses a method-backed definition without changing public plugins", () => {
 		expect(authUsesPasskey(baseConfig)).toBe(true);
 		expect(resolveAuthPlugins(baseConfig)).toEqual([]);
@@ -84,7 +116,11 @@ describe("passkey selection", () => {
 		expect(authPluginBindings(baseConfig, "expo")).toEqual([]);
 		expect(authPluginPackages(baseConfig, "expo")).toEqual([]);
 		expect(authPluginPackages(baseConfig, "auth")).toEqual([
-			{ name: "@better-auth/passkey", version: "1.7.7", catalog: "" },
+			{
+				name: "@better-auth/passkey",
+				version: versions.betterAuthPasskey.version,
+				catalog: "",
+			},
 		]);
 	});
 
@@ -127,7 +163,10 @@ describe("passkey selection", () => {
 
 				expect(manifest).toMatchObject({
 					dependencies: {
-						"better-auth": catalogs === "npm" ? "1.7.7" : "catalog:",
+						"better-auth":
+							catalogs === "npm"
+								? catalogRef("betterAuth", config).version
+								: "catalog:",
 					},
 				});
 			}
@@ -138,7 +177,10 @@ describe("passkey selection", () => {
 				"@better-auth/passkey",
 			);
 
-			expect(catalogRef("betterAuth", config).version).toBe("1.7.7");
+			expect(catalogRef("betterAuth", config).version).toBe(
+				versions.betterAuthPasskey.version,
+			);
+
 			expect(
 				catalogRef("betterAuth", { ...config, authMethods: ["email-password"] })
 					.version,
@@ -148,6 +190,51 @@ describe("passkey selection", () => {
 });
 
 describe("passkey generation", () => {
+	it("cleans up user-owned plugin rows only without foreign keys", async () => {
+		const plan = await plannedProject({
+			...baseConfig,
+			orm: "drizzle",
+			database: "mysql",
+			databaseProvider: "planetscale",
+			authPlugins: ["two-factor", "organization"],
+		});
+
+		const server = writeContent(plan, "packages/auth/src/index.ts");
+
+		expect(server).toContain('import { eq } from "@acme/db";');
+		expect(server).toContain("databaseHooks: {");
+		expect(server).toContain("after: async ({ id }) => {");
+		expect(server.match(/await db\.delete\([^;]+;/g)).toEqual([
+			"await db.delete(passkeys).where(eq(passkeys.userId, id));",
+			"await db.delete(two_factors).where(eq(two_factors.userId, id));",
+			"await db.delete(members).where(eq(members.userId, id));",
+			"await db.delete(invitations).where(eq(invitations.inviterId, id));",
+		]);
+	});
+
+	it.each(variants)(
+		"omits user cleanup for $name unless needed",
+		async ({ config }) => {
+			const plan = await plannedProject({
+				...baseConfig,
+				...config,
+				authMethods:
+					config.databaseProvider === "planetscale" && config.orm === "drizzle"
+						? ["email-password"]
+						: baseConfig.authMethods,
+				authPlugins:
+					config.databaseProvider === "planetscale" && config.orm === "drizzle"
+						? []
+						: ["two-factor", "organization"],
+			});
+
+			const server = writeContent(plan, "packages/auth/src/index.ts");
+
+			expect(server).not.toContain("databaseHooks");
+			expect(server).not.toContain('import { eq } from "@acme/db";');
+		},
+	);
+
 	it.each(["hono", "self"] as const)(
 		"accepts secondary web origins with a %s host",
 		async (backend) => {
@@ -260,7 +347,7 @@ describe("passkey generation", () => {
 			);
 
 			expect(writeContent(plan, "pnpm-workspace.yaml")).toContain(
-				'"@better-auth/passkey": 1.7.7',
+				`"@better-auth/passkey": ${versions.betterAuthPasskey.version}`,
 			);
 
 			if (config.orm === "drizzle") {

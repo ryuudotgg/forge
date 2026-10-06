@@ -64,6 +64,10 @@ export interface DatabaseProviderProfile {
 	readonly prisma: PrismaSupport;
 }
 
+export function drizzleForeignKeys(provider: DatabaseProviderProfile): boolean {
+	return provider.drizzle.schemaTemplates.auth !== "auth.planetscale";
+}
+
 // Better Auth's drizzle adapter names the postgres dialect "pg".
 const drizzleAdapterProviders = {
 	mysql: "mysql",

@@ -10,7 +10,7 @@ export {
 	rpcProviderError,
 } from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
-export { resolveAuthMethods } from "./auth/methods";
+export { authPasskeyIssue, resolveAuthMethods } from "./auth/methods";
 export {
 	authPluginRequirement,
 	resolveAuthPlugins,

@@ -60,6 +60,11 @@
 			"matchUpdateTypes": ["minor", "patch"]
 		},
 		{
+			"groupName": "scaffolded versions",
+			"matchDepTypes": ["pnpm.catalog.scaffold"],
+			"matchUpdateTypes": ["minor", "patch"]
+		},
+		{
 			"addLabels": ["framework-major"],
 			"matchFileNames": ["packages/generators/src/versions.ts"],
 			"matchManagers": ["custom.regex"],

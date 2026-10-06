@@ -1,5 +1,9 @@
 import { isCancel, log, multiselect } from "@clack/prompts";
-import { authMethods, resolveAuthMethods } from "@ryuugg/generators";
+import {
+	authMethods,
+	authPasskeyIssue,
+	resolveAuthMethods,
+} from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { choiceOptions, unsupportedMessage } from "../../utils/choices";
@@ -47,22 +51,38 @@ export function createAuthMethodsStep(options = { email: true }) {
 		async execute(config, interactive) {
 			if (!interactive) return SKIP;
 
+			const availableMethods = choiceOptions(authMethods).filter(
+				({ value }) =>
+					(config.web !== undefined || value !== "passkey") &&
+					(options.email || (value !== "email-otp" && value !== "magic-link")),
+			);
+
+			const initialValues = resolveAuthMethods(config).filter((method) =>
+				availableMethods.some(({ value }) => value === method),
+			);
+
 			for (;;) {
 				const selection = await multiselect({
 					message: "How should people sign in?",
 					required: true,
-					options: choiceOptions(authMethods).filter(
-						({ value }) =>
-							options.email ||
-							(value !== "email-otp" && value !== "magic-link"),
-					),
-					initialValues: [...resolveAuthMethods(config)],
+					options: availableMethods,
+					initialValues,
 				});
 
 				if (isCancel(selection)) cancel();
 
 				const result = Schema.decodeUnknownResult(schema)(selection);
-				if (Result.isSuccess(result)) return result.success;
+				if (Result.isSuccess(result)) {
+					const issue = authPasskeyIssue({
+						...config,
+						authMethods: result.success,
+					});
+
+					if (issue === undefined) return result.success;
+
+					log.warn(issue);
+					continue;
+				}
 
 				log.warn("Choose at least one supported sign-in method.");
 			}

@@ -432,12 +432,16 @@ export const versions = {
 
 export type VersionKey = keyof typeof versions;
 
+const passkeyBetterAuth = {
+	name: "better-auth",
+	version: "1.7.7",
+	group: "Framework",
+} as const satisfies CatalogEntry;
+
 function versionsFor(config: ForgeConfig) {
 	return {
 		...versions,
-		...(authUsesPasskey(config)
-			? { betterAuth: { ...versions.betterAuth, version: "1.7.7" } }
-			: {}),
+		...(authUsesPasskey(config) ? { betterAuth: passkeyBetterAuth } : {}),
 		...(config.mobile === "expo"
 			? {
 					react: { ...versions.react, version: expoNativeModules.react },

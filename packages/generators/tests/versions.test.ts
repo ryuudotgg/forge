@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { runtimes } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
+import type { ForgeConfig } from "../src/config";
 import { catalogEntries, catalogRef, versions } from "../src/versions";
 
 describe("catalogEntries", () => {
@@ -98,6 +100,53 @@ describe("catalogEntries", () => {
 });
 
 describe("catalogRef", () => {
+	it("keeps the passkey Better Auth pin aligned with its plugin", () => {
+		const passkeyConfig: ForgeConfig = {
+			authentication: "better-auth",
+			authMethods: ["email-password", "passkey"],
+			web: "nextjs",
+		};
+
+		expect(catalogRef("betterAuth", passkeyConfig).version).toBe(
+			versions.betterAuthPasskey.version,
+		);
+	});
+
+	it("matches the repository scaffold catalog to the passkey pins", () => {
+		const workspace = readFileSync(
+			new URL("../../../pnpm-workspace.yaml", import.meta.url),
+			"utf-8",
+		);
+
+		const scaffold = /^ {2}scaffold:\n((?: {4}[^\n]*\n|\n)*)/m.exec(
+			workspace,
+		)?.[1];
+
+		if (scaffold === undefined) throw new Error("Missing Scaffold Catalog");
+
+		const entries = Object.fromEntries(
+			Array.from(
+				scaffold.matchAll(/^ {4}("[^"]+"|[\w@/.-]+): ([^\s]+)$/gm),
+				([, name, version]) => [
+					name?.replaceAll('"', ""),
+					version?.replaceAll('"', ""),
+				],
+			),
+		);
+
+		expect(entries["better-auth"]).toBe(
+			catalogRef("betterAuth", {
+				authentication: "better-auth",
+				authMethods: ["email-password", "passkey"],
+				web: "nextjs",
+			}).version,
+		);
+
+		expect(entries["@better-auth/passkey"]).toBe(
+			versions.betterAuthPasskey.version,
+		);
+	});
+
 	it("maps the key to its entry name and version with an empty catalog", () => {
 		const ref = catalogRef("next");
 

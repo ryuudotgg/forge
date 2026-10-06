@@ -39,6 +39,17 @@ export function authUsesPasskey(config: ForgeConfig): boolean {
 	);
 }
 
+export function authPasskeyIssue(config: ForgeConfig): string | undefined {
+	if (!config.authMethods?.includes("passkey")) return undefined;
+
+	if (!config.authMethods.some((method) => method !== "passkey"))
+		return "Passkeys need another sign-in method to create accounts.";
+
+	if (config.web === undefined) return "Passkeys need a web app.";
+
+	return undefined;
+}
+
 export function authUsesEmail(config: ForgeConfig): boolean {
 	return (
 		config.authentication === "better-auth" &&
