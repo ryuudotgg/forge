@@ -109,7 +109,7 @@ jobs:
         run: pnpm build --filter=@ryuugg/forge
 
       - name: Smoke Test
-        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install- --maxWorkers=2 --reporter=default --reporter=github-actions --reporter=json --outputFile.json=.cache/install-smoke.json
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install- --maxWorkers=3 --reporter=default --reporter=github-actions --reporter=json --outputFile.json=.cache/install-smoke.json
         env:
           FORGE_SMOKE: "1"
           FORGE_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres

@@ -394,10 +394,11 @@ export async function expectInstallAndTypecheck(
 export async function expectInstallAndBuild(
 	workspace: ScenarioProject,
 	pm: "pnpm" | "npm" | "yarn" | "bun",
+	installEnv?: NodeJS.ProcessEnv,
 ) {
 	const installResult = await runCommand(pm, installArgsFor[pm], {
 		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
+		env: { ...forgeEnvironment(workspace.workspaceRoot), ...installEnv },
 	});
 
 	expect(
@@ -423,8 +424,9 @@ export async function expectInstallAndBuild(
 export async function expectInstallBuildAndTypecheck(
 	workspace: ScenarioProject,
 	pm: "pnpm" | "npm" | "yarn" | "bun",
+	installEnv?: NodeJS.ProcessEnv,
 ) {
-	await expectInstallAndBuild(workspace, pm);
+	await expectInstallAndBuild(workspace, pm, installEnv);
 
 	const typecheckResult = await runCommand(pm, typecheckArgsFor[pm], {
 		cwd: workspace.projectRoot,

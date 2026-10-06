@@ -27,6 +27,10 @@ import {
 	withWebApp,
 } from "../utils/install-smoke";
 
+// tsx watch restarts when another worker hardlinks a shared pnpm store file,
+// since the new link changes the inode this project's node_modules points at.
+const watchedInstallEnv = { pnpm_config_package_import_method: "copy" };
+
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it.each([
 		{ backend: "hono", web: "nextjs", emailProvider: "resend" },
@@ -64,7 +68,11 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 						].join("\n"),
 					);
 
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectInstallBuildAndTypecheck(
+						workspace,
+						"pnpm",
+						watchedInstallEnv,
+					);
 
 					const emailTest = await runCommand("pnpm", ["test"], {
 						cwd: join(workspace.projectRoot, "packages/email"),
