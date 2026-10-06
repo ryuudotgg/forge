@@ -17,6 +17,7 @@ import {
 	pathExists,
 	readJson,
 	runCommand,
+	runForge,
 	type ScenarioProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
@@ -337,6 +338,7 @@ async function withGeneratedServer(
 async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
+		readonly apiOrigin?: string;
 		readonly clientOrigin?: string;
 		readonly emailAuth?: boolean;
 		readonly host?: "server" | "nextjs";
@@ -365,7 +367,7 @@ async function expectCredentialedGeneratedServer(
 			options?.webOrigin ?? "http://localhost:3000",
 		);
 
-		expect(serverOrigin).toBe("http://localhost:3001");
+		expect(serverOrigin).toBe(options?.apiOrigin ?? "http://localhost:3001");
 	}
 
 	if (options?.polar) {
@@ -2326,6 +2328,69 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		},
 		600_000,
 	);
+
+	it("accepts a client added later once .env holds the printed WEB_URLS", async () => {
+		await withScenarioWorkspace("smoke-added-client", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				authMethods: ["email-password"],
+				backend: "hono",
+				database: "sqlite",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "tanstack-router",
+				webApps: [
+					{ name: "admin", framework: "tanstack-router", client: true },
+				],
+			});
+
+			const added = await runForge(
+				workspace.projectRoot,
+				[
+					"add",
+					"tanstack-router",
+					"--name",
+					"portal",
+					"--client",
+					"--yes",
+					"--no-install",
+				],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			const printed =
+				/Add http:\/\/localhost:3003 to WEB_URLS in \.env so portal can call the API\. With only local apps, that makes WEB_URLS="([^"]+)"\./.exec(
+					added.stdout,
+				)?.[1];
+
+			expect(printed, added.stdout).toBe(
+				"http://localhost:3002,http://localhost:3003",
+			);
+
+			const apiOrigin = "http://localhost:48301";
+			const envPath = join(workspace.projectRoot, ".env");
+			const env = await readFile(envPath, "utf-8");
+			expect(env).not.toContain("http://localhost:3003");
+
+			await writeFile(
+				envPath,
+				`${env
+					.replace(/^WEB_URLS=.*$/m, `WEB_URLS="${printed}"`)
+					.replace(
+						/^APP_ORIGIN=.*$/m,
+						`APP_ORIGIN="${apiOrigin}"`,
+					)}PORT="48301"\n`,
+			);
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectCredentialedGeneratedServer(workspace.projectRoot, {
+				apiOrigin,
+				clientOrigin: "http://localhost:3003",
+			});
+		});
+	}, 600_000);
 
 	it("answers get-session on the default self-hosted Next.js project", async () => {
 		await withScenarioWorkspace(

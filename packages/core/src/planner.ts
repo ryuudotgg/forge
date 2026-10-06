@@ -129,10 +129,10 @@ export function retargetAdoptedContribution(
 								? {
 										...contribution.module,
 										role:
-											module.role ??
-											(module.root === contribution.root
+											moduleKey === instanceModuleKey ||
+											module.root === contribution.root
 												? contribution.module.role
-												: undefined),
+												: module.role,
 									}
 								: contribution.module,
 					}

@@ -49,9 +49,163 @@ async function treeHashes(projectRoot: string, excludedRoot?: string) {
 interface PackageJson {
 	readonly dependencies?: Record<string, string>;
 	readonly devDependencies?: Record<string, string>;
+	readonly scripts?: Record<string, string>;
+}
+
+interface WebAppsManifest {
+	readonly config: {
+		readonly webApps?: ReadonlyArray<Record<string, unknown>>;
+	};
+}
+
+async function forgetRecordedPorts(projectRoot: string) {
+	const path = join(projectRoot, ".forge/manifest.json");
+	const manifest = await readJson<WebAppsManifest>(path);
+
+	await writeJson(path, {
+		...manifest,
+		config: {
+			...manifest.config,
+			webApps: manifest.config.webApps?.map(({ port: _port, ...app }) => app),
+		},
+	});
+}
+
+async function serveScripts(projectRoot: string, apps: ReadonlyArray<string>) {
+	return Object.fromEntries(
+		await Promise.all(
+			apps.map(async (app) => {
+				const { scripts } = await readJson<PackageJson>(
+					join(projectRoot, "apps", app, "package.json"),
+				);
+
+				return [app, { dev: scripts?.dev, start: scripts?.start }] as const;
+			}),
+		),
+	);
+}
+
+function fileHash(path: string) {
+	return readFile(path).then((content) =>
+		createHash("sha256").update(content).digest("hex"),
+	);
 }
 
 describe("remove", () => {
+	it.each([
+		{ label: "recorded", legacy: false },
+		{ label: "derived from list order", legacy: true },
+	])(
+		"keeps the other apps on their ports when their ports are $label",
+		async ({ legacy }) => {
+			await withScenarioWorkspace(
+				`remove-stable-ports-${legacy}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						backend: "hono",
+						packageManager: "pnpm",
+						rpc: "trpc",
+						web: "nextjs",
+						webApps: [
+							{ name: "admin", framework: "nextjs" },
+							{ name: "docs", framework: "tanstack-router", client: true },
+							{ name: "site", framework: "react-router", client: true },
+						],
+					});
+
+					if (legacy) await forgetRecordedPorts(workspace.projectRoot);
+
+					const manifestPath = join(
+						workspace.projectRoot,
+						".forge/manifest.json",
+					);
+
+					const envPath = join(workspace.projectRoot, ".env");
+					const scriptsBefore = await serveScripts(workspace.projectRoot, [
+						"admin",
+						"site",
+					]);
+
+					const envBefore = await fileHash(envPath);
+					expect(scriptsBefore.site?.dev).toContain("--port 3004");
+
+					const removed = await runForge(
+						workspace.projectRoot,
+						["remove", "docs"],
+						{ workspaceRoot: workspace.workspaceRoot },
+					);
+
+					expect(removed.stdout).toContain("We removed the docs web app.");
+					expect(removed.stdout).toContain(
+						'Remove http://localhost:3003 from WEB_URLS in .env. With only local apps, that leaves WEB_URLS="http://localhost:3004".',
+					);
+
+					expect(
+						await serveScripts(workspace.projectRoot, ["admin", "site"]),
+					).toEqual(scriptsBefore);
+
+					expect(await fileHash(envPath)).toBe(envBefore);
+					expect(
+						(await readJson<WebAppsManifest>(manifestPath)).config.webApps,
+					).toEqual([
+						{ name: "admin", framework: "nextjs", port: 3002 },
+						{
+							name: "site",
+							framework: "react-router",
+							client: true,
+							port: 3004,
+						},
+					]);
+
+					const removedManifest = await readFile(manifestPath, "utf-8");
+					for (const _run of [1, 2]) {
+						await runForge(workspace.projectRoot, ["update"], {
+							workspaceRoot: workspace.workspaceRoot,
+						});
+
+						expect(await readFile(manifestPath, "utf-8")).toBe(removedManifest);
+					}
+				},
+			);
+		},
+		240_000,
+	);
+
+	it("drops the primary role when the last secondary is removed", async () => {
+		await withScenarioWorkspace("remove-last-secondary", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			});
+
+			const markerPath = join(workspace.projectRoot, "apps/web/forge.json");
+			expect(await readJson<{ role?: string }>(markerPath)).toMatchObject({
+				role: "primary",
+			});
+
+			const removed = await runForge(
+				workspace.projectRoot,
+				["remove", "admin"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(removed.stdout).toContain("We removed the admin web app.");
+			expect(removed.stdout).not.toContain("WEB_URLS");
+			expect(await readJson<{ role?: string }>(markerPath)).not.toHaveProperty(
+				"role",
+			);
+
+			await runForge(workspace.projectRoot, ["update"], {
+				workspaceRoot: workspace.workspaceRoot,
+			});
+
+			expect(await readJson<{ role?: string }>(markerPath)).not.toHaveProperty(
+				"role",
+			);
+		});
+	}, 120_000);
+
 	it("removes a secondary named primary without removing the primary app", async () => {
 		await withScenarioWorkspace("remove-primary-name", async (workspace) => {
 			await createProject(workspace, {

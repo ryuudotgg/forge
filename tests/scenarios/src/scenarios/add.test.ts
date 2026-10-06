@@ -213,8 +213,12 @@ describe("add", () => {
 					};
 
 					await createProject(workspace, config);
+					const envPath = join(workspace.projectRoot, ".env");
+					const envBefore = (await pathExists(envPath))
+						? await readFile(envPath, "utf-8")
+						: undefined;
 
-					await runForge(
+					const added = await runForge(
 						workspace.projectRoot,
 						[
 							"add",
@@ -227,6 +231,20 @@ describe("add", () => {
 						],
 						{ workspaceRoot: workspace.workspaceRoot },
 					);
+
+					expect(added.stdout).toContain("We added the site web app.");
+					expect(added.stdout.includes("WEB_URLS")).toBe(client);
+
+					if (client)
+						expect(added.stdout).toContain(
+							'Add http://localhost:3002 to WEB_URLS in .env so site can call the API. With only local apps, that makes WEB_URLS="http://localhost:3002".',
+						);
+
+					expect(
+						(await pathExists(envPath))
+							? await readFile(envPath, "utf-8")
+							: undefined,
+					).toBe(envBefore);
 
 					await createProject(workspace, {
 						...config,

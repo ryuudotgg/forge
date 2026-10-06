@@ -5,11 +5,15 @@ import type { ProjectPlan } from "@ryuugg/core";
 import { Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	addWebAppConfig,
 	builtins,
 	type ForgeConfig,
+	removeWebAppConfig,
 	reservedWebAppNames,
 	webAppInstances,
+	webAppPortIssue,
 	webFrameworks,
+	withWebAppPorts,
 } from "../src";
 import { plannedProject } from "./planner-harness";
 
@@ -144,6 +148,37 @@ describe("webAppInstances", () => {
 		).toEqual([5173, 5174]);
 	});
 
+	it.each([
+		{ web: "nextjs", ports: [3000, 3002, 3003, 3004] },
+		{ web: "react-router", ports: [5173, 5174, 5175, 5176] },
+	] as const)(
+		"resolves a legacy list without ports on $web as before",
+		({ web, ports }) => {
+			expect(
+				webAppInstances({
+					web,
+					webApps: [
+						{ name: "admin", framework: "nextjs" },
+						{ name: "docs", framework: "tanstack-router" },
+						{ name: "site", framework: "react-router" },
+					],
+				}).map((instance) => instance.port),
+			).toEqual(ports);
+		},
+	);
+
+	it("keeps the positional cursor moving past an app with its own port", () => {
+		expect(
+			webAppInstances({
+				web: "nextjs",
+				webApps: [
+					{ name: "admin", framework: "nextjs", port: 4100 },
+					{ name: "docs", framework: "nextjs" },
+				],
+			}).map((instance) => instance.port),
+		).toEqual([3000, 4100, 3003]);
+	});
+
 	it("reserves every generated app and package name", () => {
 		expect(reservedWebAppNames).toEqual([
 			"web",
@@ -161,6 +196,133 @@ describe("webAppInstances", () => {
 			"tsconfig",
 			"github",
 		]);
+	});
+});
+
+describe("web app ports", () => {
+	const legacyTriple: ForgeConfig = {
+		web: "nextjs",
+		webApps: [
+			{ name: "admin", framework: "nextjs" },
+			{ name: "docs", framework: "tanstack-router", client: true },
+			{ name: "site", framework: "react-router" },
+		],
+	};
+
+	it("stamps the ports a legacy list already resolves to", () => {
+		expect(withWebAppPorts(legacyTriple).webApps).toEqual([
+			{ name: "admin", framework: "nextjs", port: 3002 },
+			{ name: "docs", framework: "tanstack-router", client: true, port: 3003 },
+			{ name: "site", framework: "react-router", port: 3004 },
+		]);
+	});
+
+	it("leaves a config without secondary apps untouched", () => {
+		for (const config of [
+			{ web: "nextjs" },
+			{ web: "nextjs", webApps: [] },
+			{ webApps: [{ name: "admin", framework: "nextjs" }] },
+		] satisfies ForgeConfig[])
+			expect(withWebAppPorts(config)).toBe(config);
+	});
+
+	it("keeps survivors on their ports when an app is removed", () => {
+		const next = removeWebAppConfig(legacyTriple, "docs");
+
+		expect(next.webApps).toEqual([
+			{ name: "admin", framework: "nextjs", port: 3002 },
+			{ name: "site", framework: "react-router", port: 3004 },
+		]);
+
+		expect(webAppInstances(next).map((instance) => instance.port)).toEqual([
+			3000, 3002, 3004,
+		]);
+	});
+
+	it.each([
+		{
+			label: "the gap a removal left",
+			webApps: [
+				{ name: "admin", framework: "nextjs", port: 3002 },
+				{ name: "site", framework: "nextjs", port: 3004 },
+			],
+			port: 3003,
+		},
+		{
+			label: "the next port after a legacy list",
+			webApps: [{ name: "admin", framework: "nextjs" }],
+			port: 3003,
+		},
+		{
+			label: "the first port above the primary and the API server",
+			webApps: [],
+			port: 3002,
+		},
+	] satisfies ReadonlyArray<{
+		label: string;
+		webApps: ForgeConfig["webApps"];
+		port: number;
+	}>)("gives a new app $label", ({ webApps, port }) => {
+		const next = addWebAppConfig(
+			{ web: "nextjs", webApps },
+			{ name: "portal", framework: "tanstack-router", client: true },
+		);
+
+		expect(next.webApps?.at(-1)).toEqual({
+			name: "portal",
+			framework: "tanstack-router",
+			client: true,
+			port,
+		});
+
+		expect(next.webApps?.every((app) => app.port !== undefined)).toBe(true);
+	});
+
+	it("allocates above a React Router primary", () => {
+		expect(
+			addWebAppConfig(
+				{ web: "react-router" },
+				{ name: "admin", framework: "nextjs" },
+			).webApps,
+		).toEqual([{ name: "admin", framework: "nextjs", port: 5174 }]);
+	});
+
+	it("refuses to add an app once every port above the primary is taken", () => {
+		const webApps = Array.from({ length: 65535 - 3001 }, (_, index) => ({
+			name: `app-${index}`,
+			framework: "nextjs" as const,
+			port: 3002 + index,
+		}));
+
+		expect(() =>
+			addWebAppConfig(
+				{ web: "nextjs", webApps },
+				{ name: "portal", framework: "nextjs" },
+			),
+		).toThrow("Web App Port Unavailable: portal");
+	});
+
+	it("names the apps that share a port", () => {
+		expect(webAppPortIssue(legacyTriple)).toBeUndefined();
+		expect(
+			webAppPortIssue({
+				web: "nextjs",
+				webApps: [
+					{ name: "admin", framework: "nextjs", port: 3000 },
+					{ name: "docs", framework: "nextjs" },
+				],
+			}),
+		).toBe("web and admin both use port 3000.");
+
+		expect(
+			webAppPortIssue({
+				web: "nextjs",
+				webApps: [
+					{ name: "admin", framework: "nextjs", port: 3003 },
+					{ name: "docs", framework: "nextjs" },
+				],
+			}),
+		).toBe("admin and docs both use port 3003.");
 	});
 });
 

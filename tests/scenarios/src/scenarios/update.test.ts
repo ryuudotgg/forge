@@ -64,6 +64,44 @@ describe("update", () => {
 		});
 	}, 240_000);
 
+	it("leaves a manifest without recorded ports as it is", async () => {
+		await withScenarioWorkspace("update-legacy-ports", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+				webApps: [
+					{ name: "admin", framework: "nextjs" },
+					{ name: "site", framework: "react-router" },
+				],
+			});
+
+			const manifestPath = join(workspace.projectRoot, ".forge/manifest.json");
+			const manifest = await readJson<{
+				readonly config: {
+					readonly webApps: ReadonlyArray<Record<string, unknown>>;
+				};
+			}>(manifestPath);
+
+			const legacyConfig = {
+				...manifest.config,
+				webApps: manifest.config.webApps.map(({ port: _port, ...app }) => app),
+			};
+
+			await writeJson(manifestPath, { ...manifest, config: legacyConfig });
+			await updateProject(workspace.projectRoot);
+
+			expect(
+				(await readJson<{ readonly config: unknown }>(manifestPath)).config,
+			).toEqual(legacyConfig);
+
+			const site = await readJson<{ readonly scripts: { dev: string } }>(
+				join(workspace.projectRoot, "apps/site/package.json"),
+			);
+
+			expect(site.scripts.dev).toContain("--port 3003");
+		});
+	}, 120_000);
+
 	it("keeps declined base-less surface renders durable", async () => {
 		await withScenarioWorkspace("update-keep-user-page", async (workspace) => {
 			await createProject(workspace, {

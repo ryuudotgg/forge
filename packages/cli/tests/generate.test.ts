@@ -79,6 +79,37 @@ describe("generate step", () => {
 		});
 	}, 120_000);
 
+	it("records each secondary web app's port in the manifest", async () => {
+		await withTempDir("generate-ports", async (directory) => {
+			await generateStep.execute(
+				{
+					name: "Acme",
+					slug: "acme",
+					path: directory,
+					web: "nextjs",
+					webApps: [
+						{ name: "admin", framework: "nextjs", client: true },
+						{ name: "site", framework: "react-router" },
+					],
+					packageManager: "pnpm",
+					runtime: "Node.js",
+				},
+				false,
+			);
+
+			expect(
+				await readJson(join(directory, ".forge", "manifest.json")),
+			).toMatchObject({
+				config: {
+					webApps: [
+						{ name: "admin", framework: "nextjs", client: true, port: 3002 },
+						{ name: "site", framework: "react-router", port: 3003 },
+					],
+				},
+			});
+		});
+	}, 120_000);
+
 	it("plans a full TanStack Start project at framework slot paths", async () => {
 		await withTempDir("generate-tanstack-start", async (directory) => {
 			const result = await generateStep.execute(

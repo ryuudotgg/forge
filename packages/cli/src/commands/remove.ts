@@ -20,10 +20,12 @@ import {
 	type LoadedDefinitionRegistry,
 	loadAddonDefinition,
 	RegistryLoadError,
+	removeWebAppConfig,
 	webFrameworks,
 } from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
+import { removedClientEnvMessage } from "../utils/web-apps";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
@@ -437,14 +439,10 @@ async function removeWebApp(
 		process.exit(1);
 	}
 
-	const nextConfig = {
-		...project.config,
-		webApps: apps.filter((app) => app.name !== selectedApp.name),
-	};
-
+	const nextConfig = removeWebAppConfig(config, selectedApp.name);
 	const options = resolutionArguments(values)[0] ?? {};
 	if (removal.ids.length === 0) {
-		await applyInstalledPlan(
+		const { retained } = await applyInstalledPlan(
 			project.projectRoot,
 			nextConfig,
 			project.manifest.installs,
@@ -458,6 +456,7 @@ async function removeWebApp(
 			},
 		);
 
+		reportWebAppRemoval(selectedApp, config, nextConfig, retained);
 		return true;
 	}
 
@@ -497,12 +496,25 @@ async function removeWebApp(
 		},
 	);
 
+	reportWebAppRemoval(selectedApp, config, nextConfig, retained);
+	return true;
+}
+
+function reportWebAppRemoval(
+	app: NonNullable<ForgeConfig["webApps"]>[number],
+	previousConfig: ForgeConfig,
+	nextConfig: ForgeConfig,
+	retained: ReadonlyArray<string>,
+) {
+	log.success(`We removed the ${app.name} web app.`);
+
+	if (app.client === true)
+		log.info(removedClientEnvMessage(previousConfig, nextConfig, app.name));
+
 	if (retained.length > 0)
 		log.info(
 			`We kept your edited ${retained.length === 1 ? "file" : "files"} at ${listAnd.format(retained)}.`,
 		);
-
-	return true;
 }
 
 function installedAddonNamed(

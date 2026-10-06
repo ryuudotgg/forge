@@ -1,4 +1,8 @@
-import { defineAdapter, defineAddon } from "@ryuugg/core";
+import {
+	type DiscoveredModule,
+	defineAdapter,
+	defineAddon,
+} from "@ryuugg/core";
 import {
 	type ForgeConfig,
 	type LoadedDefinitionRegistry,
@@ -76,6 +80,7 @@ const promptMocks = vi.hoisted(() => ({
 	intro: vi.fn(),
 	logError: vi.fn(),
 	logInfo: vi.fn(),
+	logSuccess: vi.fn(),
 	logWarn: vi.fn(),
 	multiselect: vi.fn(),
 	select: vi.fn(),
@@ -98,6 +103,7 @@ vi.mock("@clack/prompts", () => ({
 	log: {
 		error: promptMocks.logError,
 		info: promptMocks.logInfo,
+		success: promptMocks.logSuccess,
 		warn: promptMocks.logWarn,
 	},
 	multiselect: promptMocks.multiselect,
@@ -640,6 +646,192 @@ describe("remove command", () => {
 		},
 	);
 
+	const docsModule: DiscoveredModule = {
+		...adminModule,
+		id: "docs1",
+		packageName: "@acme/docs",
+		root: "apps/docs",
+	};
+
+	const siteModule: DiscoveredModule = {
+		...adminModule,
+		id: "site1",
+		packageName: "@acme/site",
+		root: "apps/site",
+	};
+
+	it.each([
+		{
+			label: "a client with another client left",
+			removed: "docs",
+			clients: ["admin", "docs"],
+			webApps: [
+				{ name: "admin", framework: "nextjs", client: true, port: 3002 },
+				{ name: "site", framework: "nextjs", port: 3004 },
+			],
+			info: [
+				'Remove http://localhost:3003 from WEB_URLS in .env. With only local apps, that leaves WEB_URLS="http://localhost:3002".',
+			],
+		},
+		{
+			label: "the last client",
+			removed: "docs",
+			clients: ["docs"],
+			webApps: [
+				{ name: "admin", framework: "nextjs", port: 3002 },
+				{ name: "site", framework: "nextjs", port: 3004 },
+			],
+			info: [
+				"Remove WEB_URLS from .env: no secondary web app calls the API now.",
+			],
+		},
+		{
+			label: "an app that is not a client",
+			removed: "docs",
+			clients: ["admin", "site"],
+			webApps: [
+				{ name: "admin", framework: "nextjs", client: true, port: 3002 },
+				{ name: "site", framework: "nextjs", client: true, port: 3004 },
+			],
+			info: [],
+		},
+	] satisfies ReadonlyArray<{
+		label: string;
+		removed: string;
+		clients: ReadonlyArray<string>;
+		webApps: ForgeConfig["webApps"];
+		info: ReadonlyArray<string>;
+	}>)(
+		"keeps survivor ports and reports removing $label",
+		async ({ removed, clients, webApps, info }) => {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					config: {
+						web: "nextjs",
+						webApps: ["admin", "docs", "site"].map((name) => ({
+							name,
+							framework: "nextjs",
+							...(clients.includes(name) ? { client: true } : {}),
+						})),
+					},
+					modules: [appModule, adminModule, docsModule, siteModule],
+				}),
+			);
+
+			lifecycleMocks.applyInstalledPlan.mockResolvedValue({ retained: [] });
+
+			await runRemove(removed, { yes: true });
+
+			expect(lifecycleMocks.applyInstalledPlan.mock.calls[0]?.[1]).toEqual({
+				web: "nextjs",
+				webApps,
+			});
+
+			expect(promptMocks.logSuccess.mock.calls).toEqual([
+				["We removed the docs web app."],
+			]);
+
+			expect(promptMocks.logInfo.mock.calls).toEqual(
+				info.map((sentence) => [sentence]),
+			);
+		},
+	);
+
+	it("names the recorded origin of a removed client", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [
+						{ name: "admin", framework: "nextjs", client: true, port: 3002 },
+						{ name: "docs", framework: "nextjs", client: true, port: 3007 },
+						{ name: "site", framework: "nextjs", client: true, port: 3004 },
+					],
+				},
+				modules: [appModule, adminModule, docsModule, siteModule],
+			}),
+		);
+
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({ retained: [] });
+
+		await runRemove("docs", { yes: true });
+
+		expect(promptMocks.logInfo.mock.calls).toEqual([
+			[
+				'Remove http://localhost:3007 from WEB_URLS in .env. With only local apps, that leaves WEB_URLS="http://localhost:3002,http://localhost:3004".',
+			],
+		]);
+	});
+
+	it("reports the removal, then the env line, then the kept files", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				},
+				modules: [appModule, adminModule],
+			}),
+		);
+
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
+			retained: ["apps/admin/app/page.tsx"],
+		});
+
+		await runRemove("admin", { yes: true });
+
+		expect(promptMocks.logInfo.mock.calls).toEqual([
+			["Remove WEB_URLS from .env: no secondary web app calls the API now."],
+			["We kept your edited file at apps/admin/app/page.tsx."],
+		]);
+
+		expect(promptMocks.logSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+			promptMocks.logInfo.mock.invocationCallOrder[0] ?? 0,
+		);
+	});
+
+	it("reports the removal of a secondary whose directory is gone", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				},
+				modules: [appModule],
+			}),
+		);
+
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({ retained: [] });
+
+		await runRemove("admin", { yes: true });
+
+		expect(promptMocks.logSuccess.mock.calls).toEqual([
+			["We removed the admin web app."],
+		]);
+
+		expect(promptMocks.logInfo.mock.calls).toEqual([
+			["Remove WEB_URLS from .env: no secondary web app calls the API now."],
+		]);
+	});
+
+	it("prints nothing when the removal fails to apply", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				},
+				modules: [appModule, adminModule],
+			}),
+		);
+
+		lifecycleMocks.applyInstalledPlan.mockRejectedValue(new Error("exit:1"));
+
+		await expect(runRemove("admin", { yes: true })).rejects.toThrow("exit:1");
+		expect(promptMocks.logSuccess).not.toHaveBeenCalled();
+		expect(promptMocks.logInfo).not.toHaveBeenCalled();
+	});
+
 	it("refuses ambiguous adopted secondary roots", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
 			throw new Error(`exit:${code ?? 0}`);
@@ -791,6 +983,7 @@ describe("remove command", () => {
 
 		promptMocks.logError.mockReset();
 		promptMocks.logInfo.mockReset();
+		promptMocks.logSuccess.mockReset();
 		promptMocks.logWarn.mockReset();
 
 		promptMocks.multiselect.mockReset();

@@ -2,6 +2,7 @@ import { confirm, isCancel, text } from "@clack/prompts";
 import {
 	loadDefinitionRegistry,
 	reservedWebAppNames,
+	standaloneBackendDevPort,
 } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
@@ -25,15 +26,30 @@ export const webAppsSchema = Schema.Array(
 		name: webAppNameSchema,
 		framework: webSchema,
 		client: Schema.optional(Schema.Boolean),
+		port: Schema.optional(Schema.Number),
 	}),
 ).check(
 	Schema.makeFilter((apps) => {
 		const names = new Set<string>();
+		const portOwners = new Map<number, string>();
 		for (const app of apps) {
 			if (names.has(app.name))
 				return `${app.name} is used by more than one web app.`;
 
 			names.add(app.name);
+			if (app.port === undefined) continue;
+
+			if (!Number.isInteger(app.port) || app.port < 1 || app.port > 65535)
+				return `${app.name} needs a port between 1 and 65535.`;
+
+			if (app.port === standaloneBackendDevPort)
+				return `${app.name} can't use port ${standaloneBackendDevPort}, which the API server uses.`;
+
+			const owner = portOwners.get(app.port);
+			if (owner !== undefined)
+				return `${owner} and ${app.name} both use port ${app.port}.`;
+
+			portOwners.set(app.port, app.name);
 		}
 	}),
 );
