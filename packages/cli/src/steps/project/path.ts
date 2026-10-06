@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, statSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { isCancel, log, text } from "@clack/prompts";
 import { formatSchemaError } from "@ryuugg/core";
@@ -29,19 +29,25 @@ const shownEntryLimit = 3;
 
 function readEntries(path: string) {
 	try {
-		return statSync(path).isDirectory() ? readdirSync(path).sort() : "file";
+		const stats = statSync(path, { throwIfNoEntry: false });
+		if (stats === undefined)
+			return lstatSync(path, { throwIfNoEntry: false }) === undefined
+				? "missing"
+				: "unreadable";
+
+		return stats.isDirectory() ? readdirSync(path).sort() : "file";
 	} catch {
 		return "unreadable";
 	}
 }
 
 export function occupiedTargetIssue(path: string): string | undefined {
-	if (!existsSync(path)) return;
+	const entries = readEntries(path);
+	if (entries === "missing") return;
 
 	const target =
 		normalize(path) === "." ? "The current directory" : `"${path}"`;
 
-	const entries = readEntries(path);
 	if (entries === "file")
 		return `${target} is a file, so we can't create your project there. Pick another path.`;
 

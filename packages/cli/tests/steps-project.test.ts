@@ -1,4 +1,11 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+	chmod,
+	mkdir,
+	mkdtemp,
+	rm,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Result, Schema } from "effect";
@@ -454,6 +461,20 @@ describe("project steps", () => {
 			}
 		});
 
+		it("refuses a dangling symlink target", async () => {
+			const root = await mkdtemp(join(tmpdir(), "forge-path-"));
+
+			try {
+				const link = join(root, "acme");
+				await symlink(join(root, "gone"), link);
+				expect(occupiedTargetIssue(link)).toBe(
+					`"${link}" can't be read, so we can't create your project there. Pick another path.`,
+				);
+			} finally {
+				await rm(root, { force: true, recursive: true });
+			}
+		});
+
 		it.skipIf(process.getuid?.() === 0)(
 			"refuses a target directory it cannot read",
 			async () => {
@@ -462,6 +483,11 @@ describe("project steps", () => {
 					await chmod(root, 0o000);
 					expect(occupiedTargetIssue(root)).toBe(
 						`"${root}" can't be read, so we can't create your project there. Pick another path.`,
+					);
+
+					const hidden = join(root, "acme");
+					expect(occupiedTargetIssue(hidden)).toBe(
+						`"${hidden}" can't be read, so we can't create your project there. Pick another path.`,
 					);
 				} finally {
 					await chmod(root, 0o700);
