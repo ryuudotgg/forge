@@ -269,7 +269,7 @@ export default config;
 			build: "pnpm with-env vite build",
 			dev: "pnpm with-env vite dev --port 3000",
 			"generate-routes": "tsr generate",
-			postinstall: "pnpm generate-routes",
+			postinstall: "pnpm generate-routes || exit 0",
 			pretypecheck: "pnpm generate-routes",
 			preview: "pnpm with-env vite preview",
 			start:

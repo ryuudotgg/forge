@@ -291,7 +291,7 @@ describe("prisma addon", () => {
 		);
 
 		expect(projectScripts(contributions).postinstall).toBe(
-			"pnpm --filter @acme/db run generate",
+			"pnpm --filter @acme/db run generate || exit 0",
 		);
 	});
 
@@ -312,7 +312,7 @@ describe("prisma addon", () => {
 		);
 
 		expect(projectScripts(contributions).postinstall).toBe(
-			"npm run generate --prefix packages/db",
+			"npm run generate --prefix packages/db || exit 0",
 		);
 	});
 

@@ -20,7 +20,7 @@ import {
 import type { ForgeConfig, RpcProvider } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import { installHook, pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
@@ -309,7 +309,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 					? "react-router dev"
 					: `react-router dev --port ${instance.port}`,
 			),
-			postinstall: pmRun(pm, "typegen"),
+			postinstall: installHook(pmRun(pm, "typegen")),
 			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
 			start:
 				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- react-router-serve ./build/server/index.js",

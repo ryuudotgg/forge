@@ -321,7 +321,7 @@ export default [
 		expect(scripts.scripts).toEqual({
 			build: "pnpm with-env react-router build",
 			dev: "pnpm with-env react-router dev",
-			postinstall: "pnpm typegen",
+			postinstall: "pnpm typegen || exit 0",
 			pretypecheck: "pnpm with-env react-router typegen",
 			start:
 				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- react-router-serve ./build/server/index.js",

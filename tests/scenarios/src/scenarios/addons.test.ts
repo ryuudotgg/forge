@@ -85,7 +85,7 @@ describe("addons", () => {
 				join(workspace.projectRoot, "packages/shared/package.json"),
 			);
 
-			expect(root.scripts?.prepare).toBe("lefthook install");
+			expect(root.scripts?.prepare).toBe("lefthook install || exit 0");
 			expect(root.devDependencies?.lefthook).toBe("catalog:");
 			expect(root.devDependencies?.["@commitlint/cli"]).toBe("catalog:");
 
@@ -159,7 +159,7 @@ describe("addons", () => {
 				join(workspace.projectRoot, "package.json"),
 			);
 
-			expect(rootWithHooks.scripts?.prepare).toBe("lefthook install");
+			expect(rootWithHooks.scripts?.prepare).toBe("lefthook install || exit 0");
 
 			await addAddon(workspace.projectRoot, "commitlint");
 

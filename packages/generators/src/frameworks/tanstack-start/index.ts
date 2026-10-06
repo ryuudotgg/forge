@@ -18,7 +18,7 @@ import {
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import { installHook, pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
@@ -267,7 +267,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			build: pmRun(pm, "with-env", "vite build"),
 			dev: pmRun(pm, "with-env", `vite dev --port ${instance.port}`),
 			"generate-routes": "tsr generate",
-			postinstall: pmRun(pm, "generate-routes"),
+			postinstall: installHook(pmRun(pm, "generate-routes")),
 			pretypecheck: pmRun(pm, "generate-routes"),
 			preview: pmRun(pm, "with-env", "vite preview"),
 			start:

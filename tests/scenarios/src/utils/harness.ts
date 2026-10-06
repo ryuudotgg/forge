@@ -423,6 +423,27 @@ export async function expectInstallAndBuild(
 	return installResult;
 }
 
+export async function expectProductionInstall(workspace: ScenarioProject) {
+	const result = await runCommand(
+		"pnpm",
+		[
+			"install",
+			"--prod",
+			"--frozen-lockfile",
+			"--config.confirm-modules-purge=false",
+		],
+		{
+			cwd: workspace.projectRoot,
+			env: forgeEnvironment(workspace.workspaceRoot),
+		},
+	);
+
+	expect(
+		result.exitCode,
+		`Production Install Failed: code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
+	).toBe(0);
+}
+
 export async function expectInstallBuildAndTypecheck(
 	workspace: ScenarioProject,
 	pm: "pnpm" | "npm" | "yarn" | "bun",

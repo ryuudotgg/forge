@@ -532,7 +532,6 @@ async function stopChild(
 	exited: Promise<unknown>,
 ) {
 	if (child.pid === undefined) return;
-
 	if (child.exitCode === null) child.kill("SIGTERM");
 
 	const stopped = await Promise.race([
@@ -560,6 +559,19 @@ function processGroupAlive(pid: number) {
 	} catch {
 		return false;
 	}
+}
+
+async function stopDetached(pid: number) {
+	stopProcessGroup(pid, "SIGTERM");
+
+	for (let attempt = 0; attempt < 50 && processGroupAlive(pid); attempt += 1)
+		await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+
+	stopProcessGroup(pid, "SIGKILL");
+
+	const killDeadline = Date.now() + 5_000;
+	while (Date.now() < killDeadline && processGroupAlive(pid))
+		await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 }
 
 export async function withGeneratedServer(
@@ -640,24 +652,9 @@ export async function withGeneratedServer(
 			}
 		} finally {
 			const pid = server.pid;
-			if (launch === "node" || pid === undefined) {
+			if (launch === "node" || pid === undefined)
 				await stopChild(server, exited);
-			} else {
-				stopProcessGroup(pid, "SIGTERM");
-
-				for (
-					let attempt = 0;
-					attempt < 50 && processGroupAlive(pid);
-					attempt += 1
-				)
-					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-
-				stopProcessGroup(pid, "SIGKILL");
-
-				const killDeadline = Date.now() + 5_000;
-				while (Date.now() < killDeadline && processGroupAlive(pid))
-					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-			}
+			else await stopDetached(pid);
 		}
 	});
 }
@@ -713,22 +710,7 @@ export async function expectEmailPreview(projectRoot: string) {
 			expect(await preview.text(), output).toContain("123456");
 		} finally {
 			const pid = server.pid;
-			if (pid !== undefined) {
-				stopProcessGroup(pid, "SIGTERM");
-
-				for (
-					let attempt = 0;
-					attempt < 50 && processGroupAlive(pid);
-					attempt += 1
-				)
-					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-
-				stopProcessGroup(pid, "SIGKILL");
-
-				const killDeadline = Date.now() + 5_000;
-				while (Date.now() < killDeadline && processGroupAlive(pid))
-					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-			}
+			if (pid !== undefined) await stopDetached(pid);
 		}
 	});
 }
@@ -1741,16 +1723,7 @@ async function startSelfHostedServer(
 		const pid = child.pid;
 		if (pid === undefined) return;
 
-		stopProcessGroup(pid, "SIGTERM");
-
-		for (let attempt = 0; attempt < 50 && processGroupAlive(pid); attempt += 1)
-			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-
-		stopProcessGroup(pid, "SIGKILL");
-
-		const killDeadline = Date.now() + 5_000;
-		while (Date.now() < killDeadline && processGroupAlive(pid))
-			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+		await stopDetached(pid);
 	});
 }
 
@@ -1787,20 +1760,7 @@ export async function withWebApp(
 				const pid = child.pid;
 				if (pid === undefined) return;
 
-				stopProcessGroup(pid, "SIGTERM");
-
-				for (
-					let attempt = 0;
-					attempt < 50 && processGroupAlive(pid);
-					attempt += 1
-				)
-					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-
-				stopProcessGroup(pid, "SIGKILL");
-
-				const killDeadline = Date.now() + 5_000;
-				while (Date.now() < killDeadline && processGroupAlive(pid))
-					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+				await stopDetached(pid);
 			},
 		);
 
@@ -2159,7 +2119,10 @@ async function expectGeneratedOrpcClient(
 	});
 }
 
-export async function expectDrainingWorker(projectRoot: string) {
+export async function expectDrainingWorker(
+	projectRoot: string,
+	launch: "node" | "start" = "node",
+) {
 	return withPortLock(async () => {
 		const generatedEnv = await readGeneratedEnv(projectRoot);
 		const secret = generatedEnv.WORKER_SECRET;
@@ -2169,10 +2132,18 @@ export async function expectDrainingWorker(projectRoot: string) {
 		const ambientEnv = { ...process.env };
 		delete ambientEnv.CI;
 
-		const worker = spawn("node", ["dist/index.js"], {
-			cwd: join(projectRoot, "apps/worker"),
-			env: { ...ambientEnv, ...generatedEnv },
-		});
+		const cwd = join(projectRoot, "apps/worker");
+		const worker =
+			launch === "node"
+				? spawn("node", ["dist/index.js"], {
+						cwd,
+						env: { ...ambientEnv, ...generatedEnv },
+					})
+				: spawn("pnpm", ["run", "start"], {
+						cwd,
+						detached: true,
+						env: { ...process.env, ...scriptEnvironment(generatedEnv) },
+					});
 
 		let output = "";
 		const capture = (chunk: Buffer) => {
@@ -2222,10 +2193,16 @@ export async function expectDrainingWorker(projectRoot: string) {
 			expect(idle.status, output).toBe(200);
 			expect(await idle.json()).toMatchObject({ inFlight: 0, ok: true });
 		} finally {
-			await stopChild(worker, exited);
+			const pid = worker.pid;
+			if (launch === "node" || pid === undefined)
+				await stopChild(worker, exited);
+			else await stopDetached(pid);
 		}
 
-		expect(await exited, output).toBe(0);
+		const exitCode = await exited;
+		if (launch === "node") expect(exitCode, output).toBe(0);
+
+		expect(output).not.toMatch(/Cannot find module|ERR_MODULE_NOT_FOUND/);
 	});
 }
 

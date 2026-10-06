@@ -65,7 +65,7 @@ const worker = defineAddon<ForgeConfig, "worker">({
 					version: "workspace:*",
 					type: "devDependencies",
 				},
-				{ ...deps.dotenvCli, type: "devDependencies" },
+				{ ...deps.dotenvCli, type: "dependencies" },
 				{ ...deps.tsdown, type: "devDependencies" },
 				{ ...deps.tsx, type: "devDependencies" },
 				{ ...deps.typesNode, type: "devDependencies" },

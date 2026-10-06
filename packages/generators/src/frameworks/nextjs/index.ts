@@ -15,7 +15,7 @@ import { selfHostedCorsContributions } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { hasSecondaryClients, nextServerEnvMarkers } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import { installHook, pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
@@ -192,7 +192,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		{ ...deps.typesNode, type: "devDependencies" as const },
 		{ ...deps.typesReact, type: "devDependencies" as const },
 		{ ...deps.typesReactDom, type: "devDependencies" as const },
-		{ ...deps.dotenvCli, type: "devDependencies" as const },
+		{ ...deps.dotenvCli, type: "dependencies" as const },
 		{ ...deps.typescript, type: "devDependencies" as const },
 	];
 
@@ -262,7 +262,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 				"with-env",
 				instance.primary ? "next dev" : `next dev --port ${instance.port}`,
 			),
-			postinstall: pmRun(pm, "typegen"),
+			postinstall: installHook(pmRun(pm, "typegen")),
 			pretypecheck: pmRun(pm, "with-env", "next typegen"),
 			start: pmRun(
 				pm,

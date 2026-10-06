@@ -8,7 +8,7 @@ import {
 import { type ForgeConfig, hasAddon } from "../config";
 import { deps } from "../deps";
 import { toolingFor } from "../linters/tooling";
-import { pmExec, resolvePackageManager } from "../pm";
+import { installHook, pmExec, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { interpolate, readTemplate } from "../template";
 
@@ -49,7 +49,7 @@ const lefthook = defineAddon<ForgeConfig, "lefthook">({
 				{ ...deps.lefthook, type: "devDependencies" },
 			]),
 			surfaceScripts(projectTarget(), "rootPackageJson", {
-				prepare: "lefthook install",
+				prepare: installHook("lefthook install"),
 			}),
 		];
 	},

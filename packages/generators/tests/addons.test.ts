@@ -828,7 +828,9 @@ pre-commit:
 		const scripts = ofTag(contributions, "ManagedScriptsSurfaceContribution");
 		expect(scripts).toHaveLength(1);
 		expect(scripts[0]?.surface).toBe("rootPackageJson");
-		expect(scripts[0]?.scripts).toEqual({ prepare: "lefthook install" });
+		expect(scripts[0]?.scripts).toEqual({
+			prepare: "lefthook install || exit 0",
+		});
 
 		expect(projectDependencySurface(contributions).dependencies).toEqual([
 			expect.objectContaining({ name: "lefthook", type: "devDependencies" }),

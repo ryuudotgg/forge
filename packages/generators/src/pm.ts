@@ -81,3 +81,7 @@ export function pmExec(pm: PackageManagerId, command: string): string {
 			return `bunx ${command}`;
 	}
 }
+
+export function installHook(command: string): string {
+	return `${command} || exit 0`;
+}

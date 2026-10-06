@@ -24,7 +24,7 @@ import {
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { deps } from "../../deps";
-import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
+import { installHook, pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
@@ -288,10 +288,8 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			// The generated client lives in the db package's source tree and is
 			// gitignored, so a fresh checkout has to regenerate it on install.
 			surfaceScripts(projectTarget(), "rootPackageJson", {
-				postinstall: pmRunIn(
-					pm,
-					{ name: `@${slug}/db`, path: "packages/db" },
-					"generate",
+				postinstall: installHook(
+					pmRunIn(pm, { name: `@${slug}/db`, path: "packages/db" }, "generate"),
 				),
 			}),
 		];
