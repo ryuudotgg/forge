@@ -1,6 +1,7 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,37 +9,101 @@ import { createContext, Script } from "node:vm";
 import { ManifestSchema } from "@ryuugg/core";
 import { Schema } from "effect";
 import { build } from "vite";
-import { describe, expect, it } from "vitest";
+import { expect, inject } from "vitest";
 import { expectEmailAuth } from "../utils/email-auth";
 import {
-	createProject,
-	expectInstallAndBuild,
 	expectInstallAndTypecheck,
-	expectInstallBuildAndTypecheck,
 	type ForgeCommandResult,
 	forgeEnvironment,
 	pathExists,
 	readJson,
 	runCommand,
-	runForge,
 	type ScenarioProject,
-	withScenarioWorkspace,
 } from "../utils/harness";
-import { expectFreshLinterCheck, expectLinterSwitch } from "../utils/linter";
+
 import { expectPasskeyCeremony } from "../utils/passkey";
 
-const postgresProviderCells = [
-	{ provider: "planetscale", transaction: "supported" },
-	{ provider: "neon", transaction: "unsupported" },
-	{ provider: "nile", transaction: "supported" },
-	{ provider: "supabase", transaction: "supported" },
-	{ provider: "prisma-postgres", transaction: "supported" },
+const portLockStore = new AsyncLocalStorage<true>();
+
+function errorCode(error: unknown) {
+	return error instanceof Error && "code" in error ? error.code : undefined;
+}
+
+function lockHolderAlive(holder: string) {
+	const pid = Number(holder.split(" ")[0]);
+	if (!Number.isSafeInteger(pid) || pid <= 0) return true;
+
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		if (errorCode(error) === "ESRCH") return false;
+		throw error;
+	}
+}
+
+async function readLockHolder(path: string) {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (errorCode(error) === "ENOENT") return undefined;
+		throw error;
+	}
+}
+
+async function releaseLockHeldBy(path: string, holder: string) {
+	if ((await readLockHolder(path)) === holder) await rm(path, { force: true });
+}
+
+async function withPortLock<T>(run: () => Promise<T>): Promise<T> {
+	if (portLockStore.getStore() === true) return run();
+
+	const path = join(inject("portLockDir"), "ports.lock");
+	const token = `${process.pid} ${randomUUID()}`;
+	const deadline = Date.now() + 300_000;
+
+	while (true) {
+		try {
+			await writeFile(path, token, { flag: "wx" });
+			break;
+		} catch (error) {
+			if (errorCode(error) !== "EEXIST") throw error;
+		}
+
+		const holder = await readLockHolder(path);
+		if (holder === undefined) continue;
+
+		if (!lockHolderAlive(holder)) {
+			await releaseLockHeldBy(path, holder);
+			continue;
+		}
+
+		if (Date.now() >= deadline)
+			throw new Error(`Port Lock Timeout: held by ${holder}`);
+
+		await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+	}
+
+	try {
+		return await portLockStore.run(true, run);
+	} finally {
+		await releaseLockHeldBy(path, token);
+	}
+}
+
+export const postgresProviderCells = [
+	{ provider: "planetscale", transaction: "supported", client: "pg" },
+	{ provider: "neon", transaction: "unsupported", client: "pg" },
+	{ provider: "nile", transaction: "supported", client: "pg" },
+	{ provider: "supabase", transaction: "supported", client: "postgres" },
+	{ provider: "prisma-postgres", transaction: "supported", client: "pg" },
 ] as const satisfies ReadonlyArray<{
 	readonly provider: string;
 	readonly transaction: "supported" | "unsupported";
+	readonly client: "pg" | "postgres";
 }>;
 
-const transactionProbeSource = `import { db } from "@acme/db/client";
+export const transactionProbeSource = `import { db } from "@acme/db/client";
 import { sql } from "drizzle-orm";
 import { integer, pgTable, text } from "drizzle-orm/pg-core";
 
@@ -178,7 +243,7 @@ try {
 process.exit(0);
 `;
 
-async function runUserDeleteProbe(
+export async function runUserDeleteProbe(
 	workspace: ScenarioProject,
 	url: string,
 ): Promise<ForgeCommandResult> {
@@ -226,7 +291,7 @@ registerHooks({
 	);
 }
 
-function smokeDatabaseUrl() {
+export function smokeDatabaseUrl() {
 	const url = process.env.FORGE_SMOKE_DATABASE_URL;
 	if (url === undefined)
 		throw new Error("Missing Smoke Database: FORGE_SMOKE_DATABASE_URL");
@@ -234,7 +299,7 @@ function smokeDatabaseUrl() {
 	return url;
 }
 
-async function runTransactionProbe(
+export async function runTransactionProbe(
 	workspace: ScenarioProject,
 	url: string,
 ): Promise<ForgeCommandResult> {
@@ -255,7 +320,7 @@ async function runTransactionProbe(
 	);
 }
 
-async function readGeneratedEnv(projectRoot: string) {
+export async function readGeneratedEnv(projectRoot: string) {
 	const content = await readFile(join(projectRoot, ".env"), "utf-8");
 	const env: NodeJS.ProcessEnv = {};
 	for (const line of content.split("\n")) {
@@ -279,7 +344,7 @@ function unknownArray(value: unknown): value is readonly unknown[] {
 	return Array.isArray(value);
 }
 
-async function webAppsOf(projectRoot: string): Promise<WebApp[]> {
+export async function webAppsOf(projectRoot: string): Promise<WebApp[]> {
 	const manifest = Schema.decodeUnknownSync(ManifestSchema)(
 		await readJson<unknown>(join(projectRoot, ".forge/manifest.json")),
 	);
@@ -334,12 +399,12 @@ async function webAppsOf(projectRoot: string): Promise<WebApp[]> {
 	return apps;
 }
 
-const authPluginConfig = {
+export const authPluginConfig = {
 	authMethods: ["email-password", "google", "passkey"],
 	authPlugins: ["two-factor", "username", "admin", "organization"],
 };
 
-function smokeMysqlUrl() {
+export function smokeMysqlUrl() {
 	const url = process.env.FORGE_SMOKE_MYSQL_URL;
 	if (url === undefined)
 		throw new Error("Missing Smoke Database: FORGE_SMOKE_MYSQL_URL");
@@ -347,14 +412,14 @@ function smokeMysqlUrl() {
 	return url;
 }
 
-function smokeDatabaseOn(serverUrl: string, name: string) {
+export function smokeDatabaseOn(serverUrl: string, name: string) {
 	const url = new URL(serverUrl);
 	url.pathname = `/${name}`;
 	return url.toString();
 }
 
 const createDatabaseScripts = {
-	postgresql: (name: string) =>
+	pg: (name: string) =>
 		[
 			'import pg from "pg";',
 			`const client = new pg.Client({ connectionString: ${JSON.stringify(smokeDatabaseUrl())} });`,
@@ -363,7 +428,15 @@ const createDatabaseScripts = {
 			`await client.query(${JSON.stringify(`CREATE DATABASE "${name}"`)});`,
 			"await client.end();",
 		].join("\n"),
-	mysql: (name: string) =>
+	postgres: (name: string) =>
+		[
+			'import postgres from "postgres";',
+			`const sql = postgres(${JSON.stringify(smokeDatabaseUrl())});`,
+			`await sql.unsafe(${JSON.stringify(`DROP DATABASE IF EXISTS "${name}"`)});`,
+			`await sql.unsafe(${JSON.stringify(`CREATE DATABASE "${name}"`)});`,
+			"await sql.end();",
+		].join("\n"),
+	mysql2: (name: string) =>
 		[
 			'import mysql from "mysql2/promise";',
 			`const connection = await mysql.createConnection(${JSON.stringify(smokeMysqlUrl())});`,
@@ -373,14 +446,14 @@ const createDatabaseScripts = {
 		].join("\n"),
 };
 
-async function createSmokeDatabase(
+export async function createSmokeDatabase(
 	projectRoot: string,
-	dialect: keyof typeof createDatabaseScripts,
+	driver: keyof typeof createDatabaseScripts,
 	name: string,
 ) {
 	const result = await runCommand(
 		"node",
-		["--input-type=module", "-e", createDatabaseScripts[dialect](name)],
+		["--input-type=module", "-e", createDatabaseScripts[driver](name)],
 		{ cwd: join(projectRoot, "packages/db") },
 	);
 
@@ -390,7 +463,10 @@ async function createSmokeDatabase(
 	).toBe(0);
 }
 
-async function expectSchemaPush(projectRoot: string, env?: NodeJS.ProcessEnv) {
+export async function expectSchemaPush(
+	projectRoot: string,
+	env?: NodeJS.ProcessEnv,
+) {
 	const push = await runCommand("pnpm", ["db:push"], {
 		cwd: join(projectRoot, "apps/web"),
 		env,
@@ -402,7 +478,9 @@ async function expectSchemaPush(projectRoot: string, env?: NodeJS.ProcessEnv) {
 	).toBe(0);
 }
 
-async function expectPasskeyInstallAndTypecheck(workspace: ScenarioProject) {
+export async function expectPasskeyInstallAndTypecheck(
+	workspace: ScenarioProject,
+) {
 	await writeFile(
 		join(workspace.projectRoot, "packages/auth/src/passkey-probe.ts"),
 		[
@@ -425,18 +503,20 @@ async function expectPasskeyInstallAndTypecheck(workspace: ScenarioProject) {
 	await expectInstallAndTypecheck(workspace, "pnpm");
 }
 
-function postgresDatabaseEnv(name: string): NodeJS.ProcessEnv {
+export function postgresDatabaseEnv(name: string): NodeJS.ProcessEnv {
 	const url = smokeDatabaseOn(smokeDatabaseUrl(), name);
 	return { DATABASE_URL: url, DATABASE_DIRECT_URL: url };
 }
 
-function mysqlDatabaseEnv(name: string): NodeJS.ProcessEnv {
+export function mysqlDatabaseEnv(name: string): NodeJS.ProcessEnv {
 	return { DATABASE_URL: smokeDatabaseOn(smokeMysqlUrl(), name) };
 }
 
 type ServerLaunch = "node" | "dev" | "start";
 
-function scriptEnvironment(overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function scriptEnvironment(
+	overrides: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
 	const scrubbed: NodeJS.ProcessEnv = {};
 	for (const name of Object.keys(process.env))
 		if (
@@ -467,7 +547,7 @@ function processGroupAlive(pid: number) {
 	}
 }
 
-async function withGeneratedServer(
+export async function withGeneratedServer(
 	projectRoot: string,
 	env: NodeJS.ProcessEnv,
 	serverOrigin: string,
@@ -475,143 +555,159 @@ async function withGeneratedServer(
 	host: "server" | "nextjs" = "server",
 	launch: ServerLaunch = "node",
 ) {
-	const cwd = join(projectRoot, host === "nextjs" ? "apps/web" : "apps/server");
-	const ambientEnv = { ...process.env };
-	delete ambientEnv.CI;
-
-	const args =
-		host === "nextjs"
-			? [
-					"node_modules/next/dist/bin/next",
-					"start",
-					"--port",
-					new URL(serverOrigin).port,
-				]
-			: ["dist/index.js"];
-
-	const server =
-		launch === "node"
-			? spawn("node", args, { cwd, env: { ...ambientEnv, ...env } })
-			: spawn("pnpm", ["run", launch], {
-					cwd,
-					detached: true,
-					env: { ...process.env, ...scriptEnvironment(env) },
-				});
-
-	let output = "";
-	const capture = (chunk: Buffer) => {
-		output += chunk.toString();
-	};
-
-	server.stdout.on("data", capture);
-	server.stderr.on("data", capture);
-	const exited = new Promise<void>((resolveExit) => {
-		server.once("exit", () => resolveExit());
-	});
-
-	try {
-		let ready = false;
-		const attempts = launch === "node" ? 50 : 300;
-		for (let attempt = 0; attempt < attempts; attempt += 1) {
-			if (server.exitCode !== null) break;
-
-			try {
-				const response = await fetch(`${serverOrigin}/`);
-				if (response.ok) {
-					ready = true;
-					break;
-				}
-			} catch {}
-
-			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-		}
-
-		expect(ready, output).toBe(true);
-
-		await exercise(() => output);
-	} finally {
-		const pid = server.pid;
-		if (launch === "node" || pid === undefined) {
-			if (server.exitCode === null) server.kill("SIGTERM");
-			await exited;
-		} else {
-			stopProcessGroup(pid, "SIGTERM");
-
-			for (
-				let attempt = 0;
-				attempt < 50 && processGroupAlive(pid);
-				attempt += 1
-			)
-				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-
-			stopProcessGroup(pid, "SIGKILL");
-		}
-	}
-}
-
-async function expectEmailPreview(projectRoot: string) {
-	const port = 3883;
-	await expectPortFree(port);
-
-	const server = spawn("pnpm", ["run", "dev"], {
-		cwd: join(projectRoot, "packages/email"),
-		detached: true,
-		env: { ...process.env, ...scriptEnvironment({}) },
-	});
-
-	let output = "";
-	const capture = (chunk: Buffer) => {
-		output += chunk.toString();
-	};
-
-	server.stdout.on("data", capture);
-	server.stderr.on("data", capture);
-	server.on("error", (error) => {
-		output += error.message;
-	});
-
-	try {
-		let ready = false;
-		const deadline = Date.now() + 30_000;
-		while (Date.now() < deadline && server.exitCode === null) {
-			try {
-				const response = await fetch(`http://localhost:${port}/`, {
-					signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
-				});
-
-				if (response.status === 200) {
-					ready = true;
-					break;
-				}
-			} catch {}
-
-			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-		}
-
-		expect(ready, output).toBe(true);
-
-		const preview = await fetch(
-			`http://localhost:${port}/preview/verification-code`,
-			{ signal: AbortSignal.timeout(120_000) },
+	return withPortLock(async () => {
+		const cwd = join(
+			projectRoot,
+			host === "nextjs" ? "apps/web" : "apps/server",
 		);
 
-		expect(preview.status, output).toBe(200);
-		expect(await preview.text(), output).toContain("123456");
-	} finally {
-		const pid = server.pid;
-		if (pid !== undefined) {
-			stopProcessGroup(pid, "SIGTERM");
+		const ambientEnv = { ...process.env };
+		delete ambientEnv.CI;
 
-			for (
-				let attempt = 0;
-				attempt < 50 && processGroupAlive(pid);
-				attempt += 1
-			)
+		const args =
+			host === "nextjs"
+				? [
+						"node_modules/next/dist/bin/next",
+						"start",
+						"--port",
+						new URL(serverOrigin).port,
+					]
+				: ["dist/index.js"];
+
+		const server =
+			launch === "node"
+				? spawn("node", args, { cwd, env: { ...ambientEnv, ...env } })
+				: spawn("pnpm", ["run", launch], {
+						cwd,
+						detached: true,
+						env: { ...process.env, ...scriptEnvironment(env) },
+					});
+
+		let output = "";
+		const capture = (chunk: Buffer) => {
+			output += chunk.toString();
+		};
+
+		server.stdout.on("data", capture);
+		server.stderr.on("data", capture);
+		const exited = new Promise<void>((resolveExit) => {
+			server.once("exit", () => resolveExit());
+		});
+
+		try {
+			let ready = false;
+			const deadline = Date.now() + 30_000;
+			while (Date.now() < deadline) {
+				if (server.exitCode !== null) break;
+
+				try {
+					const response = await fetch(`${serverOrigin}/`);
+					if (response.ok) {
+						ready = true;
+						break;
+					}
+				} catch {}
+
 				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			}
 
-			stopProcessGroup(pid, "SIGKILL");
+			expect(ready, output).toBe(true);
+
+			await exercise(() => output);
+		} finally {
+			const pid = server.pid;
+			if (launch === "node" || pid === undefined) {
+				if (server.exitCode === null) server.kill("SIGTERM");
+				await exited;
+			} else {
+				stopProcessGroup(pid, "SIGTERM");
+
+				for (
+					let attempt = 0;
+					attempt < 50 && processGroupAlive(pid);
+					attempt += 1
+				)
+					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+
+				stopProcessGroup(pid, "SIGKILL");
+
+				const killDeadline = Date.now() + 5_000;
+				while (Date.now() < killDeadline && processGroupAlive(pid))
+					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			}
 		}
-	}
+	});
+}
+
+export async function expectEmailPreview(projectRoot: string) {
+	return withPortLock(async () => {
+		const port = 3883;
+		await expectPortFree(port);
+
+		const server = spawn("pnpm", ["run", "dev"], {
+			cwd: join(projectRoot, "packages/email"),
+			detached: true,
+			env: { ...process.env, ...scriptEnvironment({}) },
+		});
+
+		let output = "";
+		const capture = (chunk: Buffer) => {
+			output += chunk.toString();
+		};
+
+		server.stdout.on("data", capture);
+		server.stderr.on("data", capture);
+		server.on("error", (error) => {
+			output += error.message;
+		});
+
+		try {
+			let ready = false;
+			const deadline = Date.now() + 30_000;
+			while (Date.now() < deadline && server.exitCode === null) {
+				try {
+					const response = await fetch(`http://localhost:${port}/`, {
+						signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+					});
+
+					if (response.status === 200) {
+						ready = true;
+						break;
+					}
+				} catch {}
+
+				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			}
+
+			expect(ready, output).toBe(true);
+
+			const preview = await fetch(
+				`http://localhost:${port}/preview/verification-code`,
+				{ signal: AbortSignal.timeout(120_000) },
+			);
+
+			expect(preview.status, output).toBe(200);
+			expect(await preview.text(), output).toContain("123456");
+		} finally {
+			const pid = server.pid;
+			if (pid !== undefined) {
+				stopProcessGroup(pid, "SIGTERM");
+
+				for (
+					let attempt = 0;
+					attempt < 50 && processGroupAlive(pid);
+					attempt += 1
+				)
+					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+
+				stopProcessGroup(pid, "SIGKILL");
+
+				const killDeadline = Date.now() + 5_000;
+				while (Date.now() < killDeadline && processGroupAlive(pid))
+					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			}
+		}
+	});
 }
 
 function sqliteDatabasePath(projectRoot: string, env: NodeJS.ProcessEnv) {
@@ -622,7 +718,7 @@ function sqliteDatabasePath(projectRoot: string, env: NodeJS.ProcessEnv) {
 	return resolve(projectRoot, "apps/server", url.slice("file:".length));
 }
 
-async function expectRelocatedPasskeyCeremony(projectRoot: string) {
+export async function expectRelocatedPasskeyCeremony(projectRoot: string) {
 	const generatedEnv = await readGeneratedEnv(projectRoot);
 	const serverOrigin = generatedEnv.APP_ORIGIN;
 	if (serverOrigin === undefined)
@@ -665,7 +761,7 @@ async function expectRelocatedPasskeyCeremony(projectRoot: string) {
 	);
 }
 
-async function expectCredentialedGeneratedServer(
+export async function expectCredentialedGeneratedServer(
 	projectRoot: string,
 	options?: {
 		readonly apiOrigin?: string;
@@ -989,7 +1085,7 @@ async function expectCredentialedGeneratedServer(
 const orpcContextProbeAnchor =
 	"const session = await resolveSession(context.headers);";
 
-async function injectOrpcContextProbe(projectRoot: string) {
+export async function injectOrpcContextProbe(projectRoot: string) {
 	const contextPath = join(projectRoot, "packages/orpc/src/orpc.ts");
 	const context = await readFile(contextPath, "utf8");
 
@@ -1079,7 +1175,7 @@ async function expectOrpcRouteEdges(origin: string, output: () => string) {
 	});
 }
 
-async function expectStandaloneOrpcRoute(
+export async function expectStandaloneOrpcRoute(
 	projectRoot: string,
 	contextProbe: boolean,
 ) {
@@ -1345,7 +1441,7 @@ async function expectBundledOrpcClient(
 	});
 }
 
-async function signUpSession(
+export async function signUpSession(
 	origin: string,
 	requestOrigin: string,
 	email: string,
@@ -1420,7 +1516,7 @@ async function expectOrpcLoaderRoute(
 	]);
 }
 
-async function bundleText(root: string) {
+export async function bundleText(root: string) {
 	const files = await readdir(root, { recursive: true, withFileTypes: true });
 	const contents = await Promise.all(
 		files
@@ -1431,7 +1527,7 @@ async function bundleText(root: string) {
 	return contents.join("\n");
 }
 
-async function expectServerOnlyCodeOutOfClientBundle(
+export async function expectServerOnlyCodeOutOfClientBundle(
 	bundles: { readonly client: string; readonly server: string },
 	markers: ReadonlyArray<string>,
 ) {
@@ -1628,79 +1724,90 @@ async function startSelfHostedServer(
 			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 
 		stopProcessGroup(pid, "SIGKILL");
+
+		const killDeadline = Date.now() + 5_000;
+		while (Date.now() < killDeadline && processGroupAlive(pid))
+			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 	});
 }
 
-async function withWebApp(
+export async function withWebApp(
 	projectRoot: string,
 	app: WebApp,
 	exercise: (output: () => string) => Promise<void>,
 ) {
-	const cwd = join(projectRoot, app.root);
-	const packageJson = await readJson<unknown>(join(cwd, "package.json"));
-	const scripts: unknown =
-		typeof packageJson === "object" && packageJson !== null
-			? Reflect.get(packageJson, "scripts")
-			: undefined;
+	return withPortLock(async () => {
+		const cwd = join(projectRoot, app.root);
+		const packageJson = await readJson<unknown>(join(cwd, "package.json"));
+		const scripts: unknown =
+			typeof packageJson === "object" && packageJson !== null
+				? Reflect.get(packageJson, "scripts")
+				: undefined;
 
-	const args =
-		stringField(scripts, "start") !== undefined
-			? ["run", "start"]
-			: ["run", "preview", "--port", String(app.port), "--strictPort"];
+		const args =
+			stringField(scripts, "start") !== undefined
+				? ["run", "start"]
+				: ["run", "preview", "--port", String(app.port), "--strictPort"];
 
-	await expectPortFree(app.port);
+		await expectPortFree(app.port);
 
-	const child = spawn("pnpm", args, {
-		cwd,
-		detached: true,
-		env: { ...process.env, ...scriptEnvironment({}) },
-	});
+		const child = spawn("pnpm", args, {
+			cwd,
+			detached: true,
+			env: { ...process.env, ...scriptEnvironment({}) },
+		});
 
-	const server = launchedServer(
-		child,
-		`http://localhost:${app.port}`,
-		async () => {
-			const pid = child.pid;
-			if (pid === undefined) return;
+		const server = launchedServer(
+			child,
+			`http://localhost:${app.port}`,
+			async () => {
+				const pid = child.pid;
+				if (pid === undefined) return;
 
-			stopProcessGroup(pid, "SIGTERM");
+				stopProcessGroup(pid, "SIGTERM");
 
-			for (
-				let attempt = 0;
-				attempt < 50 && processGroupAlive(pid);
-				attempt += 1
-			)
+				for (
+					let attempt = 0;
+					attempt < 50 && processGroupAlive(pid);
+					attempt += 1
+				)
+					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+
+				stopProcessGroup(pid, "SIGKILL");
+
+				const killDeadline = Date.now() + 5_000;
+				while (Date.now() < killDeadline && processGroupAlive(pid))
+					await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			},
+		);
+
+		try {
+			let ready = false;
+			const deadline = Date.now() + 30_000;
+			while (Date.now() < deadline) {
+				if (child.exitCode !== null || server.failure() !== undefined) break;
+
+				try {
+					const response = await fetch(`${server.origin}/`);
+					if (response.status === 200) {
+						ready = true;
+						break;
+					}
+				} catch {}
+
 				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			}
 
-			stopProcessGroup(pid, "SIGKILL");
-		},
-	);
+			expect(ready, server.output()).toBe(true);
 
-	try {
-		let ready = false;
-		for (let attempt = 0; attempt < 300; attempt += 1) {
-			if (child.exitCode !== null || server.failure() !== undefined) break;
-
-			try {
-				const response = await fetch(`${server.origin}/`);
-				if (response.status === 200) {
-					ready = true;
-					break;
-				}
-			} catch {}
-
-			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			await exercise(server.output);
+		} finally {
+			await server.stop();
 		}
-
-		expect(ready, server.output()).toBe(true);
-
-		await exercise(server.output);
-	} finally {
-		await server.stop();
-	}
+	});
 }
 
-async function expectSelfHostedRpc(
+export async function expectSelfHostedRpc(
 	projectRoot: string,
 	options: {
 		readonly web: SelfHostWeb;
@@ -1711,154 +1818,161 @@ async function expectSelfHostedRpc(
 ) {
 	const { web, rpc, clientOrigin } = options;
 	const health = rpcHealthRequests[rpc];
-	const server = await startSelfHostedServer(
-		projectRoot,
-		web,
-		options.injectPort === true,
-	);
-
-	const { origin, output } = server;
-	try {
-		let ready = false;
-		for (let attempt = 0; attempt < 300; attempt += 1) {
-			if (server.child.exitCode !== null || server.failure() !== undefined)
-				break;
-
-			try {
-				const response = await fetch(
-					`${origin}${health.path}`,
-					rpcHealthInit(health),
-				);
-
-				if (response.ok) {
-					ready = true;
-					break;
-				}
-			} catch {}
-
-			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-		}
-
-		const failure = server.failure();
-		if (failure !== undefined) throw failure;
-
-		expect(ready, output()).toBe(true);
-
-		const healthResponse = await fetch(
-			`${origin}${health.path}`,
-			rpcHealthInit(health),
+	const run = async () => {
+		const server = await startSelfHostedServer(
+			projectRoot,
+			web,
+			options.injectPort === true,
 		);
 
-		expect(await healthResponse.json()).toEqual(health.result);
+		const { origin, output } = server;
+		try {
+			let ready = false;
+			const deadline = Date.now() + 30_000;
+			while (Date.now() < deadline) {
+				if (server.child.exitCode !== null || server.failure() !== undefined)
+					break;
 
-		if (web === "nextjs") {
-			const page = await fetch(`${origin}/orpc-example`);
-			const html = await page.text();
+				try {
+					const response = await fetch(
+						`${origin}${health.path}`,
+						rpcHealthInit(health),
+					);
 
-			expect(page.status, output()).toBe(200);
-			expect(html).toMatch(/data-testid="orpc-health"[^>]*>ok<\/p>/);
-		}
+					if (response.ok) {
+						ready = true;
+						break;
+					}
+				} catch {}
 
-		if (clientOrigin !== undefined) {
-			for (const path of [health.path, "/api/auth/get-session"]) {
-				const preflight = await fetch(`${origin}${path}`, {
-					method: "OPTIONS",
-					headers: {
-						Origin: clientOrigin,
-						"Access-Control-Request-Method": health.method,
-						"Access-Control-Request-Headers": Object.keys(health.headers)
-							.join(", ")
-							.toLowerCase(),
-					},
-				});
+				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			}
 
-				expect(preflight.status, output()).toBe(204);
-				expect(preflight.headers.get("access-control-allow-origin")).toBe(
-					clientOrigin,
+			const failure = server.failure();
+			if (failure !== undefined) throw failure;
+
+			expect(ready, output()).toBe(true);
+
+			const healthResponse = await fetch(
+				`${origin}${health.path}`,
+				rpcHealthInit(health),
+			);
+
+			expect(await healthResponse.json()).toEqual(health.result);
+
+			if (web === "nextjs") {
+				const page = await fetch(`${origin}/orpc-example`);
+				const html = await page.text();
+
+				expect(page.status, output()).toBe(200);
+				expect(html).toMatch(/data-testid="orpc-health"[^>]*>ok<\/p>/);
+			}
+
+			if (clientOrigin !== undefined) {
+				for (const path of [health.path, "/api/auth/get-session"]) {
+					const preflight = await fetch(`${origin}${path}`, {
+						method: "OPTIONS",
+						headers: {
+							Origin: clientOrigin,
+							"Access-Control-Request-Method": health.method,
+							"Access-Control-Request-Headers": Object.keys(health.headers)
+								.join(", ")
+								.toLowerCase(),
+						},
+					});
+
+					expect(preflight.status, output()).toBe(204);
+					expect(preflight.headers.get("access-control-allow-origin")).toBe(
+						clientOrigin,
+					);
+
+					expect(
+						preflight.headers.get("access-control-allow-credentials"),
+					).toBe("true");
+				}
+
+				const crossOrigin = await fetch(
+					`${origin}${health.path}`,
+					rpcHealthInit(health, { Origin: clientOrigin }),
 				);
 
-				expect(preflight.headers.get("access-control-allow-credentials")).toBe(
-					"true",
+				expect(crossOrigin.status, output()).toBe(200);
+				expect(crossOrigin.headers.get("access-control-allow-origin")).toBe(
+					clientOrigin,
 				);
 			}
 
-			const crossOrigin = await fetch(
-				`${origin}${health.path}`,
-				rpcHealthInit(health, { Origin: clientOrigin }),
-			);
-
-			expect(crossOrigin.status, output()).toBe(200);
-			expect(crossOrigin.headers.get("access-control-allow-origin")).toBe(
-				clientOrigin,
-			);
-		}
-
-		const session = await signUpSession(
-			origin,
-			clientOrigin ?? origin,
-			"self-host@example.com",
-			output,
-		);
-
-		if (web !== "nextjs")
-			expect(session.cookie).toMatch(/^__Secure-better-auth\.session_token=/);
-
-		if (rpc === "trpc") {
-			const call = await fetch(
-				`${origin}${health.path}`,
-				rpcHealthInit(health, { Cookie: session.cookie, Origin: origin }),
-			);
-
-			expect(call.status, output()).toBe(200);
-			expect(await call.json()).toEqual(health.result);
-			return;
-		}
-
-		await expectSameOriginOrpcSession(origin, session.cookie, session.userId);
-		await expectOrpcRouteEdges(origin, output);
-		await expectOrpcContextFailure(origin, output);
-
-		if (web !== "tanstack-start") {
-			await expectBundledOrpcClient(
-				projectRoot,
-				selfHostSourceRoots[web],
+			const session = await signUpSession(
 				origin,
-				session.cookie,
-				session.userId,
+				clientOrigin ?? origin,
+				"self-host@example.com",
+				output,
 			);
 
-			return;
+			if (web !== "nextjs")
+				expect(session.cookie).toMatch(/^__Secure-better-auth\.session_token=/);
+
+			if (rpc === "trpc") {
+				const call = await fetch(
+					`${origin}${health.path}`,
+					rpcHealthInit(health, { Cookie: session.cookie, Origin: origin }),
+				);
+
+				expect(call.status, output()).toBe(200);
+				expect(await call.json()).toEqual(health.result);
+				return;
+			}
+
+			await expectSameOriginOrpcSession(origin, session.cookie, session.userId);
+			await expectOrpcRouteEdges(origin, output);
+			await expectOrpcContextFailure(origin, output);
+
+			if (web !== "tanstack-start") {
+				await expectBundledOrpcClient(
+					projectRoot,
+					selfHostSourceRoots[web],
+					origin,
+					session.cookie,
+					session.userId,
+				);
+
+				return;
+			}
+
+			const second = await signUpSession(
+				origin,
+				origin,
+				"self-host-second@example.com",
+				output,
+			);
+
+			await expectOrpcLoaderRoute(origin, [session, second], output);
+
+			const rendered = output().length;
+			await fetch(`${origin}/orpc-example`, {
+				headers: { Cookie: session.cookie, "x-context-probe": "fail" },
+			});
+
+			await waitForOutput(output, "Context Probe Failed", rendered);
+			expect(output().slice(rendered)).toContain("❌ oRPC failed on me:");
+
+			await expectServerOnlyCodeOutOfClientBundle(
+				{
+					client: join(projectRoot, "apps/web/dist/client"),
+					server: join(projectRoot, "apps/web/dist/server"),
+				},
+				["AUTH_SECRET", "DATABASE_URL", "@libsql"],
+			);
+
+			await expectBrowserOrpcClientBundle(projectRoot);
+		} finally {
+			await server.stop();
 		}
+	};
 
-		const second = await signUpSession(
-			origin,
-			origin,
-			"self-host-second@example.com",
-			output,
-		);
-
-		await expectOrpcLoaderRoute(origin, [session, second], output);
-
-		const rendered = output().length;
-		await fetch(`${origin}/orpc-example`, {
-			headers: { Cookie: session.cookie, "x-context-probe": "fail" },
-		});
-
-		await waitForOutput(output, "Context Probe Failed", rendered);
-		expect(output().slice(rendered)).toContain("❌ oRPC failed on me:");
-
-		await expectServerOnlyCodeOutOfClientBundle(
-			{
-				client: join(projectRoot, "apps/web/dist/client"),
-				server: join(projectRoot, "apps/web/dist/server"),
-			},
-			["AUTH_SECRET", "DATABASE_URL", "@libsql"],
-		);
-
-		await expectBrowserOrpcClientBundle(projectRoot);
-	} finally {
-		await server.stop();
-	}
+	return options.web !== "nextjs" && options.injectPort !== true
+		? withPortLock(run)
+		: run();
 }
 
 const generatedOrpcClientProbe = `import { client } from "__CLIENT_IMPORT__";
@@ -2022,70 +2136,90 @@ async function expectGeneratedOrpcClient(
 	});
 }
 
-async function expectDrainingWorker(projectRoot: string) {
-	const generatedEnv = await readGeneratedEnv(projectRoot);
-	const secret = generatedEnv.WORKER_SECRET;
-	if (secret === undefined)
-		throw new Error(`Missing Worker Secret: ${projectRoot}`);
+export async function expectDrainingWorker(projectRoot: string) {
+	return withPortLock(async () => {
+		const generatedEnv = await readGeneratedEnv(projectRoot);
+		const secret = generatedEnv.WORKER_SECRET;
+		if (secret === undefined)
+			throw new Error(`Missing Worker Secret: ${projectRoot}`);
 
-	const ambientEnv = { ...process.env };
-	delete ambientEnv.CI;
+		const ambientEnv = { ...process.env };
+		delete ambientEnv.CI;
 
-	const worker = spawn("node", ["dist/index.js"], {
-		cwd: join(projectRoot, "apps/worker"),
-		env: { ...ambientEnv, ...generatedEnv },
-	});
-
-	let output = "";
-	const capture = (chunk: Buffer) => {
-		output += chunk.toString();
-	};
-
-	worker.stdout.on("data", capture);
-	worker.stderr.on("data", capture);
-	const exited = new Promise<number | null>((resolveExit) => {
-		worker.once("exit", (code) => resolveExit(code));
-	});
-
-	const origin = "http://localhost:8080";
-	try {
-		let ready = false;
-		for (let attempt = 0; attempt < 50; attempt += 1) {
-			try {
-				const response = await fetch(`${origin}/health`);
-				if (response.ok) {
-					ready = true;
-					break;
-				}
-			} catch {}
-
-			await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-		}
-
-		expect(ready, output).toBe(true);
-
-		const unauthorized = await fetch(`${origin}/run`, { method: "POST" });
-		expect(unauthorized.status).toBe(401);
-
-		const triggered = await fetch(`${origin}/run`, {
-			headers: { Authorization: `Bearer ${secret}` },
-			method: "POST",
+		const worker = spawn("node", ["dist/index.js"], {
+			cwd: join(projectRoot, "apps/worker"),
+			env: { ...ambientEnv, ...generatedEnv },
 		});
 
-		expect(triggered.status, output).toBe(200);
-		expect(await triggered.json()).toEqual({ ok: true });
+		let output = "";
+		const capture = (chunk: Buffer) => {
+			output += chunk.toString();
+		};
 
-		const idle = await fetch(`${origin}/health`);
-		expect(idle.status, output).toBe(200);
-		expect(await idle.json()).toMatchObject({ inFlight: 0, ok: true });
-	} finally {
-		if (worker.exitCode === null) worker.kill("SIGTERM");
-	}
+		worker.stdout.on("data", capture);
+		worker.stderr.on("data", capture);
+		const exited = new Promise<number | null>((resolveExit) => {
+			worker.once("exit", (code) => resolveExit(code));
+		});
 
-	expect(await exited, output).toBe(0);
+		const origin = "http://localhost:8080";
+		try {
+			let ready = false;
+			const deadline = Date.now() + 30_000;
+			while (
+				Date.now() < deadline &&
+				worker.exitCode === null &&
+				worker.signalCode === null
+			) {
+				try {
+					const response = await fetch(`${origin}/health`);
+					if (response.ok) {
+						ready = true;
+						break;
+					}
+				} catch {}
+
+				await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+			}
+
+			expect(ready, output).toBe(true);
+
+			const unauthorized = await fetch(`${origin}/run`, { method: "POST" });
+			expect(unauthorized.status).toBe(401);
+
+			const triggered = await fetch(`${origin}/run`, {
+				headers: { Authorization: `Bearer ${secret}` },
+				method: "POST",
+			});
+
+			expect(triggered.status, output).toBe(200);
+			expect(await triggered.json()).toEqual({ ok: true });
+
+			const idle = await fetch(`${origin}/health`);
+			expect(idle.status, output).toBe(200);
+			expect(await idle.json()).toMatchObject({ inFlight: 0, ok: true });
+		} finally {
+			if (worker.exitCode === null) worker.kill("SIGTERM");
+
+			const stopped = await Promise.race([
+				exited.then(() => true),
+				new Promise<false>((resolveWait) =>
+					setTimeout(() => resolveWait(false), 5_000),
+				),
+			]);
+
+			if (!stopped) worker.kill("SIGKILL");
+
+			await exited;
+		}
+
+		expect(await exited, output).toBe(0);
+	});
 }
 
-async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
+export async function expectBundledNativeWindStyles(
+	workspace: ScenarioProject,
+) {
 	const mobileRoot = join(workspace.projectRoot, "apps/mobile");
 	const outputDir = join(mobileRoot, "dist-export");
 
@@ -2136,7 +2270,7 @@ async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
 	return bundle;
 }
 
-async function addExpoOrpcProbeRoute(projectRoot: string) {
+export async function addExpoOrpcProbeRoute(projectRoot: string) {
 	await writeFile(
 		join(projectRoot, "apps/mobile/src/app/orpc-probe.tsx"),
 		[
@@ -2151,7 +2285,7 @@ async function addExpoOrpcProbeRoute(projectRoot: string) {
 	);
 }
 
-function expectNativeOrpcClientBundle(bundle: string) {
+export function expectNativeOrpcClientBundle(bundle: string) {
 	for (const pattern of [/\/api\/orpc/, /["'`]x-csrf-token["'`]/])
 		expect(pattern.test(bundle), String(pattern)).toBe(true);
 }
@@ -2163,11 +2297,8 @@ function varyIncludesOrigin(response: Response) {
 }
 
 async function waitForOutput(output: () => string, text: string, from = 0) {
-	for (
-		let attempt = 0;
-		attempt < 50 && output().indexOf(text, from) === -1;
-		attempt += 1
-	)
+	const deadline = Date.now() + 30_000;
+	while (Date.now() < deadline && output().indexOf(text, from) === -1)
 		await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 }
 
@@ -2187,7 +2318,7 @@ function cookieHeader(response: Response, previous = "") {
 	return [...jar.values()].join("; ");
 }
 
-async function expectProductionEmailSecrets(projectRoot: string) {
+export async function expectProductionEmailSecrets(projectRoot: string) {
 	const generatedEnv = await readGeneratedEnv(projectRoot);
 	const origin = generatedEnv.WEB_URL;
 	const serverOrigin = generatedEnv.APP_ORIGIN;
@@ -2373,7 +2504,7 @@ async function webOriginsOf(projectRoot: string, env: NodeJS.ProcessEnv) {
 	return parsed;
 }
 
-async function expectProductionOrigins(
+export async function expectProductionOrigins(
 	projectRoot: string,
 	options: {
 		readonly host: "server" | "nextjs";
@@ -2381,82 +2512,84 @@ async function expectProductionOrigins(
 		readonly passkeyProbe: boolean;
 	},
 ) {
-	const generatedEnv = await readGeneratedEnv(projectRoot);
-	const serverOrigin = generatedEnv.APP_ORIGIN;
-	if (serverOrigin === undefined)
-		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+	return withPortLock(async () => {
+		const generatedEnv = await readGeneratedEnv(projectRoot);
+		const serverOrigin = generatedEnv.APP_ORIGIN;
+		if (serverOrigin === undefined)
+			throw new Error(`Missing Generated Origin: ${projectRoot}`);
 
-	const primary = "https://app.example.test";
-	const production = {
-		APP_ORIGIN:
-			options.host === "nextjs" ? primary : "https://api.example.test",
-		PORT: new URL(serverOrigin).port,
-		WEB_URL: primary,
-		WEB_URLS: "",
-	};
+		const primary = "https://app.example.test";
+		const production = {
+			APP_ORIGIN:
+				options.host === "nextjs" ? primary : "https://api.example.test",
+			PORT: new URL(serverOrigin).port,
+			WEB_URL: primary,
+			WEB_URLS: "",
+		};
 
-	await withGeneratedServer(
-		projectRoot,
-		production,
-		serverOrigin,
-		async () => {
-			await expectCorsPolicy(
-				serverOrigin,
-				options.paths,
-				[primary],
-				["http://localhost:3002"],
-			);
-		},
-		options.host,
-		"start",
-	);
+		await withGeneratedServer(
+			projectRoot,
+			production,
+			serverOrigin,
+			async () => {
+				await expectCorsPolicy(
+					serverOrigin,
+					options.paths,
+					[primary],
+					["http://localhost:3002"],
+				);
+			},
+			options.host,
+			"start",
+		);
 
-	if (options.passkeyProbe)
-		expect(await webOriginsOf(projectRoot, production)).toEqual([primary]);
+		if (options.passkeyProbe)
+			expect(await webOriginsOf(projectRoot, production)).toEqual([primary]);
 
-	const first = "https://a.example.test";
-	const second = "https://b.example.test";
-	const ci = {
-		...production,
-		APP_ORIGIN: options.host === "nextjs" ? first : production.APP_ORIGIN,
-		CI: "1",
-		WEB_URL: first,
-		WEB_URLS: `${first}/,${second}`,
-	};
+		const first = "https://a.example.test";
+		const second = "https://b.example.test";
+		const ci = {
+			...production,
+			APP_ORIGIN: options.host === "nextjs" ? first : production.APP_ORIGIN,
+			CI: "1",
+			WEB_URL: first,
+			WEB_URLS: `${first}/,${second}`,
+		};
 
-	await withGeneratedServer(
-		projectRoot,
-		ci,
-		serverOrigin,
-		async () => {
-			await expectCorsPolicy(
-				serverOrigin,
-				options.paths,
-				[first, second],
-				["http://localhost:3002", "https://c.example.test"],
-			);
-		},
-		options.host,
-		"start",
-	);
+		await withGeneratedServer(
+			projectRoot,
+			ci,
+			serverOrigin,
+			async () => {
+				await expectCorsPolicy(
+					serverOrigin,
+					options.paths,
+					[first, second],
+					["http://localhost:3002", "https://c.example.test"],
+				);
+			},
+			options.host,
+			"start",
+		);
 
-	if (options.passkeyProbe)
-		expect(await webOriginsOf(projectRoot, ci)).toEqual([first, second]);
+		if (options.passkeyProbe)
+			expect(await webOriginsOf(projectRoot, ci)).toEqual([first, second]);
 
-	await withGeneratedServer(
-		projectRoot,
-		{ ...ci, WEB_URLS: "" },
-		serverOrigin,
-		async (output) => {
-			const session = await fetch(`${serverOrigin}/api/auth/get-session`, {
-				headers: { Origin: first },
-			});
+		await withGeneratedServer(
+			projectRoot,
+			{ ...ci, WEB_URLS: "" },
+			serverOrigin,
+			async (output) => {
+				const session = await fetch(`${serverOrigin}/api/auth/get-session`, {
+					headers: { Origin: first },
+				});
 
-			expect(session.status, output()).toBe(200);
-		},
-		options.host,
-		"start",
-	);
+				expect(session.status, output()).toBe(200);
+			},
+			options.host,
+			"start",
+		);
+	});
 }
 
 function stringField(value: unknown, key: string): string | undefined {
@@ -2499,7 +2632,10 @@ function authRequests(origin: string, output: () => string) {
 	return { request, signUp };
 }
 
-async function expectInvitationFlow(projectRoot: string, projectName: string) {
+export async function expectInvitationFlow(
+	projectRoot: string,
+	projectName: string,
+) {
 	const generatedEnv = await readGeneratedEnv(projectRoot);
 	const origin = generatedEnv.APP_ORIGIN;
 	if (origin === undefined)
@@ -2651,7 +2787,7 @@ async function expectInvitationFlow(projectRoot: string, projectName: string) {
 	);
 }
 
-async function writeOrpcCallerProbe(
+export async function writeOrpcCallerProbe(
 	projectRoot: string,
 	web: "react-router" | "tanstack-start",
 ) {
@@ -2743,1356 +2879,3 @@ export async function loader({ request }: { request: Request }) {
 		);
 	}
 }
-
-describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
-	it.each([
-		{ backend: "hono", web: "nextjs", emailProvider: "resend" },
-		{ backend: "fastify", web: "tanstack-router", emailProvider: "postmark" },
-		{ backend: "express", web: "tanstack-router", emailProvider: "smtp" },
-	])(
-		"installs and authenticates email methods on $backend with $emailProvider",
-		async ({ backend, web, emailProvider }) => {
-			await withScenarioWorkspace(
-				`smoke-email-auth-${backend}`,
-				async (workspace) => {
-					await createProject(workspace, {
-						addons: ["vitest"],
-						authentication: "better-auth",
-						authMethods: ["email-password", "email-otp", "magic-link"],
-						backend,
-						database: "sqlite",
-						emailProvider,
-						linter: "biome",
-						orm: "drizzle",
-						packageManager: "pnpm",
-						rpc: "trpc",
-						style: "tailwind",
-						web,
-					});
-
-					await writeFile(
-						join(workspace.projectRoot, "packages/auth/src/email-probe.ts"),
-						[
-							'import { authClient } from "./client";',
-							"export const sendOtp = authClient.emailOtp.sendVerificationOtp;",
-							"export const signInOtp = authClient.signIn.emailOtp;",
-							"export const signInMagic = authClient.signIn.magicLink;",
-							"",
-						].join("\n"),
-					);
-
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-
-					const emailTest = await runCommand("pnpm", ["test"], {
-						cwd: join(workspace.projectRoot, "packages/email"),
-						env: { FORCE_COLOR: "0", NO_COLOR: "1" },
-					});
-
-					expect(
-						emailTest.exitCode,
-						`${emailTest.stdout}\n${emailTest.stderr}`,
-					).toBe(0);
-
-					expect(emailTest.stdout).toMatch(/Tests\s+2 passed/);
-
-					await expectEmailPreview(workspace.projectRoot);
-
-					const declarations = await runCommand(
-						"pnpm",
-						[
-							"exec",
-							"tsc",
-							"--emitDeclarationOnly",
-							"--outDir",
-							join(workspace.workspaceRoot, "auth-declarations"),
-						],
-						{ cwd: join(workspace.projectRoot, "packages/auth") },
-					);
-
-					expect(
-						declarations.exitCode,
-						`${declarations.stdout}\n${declarations.stderr}`,
-					).toBe(0);
-
-					await expectCredentialedGeneratedServer(workspace.projectRoot, {
-						emailAuth: true,
-						launch: "dev",
-					});
-
-					await expectProductionEmailSecrets(workspace.projectRoot);
-				},
-			);
-		},
-		600_000,
-	);
-
-	it.each([
-		{ primary: "tanstack-router", secondary: "nextjs", backend: "hono" },
-		{ primary: "nextjs", secondary: "tanstack-router", backend: "hono" },
-		{ primary: "react-router", secondary: "tanstack-start" },
-		{ primary: "tanstack-start", secondary: "react-router" },
-	])(
-		"installs, builds, and typechecks $primary with a $secondary secondary app",
-		async ({ primary, secondary, backend }) => {
-			await withScenarioWorkspace(
-				`smoke-secondary-${primary}-${secondary}`,
-				async (workspace) => {
-					await createProject(workspace, {
-						web: primary,
-						backend,
-						rpc: "trpc",
-						authentication: "better-auth",
-						orm: "drizzle",
-						database: "sqlite",
-						style: "tailwind",
-						linter: "biome",
-						packageManager: "pnpm",
-						webApps: [{ name: "admin", framework: secondary }],
-					});
-
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-				},
-			);
-		},
-		600_000,
-	);
-
-	it("installs, builds, and typechecks secondary web apps with a Hono host", async () => {
-		await withScenarioWorkspace(
-			"smoke-secondary-web-app",
-			async (workspace) => {
-				await createProject(workspace, {
-					web: "tanstack-router",
-					backend: "hono",
-					rpc: "trpc",
-					authentication: "better-auth",
-					orm: "drizzle",
-					database: "sqlite",
-					style: "tailwind",
-					linter: "biome",
-					packageManager: "pnpm",
-					webApps: [{ name: "admin", framework: "tanstack-router" }],
-				});
-
-				await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			},
-		);
-	}, 600_000);
-
-	it.each(["trpc", "orpc"] as const)(
-		"installs secondary %s clients and accepts their credentialed requests",
-		async (rpc) => {
-			await withScenarioWorkspace(
-				`smoke-secondary-client-${rpc}`,
-				async (workspace) => {
-					await createProject(workspace, {
-						authentication: "better-auth",
-						authMethods: ["email-password", "passkey"],
-						backend: "hono",
-						database: "sqlite",
-						orm: "drizzle",
-						packageManager: "pnpm",
-						rpc,
-						web: "tanstack-router",
-						webApps: [{ name: "admin", framework: "nextjs", client: true }],
-						style: "tailwind",
-					});
-
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-					await expectCredentialedGeneratedServer(workspace.projectRoot, {
-						rpc,
-						clientOrigin: "http://localhost:3002",
-						passkey: true,
-					});
-
-					await expectRelocatedPasskeyCeremony(workspace.projectRoot);
-
-					await expectProductionOrigins(workspace.projectRoot, {
-						host: "server",
-						paths:
-							rpc === "trpc"
-								? ["/api/auth/get-session", "/api/trpc/health"]
-								: ["/api/auth/get-session"],
-						passkeyProbe: true,
-					});
-				},
-			);
-		},
-		600_000,
-	);
-
-	it("starts TanStack Router and Next.js apps on their ports and accepts sign up from the primary origin on Hono", async () => {
-		await withScenarioWorkspace("smoke-web-apps-started", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				authMethods: ["email-password"],
-				backend: "hono",
-				database: "sqlite",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				linter: "biome",
-				web: "tanstack-router",
-				webApps: [{ name: "admin", framework: "nextjs" }],
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-
-			const projectRoot = workspace.projectRoot;
-			const apps = await webAppsOf(projectRoot);
-			expect(apps).toHaveLength(2);
-			expect(apps.filter((app) => app.primary)).toHaveLength(1);
-
-			const primary = apps.find((app) => app.primary);
-			const secondary = apps.find((app) => !app.primary);
-			if (primary === undefined || secondary === undefined)
-				throw new Error(`Missing Web Apps: ${projectRoot}`);
-
-			expect(primary.framework).toBe("tanstack-router");
-			expect(secondary.framework).toBe("nextjs");
-			expect(primary.port).not.toBe(secondary.port);
-
-			const generatedEnv = await readGeneratedEnv(projectRoot);
-			const apiOrigin = generatedEnv.APP_ORIGIN;
-			if (apiOrigin === undefined)
-				throw new Error(`Missing Generated Origin: ${projectRoot}`);
-
-			expect(
-				await bundleText(join(projectRoot, primary.root, "dist")),
-			).toContain(apiOrigin);
-
-			await expectSchemaPush(projectRoot);
-
-			await withGeneratedServer(
-				projectRoot,
-				generatedEnv,
-				apiOrigin,
-				async (output) => {
-					await withWebApp(projectRoot, primary, async (primaryOutput) => {
-						await withWebApp(
-							projectRoot,
-							secondary,
-							async (secondaryOutput) => {
-								for (const app of apps) {
-									const page = await fetch(`http://localhost:${app.port}/`);
-									const html = await page.text();
-									expect(
-										page.status,
-										`${primaryOutput()}\n${secondaryOutput()}`,
-									).toBe(200);
-
-									expect(page.headers.get("content-type")).toContain(
-										"text/html",
-									);
-
-									expect(html).toMatch(/<html[\s>]/i);
-								}
-
-								const primaryOrigin = `http://localhost:${primary.port}`;
-								const session = await signUpSession(
-									apiOrigin,
-									primaryOrigin,
-									"web-apps@example.com",
-									output,
-								);
-
-								const health = await fetch(
-									`${apiOrigin}/api/trpc/health?input=%7B%7D`,
-									{
-										headers: {
-											Cookie: session.cookie,
-											Origin: primaryOrigin,
-											"x-trpc-source": "smoke",
-										},
-									},
-								);
-
-								expect(
-									health.status,
-									`${await health.text()}\n${output()}`,
-								).toBe(200);
-
-								expect(health.headers.get("access-control-allow-origin")).toBe(
-									primaryOrigin,
-								);
-
-								expect(
-									health.headers.get("access-control-allow-credentials"),
-								).toBe("true");
-							},
-						);
-					});
-				},
-			);
-		});
-	}, 600_000);
-
-	it("accepts a client added later once .env holds the printed WEB_URLS", async () => {
-		await withScenarioWorkspace("smoke-added-client", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				authMethods: ["email-password"],
-				backend: "hono",
-				database: "sqlite",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "tanstack-router",
-				webApps: [
-					{ name: "admin", framework: "tanstack-router", client: true },
-				],
-			});
-
-			const added = await runForge(
-				workspace.projectRoot,
-				[
-					"add",
-					"tanstack-router",
-					"--name",
-					"portal",
-					"--client",
-					"--yes",
-					"--no-install",
-				],
-				{ workspaceRoot: workspace.workspaceRoot },
-			);
-
-			const printed =
-				/Add http:\/\/localhost:3003 to WEB_URLS in \.env so portal can call the API\. With only local apps, that makes WEB_URLS="([^"]+)"\./.exec(
-					added.stdout,
-				)?.[1];
-
-			expect(printed, added.stdout).toBe(
-				"http://localhost:3002,http://localhost:3003",
-			);
-
-			const apiOrigin = "http://localhost:48301";
-			const envPath = join(workspace.projectRoot, ".env");
-			const env = await readFile(envPath, "utf-8");
-			expect(env).not.toContain("http://localhost:3003");
-
-			await writeFile(
-				envPath,
-				`${env
-					.replace(/^WEB_URLS=.*$/m, `WEB_URLS="${printed}"`)
-					.replace(
-						/^APP_ORIGIN=.*$/m,
-						`APP_ORIGIN="${apiOrigin}"`,
-					)}PORT="48301"\n`,
-			);
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot, {
-				apiOrigin,
-				clientOrigin: "http://localhost:3003",
-			});
-		});
-	}, 600_000);
-
-	it("answers get-session on the default self-hosted Next.js project", async () => {
-		await withScenarioWorkspace(
-			"smoke-default-self-nextjs",
-			async (workspace) => {
-				await createProject(workspace, {
-					authentication: "better-auth",
-					backend: "self",
-					database: "sqlite",
-					orm: "drizzle",
-					packageManager: "pnpm",
-					style: "tailwind",
-					web: "nextjs",
-				});
-
-				await expectInstallBuildAndTypecheck(workspace, "pnpm");
-				await expectSchemaPush(workspace.projectRoot);
-
-				const origin = "http://localhost:47400";
-				const generatedEnv = {
-					...(await readGeneratedEnv(workspace.projectRoot)),
-					APP_ORIGIN: origin,
-				};
-
-				await withGeneratedServer(
-					workspace.projectRoot,
-					generatedEnv,
-					origin,
-					async (output) => {
-						const session = await fetch(`${origin}/api/auth/get-session`);
-						expect(session.status, output()).toBe(200);
-						expect(await session.json()).toBeNull();
-					},
-					"nextjs",
-				);
-			},
-		);
-	}, 600_000);
-
-	it("installs self-hosted RPC and auth with a secondary client", async () => {
-		await withScenarioWorkspace(
-			"smoke-secondary-client-self",
-			async (workspace) => {
-				await createProject(workspace, {
-					authentication: "better-auth",
-					authMethods: ["email-password", "passkey"],
-					backend: "self",
-					database: "sqlite",
-					linter: "biome",
-					orm: "drizzle",
-					packageManager: "pnpm",
-					rpc: "trpc",
-					web: "nextjs",
-					webApps: [{ name: "admin", framework: "nextjs", client: true }],
-					style: "tailwind",
-				});
-
-				await expectInstallBuildAndTypecheck(workspace, "pnpm");
-				await expectCredentialedGeneratedServer(workspace.projectRoot, {
-					clientOrigin: "http://localhost:3002",
-					host: "nextjs",
-				});
-
-				const ciBuild = await runCommand("pnpm", ["run", "build"], {
-					cwd: join(workspace.projectRoot, "apps/web"),
-					env: scriptEnvironment({ CI: "1", WEB_URLS: "" }),
-				});
-
-				expect(ciBuild.exitCode, `${ciBuild.stdout}\n${ciBuild.stderr}`).toBe(
-					0,
-				);
-
-				await expectProductionOrigins(workspace.projectRoot, {
-					host: "nextjs",
-					paths: ["/api/auth/get-session", "/api/trpc/health"],
-					passkeyProbe: false,
-				});
-			},
-		);
-	}, 600_000);
-
-	it("invites through the accept page and names the project in authenticators", async () => {
-		await withScenarioWorkspace("smoke-invitations", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				authMethods: ["email-password"],
-				authPlugins: ["two-factor", "organization"],
-				backend: "self",
-				database: "sqlite",
-				linter: "biome",
-				name: "Acme Works",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				style: "tailwind",
-				web: "nextjs",
-			});
-
-			await expectInstallAndBuild(workspace, "pnpm");
-
-			const pageTypecheck = await runCommand(
-				"pnpm",
-				["--filter", "@acme/web", "typecheck"],
-				{
-					cwd: workspace.projectRoot,
-					env: forgeEnvironment(workspace.workspaceRoot),
-				},
-			);
-
-			expect(
-				pageTypecheck.exitCode,
-				`${pageTypecheck.stdout}\n${pageTypecheck.stderr}`,
-			).toBe(0);
-
-			await expectInvitationFlow(workspace.projectRoot, "Acme Works");
-		});
-	}, 600_000);
-
-	it.each(["tanstack-router", "react-router"])(
-		"installs, builds, and typechecks %s with an oRPC Hono host",
-		async (web) => {
-			await withScenarioWorkspace(
-				`smoke-orpc-hono-${web}`,
-				async (workspace) => {
-					await createProject(workspace, {
-						authentication: "better-auth",
-						backend: "hono",
-						database: "sqlite",
-						linter: "biome",
-						orm: "drizzle",
-						packageManager: "pnpm",
-						rpc: "orpc",
-						style: "tailwind",
-						web,
-					});
-
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-					await expectCredentialedGeneratedServer(workspace.projectRoot, {
-						rpc: "orpc",
-						webOrigin:
-							web === "react-router"
-								? "http://localhost:5173"
-								: "http://localhost:3000",
-					});
-				},
-			);
-		},
-		600_000,
-	);
-
-	it.each(["trpc", undefined] as const)(
-		"installs, builds, and typechecks react-router beside Hono with rpc %s",
-		async (rpc) => {
-			await withScenarioWorkspace(
-				`smoke-hono-react-router-${rpc ?? "auth"}`,
-				async (workspace) => {
-					await createProject(workspace, {
-						authentication: "better-auth",
-						backend: "hono",
-						database: "sqlite",
-						linter: "biome",
-						orm: "drizzle",
-						packageManager: "pnpm",
-						rpc,
-						style: "tailwind",
-						web: "react-router",
-					});
-
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-
-					if (rpc === "trpc")
-						await expectCredentialedGeneratedServer(workspace.projectRoot, {
-							webOrigin: "http://localhost:5173",
-						});
-				},
-			);
-		},
-		600_000,
-	);
-
-	it("installs, builds, and hydrates Next.js as an oRPC self host", async () => {
-		await withScenarioWorkspace("smoke-orpc-self-nextjs", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				authMethods: ["email-password"],
-				backend: "self",
-				database: "sqlite",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "orpc",
-				style: "tailwind",
-				web: "nextjs",
-			});
-
-			const probeRoot = join(
-				workspace.projectRoot,
-				"apps/web/app/api/caller-probe",
-			);
-
-			await mkdir(probeRoot, { recursive: true });
-			await writeFile(
-				join(probeRoot, "route.ts"),
-				`import { ORPCError } from "@orpc/server";
-import { client } from "@/orpc/client";
-
-export async function GET() {
-  try {
-    return Response.json({
-      health: await client.health(),
-      me: await client.me(),
-    });
-  } catch (error) {
-    if (error instanceof ORPCError)
-      return Response.json({ code: error.code }, { status: error.status });
-
-    throw error;
-  }
-}
-`,
-			);
-
-			const hydrationRoot = join(
-				workspace.projectRoot,
-				"apps/web/app/api/hydration-probe",
-			);
-
-			await mkdir(hydrationRoot, { recursive: true });
-			await writeFile(
-				join(hydrationRoot, "route.ts"),
-				`import { dehydrate, QueryClient } from "@tanstack/react-query";
-import { orpc } from "@/orpc/client";
-
-export async function GET() {
-  const queryClient = new QueryClient();
-
-  await queryClient.fetchQuery(orpc.health.queryOptions());
-
-  return Response.json(dehydrate(queryClient));
-}
-`,
-			);
-
-			await injectOrpcContextProbe(workspace.projectRoot);
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectServerOnlyCodeOutOfClientBundle(
-				{
-					client: join(workspace.projectRoot, "apps/web/.next/static"),
-					server: join(workspace.projectRoot, "apps/web/.next/server"),
-				},
-				[
-					"AUTH_SECRET",
-					"DATABASE_URL",
-					"createRouterClient",
-					"getSession",
-					"@libsql",
-				],
-			);
-
-			await expectSelfHostedRpc(workspace.projectRoot, {
-				web: "nextjs",
-				rpc: "orpc",
-			});
-		});
-	}, 600_000);
-
-	it.each([
-		{ backend: "express", contextProbe: false },
-		{ backend: "fastify", contextProbe: true },
-	])(
-		"installs, builds, and typechecks TanStack Router with an oRPC $backend host",
-		async ({ backend, contextProbe }) => {
-			await withScenarioWorkspace(
-				`smoke-orpc-${backend}-spa`,
-				async (workspace) => {
-					await createProject(workspace, {
-						authentication: "better-auth",
-						backend,
-						database: "sqlite",
-						linter: "biome",
-						orm: "drizzle",
-						packageManager: "pnpm",
-						rpc: "orpc",
-						style: "tailwind",
-						web: "tanstack-router",
-					});
-
-					if (contextProbe) await injectOrpcContextProbe(workspace.projectRoot);
-
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-					await expectCredentialedGeneratedServer(workspace.projectRoot, {
-						rpc: "orpc",
-					});
-
-					await expectStandaloneOrpcRoute(workspace.projectRoot, contextProbe);
-				},
-			);
-		},
-		600_000,
-	);
-
-	it.each([
-		{ web: "tanstack-start", rpc: "orpc", orm: "drizzle", secondary: false },
-		{ web: "react-router", rpc: "orpc", orm: "drizzle", secondary: false },
-		{ web: "tanstack-start", rpc: "orpc", orm: "drizzle", secondary: true },
-		{ web: "react-router", rpc: "orpc", orm: "drizzle", secondary: true },
-		{ web: "tanstack-start", rpc: "trpc", orm: "drizzle", secondary: false },
-		{
-			web: "react-router",
-			rpc: "trpc",
-			orm: "drizzle",
-			secondary: false,
-			injectPort: true,
-		},
-		{ web: "react-router", rpc: "orpc", orm: "prisma", secondary: false },
-	] as const)(
-		"installs, builds, and starts $web as a $rpc self host on $orm (secondary: $secondary)",
-		async (cell) => {
-			const { web, rpc, orm, secondary } = cell;
-			await withScenarioWorkspace(
-				`smoke-${rpc}-self-${web}-${orm}`,
-				async (workspace) => {
-					await createProject(workspace, {
-						authentication: "better-auth",
-						authMethods: ["email-password"],
-						backend: "self",
-						database: "sqlite",
-						linter: "biome",
-						orm,
-						packageManager: "pnpm",
-						rpc,
-						style: "tailwind",
-						web,
-						...(secondary
-							? {
-									webApps: [
-										{ name: "admin", framework: "nextjs", client: true },
-									],
-								}
-							: {}),
-					});
-
-					if (rpc === "orpc") {
-						await writeOrpcCallerProbe(workspace.projectRoot, web);
-						await injectOrpcContextProbe(workspace.projectRoot);
-					}
-
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-					await expectSelfHostedRpc(workspace.projectRoot, {
-						web,
-						rpc,
-						injectPort: "injectPort" in cell,
-						...(secondary
-							? {
-									clientOrigin:
-										web === "react-router"
-											? "http://localhost:5174"
-											: "http://localhost:3002",
-								}
-							: {}),
-					});
-				},
-			);
-		},
-		600_000,
-	);
-
-	it.each(["nextjs", "tanstack-start"])(
-		"installs, builds, and typechecks %s as an oRPC Hono client",
-		async (web) => {
-			await withScenarioWorkspace(
-				`smoke-orpc-hono-${web}`,
-				async (workspace) => {
-					await createProject(workspace, {
-						authentication: "better-auth",
-						backend: "hono",
-						database: "sqlite",
-						orm: "drizzle",
-						packageManager: "pnpm",
-						rpc: "orpc",
-						style: "tailwind",
-						web,
-					});
-
-					await expectInstallBuildAndTypecheck(workspace, "pnpm");
-					await expectCredentialedGeneratedServer(workspace.projectRoot, {
-						rpc: "orpc",
-					});
-				},
-			);
-		},
-		600_000,
-	);
-
-	it("installs, builds, and typechecks Next.js with a Hono API host", async () => {
-		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				authMethods: ["email-password", "google", "apple", "passkey"],
-				authPlugins: ["username", "admin", "polar"],
-				backend: "hono",
-				database: "sqlite",
-				emailProvider: "smtp",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "nextjs",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot, {
-				passkey: true,
-				polar: true,
-				username: "hono_smoke",
-			});
-		});
-	}, 600_000);
-
-	it("installs, builds, and typechecks TanStack Router with Hono", async () => {
-		await withScenarioWorkspace("smoke-hono-spa", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				backend: "hono",
-				database: "postgresql",
-				emailProvider: "resend",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "tanstack-router",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-		});
-	}, 600_000);
-
-	it("installs, builds, and typechecks Next.js with a Fastify API host", async () => {
-		await withScenarioWorkspace("smoke-fastify-nextjs", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				authPlugins: ["polar"],
-				backend: "fastify",
-				database: "sqlite",
-				emailProvider: "postmark",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "nextjs",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot, {
-				polar: true,
-			});
-		});
-	}, 600_000);
-
-	it("installs, builds, and typechecks TanStack Router with Fastify", async () => {
-		await withScenarioWorkspace("smoke-fastify-spa", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				backend: "fastify",
-				database: "sqlite",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "tanstack-router",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot);
-		});
-	}, 600_000);
-
-	it("installs, builds, and typechecks Next.js with an Express API host", async () => {
-		await withScenarioWorkspace("smoke-express-nextjs", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				authPlugins: ["polar"],
-				backend: "express",
-				database: "sqlite",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "nextjs",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot, {
-				polar: true,
-			});
-		});
-	}, 600_000);
-
-	it("installs, builds, and typechecks TanStack Router with Express", async () => {
-		await withScenarioWorkspace("smoke-express-spa", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				backend: "express",
-				database: "sqlite",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "tanstack-router",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectCredentialedGeneratedServer(workspace.projectRoot);
-		});
-	}, 600_000);
-
-	it("installs a prisma project, generates the client, typechecks, and pushes", async () => {
-		await withScenarioWorkspace("smoke-prisma", async (workspace) => {
-			await createProject(
-				workspace,
-				{
-					...authPluginConfig,
-					authentication: "better-auth",
-					database: "postgresql",
-					linter: "biome",
-					orm: "prisma",
-					packageManager: "pnpm",
-					style: "tailwind",
-					web: "nextjs",
-				},
-				{ install: true },
-			);
-
-			expect(
-				await pathExists(
-					join(workspace.projectRoot, "packages/db/src/generated/prisma"),
-				),
-			).toBe(true);
-
-			await expectPasskeyInstallAndTypecheck(workspace);
-			await expectSchemaPush(
-				workspace.projectRoot,
-				postgresDatabaseEnv("forge_smoke_prisma"),
-			);
-		});
-	}, 600_000);
-
-	it("installs, typechecks, and pushes a drizzle project with trpc and tailwind", async () => {
-		await withScenarioWorkspace("smoke-drizzle", async (workspace) => {
-			await createProject(
-				workspace,
-				{
-					...authPluginConfig,
-					authentication: "better-auth",
-					database: "postgresql",
-					linter: "biome",
-					orm: "drizzle",
-					packageManager: "pnpm",
-					rpc: "trpc",
-					style: "tailwind",
-					web: "nextjs",
-				},
-				{ install: true },
-			);
-
-			await expectPasskeyInstallAndTypecheck(workspace);
-			await createSmokeDatabase(
-				workspace.projectRoot,
-				"postgresql",
-				"forge_smoke_drizzle",
-			);
-
-			await expectSchemaPush(
-				workspace.projectRoot,
-				postgresDatabaseEnv("forge_smoke_drizzle"),
-			);
-		});
-	}, 600_000);
-
-	it("installs, typechecks, and pushes a drizzle mysql project", async () => {
-		await withScenarioWorkspace("smoke-drizzle-mysql", async (workspace) => {
-			await createProject(
-				workspace,
-				{
-					...authPluginConfig,
-					authentication: "better-auth",
-					database: "mysql",
-					linter: "biome",
-					orm: "drizzle",
-					packageManager: "pnpm",
-					rpc: "trpc",
-					style: "tailwind",
-					web: "nextjs",
-				},
-				{ install: true },
-			);
-
-			await expectPasskeyInstallAndTypecheck(workspace);
-			await createSmokeDatabase(
-				workspace.projectRoot,
-				"mysql",
-				"forge_smoke_drizzle_mysql",
-			);
-
-			await expectSchemaPush(
-				workspace.projectRoot,
-				mysqlDatabaseEnv("forge_smoke_drizzle_mysql"),
-			);
-		});
-	}, 600_000);
-
-	it("installs, typechecks, and pushes a drizzle planetscale mysql project", async () => {
-		await withScenarioWorkspace(
-			"smoke-drizzle-planetscale-mysql",
-			async (workspace) => {
-				await createProject(
-					workspace,
-					{
-						...authPluginConfig,
-						authentication: "better-auth",
-						database: "mysql",
-						databaseProvider: "planetscale",
-						linter: "biome",
-						orm: "drizzle",
-						packageManager: "pnpm",
-						style: "tailwind",
-						web: "nextjs",
-					},
-					{ install: true },
-				);
-
-				await expectPasskeyInstallAndTypecheck(workspace);
-				await createSmokeDatabase(
-					workspace.projectRoot,
-					"mysql",
-					"forge_smoke_drizzle_planetscale",
-				);
-
-				await expectSchemaPush(
-					workspace.projectRoot,
-					mysqlDatabaseEnv("forge_smoke_drizzle_planetscale"),
-				);
-
-				const probe = await runUserDeleteProbe(
-					workspace,
-					smokeDatabaseOn(smokeMysqlUrl(), "forge_smoke_drizzle_planetscale"),
-				);
-
-				expect(probe.exitCode, `${probe.stdout}\n${probe.stderr}`).toBe(0);
-			},
-		);
-	}, 600_000);
-
-	it("installs, typechecks, and pushes a prisma mysql project", async () => {
-		await withScenarioWorkspace("smoke-prisma-mysql", async (workspace) => {
-			await createProject(
-				workspace,
-				{
-					...authPluginConfig,
-					authentication: "better-auth",
-					database: "mysql",
-					linter: "biome",
-					orm: "prisma",
-					packageManager: "pnpm",
-					style: "tailwind",
-					web: "nextjs",
-				},
-				{ install: true },
-			);
-
-			await expectPasskeyInstallAndTypecheck(workspace);
-			await expectSchemaPush(
-				workspace.projectRoot,
-				mysqlDatabaseEnv("forge_smoke_prisma_mysql"),
-			);
-		});
-	}, 600_000);
-
-	it("installs, typechecks, and pushes a prisma sqlite project", async () => {
-		await withScenarioWorkspace("smoke-prisma-sqlite", async (workspace) => {
-			await createProject(
-				workspace,
-				{
-					...authPluginConfig,
-					authentication: "better-auth",
-					database: "sqlite",
-					linter: "biome",
-					orm: "prisma",
-					packageManager: "pnpm",
-					style: "tailwind",
-					web: "nextjs",
-				},
-				{ install: true },
-			);
-
-			await expectPasskeyInstallAndTypecheck(workspace);
-			await expectSchemaPush(workspace.projectRoot);
-		});
-	}, 600_000);
-
-	it("installs, typechecks, and pushes a drizzle sqlite project", async () => {
-		await withScenarioWorkspace("smoke-drizzle-sqlite", async (workspace) => {
-			await createProject(
-				workspace,
-				{
-					...authPluginConfig,
-					authentication: "better-auth",
-					database: "sqlite",
-					linter: "biome",
-					orm: "drizzle",
-					packageManager: "pnpm",
-					rpc: "trpc",
-					style: "tailwind",
-					web: "nextjs",
-				},
-				{ install: true },
-			);
-
-			await expectPasskeyInstallAndTypecheck(workspace);
-			await expectSchemaPush(workspace.projectRoot);
-		});
-	}, 600_000);
-
-	it("installs, typechecks, and pushes a prisma planetscale mysql passkey project", async () => {
-		await withScenarioWorkspace(
-			"smoke-prisma-planetscale-passkey",
-			async (workspace) => {
-				await createProject(
-					workspace,
-					{
-						...authPluginConfig,
-						authentication: "better-auth",
-						database: "mysql",
-						databaseProvider: "planetscale",
-						linter: "biome",
-						orm: "prisma",
-						packageManager: "pnpm",
-						web: "nextjs",
-					},
-					{ install: true },
-				);
-
-				await expectPasskeyInstallAndTypecheck(workspace);
-				await expectSchemaPush(
-					workspace.projectRoot,
-					mysqlDatabaseEnv("forge_smoke_prisma_mysql"),
-				);
-			},
-		);
-	}, 600_000);
-
-	for (const cell of postgresProviderCells) {
-		const transactionTitle = {
-			supported: "runs a transaction probe",
-			unsupported: "confirms the known transaction limitation",
-		}[cell.transaction];
-
-		it(`installs, typechecks, and ${transactionTitle} on drizzle with ${cell.provider} postgres`, async () => {
-			await withScenarioWorkspace(
-				`smoke-drizzle-${cell.provider}`,
-				async (workspace) => {
-					const url = smokeDatabaseUrl();
-
-					await createProject(
-						workspace,
-						{
-							authentication: "better-auth",
-							database: "postgresql",
-							databaseProvider: cell.provider,
-							linter: "biome",
-							orm: "drizzle",
-							packageManager: "pnpm",
-							rpc: "trpc",
-							style: "tailwind",
-							web: "nextjs",
-						},
-						{ install: true },
-					);
-
-					await writeFile(
-						join(workspace.projectRoot, "packages/db/src/transaction-probe.ts"),
-						transactionProbeSource,
-					);
-
-					await expectInstallAndTypecheck(workspace, "pnpm");
-
-					const probe = await runTransactionProbe(workspace, url);
-					switch (cell.transaction) {
-						case "supported":
-							expect(probe.exitCode, `${probe.stdout}\n${probe.stderr}`).toBe(
-								0,
-							);
-
-							break;
-
-						case "unsupported":
-							expect(probe.exitCode, probe.stderr).not.toBe(0);
-							expect(probe.stderr).toContain(
-								"No transactions support in neon-http driver",
-							);
-
-							break;
-					}
-				},
-			);
-		}, 600_000);
-	}
-
-	// Each framework addition gets one pnpm-only acceptance case; the
-	// package-manager matrix remains Next.js-only to keep smoke cost bounded.
-	it.each(["trpc", "orpc"] satisfies ReadonlyArray<"trpc" | "orpc">)(
-		"installs, builds, and typechecks an Expo project with %s",
-		async (rpc) => {
-			await withScenarioWorkspace(`smoke-expo-${rpc}`, async (workspace) => {
-				await createProject(workspace, {
-					authentication: "better-auth",
-					authPlugins: ["polar"],
-					backend: "hono",
-					database: "sqlite",
-					linter: "biome",
-					mobile: "expo",
-					nativeStyleFramework: "nativewind",
-					orm: "drizzle",
-					packageManager: "pnpm",
-					platforms: ["web", "mobile"],
-					rpc,
-					style: "tailwind",
-					web: "nextjs",
-				});
-
-				await expectInstallBuildAndTypecheck(workspace, "pnpm");
-				expect(
-					await pathExists(
-						join(workspace.projectRoot, "apps/mobile/forge.json"),
-					),
-				).toBe(true);
-
-				if (rpc === "orpc") await addExpoOrpcProbeRoute(workspace.projectRoot);
-
-				const bundle = await expectBundledNativeWindStyles(workspace);
-				if (rpc === "orpc") expectNativeOrpcClientBundle(bundle);
-			});
-		},
-		600_000,
-	);
-
-	it("installs, builds, and typechecks a full TanStack Start project", async () => {
-		await withScenarioWorkspace("smoke-tanstack-start", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				database: "postgresql",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "tanstack-start",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-		});
-	}, 600_000);
-
-	it("installs, builds, and typechecks a TanStack Router SPA with a worker", async () => {
-		await withScenarioWorkspace("smoke-tanstack-router", async (workspace) => {
-			await createProject(workspace, {
-				addons: ["worker"],
-				linter: "biome",
-				packageManager: "pnpm",
-				style: "tailwind",
-				web: "tanstack-router",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-			await expectDrainingWorker(workspace.projectRoot);
-		});
-	}, 600_000);
-
-	it("installs, builds, and typechecks a full React Router project", async () => {
-		await withScenarioWorkspace("smoke-react-router", async (workspace) => {
-			await createProject(workspace, {
-				authentication: "better-auth",
-				database: "postgresql",
-				linter: "biome",
-				orm: "drizzle",
-				packageManager: "pnpm",
-				rpc: "trpc",
-				style: "tailwind",
-				web: "react-router",
-			});
-
-			await expectInstallBuildAndTypecheck(workspace, "pnpm");
-		});
-	}, 600_000);
-
-	it.each([
-		{
-			from: "biome",
-			to: "oxc",
-			surfaces: {
-				configFiles: [".oxlintrc.json", ".oxfmtrc.json"],
-				devDependencies: ["oxlint", "oxfmt"],
-				absentConfigFiles: ["biome.json"],
-				absentDevDependencies: ["@biomejs/biome"],
-			},
-		},
-		{
-			from: "oxc",
-			to: "biome",
-			surfaces: {
-				configFiles: ["biome.json"],
-				devDependencies: ["@biomejs/biome"],
-				absentConfigFiles: [".oxlintrc.json", ".oxfmtrc.json"],
-				absentDevDependencies: ["oxlint", "oxfmt"],
-			},
-		},
-	])(
-		"switches $from to $to on the default preset",
-		async ({ from, to, surfaces }) => {
-			await withScenarioWorkspace(
-				`smoke-switch-${from}-${to}`,
-				async (workspace) => {
-					await createProject(workspace, {
-						addons: ["commitlint", "github-ci", "lefthook", "vscode"],
-						authentication: "better-auth",
-						backend: "self",
-						catalogs: "scoped",
-						database: "postgresql",
-						databaseProvider: "neon",
-						orm: "drizzle",
-						rpc: "trpc",
-						style: "tailwind",
-						uiLibrary: "base-ui",
-						web: "nextjs",
-						linter: from,
-						packageManager: "pnpm",
-					});
-
-					await expectLinterSwitch(workspace, { to, surfaces });
-				},
-			);
-		},
-		600_000,
-	);
-
-	it.each([
-		{
-			name: "default",
-			config: {
-				addons: ["commitlint", "github-ci", "lefthook", "vscode"],
-				authentication: "better-auth",
-				backend: "self",
-				catalogs: "scoped",
-				database: "postgresql",
-				databaseProvider: "neon",
-				orm: "drizzle",
-				rpc: "trpc",
-				style: "tailwind",
-				uiLibrary: "base-ui",
-				web: "nextjs",
-			},
-		},
-		{
-			name: "full-stack",
-			config: {
-				addons: ["commitlint", "github-ci", "lefthook", "vscode"],
-				authentication: "better-auth",
-				authMethods: ["email-password", "passkey", "email-otp"],
-				backend: "hono",
-				catalogs: "scoped",
-				database: "sqlite",
-				emailProvider: "resend",
-				orm: "drizzle",
-				rpc: "orpc",
-				style: "tailwind",
-				uiLibrary: "base-ui",
-				web: "tanstack-router",
-				webApps: [{ name: "admin", framework: "nextjs" }],
-			},
-		},
-	])(
-		"passes its own Oxc check on a fresh $name project",
-		async ({ name, config }) => {
-			await withScenarioWorkspace(`smoke-oxc-${name}`, async (workspace) => {
-				await createProject(workspace, {
-					...config,
-					linter: "oxc",
-					packageManager: "pnpm",
-				});
-
-				await expectFreshLinterCheck(workspace, {
-					configFiles: [".oxlintrc.json", ".oxfmtrc.json"],
-					devDependencies: ["oxlint", "oxfmt"],
-					absentConfigFiles: ["biome.json"],
-					absentDevDependencies: ["@biomejs/biome"],
-				});
-			});
-		},
-		600_000,
-	);
-});
