@@ -274,7 +274,7 @@ describe("Hono backend", () => {
 
 			const webEnv = writeContent(plan, "apps/web/env.ts");
 			expect(webEnv).toContain(
-				`${serverUrl}: z.url().default("http://localhost:3001")`,
+				`${serverUrl}:\n      ${web === "nextjs" ? "process.env" : "import.meta.env?.PROD || processEnv"}.NODE_ENV === "production"\n        ? z.url()\n        : z.url().default("http://localhost:3001")`,
 			);
 
 			expect(webEnv).not.toMatch(markerPattern);
