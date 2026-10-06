@@ -2208,6 +2208,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 
 					const emailTest = await runCommand("pnpm", ["test"], {
 						cwd: join(workspace.projectRoot, "packages/email"),
+						env: { FORCE_COLOR: "0", NO_COLOR: "1" },
 					});
 
 					expect(

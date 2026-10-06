@@ -1,5 +1,6 @@
 import { render, toPlainText } from "@react-email/components";
 import { createElement, type ReactElement } from "react";
+import { customTemplates } from "./custom";
 __IMPORTS__
 const modules = __MODULES__;
 

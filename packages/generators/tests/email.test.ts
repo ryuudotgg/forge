@@ -391,6 +391,34 @@ it("rejects when Resend reports an error", async () => {
 	);
 });
 
+interface RenderedMessages {
+	renderMessage: (
+		message: EmailMessage,
+	) => Promise<{ subject: string; html: string; text: string }>;
+}
+
+async function writeRenderSources(config: ForgeConfig) {
+	const directory = await mkdtemp(join(import.meta.dirname, ".rendered-"));
+	directories.push(directory);
+
+	const sources = contributionsOf(config).flatMap((contribution) =>
+		contribution._tag === "LeafTextFileContribution" &&
+		typeof contribution.path === "string" &&
+		/^src\/(messages\.ts|custom\.ts|layout\.tsx|templates\/)/.test(
+			contribution.path,
+		)
+			? [{ path: contribution.path, content: contribution.content }]
+			: [],
+	);
+
+	await mkdir(join(directory, "src/templates"), { recursive: true });
+
+	for (const source of sources)
+		await writeFile(join(directory, source.path), source.content);
+
+	return directory;
+}
+
 const allMessages: ForgeConfig = {
 	authentication: "better-auth",
 	authMethods: ["email-otp", "magic-link"],
@@ -474,28 +502,10 @@ describe("email templates", () => {
 	});
 
 	it("renders every template to inlined html and plain text", async () => {
-		const directory = await mkdtemp(join(import.meta.dirname, ".rendered-"));
-		directories.push(directory);
-
-		const contributions = contributionsOf(allMessages);
-		const sources = contributions.flatMap((contribution) =>
-			contribution._tag === "LeafTextFileContribution" &&
-			typeof contribution.path === "string" &&
-			/^src\/(messages\.ts|layout\.tsx|templates\/)/.test(contribution.path)
-				? [{ path: contribution.path, content: contribution.content }]
-				: [],
+		const directory = await writeRenderSources(allMessages);
+		const messages: RenderedMessages = await import(
+			join(directory, "src/messages.ts")
 		);
-
-		await mkdir(join(directory, "src/templates"), { recursive: true });
-
-		for (const source of sources)
-			await writeFile(join(directory, source.path), source.content);
-
-		const messages: {
-			renderMessage: (
-				message: EmailMessage,
-			) => Promise<{ subject: string; html: string; text: string }>;
-		} = await import(join(directory, "src/messages.ts"));
 
 		const cases: ReadonlyArray<{
 			message: EmailMessage;
@@ -546,6 +556,44 @@ describe("email templates", () => {
 			expect(rendered.html).not.toMatch(/<link|<img|@import/);
 			expect(rendered.text).toContain(expected);
 		}
+	}, 30_000);
+
+	it("sends a project's own template registered outside the managed files", async () => {
+		const directory = await writeRenderSources({ emailProvider: "resend" });
+		await writeFile(
+			join(directory, "src/templates/welcome.tsx"),
+			[
+				"/** @jsxRuntime automatic */",
+				'import { Text } from "@react-email/components";',
+				'import { Layout } from "../layout";',
+				"",
+				'export const subject = () => "Welcome";',
+				"",
+				"export default function Welcome({ name }: { name: string }) {",
+				'  return <Layout preview="Welcome"><Text className="font-semibold">Hi {name}</Text></Layout>;',
+				"}",
+				"",
+			].join("\n"),
+		);
+
+		await writeFile(
+			join(directory, "src/custom.ts"),
+			'import * as welcome from "./templates/welcome";\nexport const customTemplates = { welcome };\n',
+		);
+
+		const messages: RenderedMessages = await import(
+			join(directory, "src/messages.ts")
+		);
+
+		const rendered = await messages.renderMessage({
+			to: "reader@example.com",
+			template: "welcome",
+			props: { name: "Ada" },
+		});
+
+		expect(rendered.subject).toBe("Welcome");
+		expect(rendered.text).toContain("Hi Ada");
+		expect(rendered.html).not.toContain("class=");
 	}, 30_000);
 
 	it("tests each template against the mocked provider with Vitest", () => {

@@ -119,10 +119,10 @@ function messagesSource(config: ForgeConfig): string {
 			`import * as ${template.name} from "./templates/${template.file}";\n`,
 	);
 
-	const names = templates.map((template) => template.name);
+	const entries = ["...customTemplates", ...templates.map(({ name }) => name)];
 	return interpolate(readTemplate("email/packages/email/src/messages.ts"), {
 		IMPORTS: imports.join(""),
-		MODULES: names.length === 0 ? "{}" : `{ ${names.join(", ")} }`,
+		MODULES: `{\n${entries.map((entry) => `  ${entry},`).join("\n")}\n}`,
 	});
 }
 
@@ -219,6 +219,12 @@ const email = defineAddon<ForgeConfig, "email">({
 				ensuredModuleTarget("email"),
 				"src/messages.ts",
 				messagesSource(config),
+			),
+			leafTextFile(
+				ensuredModuleTarget("email"),
+				"src/custom.ts",
+				readTemplate("email/packages/email/src/custom.ts"),
+				{ preserveExisting: true },
 			),
 			leafTextFile(
 				ensuredModuleTarget("email"),
