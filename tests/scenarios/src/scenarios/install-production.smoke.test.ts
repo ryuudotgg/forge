@@ -3,6 +3,7 @@ import {
 	createProject,
 	expectInstallAndBuild,
 	expectProductionInstall,
+	runCommand,
 	withScenarioWorkspace,
 } from "../utils/harness";
 import {
@@ -35,6 +36,12 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				addons: ["lefthook"],
 				orm: "drizzle",
 			});
+
+			const git = await runCommand("git", ["init", "-q"], {
+				cwd: workspace.projectRoot,
+			});
+
+			expect(git.exitCode, git.stderr).toBe(0);
 
 			await expectInstallAndBuild(workspace, "pnpm");
 			await expectProductionInstall(workspace);
@@ -102,9 +109,9 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				await expectProductionInstall(workspace);
 
 				const env = await readGeneratedEnv(workspace.projectRoot);
-				const origin = env.WEB_URL;
+				const origin = env.APP_ORIGIN;
 				if (origin === undefined)
-					throw new Error("Missing Web Origin: WEB_URL");
+					throw new Error("Missing Web Origin: APP_ORIGIN");
 
 				const apps = await webAppsOf(workspace.projectRoot);
 				expect(apps).toHaveLength(1);

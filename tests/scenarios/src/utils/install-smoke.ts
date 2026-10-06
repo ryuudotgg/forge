@@ -367,9 +367,10 @@ export async function webAppsOf(projectRoot: string): Promise<WebApp[]> {
 		const primary =
 			stringField(metadata, "role") === "primary" || root === "apps/web";
 
+		const primaryOrigin = generatedEnv.WEB_URL ?? generatedEnv.APP_ORIGIN;
 		let port: unknown;
-		if (primary && generatedEnv.WEB_URL !== undefined) {
-			const originPort = new URL(generatedEnv.WEB_URL).port;
+		if (primary && primaryOrigin !== undefined) {
+			const originPort = new URL(primaryOrigin).port;
 			if (originPort !== "") port = Number(originPort);
 		} else if (!primary && unknownArray(secondaryApps)) {
 			const secondary = secondaryApps.find(
