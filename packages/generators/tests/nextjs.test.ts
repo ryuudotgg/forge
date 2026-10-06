@@ -145,7 +145,8 @@ describe("nextjs/base template", () => {
 		expect(pnpm.scripts).toEqual({
 			build: "pnpm with-env next build",
 			dev: "pnpm with-env next dev",
-			postinstall: "pnpm typegen",
+			postinstall:
+				"node -e \"try{require.resolve('typescript/package.json');process.exit(1)}catch{}\" || pnpm typegen",
 			pretypecheck: "pnpm with-env next typegen",
 			start: "pnpm with-env next start",
 			typecheck: "tsc --noEmit",
@@ -162,7 +163,8 @@ describe("nextjs/base template", () => {
 
 		expect(npm.scripts).toMatchObject({
 			build: "npm run with-env -- next build",
-			postinstall: "npm run typegen",
+			postinstall:
+				"node -e \"try{require.resolve('typescript/package.json');process.exit(1)}catch{}\" || npm run typegen",
 			pretypecheck: "npm run with-env -- next typegen",
 			typegen: "npm run with-env -- next typegen",
 		});

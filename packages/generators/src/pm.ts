@@ -81,3 +81,12 @@ export function pmExec(pm: PackageManagerId, command: string): string {
 			return `bunx ${command}`;
 	}
 }
+
+export function installHook(
+	tool: string,
+	command: string,
+	from?: string,
+): string {
+	const paths = from === undefined ? "" : `,{paths:['${from}']}`;
+	return `node -e "try{require.resolve('${tool}/package.json'${paths});process.exit(1)}catch{}" || ${command}`;
+}

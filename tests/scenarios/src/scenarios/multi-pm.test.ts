@@ -112,21 +112,24 @@ const prismaCells: ReadonlyArray<PrismaCell> = [
 		dbGenerate: "npm run generate --prefix ../../packages/db",
 		migrate: "npm run with-env -- prisma migrate dev",
 		pm: "npm",
-		postinstall: "npm run generate --prefix packages/db",
+		postinstall:
+			"node -e \"try{require.resolve('prisma/package.json',{paths:['packages/db']});process.exit(1)}catch{}\" || npm run generate --prefix packages/db",
 	},
 	{
 		dbDependency: "workspace:*",
 		dbGenerate: "yarn workspace @acme/db generate",
 		migrate: "yarn with-env prisma migrate dev",
 		pm: "Yarn",
-		postinstall: "yarn workspace @acme/db generate",
+		postinstall:
+			"node -e \"try{require.resolve('prisma/package.json',{paths:['packages/db']});process.exit(1)}catch{}\" || yarn workspace @acme/db generate",
 	},
 	{
 		dbDependency: "workspace:*",
 		dbGenerate: "bun --filter @acme/db generate",
 		migrate: "bun run with-env prisma migrate dev",
 		pm: "Bun",
-		postinstall: "bun --filter @acme/db generate",
+		postinstall:
+			"node -e \"try{require.resolve('prisma/package.json',{paths:['packages/db']});process.exit(1)}catch{}\" || bun --filter @acme/db generate",
 		trustedDependencies: [
 			"@prisma/engines",
 			"esbuild",

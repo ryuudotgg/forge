@@ -311,7 +311,8 @@ export default [
 		expect(scripts.scripts).toEqual({
 			build: "pnpm with-env react-router build",
 			dev: "pnpm with-env react-router dev",
-			postinstall: "pnpm typegen",
+			postinstall:
+				"node -e \"try{require.resolve('@react-router/dev/package.json');process.exit(1)}catch{}\" || pnpm typegen",
 			pretypecheck: "pnpm with-env react-router typegen",
 			start:
 				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs",
