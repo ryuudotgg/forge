@@ -1616,6 +1616,28 @@ async function expectBundledNativeWindStyles(workspace: ScenarioProject) {
 		"text-2xl",
 	])
 		expect(stylesheet, utility).toContain(utility);
+
+	return bundle;
+}
+
+async function addExpoOrpcProbeRoute(projectRoot: string) {
+	await writeFile(
+		join(projectRoot, "apps/mobile/src/app/orpc-probe.tsx"),
+		[
+			'import { Text } from "react-native";',
+			'import { client } from "../lib/orpc";',
+			"",
+			"export default function OrpcProbe() {",
+			"  return <Text onPress={() => void client.health()}>oRPC</Text>;",
+			"}",
+			"",
+		].join("\n"),
+	);
+}
+
+function expectNativeOrpcClientBundle(bundle: string) {
+	for (const pattern of [/\/api\/orpc/, /["'`]x-csrf-token["'`]/])
+		expect(pattern.test(bundle), String(pattern)).toBe(true);
 }
 
 function varyIncludesOrigin(response: Response) {
@@ -3234,7 +3256,10 @@ export async function GET() {
 					),
 				).toBe(true);
 
-				await expectBundledNativeWindStyles(workspace);
+				if (rpc === "orpc") await addExpoOrpcProbeRoute(workspace.projectRoot);
+
+				const bundle = await expectBundledNativeWindStyles(workspace);
+				if (rpc === "orpc") expectNativeOrpcClientBundle(bundle);
 			});
 		},
 		600_000,
