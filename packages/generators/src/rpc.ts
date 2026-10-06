@@ -58,7 +58,7 @@ export const rpcDescriptors: { readonly [Id in RpcProvider]: RpcDescriptor } = {
 				"react-router": true,
 				"tanstack-router": true,
 				"tanstack-start": true,
-				expo: false,
+				expo: true,
 			},
 		},
 	},

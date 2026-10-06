@@ -1,4 +1,3 @@
-import { GeneratorError } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import {
 	apiHostError,
@@ -16,16 +15,6 @@ const supportedConfig: ForgeConfig = {
 	rpc: "orpc",
 	packageManager: "pnpm",
 };
-
-const unsupportedOrpcPairs: ReadonlyArray<{
-	name: string;
-	config: ForgeConfig;
-}> = [
-	{
-		name: "Expo client",
-		config: { mobile: "expo", platforms: ["web", "mobile"] },
-	},
-];
 
 function writeContent(
 	plan: Awaited<ReturnType<typeof plannedProject>>,
@@ -179,22 +168,6 @@ describe("oRPC on Hono with TanStack Router", () => {
 			"me:",
 		);
 	});
-
-	it.each(unsupportedOrpcPairs)(
-		"rejects $name until supported",
-		async ({ config }) => {
-			const error = await plannedProject({
-				...supportedConfig,
-				...config,
-			}).catch((cause: unknown) => cause);
-
-			expect(error).toBeInstanceOf(GeneratorError);
-			expect(error).toMatchObject({
-				generatorId: "orpc",
-				reason: "framework-not-supported-yet",
-			});
-		},
-	);
 });
 
 describe("oRPC on Express and Fastify", () => {
