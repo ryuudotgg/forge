@@ -56,7 +56,7 @@ jobs:
               packages/cli/tests/* | packages/core/tests/* | packages/generators/tests/*)
                 continue
                 ;;
-              .depot/workflows/smoke.yml | package.json | .nvmrc | tooling/github/setup/* | packages/cli/* | packages/core/* | packages/generators/* | pnpm-lock.yaml | pnpm-workspace.yaml | tests/scenarios/package.json | tests/scenarios/turbo.json | tests/scenarios/vitest.config.ts | tests/scenarios/src/scenarios/install.smoke.test.ts | tests/scenarios/src/scenarios/multi-pm.smoke.test.ts | tests/scenarios/src/scenarios/registry.smoke.test.ts | tests/scenarios/src/scenarios/tarball.smoke.test.ts | tests/scenarios/src/utils/* | tests/scenarios/scripts/* | examples/registry-package/*)
+              .depot/workflows/smoke.yml | package.json | .nvmrc | tooling/github/setup/* | packages/cli/* | packages/core/* | packages/generators/* | pnpm-lock.yaml | pnpm-workspace.yaml | tests/scenarios/package.json | tests/scenarios/turbo.json | tests/scenarios/vitest.config.ts | tests/scenarios/src/scenarios/*.smoke.test.ts | tests/scenarios/src/utils/* | tests/scenarios/scripts/* | examples/registry-package/*)
                 relevant=true
                 break
                 ;;
@@ -109,7 +109,7 @@ jobs:
         run: pnpm build --filter=@ryuugg/forge
 
       - name: Smoke Test
-        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install.smoke.test.ts --reporter=default --reporter=github-actions --reporter=json --outputFile.json=.cache/install-smoke.json
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install- --maxWorkers=3 --reporter=default --reporter=github-actions --reporter=json --outputFile.json=.cache/install-smoke.json
         env:
           FORGE_SMOKE: "1"
           FORGE_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
