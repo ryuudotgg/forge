@@ -64,8 +64,6 @@ export const orpcStandaloneRecipe = defineTemplateRecipe({
 	addon: "orpc",
 	markers: {
 		SLUG: marker.required,
-		AUTH_IMPORT: marker.toggleLine("__AUTH_IMPORT__;\n"),
-		AUTH_ARG: marker.toggleInline("__AUTH_ARG__, "),
 		SERVER_ENV_BINDING: marker.required,
 		WEB_ORIGINS: marker.required,
 	},
@@ -84,8 +82,6 @@ export const orpcRequestRecipe = defineTemplateRecipe({
 	addon: "orpc",
 	markers: {
 		SLUG: marker.required,
-		AUTH_IMPORT: marker.toggleLine("__AUTH_IMPORT__;\n"),
-		AUTH_ARG: marker.toggleInline("__AUTH_ARG__, "),
 	},
 	assets: [
 		sharedAsset("server", {
@@ -105,8 +101,6 @@ export const orpcNextjsRecipe = defineTemplateRecipe({
 	addon: "orpc",
 	markers: {
 		SLUG: marker.required,
-		AUTH_IMPORT: marker.toggleLine("__AUTH_IMPORT__;\n"),
-		AUTH_ARG: marker.toggleInline("__AUTH_ARG__, "),
 	},
 	assets: [
 		variantAsset("health", {
@@ -124,14 +118,9 @@ export const orpcNextjsAdapters = deriveRecipeAdapters({
 	frameworks: [nextjsFramework],
 	readTemplate,
 	requiredSlots: ["orpc"],
-	markers: ({ config }: AdapterContext<ForgeConfig>) => {
-		const values = orpcTemplateVars(config);
-		return {
-			SLUG: values.SLUG,
-			AUTH_IMPORT: values["__AUTH_IMPORT__;\n"],
-			AUTH_ARG: values["__AUTH_ARG__, "],
-		};
-	},
+	markers: ({ config }: AdapterContext<ForgeConfig>) => ({
+		SLUG: orpcTemplateVars(config).SLUG,
+	}),
 	target: (_asset, context) => moduleTarget(context.module),
 	before: ({ config, module }) =>
 		["client.ts", "server.ts", "react.tsx"].map((name) =>
@@ -172,14 +161,9 @@ export const orpcRequestAdapters = deriveRecipeAdapters({
 	frameworks: [reactRouterFramework, tanstackStartFramework],
 	readTemplate,
 	requiredSlots: ["orpc"],
-	markers: ({ config }: AdapterContext<ForgeConfig>) => {
-		const values = orpcTemplateVars(config);
-		return {
-			SLUG: values.SLUG,
-			AUTH_IMPORT: values["__AUTH_IMPORT__;\n"],
-			AUTH_ARG: values["__AUTH_ARG__, "],
-		};
-	},
+	markers: ({ config }: AdapterContext<ForgeConfig>) => ({
+		SLUG: orpcTemplateVars(config).SLUG,
+	}),
 	target: (_asset, context) => moduleTarget(context.module),
 	content: (asset, content, { config, framework }) =>
 		asset._tag === "SlotAssetDefinition"
@@ -251,15 +235,10 @@ export const orpcStandaloneAdapters = deriveRecipeAdapters({
 	frameworks: [honoFramework, expressFramework, fastifyFramework],
 	readTemplate,
 	requiredSlots: ["orpc"],
-	markers: ({ config }: AdapterContext<ForgeConfig>) => {
-		const values = orpcTemplateVars(config);
-		return {
-			SLUG: values.SLUG,
-			AUTH_IMPORT: values["__AUTH_IMPORT__;\n"],
-			AUTH_ARG: values["__AUTH_ARG__, "],
-			...serverCorsMarkers(config),
-		};
-	},
+	markers: ({ config }: AdapterContext<ForgeConfig>) => ({
+		SLUG: orpcTemplateVars(config).SLUG,
+		...serverCorsMarkers(config),
+	}),
 	target: (_asset, context) => moduleTarget(context.module),
 	before: ({ config }) => {
 		const framework = orpcWebFramework(config);

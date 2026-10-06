@@ -1,19 +1,24 @@
 import "@tanstack/react-start";
 
-__AUTH_IMPORT__;
-import { appRouter, createORPCContext } from "@__SLUG__/orpc";
+import { appRouter, reportServerError } from "@__SLUG__/orpc";
+import { onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { SimpleCsrfProtectionHandlerPlugin } from "@orpc/server/plugins";
 import { createFileRoute } from "@tanstack/react-router";
 
 const rpcHandler = new RPCHandler(appRouter, {
   plugins: [new SimpleCsrfProtectionHandlerPlugin()],
+  interceptors: [
+    onError((error, { request }) =>
+      reportServerError(error, request.url.pathname),
+    ),
+  ],
 });
 
 async function handler({ request }: { readonly request: Request }) {
   const { matched, response } = await rpcHandler.handle(request, {
     prefix: "/api/orpc",
-    context: await createORPCContext({ __AUTH_ARG__, headers: request.headers }),
+    context: { headers: request.headers },
   });
 
   if (matched) return response;

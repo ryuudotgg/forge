@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createRouterClient, ORPCError, onError, type os } from "@orpc/server";
+import { RPCHandler } from "@orpc/server/fetch";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	apiHostError,
 	type ForgeConfig,
@@ -109,9 +116,9 @@ describe("oRPC on Hono with TanStack Router", () => {
 				usesAuth,
 			);
 
-			expect(
-				context.includes("opts.auth.api.getSession({ headers: opts.headers })"),
-			).toBe(usesAuth);
+			expect(context.includes("auth.api.getSession({ headers })")).toBe(
+				usesAuth,
+			);
 
 			expect(context).toContain('throw new ORPCError("UNAUTHORIZED")');
 			const router = writeContent(plan, "packages/orpc/src/router.ts");
@@ -124,13 +131,7 @@ describe("oRPC on Hono with TanStack Router", () => {
 			expect(route).toContain("SimpleCsrfProtectionHandlerPlugin");
 			expect(route).toContain('prefix: "/api/orpc"');
 			expect(route).toContain("c.newResponse(response.body, response)");
-			expect(route.includes('import { auth } from "@acme/auth"')).toBe(
-				usesAuth,
-			);
-
-			expect(route.includes("createORPCContext({ auth, headers:")).toBe(
-				usesAuth,
-			);
+			expect(route).toContain("context: { headers: c.req.raw.headers }");
 
 			const client = writeContent(plan, "apps/web/src/orpc/client.ts");
 			expect(client).toContain('import { env } from "../../env"');
@@ -162,8 +163,8 @@ describe("oRPC on Hono with TanStack Router", () => {
 
 		const context = writeContent(plan, "packages/orpc/src/orpc.ts");
 		expect(context).toContain('import { db } from "@acme/db/client"');
-		expect(context).toContain("return { db, headers: opts.headers, session }");
-		expect(context).toContain("const session = null;");
+		expect(context).toContain("next({ context: { db, session } })");
+		expect(context).toContain("return null;");
 		expect(writeContent(plan, "packages/orpc/src/router.ts")).not.toContain(
 			"me:",
 		);
@@ -231,21 +232,13 @@ describe("oRPC on Express and Fastify", () => {
 				expect(route).toContain("result.append(name, item)");
 				expect(route).toContain("result.set(name, value)");
 				expect(route).toContain("return result;");
-				expect(route.includes('import { auth } from "@acme/auth"')).toBe(
-					usesAuth,
-				);
-
-				expect(route).toMatch(
-					usesAuth
-						? /createORPCContext\(\{\s*auth,\s*headers:/
-						: /createORPCContext\(\{\s*headers:/,
-				);
 
 				if (backend === "express") {
 					expect(route).toContain("app.use(async (request, response, next)");
 					expect(route).toContain("handler.handle(request, response");
 					expect(route).toContain("if (!matched) next()");
 				} else {
+					expect(route).toContain("scope.removeAllContentTypeParsers()");
 					expect(route).toContain('method: ["GET", "POST"]');
 					expect(route).toContain('url: "/api/orpc/*"');
 					expect(route).toContain("handler.handle(request, reply");
@@ -491,19 +484,9 @@ describe("oRPC Next.js self host", () => {
 				expect(server).toContain("createServerCaller = cache(async () =>");
 				expect(server).toContain("const requestHeaders = await headers()");
 
-				expect(server).toContain("createRouterClient(appRouter, { context })");
+				expect(server).toContain("context: { headers: requestHeaders }");
 				expect(server).toContain("export async function createServerORPC()");
 				expect(server).not.toContain('from "./client"');
-
-				for (const content of [server, route]) {
-					expect(content.includes('import { auth } from "@acme/auth"')).toBe(
-						usesAuth,
-					);
-
-					expect(content.includes("createORPCContext({ auth, headers:")).toBe(
-						usesAuth,
-					);
-				}
 
 				expect(route).toContain("SimpleCsrfProtectionHandlerPlugin");
 				expect(route).toContain("headers: request.headers");
@@ -761,18 +744,8 @@ describe("oRPC request hosts", () => {
 
 				expect(routeContent).toContain("headers: request.headers");
 				expect(caller).toContain("createServerCaller(request: Request)");
-				expect(caller).toContain("createRouterClient(appRouter, { context })");
-				expect(caller).toContain("headers: request.headers");
-
-				for (const content of [routeContent, caller]) {
-					expect(content.includes('import { auth } from "@acme/auth"')).toBe(
-						usesAuth,
-					);
-
-					expect(content.includes("createORPCContext({ auth, headers:")).toBe(
-						usesAuth,
-					);
-				}
+				expect(caller).toContain("createRouterClient(appRouter, {");
+				expect(caller).toContain("context: { headers: request.headers }");
 
 				expect(client).toContain("RouterClient<AppRouter>");
 				expect(client).toContain(
@@ -869,14 +842,10 @@ describe("oRPC TanStack Start loaders", () => {
 
 			expect(client).toContain("createRouterClient(appRouter, {");
 			expect(client).toContain(
-				`createORPCContext({ ${usesAuth ? "auth, " : ""}headers })`,
+				"context: () => ({ headers: getRequest().headers })",
 			);
 
 			expect(client).toContain('new URL("/api/orpc", window.location.origin)');
-
-			expect(client.includes('import { auth } from "@acme/auth"')).toBe(
-				usesAuth,
-			);
 
 			expect(example).toContain('createFileRoute("/orpc-example")');
 			expect(example).toContain("loader: ");
@@ -913,6 +882,318 @@ describe("oRPC TanStack Start loaders", () => {
 		expect(
 			plan.writes.some((write) => write.path.includes("orpc-example")),
 		).toBe(false);
+	});
+});
+
+const orpcHosts = [
+	{
+		host: "Hono",
+		config: { backend: "hono", web: "tanstack-router" },
+		route: "apps/server/src/routes/orpc.ts",
+	},
+	{
+		host: "Express",
+		config: { backend: "express", web: "tanstack-router" },
+		route: "apps/server/src/routes/orpc.ts",
+	},
+	{
+		host: "Fastify",
+		config: { backend: "fastify", web: "tanstack-router" },
+		route: "apps/server/src/routes/orpc.ts",
+	},
+	{
+		host: "Next.js",
+		config: { backend: "self", web: "nextjs" },
+		route: "apps/web/app/api/orpc/[[...rest]]/route.ts",
+		caller: "apps/web/orpc/server.ts",
+	},
+	{
+		host: "React Router",
+		config: { backend: "self", web: "react-router" },
+		route: "apps/web/app/routes/api.orpc.$.ts",
+		caller: "apps/web/app/orpc/server.ts",
+	},
+	{
+		host: "TanStack Start",
+		config: { backend: "self", web: "tanstack-start" },
+		route: "apps/web/src/routes/api/orpc/$.ts",
+		caller: "apps/web/src/orpc/client.ts",
+	},
+] satisfies ReadonlyArray<{
+	host: string;
+	config: ForgeConfig;
+	route: string;
+	caller?: string;
+}>;
+
+const orpcHostCases = orpcHosts.flatMap((entry) =>
+	[false, true].map((usesAuth) => ({ ...entry, usesAuth })),
+);
+
+function plannedOrpcHost(config: ForgeConfig, usesAuth: boolean) {
+	return plannedProject({
+		...supportedConfig,
+		...config,
+		...(usesAuth
+			? ({
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+				} satisfies Partial<ForgeConfig>)
+			: {}),
+	});
+}
+
+describe("oRPC route bodies and errors", () => {
+	it("hands Fastify request bodies to oRPC unparsed beside Better Auth", async () => {
+		const plan = await plannedOrpcHost(
+			{ backend: "fastify", web: "tanstack-router" },
+			true,
+		);
+
+		const route = writeContent(plan, "apps/server/src/routes/orpc.ts");
+		const scope = route.indexOf("app.register(async (scope) => {");
+
+		expect(scope).toBeGreaterThan(-1);
+		expect(
+			route.indexOf("scope.removeAllContentTypeParsers();"),
+		).toBeGreaterThan(scope);
+
+		expect(route).toContain(
+			'scope.addContentTypeParser("*", (_request, _payload, done) =>',
+		);
+
+		expect(route).toContain("done(null, undefined)");
+		expect(route).not.toContain("parseAs");
+		expect(route).toContain("scope.route({");
+		expect(route).not.toContain("app.route(");
+		expect(writeContent(plan, "apps/server/src/routes/auth.ts")).toContain(
+			'{ parseAs: "buffer" }',
+		);
+	});
+
+	it.each(orpcHostCases)(
+		"lets oRPC encode and log $host context failures with auth: $usesAuth",
+		async ({ config, route, usesAuth }) => {
+			const plan = await plannedOrpcHost(config, usesAuth);
+			const content = writeContent(plan, route);
+
+			expect(content).not.toContain("createORPCContext");
+			expect(content).toMatch(/context: \{\s*headers: /);
+			expect(content).toContain(
+				'import { appRouter, reportServerError } from "@acme/orpc"',
+			);
+
+			expect(content).toContain('import { onError } from "@orpc/server"');
+			expect(content).toMatch(
+				/interceptors: \[\s*onError\(\(error, \{ request \}\) =>\s*reportServerError\(error, request\.url\.pathname\),?\s*\),?\s*\]/,
+			);
+
+			const orpc = writeContent(plan, "packages/orpc/src/orpc.ts");
+			expect(orpc).toContain(
+				"export function reportServerError(error: unknown, path: string)",
+			);
+
+			expect(orpc).toContain(
+				`console.error(\`❌ oRPC failed on \${path}:\`, error)`,
+			);
+
+			expect(orpc).toMatch(
+				/\} catch \(error\) \{\s*if \(error instanceof ORPCError && error\.status < 500\) throw error;\s*reportServerError\(error, path\.join\("\."\)\);\s*throw reported\(error\);/,
+			);
+
+			expect(writeContent(plan, "packages/orpc/src/index.ts")).toContain(
+				'export { protectedProcedure, publicProcedure, reportServerError } from "./orpc";\n',
+			);
+		},
+	);
+
+	it.each(orpcHostCases)(
+		"resolves the session only inside matched $host procedures with auth: $usesAuth",
+		async ({ config, route, caller, usesAuth }) => {
+			const plan = await plannedOrpcHost(config, usesAuth);
+			const orpc = writeContent(plan, "packages/orpc/src/orpc.ts");
+			const middleware = orpc.indexOf(
+				"export const publicProcedure = os\n  .$context<{ headers: Headers }>()\n  .use(async ({ context, path, next }) => {",
+			);
+
+			expect(middleware).toBeGreaterThan(-1);
+			expect(orpc).not.toContain("createORPCContext");
+			expect(orpc.match(/getSession\(/g)?.length).toBe(
+				usesAuth ? 1 : undefined,
+			);
+
+			expect(orpc).toContain(
+				usesAuth ? "return auth.api.getSession({ headers });" : "return null;",
+			);
+
+			expect(
+				orpc.indexOf(
+					"const session = await resolveSession(context.headers);",
+					middleware,
+				),
+			).toBeGreaterThan(middleware);
+
+			expect(orpc.match(/resolveSession\(/g)).toHaveLength(2);
+
+			expect(orpc.includes('import { auth } from "@acme/auth"')).toBe(usesAuth);
+
+			expect(orpc).toContain(
+				`return await next({ context: { ${usesAuth ? "db, " : ""}session } });`,
+			);
+
+			expect(writeContent(plan, "packages/orpc/src/index.ts")).not.toContain(
+				"createORPCContext",
+			);
+
+			for (const path of caller === undefined ? [route] : [route, caller]) {
+				const content = writeContent(plan, path);
+				expect(content, path).not.toContain("getSession");
+				expect(content, path).not.toContain("createORPCContext");
+				expect(content, path).not.toContain('from "@acme/auth"');
+			}
+
+			if (caller === undefined) return;
+
+			expect(writeContent(plan, caller)).toMatch(
+				caller.endsWith("client.ts")
+					? /context: \(\) => \(\{ headers: getRequest\(\)\.headers \}\)/
+					: /createRouterClient\(appRouter, \{\s*context: \{ headers: /,
+			);
+		},
+	);
+});
+
+const renderedOrpcDirectories: Array<string> = [];
+
+afterEach(async () => {
+	vi.restoreAllMocks();
+	await Promise.all(
+		renderedOrpcDirectories
+			.splice(0)
+			.map((directory) => rm(directory, { recursive: true, force: true })),
+	);
+});
+
+async function renderedOrpcPackage() {
+	const plan = await plannedProject(supportedConfig);
+	const directory = await mkdtemp(join(tmpdir(), "forge-orpc-"));
+	const path = join(directory, "orpc.ts");
+	const server = pathToFileURL(
+		createRequire(import.meta.url).resolve("@orpc/server"),
+	).href;
+
+	renderedOrpcDirectories.push(directory);
+	await writeFile(
+		path,
+		writeContent(plan, "packages/orpc/src/orpc.ts").replace(
+			'from "@orpc/server"',
+			`from ${JSON.stringify(server)}`,
+		),
+	);
+
+	const rendered: {
+		publicProcedure: ReturnType<typeof os.$context<{ headers: Headers }>>;
+		reportServerError: (error: unknown, path: string) => void;
+	} = await import(path);
+
+	return rendered;
+}
+
+function failingRouter(
+	publicProcedure: ReturnType<typeof os.$context<{ headers: Headers }>>,
+	error: unknown,
+) {
+	return { health: publicProcedure.handler(() => Promise.reject(error)) };
+}
+
+async function postHealth(
+	handler: RPCHandler<{ headers: Headers }>,
+): Promise<Response> {
+	const request = new Request("http://localhost/api/orpc/health", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ json: null }),
+	});
+
+	const { response } = await handler.handle(request, {
+		prefix: "/api/orpc",
+		context: { headers: request.headers },
+	});
+
+	if (response === undefined) throw new Error("Unmatched Request: health");
+	return response;
+}
+
+describe("generated oRPC error reporting", () => {
+	it.each([
+		{
+			name: "a shared error",
+			error: new Error("Session store unreachable"),
+			body: {
+				defined: false,
+				code: "INTERNAL_SERVER_ERROR",
+				status: 500,
+				message: "Internal server error",
+			},
+		},
+		{
+			name: "a shared 503",
+			error: new ORPCError("SERVICE_UNAVAILABLE", { message: "Paused" }),
+			body: {
+				defined: false,
+				code: "SERVICE_UNAVAILABLE",
+				status: 503,
+				message: "Paused",
+			},
+		},
+	])("logs $name once per request, every request", async ({ error, body }) => {
+		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		const { publicProcedure, reportServerError } = await renderedOrpcPackage();
+		const router = failingRouter(publicProcedure, error);
+		const handler = new RPCHandler(router, {
+			interceptors: [
+				onError((thrown, { request }) =>
+					reportServerError(thrown, request.url.pathname),
+				),
+			],
+		});
+
+		for (const attempt of [1, 2]) {
+			const response = await postHealth(handler);
+
+			expect(response.status).toBe(body.status);
+			expect(await response.json()).toEqual({ json: body });
+			expect(logged).toHaveBeenCalledTimes(attempt);
+			expect(logged).toHaveBeenLastCalledWith(
+				"❌ oRPC failed on health:",
+				error,
+			);
+		}
+
+		const client = createRouterClient(router, {
+			context: () => ({ headers: new Headers() }),
+		});
+
+		for (const attempt of [3, 4]) {
+			await expect(client.health()).rejects.toMatchObject({
+				code: body.code,
+				cause: error,
+			});
+
+			expect(logged).toHaveBeenCalledTimes(attempt);
+		}
+	});
+
+	it("leaves client errors unlogged", async () => {
+		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		const { publicProcedure } = await renderedOrpcPackage();
+		const handler = new RPCHandler(
+			failingRouter(publicProcedure, new ORPCError("UNAUTHORIZED")),
+		);
+
+		expect((await postHealth(handler)).status).toBe(401);
+		expect(logged).not.toHaveBeenCalled();
 	});
 });
 

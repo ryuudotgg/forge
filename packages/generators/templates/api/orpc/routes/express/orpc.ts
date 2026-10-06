@@ -1,5 +1,5 @@
-__AUTH_IMPORT__;
-import { appRouter, createORPCContext } from "@__SLUG__/orpc";
+import { appRouter, reportServerError } from "@__SLUG__/orpc";
+import { onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/node";
 import { SimpleCsrfProtectionHandlerPlugin } from "@orpc/server/plugins";
 import type { Express, Request } from "express";
@@ -19,6 +19,11 @@ function headersFromRequest(headers: Request["headers"]) {
 
 const handler = new RPCHandler(appRouter, {
   plugins: [new SimpleCsrfProtectionHandlerPlugin()],
+  interceptors: [
+    onError((error, { request }) =>
+      reportServerError(error, request.url.pathname),
+    ),
+  ],
 });
 
 export function registerOrpcRoutes(app: Express) {
@@ -27,7 +32,7 @@ export function registerOrpcRoutes(app: Express) {
 
     const { matched } = await handler.handle(request, response, {
       prefix: "/api/orpc",
-      context: await createORPCContext({ __AUTH_ARG__, headers: headersFromRequest(request.headers) }),
+      context: { headers: headersFromRequest(request.headers) },
     });
 
     if (!matched) next();
