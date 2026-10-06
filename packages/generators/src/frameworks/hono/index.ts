@@ -171,9 +171,6 @@ function buildContributions(config: ForgeConfig) {
 			{ ...deps.hono, type: "dependencies" },
 			{ ...deps.t3OssEnvCore, type: "dependencies" },
 			{ ...deps.zod, type: "dependencies" },
-			...(config.orm === "drizzle" && config.database === "sqlite"
-				? [{ ...deps.libsqlClient, type: "dependencies" as const }]
-				: []),
 			{
 				name: `@${slug}/tsconfig`,
 				version: "workspace:*",
