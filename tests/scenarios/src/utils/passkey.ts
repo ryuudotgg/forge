@@ -62,6 +62,7 @@ export async function expectPasskeyCeremony(
 	origin: string,
 	sessionCookie: string,
 	output: () => string,
+	expectedRpID = new URL(origin).hostname,
 ) {
 	const request = (path: string, cookie: string, body?: unknown) =>
 		fetch(`${serverOrigin}/api/auth/${path}`, {
@@ -103,7 +104,7 @@ export async function expectPasskeyCeremony(
 	const rpID = stringField(record(registration.rp), "id");
 	const userHandle = stringField(record(registration.user), "id");
 	const registrationCookie = `${sessionCookie}; ${responseCookies(registrationResponse)}`;
-	expect(rpID).toBe(new URL(origin).hostname);
+	expect(rpID).toBe(expectedRpID);
 
 	const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 	const jwk = keys.publicKey.export({ format: "jwk" });

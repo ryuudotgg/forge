@@ -5,6 +5,7 @@ import {
 	authPluginRequirement,
 	authPluginTables,
 	resolveAuthPlugins,
+	twoFactorSkippingMethods,
 } from "../src/auth/plugins";
 import type { AuthPlugin, ForgeConfig } from "../src/config";
 import { plannedProject } from "./planner-harness";
@@ -86,6 +87,32 @@ describe("two-factor and organization", () => {
 				authPlugins: ["organization"],
 			}),
 		).toEqual(["organization"]);
+	});
+
+	it("names the email sign-ins that skip two-factor", () => {
+		expect(
+			twoFactorSkippingMethods({
+				...baseConfig,
+				authMethods: ["email-password", "magic-link", "email-otp"],
+				authPlugins: ["two-factor"],
+			}),
+		).toEqual(["magic-link", "email-otp"]);
+
+		expect(
+			twoFactorSkippingMethods({
+				...baseConfig,
+				authMethods: ["email-password", "email-otp"],
+				authPlugins: ["organization"],
+			}),
+		).toEqual([]);
+
+		expect(
+			twoFactorSkippingMethods({
+				...baseConfig,
+				authMethods: ["email-password", "passkey"],
+				authPlugins: ["two-factor"],
+			}),
+		).toEqual([]);
 	});
 
 	describe.each(variants)("$name", (variant) => {

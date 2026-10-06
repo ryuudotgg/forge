@@ -1,4 +1,22 @@
+import { createHash } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { expect } from "vitest";
+
+function storedHash(value: string) {
+	return createHash("sha256").update(value).digest("base64url");
+}
+
+function verificationValues(databasePath: string, identifier: string) {
+	const database = new DatabaseSync(databasePath, { readOnly: true });
+	try {
+		return database
+			.prepare("SELECT value FROM verifications WHERE identifier = ?")
+			.all(identifier)
+			.map((row) => row.value);
+	} finally {
+		database.close();
+	}
+}
 
 async function expectEmailSession(
 	response: Response,
@@ -26,6 +44,7 @@ export async function expectEmailAuth(
 	serverOrigin: string,
 	origin: string,
 	output: () => string,
+	databasePath: string,
 ) {
 	const headers = { "Content-Type": "application/json", Origin: origin };
 	const otpEmail = "otp-smoke@example.com";
@@ -50,6 +69,11 @@ export async function expectEmailAuth(
 	}
 
 	if (otp === undefined) throw new Error(`Missing Email OTP: ${output()}`);
+
+	expect(
+		verificationValues(databasePath, `sign-in-otp-${otpEmail}`),
+		"the OTP must be stored hashed",
+	).toEqual([`${storedHash(otp)}:0`]);
 
 	const signIn = await fetch(`${serverOrigin}/api/auth/sign-in/email-otp`, {
 		body: JSON.stringify({ email: otpEmail, otp }),
@@ -87,6 +111,16 @@ export async function expectEmailAuth(
 
 	if (magicUrl === undefined)
 		throw new Error(`Missing Magic Link: ${output()}`);
+
+	const token = new URL(magicUrl).searchParams.get("token");
+	if (token === null) throw new Error(`Missing Magic Link Token: ${magicUrl}`);
+
+	expect(
+		verificationValues(databasePath, `magic-link:${storedHash(token)}`),
+		"the magic link token must be stored hashed",
+	).toHaveLength(1);
+
+	expect(verificationValues(databasePath, `magic-link:${token}`)).toEqual([]);
 
 	const verify = await fetch(magicUrl, {
 		headers: { Origin: origin },

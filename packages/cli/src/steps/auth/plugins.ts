@@ -1,15 +1,17 @@
 import { isCancel, log, multiselect } from "@clack/prompts";
 import {
+	type AuthMethod,
 	type AuthPlugin,
 	authMethods,
 	authPluginRequirement,
 	authPlugins,
+	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
 } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { choiceOptions, unsupportedMessage } from "../../utils/choices";
-import { listAnd } from "../../utils/list";
+import { listAnd, listOr } from "../../utils/list";
 import { defineStep, SKIP } from "../types";
 
 export const authPluginsSchema = Schema.Array(
@@ -43,6 +45,16 @@ export function authPluginRequirementMessage(
 	);
 
 	return `${labels} ${plugins.length === 1 ? "needs" : "need"} ${methods.size === 1 ? "this sign-in method" : "these sign-in methods"}: ${listAnd.format(methods)}.`;
+}
+
+export function twoFactorSkippedMessage(methods: ReadonlyArray<AuthMethod>) {
+	const labels = listOr.format(
+		methods.map((method) => authMethods.label(method)),
+	);
+
+	return methods.length === 1
+		? `Two-factor doesn't work with ${labels}, because that sign-in skips the second factor.`
+		: `Two-factor doesn't work with ${labels}, because those sign-ins skip the second factor.`;
 }
 
 const authPluginsStep = defineStep<typeof authPluginsSchema.Type>({
@@ -83,10 +95,21 @@ const authPluginsStep = defineStep<typeof authPluginsSchema.Type>({
 				authPlugins: selection,
 			});
 
-			if (missing.length === 0) return selection;
+			if (missing.length !== 0) {
+				log.warn(authPluginRequirementMessage(missing));
+				initialValues = selection.filter((plugin) => !missing.includes(plugin));
+				continue;
+			}
 
-			log.warn(authPluginRequirementMessage(missing));
-			initialValues = selection.filter((plugin) => !missing.includes(plugin));
+			const skipping = twoFactorSkippingMethods({
+				...config,
+				authPlugins: selection,
+			});
+
+			if (skipping.length === 0) return selection;
+
+			log.warn(twoFactorSkippedMessage(skipping));
+			initialValues = selection.filter((plugin) => plugin !== "two-factor");
 		}
 	},
 });

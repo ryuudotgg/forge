@@ -360,6 +360,32 @@ describe("auth plugins step", () => {
 		);
 	});
 
+	it("removes two-factor beside email sign-ins and retains organization", async () => {
+		promptMocks.multiselect
+			.mockResolvedValueOnce(["two-factor", "organization"])
+			.mockResolvedValueOnce(["organization"]);
+
+		await expect(
+			authPluginsStep.execute(
+				{
+					authentication: "better-auth",
+					authMethods: ["email-password", "magic-link"],
+				},
+				true,
+			),
+		).resolves.toEqual(["organization"]);
+
+		expect(promptMocks.logWarn).toHaveBeenCalledOnce();
+		expect(promptMocks.logWarn).toHaveBeenCalledWith(
+			"Two-factor doesn't work with Magic link, because that sign-in skips the second factor.",
+		);
+
+		expect(promptMocks.multiselect).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ initialValues: ["organization"] }),
+		);
+	});
+
 	it("cancels after rejecting two-factor without passwords", async () => {
 		promptMocks.multiselect
 			.mockResolvedValueOnce(["two-factor"])

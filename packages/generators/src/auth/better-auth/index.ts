@@ -15,7 +15,7 @@ import {
 	apiHostError,
 	apiHostFramework,
 } from "../../api-host";
-import type { ForgeConfig } from "../../config";
+import { authMethods, type ForgeConfig } from "../../config";
 import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
 import {
@@ -29,8 +29,8 @@ import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { catalogRef } from "../../versions";
 import { webAppInstances } from "../../web-apps";
 import {
+	authEmailMethods,
 	authSocialProviders,
-	authUsesEmail,
 	authUsesPasskey,
 } from "../methods";
 import {
@@ -42,6 +42,8 @@ import {
 } from "../plugins";
 import { invitationPageContributions } from "./invitation-page";
 import { renderBetterAuthTemplate, renderSecondaryAuthClient } from "./shared";
+
+const listAnd = new Intl.ListFormat("en", { type: "conjunction" });
 
 const betterAuthConsumer: ApiHostConsumer = {
 	id: "better-auth",
@@ -78,8 +80,11 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 		if (config.orm === undefined)
 			throw new Error("You need to add an ORM before you can use Better Auth.");
 
-		if (authUsesEmail(config) && config.emailProvider === undefined)
-			throw new Error("Email Provider Required: email-otp and magic-link");
+		const emailMethods = authEmailMethods(config);
+		if (emailMethods.length > 0 && config.emailProvider === undefined)
+			throw new Error(
+				`${listAnd.format(emailMethods.map((method) => authMethods.label(method)))} ${emailMethods.length === 1 ? "needs" : "need"} an email provider.`,
+			);
 
 		const failure = apiHostError(config, betterAuthConsumer, frameworks);
 		if (failure !== undefined) return Effect.fail(failure);
