@@ -309,7 +309,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 					? "react-router dev"
 					: `react-router dev --port ${instance.port}`,
 			),
-			postinstall: installHook(pmRun(pm, "typegen")),
+			postinstall: installHook("@react-router/dev", pmRun(pm, "typegen")),
 			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
 			start:
 				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- react-router-serve ./build/server/index.js",

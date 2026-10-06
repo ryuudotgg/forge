@@ -269,7 +269,8 @@ export default config;
 			build: "pnpm with-env vite build",
 			dev: "pnpm with-env vite dev --port 3000",
 			"generate-routes": "tsr generate",
-			postinstall: "pnpm generate-routes || exit 0",
+			postinstall:
+				"node -e \"try{require.resolve('@tanstack/router-cli/package.json');process.exit(1)}catch{}\" || pnpm generate-routes",
 			pretypecheck: "pnpm generate-routes",
 			preview: "pnpm with-env vite preview",
 			start:

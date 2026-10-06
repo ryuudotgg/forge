@@ -49,7 +49,7 @@ const lefthook = defineAddon<ForgeConfig, "lefthook">({
 				{ ...deps.lefthook, type: "devDependencies" },
 			]),
 			surfaceScripts(projectTarget(), "rootPackageJson", {
-				prepare: installHook("lefthook install"),
+				prepare: installHook("lefthook", "lefthook install"),
 			}),
 		];
 	},

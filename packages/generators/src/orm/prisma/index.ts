@@ -289,7 +289,9 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			// gitignored, so a fresh checkout has to regenerate it on install.
 			surfaceScripts(projectTarget(), "rootPackageJson", {
 				postinstall: installHook(
+					"prisma",
 					pmRunIn(pm, { name: `@${slug}/db`, path: "packages/db" }, "generate"),
+					"packages/db",
 				),
 			}),
 		];

@@ -442,6 +442,11 @@ export async function expectProductionInstall(workspace: ScenarioProject) {
 		result.exitCode,
 		`Production Install Failed: code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
 	).toBe(0);
+
+	expect(
+		await pathExists(join(workspace.projectRoot, "node_modules/turbo")),
+		"Production Install Kept Dev Tools: node_modules/turbo",
+	).toBe(false);
 }
 
 export async function expectInstallBuildAndTypecheck(

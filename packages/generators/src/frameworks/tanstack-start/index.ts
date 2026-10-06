@@ -267,7 +267,10 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			build: pmRun(pm, "with-env", "vite build"),
 			dev: pmRun(pm, "with-env", `vite dev --port ${instance.port}`),
 			"generate-routes": "tsr generate",
-			postinstall: installHook(pmRun(pm, "generate-routes")),
+			postinstall: installHook(
+				"@tanstack/router-cli",
+				pmRun(pm, "generate-routes"),
+			),
 			pretypecheck: pmRun(pm, "generate-routes"),
 			preview: pmRun(pm, "with-env", "vite preview"),
 			start:

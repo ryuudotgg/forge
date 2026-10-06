@@ -829,7 +829,8 @@ pre-commit:
 		expect(scripts).toHaveLength(1);
 		expect(scripts[0]?.surface).toBe("rootPackageJson");
 		expect(scripts[0]?.scripts).toEqual({
-			prepare: "lefthook install || exit 0",
+			prepare:
+				"node -e \"try{require.resolve('lefthook/package.json');process.exit(1)}catch{}\" || lefthook install",
 		});
 
 		expect(projectDependencySurface(contributions).dependencies).toEqual([

@@ -181,7 +181,8 @@ export const db = new PrismaClient({ adapter });
 			expect(installs).not.toContain("drizzle");
 
 			expect(rootPackageJson.scripts).toMatchObject({
-				postinstall: "pnpm --filter @acme/db run generate || exit 0",
+				postinstall:
+					"node -e \"try{require.resolve('prisma/package.json',{paths:['packages/db']});process.exit(1)}catch{}\" || pnpm --filter @acme/db run generate",
 			});
 
 			expect(web.scripts).toMatchObject({

@@ -262,7 +262,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 				"with-env",
 				instance.primary ? "next dev" : `next dev --port ${instance.port}`,
 			),
-			postinstall: installHook(pmRun(pm, "typegen")),
+			postinstall: installHook("typescript", pmRun(pm, "typegen")),
 			pretypecheck: pmRun(pm, "with-env", "next typegen"),
 			start: pmRun(
 				pm,

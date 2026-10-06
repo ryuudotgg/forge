@@ -82,6 +82,11 @@ export function pmExec(pm: PackageManagerId, command: string): string {
 	}
 }
 
-export function installHook(command: string): string {
-	return `${command} || exit 0`;
+export function installHook(
+	tool: string,
+	command: string,
+	from?: string,
+): string {
+	const paths = from === undefined ? "" : `,{paths:['${from}']}`;
+	return `node -e "try{require.resolve('${tool}/package.json'${paths});process.exit(1)}catch{}" || ${command}`;
 }
