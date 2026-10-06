@@ -817,7 +817,7 @@ async function expectStartRefusal(projectRoot: string, variable: string) {
 		const server = spawn("pnpm", ["run", "start"], {
 			cwd: join(projectRoot, "apps/server"),
 			detached: true,
-			env: { ...process.env, ...scriptEnvironment({}) },
+			env: { ...process.env, ...scriptEnvironment({ WEB_URL: undefined }) },
 		});
 
 		let output = "";
@@ -894,7 +894,7 @@ export async function expectProductionOriginsRequired(projectRoot: string) {
 
 	await withGeneratedServer(
 		projectRoot,
-		{ CI: "true", PORT: "3001" },
+		{ CI: "true", PORT: "3001", WEB_URL: undefined },
 		serverOrigin,
 		async () => {
 			expect(
