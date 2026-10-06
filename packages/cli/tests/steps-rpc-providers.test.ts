@@ -20,9 +20,8 @@ vi.mock("@ryuugg/generators", async (importOriginal) => {
 		rpcProviders: {
 			...original.rpcProviders,
 			ids: ["trpc", "orpc", "fake"],
-			availableIds: ["trpc"],
-			available: (id: string) => id === "trpc",
-			accepted: (id: string) => id === "trpc" || id === "orpc",
+			availableIds: ["trpc", "orpc"],
+			available: (id: string) => id !== "fake",
 			label: (id: "trpc" | "orpc" | "fake") =>
 				id === "fake" ? "Fake RPC" : original.rpcProviders.label(id),
 		},
@@ -30,18 +29,18 @@ vi.mock("@ryuugg/generators", async (importOriginal) => {
 });
 
 describe("rpc step with an unavailable provider", () => {
-	it("accepts the preview provider from config without prompting", async () => {
+	it("accepts oRPC from config without prompting", async () => {
 		expect(Schema.decodeUnknownSync(rpcSchema)("orpc")).toBe("orpc");
 		await expect(rpcStep.execute({ rpc: "orpc" }, false)).resolves.toBe("orpc");
 	});
 
-	it("requires an API host for preview oRPC on TanStack Router", () => {
+	it("requires an API host for oRPC on TanStack Router", () => {
 		expect(() =>
 			rpcStep.validate?.("orpc", { backend: "self", web: "tanstack-router" }),
 		).toThrow(expect.objectContaining({ reason: "api-host-required" }));
 	});
 
-	it("accepts preview oRPC on a Next.js self host", () => {
+	it("accepts oRPC on a Next.js self host", () => {
 		expect(() =>
 			rpcStep.validate?.("orpc", { backend: "self", web: "nextjs" }),
 		).not.toThrow();
@@ -58,6 +57,7 @@ describe("rpc step with an unavailable provider", () => {
 			message: "Do you want to use an RPC API with Next.js?",
 			options: [
 				{ label: "tRPC", value: "trpc" },
+				{ label: "oRPC", value: "orpc" },
 				{ label: "None", value: "none" },
 			],
 		});

@@ -28,6 +28,7 @@ const visibleAddonIds = [
 	"gitignore",
 	"lefthook",
 	"nativewind",
+	"orpc",
 	"oxc",
 	"pnpm",
 	"prisma",
@@ -239,7 +240,7 @@ describe("catalog", () => {
 		}
 	});
 
-	it("marks definition-backed entries as available except preview choices", async () => {
+	it("marks definition-backed entries as available", async () => {
 		const catalog = await listCatalogEntries();
 		const { registry } = await loadDefinitionRegistry();
 		const definitionIds = new Set([
@@ -248,20 +249,11 @@ describe("catalog", () => {
 			...registry.templates.map((definition) => definition.id),
 		]);
 
-		for (const entry of catalog) {
-			const rpc = rpcProviders.normalize(entry.id);
-			const preview =
-				rpc !== undefined &&
-				rpcProviders.accepted(rpc) &&
-				!rpcProviders.available(rpc);
-
-			expect(entry.available, entry.id).toBe(
-				definitionIds.has(entry.id) && !preview,
-			);
-		}
+		for (const entry of catalog)
+			expect(entry.available, entry.id).toBe(definitionIds.has(entry.id));
 	});
 
-	it("keeps oRPC announced after loading the definition-backed catalog", async () => {
+	it("makes oRPC available in the definition-backed catalog", async () => {
 		const loaded = await loadDefinitionRegistry();
 
 		expect(loaded.registry.addons.some((addon) => addon.id === "orpc")).toBe(
@@ -269,7 +261,7 @@ describe("catalog", () => {
 		);
 
 		expect(loaded.catalog.filter((entry) => entry.id === "orpc")).toMatchObject(
-			[{ available: false, name: "oRPC", kind: "addon" }],
+			[{ available: true, name: "oRPC", kind: "addon" }],
 		);
 	});
 

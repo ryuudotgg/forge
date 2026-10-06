@@ -256,6 +256,7 @@ export const firstPartyCatalog = [
 	),
 	addonCatalogEntry(tailwind, tailwindMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(trpc, trpcMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(orpc, orpcMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(drizzle, drizzleMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(prisma, prismaMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(
@@ -319,7 +320,4 @@ export const firstPartyCatalog = [
 		.map((id) =>
 			announcedCatalogEntry("addon", id, rpcProviders.label(id), "addon"),
 		),
-	...(rpcProviders.available("orpc")
-		? [addonCatalogEntry(orpc, orpcMetadata, firstPartyRegistry.adapters)]
-		: []),
 ] as const satisfies ReadonlyArray<CatalogEntry>;

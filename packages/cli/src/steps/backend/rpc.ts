@@ -7,13 +7,13 @@ import {
 } from "@ryuugg/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
-import { acceptedChoice, type Choices } from "../../utils/choices";
+import { availableChoice, type Choices } from "../../utils/choices";
 import { listAnd } from "../../utils/list";
 import { webAppLabels } from "../../utils/web-apps";
 import { defineStep, SKIP, type Skip } from "../types";
 
 export const rpcSchema = Schema.Literals(rpcProviders.ids).pipe(
-	Schema.check(Schema.makeFilter(acceptedChoice(rpcProviders))),
+	Schema.check(Schema.makeFilter(availableChoice(rpcProviders))),
 );
 
 function rpcOptions<Id extends string>(
