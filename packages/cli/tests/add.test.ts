@@ -619,27 +619,39 @@ describe("add command", () => {
 		}
 	});
 
-	it("refuses preview oRPC", async () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
-			throw new Error(`exit:${code ?? 0}`);
-		});
+	it("adds oRPC to a Hono host with TanStack Router", async () => {
+		const host: DiscoveredModule = {
+			framework: "hono",
+			id: "hono-host",
+			packageName: "@acme/server",
+			root: "apps/server",
+			slots: { orpc: "src/index.ts" },
+			template: { id: "hono/base", version: 1 },
+			type: "app",
+		};
 
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				config: { slug: "acme", backend: "hono", web: "tanstack-router" },
+				modules: [host],
 			}),
 		);
 
-		try {
-			await expect(runAdd("orpc", {})).rejects.toThrow("exit:1");
-			expect(promptMocks.logError).toHaveBeenCalledWith(
-				'"oRPC" isn\'t available yet.',
-			);
+		await runAdd("orpc", {});
 
-			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
-		} finally {
-			exit.mockRestore();
-		}
+		expect(promptMocks.logError).not.toHaveBeenCalled();
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", backend: "hono", web: "tanstack-router", rpc: "orpc" },
+			[
+				{
+					definitionId: "orpc",
+					targets: [{ kind: "module", moduleId: host.id }],
+				},
+			],
+			undefined,
+			undefined,
+		);
 	});
 
 	it("installs, registers, reloads, and adds a single-addon registry", async () => {

@@ -100,7 +100,7 @@ const orpc = defineAddon<ForgeConfig, "orpc">({
 export const orpcMetadata = {
 	description:
 		"Adds oRPC server and client files to compatible Forge application targets.",
-	experimental: true,
+	experimental: false,
 	hidden: false,
 	id: "orpc",
 	keywords: ["api", "rpc", "orpc", "typescript"],

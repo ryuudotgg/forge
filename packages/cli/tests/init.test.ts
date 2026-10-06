@@ -1184,6 +1184,53 @@ describe("init command", () => {
 		});
 	}, 30_000);
 
+	it("adopts detected oRPC and installs it on the web host with yes", async () => {
+		await withTempDir("init-detected-orpc", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "packages/orpc/package.json"), {
+				dependencies: { "@orpc/server": "^1.0.0" },
+				name: "@acme/orpc",
+			});
+
+			await writeText(
+				join(directory, "packages/orpc/src/router.ts"),
+				"export const router = {};\n",
+			);
+
+			await writeJson(join(directory, "apps/web/package.json"), {
+				dependencies: {
+					"@acme/orpc": "workspace:*",
+					next: "^16.0.0",
+					react: "^19.0.0",
+				},
+				name: "@acme/web",
+				private: true,
+			});
+
+			await runInit({ yes: true }, directory);
+			const manifest = await Effect.runPromise(
+				State.readManifest(directory).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(manifest.config.rpc).toBe("orpc");
+			expect(Object.values(manifest.modules)).toContainEqual(
+				expect.objectContaining({ root: "packages/orpc" }),
+			);
+
+			const host = Object.entries(manifest.modules).find(
+				([, module]) => module.root === "apps/web",
+			);
+
+			expect(host).toBeDefined();
+			expect(manifest.installs).toContainEqual(
+				expect.objectContaining({
+					definitionId: "orpc",
+					targets: [{ kind: "module", moduleId: host?.[0] }],
+				}),
+			);
+		});
+	}, 30_000);
+
 	it.each([
 		["yes", { yes: true }],
 		["a config file", { config: "forge.init.json" }],

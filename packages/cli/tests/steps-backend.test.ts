@@ -275,6 +275,7 @@ describe("rpc step", () => {
 			message: "Do you want to use an RPC API with Next.js?",
 			options: [
 				{ label: "tRPC", value: "trpc" },
+				{ label: "oRPC", value: "orpc" },
 				{ label: "None", value: "none" },
 			],
 		});
@@ -289,6 +290,7 @@ describe("rpc step", () => {
 			message: "Do you want to use an RPC API?",
 			options: [
 				{ label: "tRPC", value: "trpc" },
+				{ label: "oRPC", value: "orpc" },
 				{ label: "None", value: "none" },
 			],
 		});
