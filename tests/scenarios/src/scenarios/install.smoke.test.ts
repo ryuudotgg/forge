@@ -1228,11 +1228,14 @@ async function bundleText(root: string) {
 	return contents.join("\n");
 }
 
-async function expectServerOnlyCodeOutOfClientBundle(projectRoot: string) {
-	const dist = join(projectRoot, "apps/web/dist");
-	const client = await bundleText(join(dist, "client"));
-	const server = await bundleText(join(dist, "server"));
-	for (const marker of ["AUTH_SECRET", "DATABASE_URL", "@libsql"]) {
+async function expectServerOnlyCodeOutOfClientBundle(
+	bundles: { readonly client: string; readonly server: string },
+	markers: ReadonlyArray<string>,
+) {
+	const client = await bundleText(bundles.client);
+	const server = await bundleText(bundles.server);
+
+	for (const marker of markers) {
 		expect(server, marker).toContain(marker);
 		expect(client, marker).not.toContain(marker);
 	}
@@ -1642,7 +1645,14 @@ async function expectSelfHostedRpc(
 		await waitForOutput(output, "Context Probe Failed", rendered);
 		expect(output().slice(rendered)).toContain("❌ oRPC failed on me:");
 
-		await expectServerOnlyCodeOutOfClientBundle(projectRoot);
+		await expectServerOnlyCodeOutOfClientBundle(
+			{
+				client: join(projectRoot, "apps/web/dist/client"),
+				server: join(projectRoot, "apps/web/dist/server"),
+			},
+			["AUTH_SECRET", "DATABASE_URL", "@libsql"],
+		);
+
 		await expectBrowserOrpcClientBundle(projectRoot);
 	} finally {
 		await server.stop();
@@ -3084,6 +3094,20 @@ export async function GET() {
 
 			await injectOrpcContextProbe(workspace.projectRoot);
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectServerOnlyCodeOutOfClientBundle(
+				{
+					client: join(workspace.projectRoot, "apps/web/.next/static"),
+					server: join(workspace.projectRoot, "apps/web/.next/server"),
+				},
+				[
+					"AUTH_SECRET",
+					"DATABASE_URL",
+					"createRouterClient",
+					"getSession",
+					"@libsql",
+				],
+			);
+
 			await expectSelfHostedRpc(workspace.projectRoot, {
 				web: "nextjs",
 				rpc: "orpc",
