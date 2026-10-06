@@ -1,5 +1,5 @@
 /** @jsxRuntime automatic */
-import { Heading, Text } from "@react-email/components";
+import { Heading, Text } from "react-email";
 import { Layout } from "../layout";
 
 interface VerificationCodeProps {

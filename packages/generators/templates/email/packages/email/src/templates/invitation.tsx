@@ -1,5 +1,5 @@
 /** @jsxRuntime automatic */
-import { Button, Heading, Text } from "@react-email/components";
+import { Button, Heading, Text } from "react-email";
 import { Layout } from "../layout";
 
 interface InvitationProps {

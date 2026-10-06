@@ -188,7 +188,7 @@ const email = defineAddon<ForgeConfig, "email">({
 			}),
 			surfaceDependencies(ensuredModuleTarget("email"), "packageJson", [
 				{ ...provider.dependency, type: "dependencies" },
-				{ ...deps.reactEmailComponents, type: "dependencies" },
+				{ ...deps.reactEmail, type: "dependencies" },
 				{ ...catalogRef("react", config), type: "dependencies" },
 				{ ...catalogRef("reactDom", config), type: "dependencies" },
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
@@ -231,7 +231,6 @@ const email = defineAddon<ForgeConfig, "email">({
 				ensuredModuleTarget("email"),
 				"src/layout.tsx",
 				readTemplate("email/packages/email/src/layout.tsx"),
-				{ preserveExisting: true },
 			),
 			...emailTemplates(config).map((template) =>
 				leafTextFile(
@@ -240,13 +239,11 @@ const email = defineAddon<ForgeConfig, "email">({
 					readTemplate(
 						`email/packages/email/src/templates/${template.file}.tsx`,
 					),
-					{ preserveExisting: true },
 				),
 			),
 			...(emailTemplates(config).length > 0
 				? [
 						surfaceDependencies(ensuredModuleTarget("email"), "packageJson", [
-							{ ...deps.reactEmail, type: "devDependencies" },
 							{ ...deps.reactEmailUi, type: "devDependencies" },
 						]),
 						surfaceScripts(ensuredModuleTarget("email"), "packageJson", {

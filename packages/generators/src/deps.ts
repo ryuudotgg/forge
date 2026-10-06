@@ -112,7 +112,6 @@ export const deps = {
 	resend: dep("resend"),
 	postmark: dep("postmark"),
 	nodemailer: dep("nodemailer"),
-	reactEmailComponents: dep("reactEmailComponents"),
 	reactEmail: dep("reactEmail"),
 	reactEmailUi: dep("reactEmailUi"),
 	classVarianceAuthority: dep("classVarianceAuthority"),
