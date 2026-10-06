@@ -110,6 +110,12 @@ const releaseMocks = vi.hoisted(() => ({
 	resolveRegistryRelease: vi.fn(),
 }));
 
+const switchMocks = vi.hoisted(() => ({ runSwitch: vi.fn() }));
+
+vi.mock("../src/commands/switch", () => ({
+	runSwitch: switchMocks.runSwitch,
+}));
+
 vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
 	confirm: promptMocks.confirm,
@@ -537,6 +543,8 @@ describe("add command", () => {
 	});
 
 	beforeEach(() => {
+		switchMocks.runSwitch.mockReset();
+
 		lifecycleMocks.applyInstalledPlan.mockReset();
 		lifecycleMocks.configuredPackageManager.mockReset();
 		lifecycleMocks.hasProjectDevDependency.mockReset();
@@ -2018,12 +2026,41 @@ describe("add command", () => {
 		);
 	});
 
+	it.each([false, true])(
+		"switches Biome to Oxc with no-install %s",
+		async (noInstall) => {
+			const project = managedProject({
+				config: { slug: "acme", web: "nextjs", linter: "biome" },
+				installs: [
+					{ definitionId: "biome", targets: [{ kind: "project" }] },
+					{ definitionId: "prisma", targets: [{ kind: "project" }] },
+				],
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runAdd("oxc", { "no-install": noInstall, "accept-forge": true });
+
+			expect(switchMocks.runSwitch).toHaveBeenCalledExactlyOnceWith(project, {
+				addon: expect.objectContaining({ id: "oxc" }),
+				holder: expect.objectContaining({ id: "biome" }),
+				installs: [
+					{ definitionId: "prisma", targets: [{ kind: "project" }] },
+					{ definitionId: "oxc", targets: [{ kind: "project" }] },
+				],
+				registryIds: undefined,
+				noInstall,
+				resolution: [{ resolutionPolicy: "accept-forge" }],
+			});
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		},
+	);
+
 	it("rejects adding a second orm instead of swapping", async () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation(((
-			code?: string | number | null,
-		) => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
 			throw new Error(`exit:${code ?? 0}`);
-		}) as never);
+		});
 
 		try {
 			lifecycleMocks.loadManagedProject.mockResolvedValue(
@@ -2042,6 +2079,7 @@ describe("add command", () => {
 			);
 
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			expect(switchMocks.runSwitch).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
 		}
@@ -2335,6 +2373,113 @@ describe("add command", () => {
 			);
 
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it.each([
+		{ framework: "react-router", name: "React Router" },
+		{ framework: "future-web", name: "Future Web" },
+	])(
+		"names unsupported $framework for an adapter-backed addon",
+		async ({ framework, name }) => {
+			const addon = defineAddon<ForgeConfig>({
+				id: "@acme/adapter-only",
+				name: "Adapter Only",
+				version: "1.0.0",
+				category: "tooling",
+				exclusive: false,
+				targetMode: "single",
+				when: () => false,
+				contribute: () => [],
+			});
+
+			const adapter = defineAdapter<ForgeConfig>({
+				addon: addon.id,
+				framework: "nextjs",
+				contribute: () => [],
+			});
+
+			const registry = registryFixture({
+				id: "@acme/forge-adapter-only",
+				addons: [addon],
+				adapters: [adapter],
+				units: [{ id: addon.id, kind: "addon" }],
+			});
+
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			if (reactRouterModule.type !== "app")
+				throw new Error("Expected app fixture");
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({ modules: [{ ...reactRouterModule, framework }] }),
+			);
+
+			lifecycleMocks.loadProjectRegistry.mockResolvedValue(registry);
+
+			try {
+				await expect(runAdd(addon.id, {})).rejects.toThrow("exit:1");
+
+				expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(
+					`Adapter Only does not support ${name} yet.`,
+				);
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+				expect(switchMocks.runSwitch).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
+
+	it("refuses an adapter-backed addon when no modules are compatible", async () => {
+		const addon = defineAddon<ForgeConfig>({
+			id: "@acme/no-targets",
+			name: "No Targets",
+			version: "1.0.0",
+			category: "tooling",
+			exclusive: false,
+			targetMode: "single",
+			when: () => false,
+			contribute: () => [],
+		});
+
+		const registry = registryFixture({
+			id: "@acme/forge-no-targets",
+			addons: [addon],
+			adapters: [
+				defineAdapter<ForgeConfig>({
+					addon: addon.id,
+					framework: "nextjs",
+					contribute: () => [],
+				}),
+			],
+			units: [{ id: addon.id, kind: "addon" }],
+		});
+
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ modules: [packageModule] }),
+		);
+
+		lifecycleMocks.loadProjectRegistry.mockResolvedValue(registry);
+
+		try {
+			await expect(runAdd(addon.id, {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(
+				'We couldn\'t find a compatible target for "No Targets".',
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			expect(switchMocks.runSwitch).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
 		}

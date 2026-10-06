@@ -3,7 +3,13 @@ import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
-import { Subprocess, trackedFiles, workingTreeStatus } from "../src/index";
+import {
+	GitError,
+	Subprocess,
+	SubprocessError,
+	trackedFiles,
+	workingTreeStatus,
+} from "../src/index";
 import { withTempDir, writeText } from "./harness";
 
 const gitLayer = Subprocess.Default.pipe(
@@ -56,6 +62,58 @@ async function repository(root: string) {
 }
 
 describe("project Git boundary", () => {
+	it("formats the Git failure message exactly", () => {
+		expect(
+			new GitError({ root: "/project", detail: "permission denied" }).message,
+		).toBe("Git Failed: permission denied");
+	});
+
+	it("fails with GitError when the working directory does not exist", async () => {
+		await withTempDir("git-invalid-cwd", async (directory) => {
+			const root = join(directory, "missing");
+			const failure = await Effect.runPromise(
+				workingTreeStatus(root).pipe(Effect.flip, Effect.provide(gitLayer)),
+			);
+
+			expect(failure).toBeInstanceOf(GitError);
+			expect(failure.root).toBe(root);
+			expect(failure.cause).toBeInstanceOf(SubprocessError);
+
+			if (!(failure.cause instanceof SubprocessError))
+				throw new Error("Expected subprocess failure");
+
+			expect(failure.cause.reason).toBe("spawn-error");
+			expect(failure.detail).toBe(failure.cause.message);
+			expect(failure.message).toBe(`Git Failed: ${failure.cause.message}`);
+		});
+	});
+
+	it("maps tracked-file failures outside a repository to GitError", async () => {
+		await withTempDir("git-files-missing", async (root) => {
+			const failure = await Effect.runPromise(
+				trackedFiles(root).pipe(Effect.flip, Effect.provide(gitLayer)),
+			);
+
+			expect(failure).toBeInstanceOf(GitError);
+			expect(failure.root).toBe(root);
+			expect(failure.cause).toBeInstanceOf(SubprocessError);
+
+			if (!(failure.cause instanceof SubprocessError))
+				throw new Error("Expected subprocess failure");
+
+			expect(failure.cause.reason).toBe("non-zero-exit");
+			expect(failure.cause.exitCode).toBe(128);
+			expect(failure.cause.detail).toBe(
+				"fatal: not a git repository (or any of the parent directories): .git\n",
+			);
+
+			expect(failure.detail).toBe(failure.cause.message);
+			expect(failure.message).toBe(
+				"Git Failed: Subprocess Non-Zero Exit: git --no-optional-locks ls-files -s -z exited with code 128. fatal: not a git repository (or any of the parent directories): .git\n",
+			);
+		});
+	});
+
 	it("identifies a directory outside a repository", async () => {
 		await withTempDir("git-missing", async (root) => {
 			expect(await status(root)).toEqual({ _tag: "Untracked" });

@@ -2,19 +2,20 @@ import { log, spinner } from "@clack/prompts";
 import {
 	type AddonDefinition,
 	type InstallRecord,
+	LONG_RUNNING_TIMEOUT_MS,
 	packageManagerExecCommand,
 	packageManagerInstallCommand,
+	Subprocess,
 	trackedFiles,
 	workingTreeStatus,
 } from "@ryuugg/core";
 import { configWithSwitch, type ForgeConfig } from "@ryuugg/generators";
 import { Exit } from "effect";
-import { runCliEffect } from "../runtime";
+import { failureFromCause, runCliEffect } from "../runtime";
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
 	type ManagedProject,
-	runPackageManagerOperation,
 } from "./lifecycle";
 import type { ResolutionArguments } from "./resolution";
 
@@ -34,10 +35,30 @@ function shellCommand(operation: {
 	return [operation.command, ...operation.args].join(" ");
 }
 
+async function operationFailure(
+	projectRoot: string,
+	operation: { readonly command: string; readonly args: ReadonlyArray<string> },
+) {
+	const exit = await runCliEffect(
+		Subprocess.run({
+			command: operation.command,
+			args: operation.args,
+			cwd: projectRoot,
+			timeoutMs: LONG_RUNNING_TIMEOUT_MS,
+			outputMode: "pipe",
+		}),
+	);
+
+	return Exit.isSuccess(exit)
+		? undefined
+		: failureFromCause(exit.cause).message;
+}
+
 function pathChunks(paths: ReadonlyArray<string>) {
 	const chunks: string[][] = [];
 	let chunk: string[] = [];
 	let bytes = 0;
+
 	for (const path of paths) {
 		const argument = `./${path}`;
 		const size = Buffer.byteLength(argument) + 1;
@@ -52,6 +73,7 @@ function pathChunks(paths: ReadonlyArray<string>) {
 	}
 
 	if (chunk.length > 0) chunks.push(chunk);
+
 	return chunks;
 }
 
@@ -114,11 +136,13 @@ export async function runSwitch(
 
 	const progress = spinner();
 	progress.start("We're installing your dependencies...");
-	if (!(await runPackageManagerOperation(project.projectRoot, install))) {
+	const installFailure = await operationFailure(project.projectRoot, install);
+	if (installFailure !== undefined) {
 		progress.stop("We couldn't install your dependencies.");
 		log.error(
 			`The configuration was switched, but the install failed. ${remaining}`,
 		);
+		log.message(installFailure);
 		process.exit(1);
 	}
 
@@ -138,13 +162,17 @@ export async function runSwitch(
 	}
 
 	for (const chunk of pathChunks(files.value)) {
-		if (
-			!(await runPackageManagerOperation(project.projectRoot, reformat(chunk)))
-		) {
+		const reformatFailure = await operationFailure(
+			project.projectRoot,
+			reformat(chunk),
+		);
+
+		if (reformatFailure !== undefined) {
 			progress.stop("Reformatting didn't finish.");
 			log.error(
 				`The configuration was switched and dependencies installed, but reformatting failed. ${remaining}`,
 			);
+			log.message(reformatFailure);
 			process.exit(1);
 		}
 	}
