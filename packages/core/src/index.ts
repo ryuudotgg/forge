@@ -115,7 +115,7 @@ export {
 	validateTemplateRecipes,
 	variantAsset,
 } from "./authoring";
-export { CliVersion } from "./cli-version";
+export { CliVersion, compareCliVersions } from "./cli-version";
 export { CommandProbe, readPersistedCommandVersions } from "./command";
 export type {
 	AppConfig,

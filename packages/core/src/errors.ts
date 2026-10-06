@@ -375,6 +375,7 @@ export class ModuleIdGenerationError extends Schema.TaggedError<ModuleIdGenerati
 
 const StateErrorReason = Schema.Literals([
 	"schema-version-unknown",
+	"cli-version-older",
 	"manifest-parse-failed",
 	"manifest-invalid",
 	"lockfile-parse-failed",
@@ -403,6 +404,8 @@ const StateErrorFields = Schema.Struct({
 	filePath: Schema.String,
 	reason: StateErrorReason,
 	detail: Schema.optional(Schema.String),
+	projectCliVersion: Schema.optional(Schema.String),
+	runningCliVersion: Schema.optional(Schema.String),
 	issues: Schema.optional(Schema.Array(Schema.String)),
 	cause: optionalCause,
 });
@@ -411,6 +414,7 @@ type StateErrorPayload = typeof StateErrorFields.Type;
 
 const stateRequiredFields = {
 	"schema-version-unknown": [],
+	"cli-version-older": ["projectCliVersion", "runningCliVersion"],
 	"manifest-parse-failed": ["detail"],
 	"manifest-invalid": ["issues"],
 	"lockfile-parse-failed": ["detail"],
@@ -462,6 +466,8 @@ export const UNKNOWN_STATE_VERSION_MESSAGE =
 
 const stateMessages = {
 	"schema-version-unknown": () => UNKNOWN_STATE_VERSION_MESSAGE,
+	"cli-version-older": (error: StateError) =>
+		`This project was last changed by Forge ${error.projectCliVersion ?? ""}, but you're running Forge ${error.runningCliVersion ?? ""}. Run Forge ${error.projectCliVersion ?? ""} or newer, for example with "npx @ryuugg/forge@latest", then try again.`,
 	"manifest-parse-failed": (error: StateError) =>
 		`Manifest Parse Failed: ${error.detail ?? ""}`,
 	"manifest-invalid": (error: StateError) =>
