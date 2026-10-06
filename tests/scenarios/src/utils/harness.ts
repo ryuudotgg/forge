@@ -12,7 +12,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { expect } from "vitest";
+import { expect, inject } from "vitest";
 
 const turboCacheSummaryPattern = /^\s*Cached:\s+(\d+ cached, \d+ total)/m;
 
@@ -53,13 +53,13 @@ function reportTurboCache(
 }
 
 export function forgeEnvironment(workspaceRoot: string): NodeJS.ProcessEnv {
-	const cacheRoot = join(workspaceRoot, ".cache");
 	return {
 		COREPACK_HOME:
 			process.env.COREPACK_HOME ??
 			join(homedir(), ".cache", "node", "corepack"),
-		FORGE_CACHE_DIR: join(cacheRoot, "forge"),
-		XDG_CACHE_HOME: join(cacheRoot, "xdg"),
+		FORGE_CACHE_DIR: join(workspaceRoot, ".cache", "forge"),
+		XDG_CACHE_HOME: inject("xdgCacheHome"),
+		pnpm_config_prefer_offline: "true",
 		// Yarn defaults to immutable installs when CI is set, but scenario
 		// installs create the lockfile for freshly scaffolded projects.
 		YARN_ENABLE_IMMUTABLE_INSTALLS: "0",
