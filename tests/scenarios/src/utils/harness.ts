@@ -280,6 +280,46 @@ export async function updateProject(
 	});
 }
 
+export async function expectRun(
+	workspace: ScenarioProject,
+	command: string,
+	args: ReadonlyArray<string>,
+) {
+	const result = await runCommand(command, args, {
+		cwd: workspace.projectRoot,
+		env: forgeEnvironment(workspace.workspaceRoot),
+	});
+
+	expect(
+		result.exitCode,
+		`${command} ${args.join(" ")} failed\n${result.stdout}\n${result.stderr}`,
+	).toBe(0);
+
+	return result;
+}
+
+export async function expectCleanTree(workspace: ScenarioProject) {
+	const status = await expectRun(workspace, "git", ["status", "--porcelain"]);
+	expect(status.stdout).toBe("");
+}
+
+export async function commitFixture(workspace: ScenarioProject) {
+	await expectRun(workspace, "git", ["add", "."]);
+	await expectRun(workspace, "git", [
+		"-c",
+		"user.name=Forge",
+		"-c",
+		"user.email=forge@example.com",
+		"-c",
+		"commit.gpgsign=false",
+		"-c",
+		"core.hooksPath=/dev/null",
+		"commit",
+		"-qm",
+		"fixture",
+	]);
+}
+
 const installArgsFor: Record<
 	"pnpm" | "npm" | "yarn" | "bun",
 	ReadonlyArray<string>

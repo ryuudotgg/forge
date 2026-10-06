@@ -3,9 +3,12 @@ import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
+	commitFixture,
 	createProject,
+	expectCleanTree,
 	expectInstallAndBuild,
 	expectInstallBuildAndTypecheck,
+	expectRun,
 	forgeEnvironment,
 	runCommand,
 	runForge,
@@ -376,6 +379,26 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					},
 					"nextjs",
 				);
+
+				await expectRun(workspace, "git", ["init", "-q"]);
+				await commitFixture(workspace);
+
+				await withGeneratedServer(
+					workspace.projectRoot,
+					{ ...generatedEnv, PORT: new URL(origin).port },
+					origin,
+					async (output) => {
+						const response = await fetch(`${origin}/`);
+						expect(response.status, output()).toBe(200);
+					},
+					"nextjs",
+					"dev",
+				);
+
+				await expectCleanTree(workspace);
+
+				await expectRun(workspace, "pnpm", ["typecheck"]);
+				await expectCleanTree(workspace);
 			},
 		);
 	}, 600_000);
