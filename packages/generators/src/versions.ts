@@ -1,7 +1,7 @@
 import expoNativeModules from "expo/bundledNativeModules.json";
 import expoPackage from "expo/package.json";
 import { authUsesPasskey } from "./auth/methods";
-import type { ForgeConfig, RpcProvider } from "./config";
+import type { ForgeConfig, Linter, RpcProvider } from "./config";
 
 export type CatalogGroup =
 	| "Framework"
@@ -15,6 +15,7 @@ export type CatalogGroup =
 
 export interface CatalogEntry {
 	readonly rpc?: RpcProvider;
+	readonly linter?: Linter;
 	readonly name: string;
 	readonly version: string;
 	readonly group: CatalogGroup;
@@ -25,7 +26,19 @@ export interface CatalogEntry {
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 
 export const versions = {
-	biome: { name: "@biomejs/biome", version: "^2.5.14", group: "Tooling" },
+	biome: {
+		name: "@biomejs/biome",
+		version: "^2.5.14",
+		group: "Tooling",
+		linter: "biome",
+	},
+	oxlint: {
+		name: "oxlint",
+		version: "^1.86.0",
+		group: "Tooling",
+		linter: "oxc",
+	},
+	oxfmt: { name: "oxfmt", version: "^0.71.0", group: "Tooling", linter: "oxc" },
 	commitlintCli: {
 		name: "@commitlint/cli",
 		version: "^21.0.2",
@@ -458,6 +471,7 @@ export function catalogEntries(config: ForgeConfig): ReadonlyArray<{
 	const grouped = new Map<CatalogGroup, CatalogEntry[]>();
 	for (const entry of Object.values(versionsFor(config))) {
 		if ("rpc" in entry && entry.rpc !== config.rpc) continue;
+		if ("linter" in entry && entry.linter !== config.linter) continue;
 		if ("authMethod" in entry && !authUsesPasskey(config)) continue;
 
 		const list = grouped.get(entry.group) ?? [];

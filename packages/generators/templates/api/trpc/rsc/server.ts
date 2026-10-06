@@ -1,8 +1,7 @@
 import "server-only";
 
-import type { AppRouter } from "@__SLUG__/trpc";
-import { createCaller, createTRPCContext } from "@__SLUG__/trpc";
 // __AUTH_IMPORT__
+import { type AppRouter, createCaller, createTRPCContext } from "@__SLUG__/trpc";
 import { createHydrationHelpers } from "@trpc/react-query/rsc";
 import { headers } from "next/headers";
 import { cache } from "react";

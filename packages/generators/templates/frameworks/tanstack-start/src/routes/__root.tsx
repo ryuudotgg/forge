@@ -1,9 +1,5 @@
 import appCss from "@__SLUG__/ui/globals.css?url";
-import {
-  HeadContent,
-  Scripts,
-  createRootRoute,
-} from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { Providers } from "../providers";

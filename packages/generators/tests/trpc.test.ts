@@ -126,8 +126,8 @@ function expectedContent(lines: ReadonlyArray<string>) {
 }
 
 const routeWithAuth = expectedContent([
-	'import { appRouter, createTRPCContext } from "@acme/trpc";',
 	'import { auth } from "@acme/auth";',
+	'import { appRouter, createTRPCContext } from "@acme/trpc";',
 	'import { fetchRequestHandler } from "@trpc/server/adapters/fetch";',
 	'import type { NextRequest } from "next/server";',
 	"",
@@ -191,9 +191,8 @@ const routeWithoutAuth = expectedContent([
 const serverWithAuth = expectedContent([
 	'import "server-only";',
 	"",
-	'import type { AppRouter } from "@acme/trpc";',
-	'import { createCaller, createTRPCContext } from "@acme/trpc";',
 	'import { auth } from "@acme/auth";',
+	'import { type AppRouter, createCaller, createTRPCContext } from "@acme/trpc";',
 	'import { createHydrationHelpers } from "@trpc/react-query/rsc";',
 	'import { headers } from "next/headers";',
 	'import { cache } from "react";',
@@ -218,8 +217,7 @@ const serverWithAuth = expectedContent([
 const serverWithoutAuth = expectedContent([
 	'import "server-only";',
 	"",
-	'import type { AppRouter } from "@acme/trpc";',
-	'import { createCaller, createTRPCContext } from "@acme/trpc";',
+	'import { type AppRouter, createCaller, createTRPCContext } from "@acme/trpc";',
 	'import { createHydrationHelpers } from "@trpc/react-query/rsc";',
 	'import { headers } from "next/headers";',
 	'import { cache } from "react";',
@@ -245,8 +243,8 @@ const tanstackRouteWithAuth = expectedContent([
 	"// Loads the server-route type augmentation for createFileRoute.",
 	'import "@tanstack/react-start";',
 	"",
-	'import { appRouter, createTRPCContext } from "@acme/trpc";',
 	'import { auth } from "@acme/auth";',
+	'import { appRouter, createTRPCContext } from "@acme/trpc";',
 	'import { createFileRoute } from "@tanstack/react-router";',
 	'import { fetchRequestHandler } from "@trpc/server/adapters/fetch";',
 	"",
@@ -325,8 +323,8 @@ const tanstackRouteWithoutAuth = expectedContent([
 ]);
 
 const sharedServerWithAuth = expectedContent([
-	'import { createCaller, createTRPCContext } from "@acme/trpc";',
 	'import { auth } from "@acme/auth";',
+	'import { createCaller, createTRPCContext } from "@acme/trpc";',
 	"",
 	"export async function createServerCaller(request: Request) {",
 	"  const headers = new Headers(request.headers);",

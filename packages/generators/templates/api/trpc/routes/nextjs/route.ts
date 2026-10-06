@@ -1,5 +1,5 @@
-import { appRouter, createTRPCContext } from "@__SLUG__/trpc";
 // __AUTH_IMPORT__
+import { appRouter, createTRPCContext } from "@__SLUG__/trpc";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { NextRequest } from "next/server";
 

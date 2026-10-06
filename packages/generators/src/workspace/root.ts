@@ -125,8 +125,6 @@ function buildContributions(
 
 	const scripts: Record<string, string> = {
 		build: "turbo run build",
-		check: "biome check .",
-		"check:fix": "biome check --write .",
 		"check:ws": "sherif",
 		dev: "turbo run dev",
 		typecheck: "turbo run typecheck",

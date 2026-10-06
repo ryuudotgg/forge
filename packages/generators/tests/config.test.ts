@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	addonConfigBindings,
 	authenticationProviders,
 	catalogs,
 	configWithInstall,
@@ -29,6 +30,8 @@ describe("generator config choices", () => {
 		expect(rpcProviders.label("trpc")).toBe("tRPC");
 
 		expect(linters.label("biome")).toBe("Biome");
+		expect(linters.available("oxc")).toBe(true);
+		expect(addonConfigBindings.oxc).toEqual({ linter: "oxc" });
 		expect(catalogs.label("scoped")).toBe("Scoped");
 		expect(databaseProviders.label("prisma-postgres")).toBe("Prisma Postgres");
 

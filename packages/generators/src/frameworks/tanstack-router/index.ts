@@ -122,7 +122,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		"// __TAILWIND_IMPORT__\n": useTailwind
 			? 'import tailwindcss from "@tailwindcss/vite";\n'
 			: "",
-		"/* __TAILWIND_PLUGIN__ */ ": useTailwind ? "tailwindcss(), " : "",
+		"    __TAILWIND_PLUGIN__\n": useTailwind ? "    tailwindcss(),\n" : "",
 	};
 
 	const rpc = rpcDescriptor(renderConfig);

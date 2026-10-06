@@ -1133,6 +1133,41 @@ describe("AdoptionDetector", () => {
 		},
 	);
 
+	it.each<{
+		files: Readonly<Record<string, string>>;
+		linter: string | undefined;
+	}>([
+		{
+			files: { ".oxlintrc.json": "{}\n", ".oxfmtrc.json": "{}\n" },
+			linter: "oxc",
+		},
+		{
+			files: { ".oxlintrc.jsonc": "{}\n", ".oxfmtrc.jsonc": "{}\n" },
+			linter: undefined,
+		},
+		{ files: { ".oxlintrc.json": "{}\n" }, linter: undefined },
+		{ files: { ".oxfmtrc.json": "{}\n" }, linter: undefined },
+		{
+			files: {
+				".oxlintrc.json": "{}\n",
+				".oxfmtrc.json": "{}\n",
+				"biome.json": "{}\n",
+			},
+			linter: undefined,
+		},
+	])(
+		"detects only complete, unambiguous Oxc configs %#",
+		async ({ files, linter }) => {
+			await withFixture(
+				"oxc",
+				{ ...files, "package.json": json({}) },
+				async (root) => {
+					expect((await detect(root)).config.linter).toBe(linter);
+				},
+			);
+		},
+	);
+
 	it("leaves ambiguous and absent signals undefined", async () => {
 		await withFixture(
 			"ambiguous",

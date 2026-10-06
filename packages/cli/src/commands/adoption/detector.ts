@@ -587,6 +587,9 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			rootEntrySet.has(name),
 		);
 
+		const hasOxc =
+			rootEntrySet.has(".oxlintrc.json") && rootEntrySet.has(".oxfmtrc.json");
+
 		const hasEslint = [
 			".eslintrc",
 			".eslintrc.cjs",
@@ -603,6 +606,7 @@ const makeAdoptionDetector = Effect.gen(function* () {
 
 		const linter = oneDetected([
 			hasBiome ? linters.normalize("biome") : undefined,
+			hasOxc ? linters.normalize("oxc") : undefined,
 			hasEslint && linters.available("eslint-prettier")
 				? linters.normalize("eslint-prettier")
 				: undefined,

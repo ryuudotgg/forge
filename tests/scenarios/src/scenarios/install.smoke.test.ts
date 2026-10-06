@@ -21,6 +21,7 @@ import {
 	type ScenarioProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
+import { expectFreshLinterCheck } from "../utils/linter";
 import { expectPasskeyCeremony } from "../utils/passkey";
 
 const postgresProviderCells = [
@@ -3281,4 +3282,60 @@ export async function GET() {
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 		});
 	}, 600_000);
+
+	it.each([
+		{
+			name: "default",
+			config: {
+				addons: ["commitlint", "github-ci", "lefthook", "vscode"],
+				authentication: "better-auth",
+				backend: "self",
+				catalogs: "scoped",
+				database: "postgresql",
+				databaseProvider: "neon",
+				orm: "drizzle",
+				rpc: "trpc",
+				style: "tailwind",
+				uiLibrary: "base-ui",
+				web: "nextjs",
+			},
+		},
+		{
+			name: "full-stack",
+			config: {
+				addons: ["commitlint", "github-ci", "lefthook", "vscode"],
+				authentication: "better-auth",
+				authMethods: ["email-password", "passkey", "email-otp"],
+				backend: "hono",
+				catalogs: "scoped",
+				database: "sqlite",
+				emailProvider: "resend",
+				orm: "drizzle",
+				rpc: "orpc",
+				style: "tailwind",
+				uiLibrary: "base-ui",
+				web: "tanstack-router",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			},
+		},
+	])(
+		"passes its own Oxc check on a fresh $name project",
+		async ({ name, config }) => {
+			await withScenarioWorkspace(`smoke-oxc-${name}`, async (workspace) => {
+				await createProject(workspace, {
+					...config,
+					linter: "oxc",
+					packageManager: "pnpm",
+				});
+
+				await expectFreshLinterCheck(workspace, {
+					configFiles: [".oxlintrc.json", ".oxfmtrc.json"],
+					devDependencies: ["oxlint", "oxfmt"],
+					absentConfigFiles: ["biome.json"],
+					absentDevDependencies: ["@biomejs/biome"],
+				});
+			});
+		},
+		600_000,
+	);
 });

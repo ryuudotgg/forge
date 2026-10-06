@@ -83,7 +83,7 @@ describe("registry loader", () => {
 		);
 
 		expect(loaded.registry.addons.map((entry) => entry.id)).toEqual(
-			expect.arrayContaining(["root", "pnpm", "tailwind", "trpc"]),
+			expect.arrayContaining(["root", "pnpm", "tailwind", "trpc", "oxc"]),
 		);
 
 		expect(

@@ -1,7 +1,7 @@
 import "./env";
 
-import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 // __TAILWIND_IMPORT__
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 

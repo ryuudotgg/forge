@@ -7,7 +7,8 @@ import {
 } from "@ryuugg/core";
 import { type ForgeConfig, hasAddon } from "../config";
 import { deps } from "../deps";
-import { pmExec, pmRun, resolvePackageManager } from "../pm";
+import { toolingFor } from "../linters/tooling";
+import { pmExec, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { interpolate, readTemplate } from "../template";
 
@@ -22,25 +23,25 @@ const lefthook = defineAddon<ForgeConfig, "lefthook">({
 	contribute: ({ config }) => {
 		const pm = resolvePackageManager(config);
 
-		const preCommit = interpolate(
-			readTemplate("tooling/lefthook/lefthook.yml"),
-			{
-				CHECK_FIX_COMMAND: pmRun(
-					pm,
-					"check:fix",
-					"--staged --no-errors-on-unmatched",
-				),
-			},
-		);
+		const lines = toolingFor(config)?.preCommit(pm) ?? [];
+		const preCommit =
+			lines.length > 0
+				? interpolate(readTemplate("tooling/lefthook/lefthook.yml"), {
+						PRE_COMMIT_JOBS: [...lines, "git update-index --again"]
+							.map((line) => `    - run: ${line}`)
+							.join("\n"),
+					})
+				: "";
 
 		const commitMsg = interpolate(
 			readTemplate("tooling/lefthook/commit-msg.yml"),
 			{ COMMITLINT_COMMAND: pmExec(pm, "commitlint") },
 		);
 
-		const hooks = hasAddon(config, "commitlint")
-			? `${commitMsg}\n${preCommit}`
-			: preCommit;
+		const hooks =
+			[hasAddon(config, "commitlint") ? commitMsg : "", preCommit]
+				.filter(Boolean)
+				.join("\n") || "{}\n";
 
 		return [
 			leafTextFile(projectTarget(), "lefthook.yml", hooks),
