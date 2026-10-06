@@ -13,13 +13,28 @@ const assets = staticMiddleware({
 
 const compressible = /^(text\/|application\/(json|javascript|xml)|image\/svg)/;
 
+function acceptsGzip(request) {
+  const encodings = request.headers.get("accept-encoding") ?? "";
+  const quality = new Map(
+    encodings.split(",").map((entry) => {
+      const [name, ...params] = entry.split(";").map((part) => part.trim());
+      const q = params.find((param) => param.startsWith("q="));
+
+      return [name, q === undefined ? 1 : Number(q.slice(2))];
+    }),
+  );
+
+  return (quality.get("gzip") ?? quality.get("*") ?? 0) > 0;
+}
+
 async function compress(request, next) {
   const response = await next();
   if (
     response.body === null ||
     response.headers.has("content-encoding") ||
+    response.headers.has("content-range") ||
     !compressible.test(response.headers.get("content-type") ?? "") ||
-    !/\bgzip\b/.test(request.headers.get("accept-encoding") ?? "")
+    !acceptsGzip(request)
   )
     return response;
 
