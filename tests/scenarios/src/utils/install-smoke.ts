@@ -668,6 +668,7 @@ async function signInFromAddress(
 	origin: string,
 	localAddress: string,
 	forwarded: string,
+	platformClient?: string,
 ): Promise<number> {
 	const body = JSON.stringify({
 		email: "rate-limit-missing@example.com",
@@ -685,6 +686,9 @@ async function signInFromAddress(
 					"Content-Length": Buffer.byteLength(body),
 					Origin: origin,
 					"X-Forwarded-For": forwarded,
+					...(platformClient === undefined
+						? {}
+						: { "X-Real-IP": platformClient }),
 				},
 			},
 			(response) => {
@@ -722,6 +726,7 @@ export async function expectClientIpRateLimit(
 	const cases = [
 		{
 			name: "trusted proxy",
+			clientIpHeader: undefined,
 			proxies: "127.0.0.1/32",
 			localAddress: "127.0.0.1",
 			variesForwarded: false,
@@ -729,6 +734,7 @@ export async function expectClientIpRateLimit(
 		},
 		{
 			name: "untrusted socket",
+			clientIpHeader: undefined,
 			proxies: "127.0.0.1/32",
 			localAddress: "127.0.0.2",
 			variesForwarded: true,
@@ -736,10 +742,19 @@ export async function expectClientIpRateLimit(
 		},
 		{
 			name: "direct connection",
+			clientIpHeader: undefined,
 			proxies: undefined,
 			localAddress: "127.0.0.1",
 			variesForwarded: true,
 			nextAddress: "127.0.0.2",
+		},
+		{
+			name: "platform header",
+			proxies: undefined,
+			clientIpHeader: "x-real-ip",
+			localAddress: "127.0.0.1",
+			variesForwarded: true,
+			nextAddress: "127.0.0.1",
 		},
 	];
 
@@ -751,7 +766,7 @@ export async function expectClientIpRateLimit(
 			{
 				...generatedEnv,
 				AUTH_TRUSTED_PROXIES: scenario.proxies,
-				AUTH_CLIENT_IP_HEADER: undefined,
+				AUTH_CLIENT_IP_HEADER: scenario.clientIpHeader,
 				NODE_ENV: "production",
 				PORT: port,
 			},
@@ -765,6 +780,7 @@ export async function expectClientIpRateLimit(
 						origin,
 						scenario.localAddress,
 						`203.0.113.${scenario.variesForwarded ? attempt : 1}`,
+						scenario.clientIpHeader && "198.51.100.1",
 					);
 
 					expect(
@@ -779,6 +795,7 @@ export async function expectClientIpRateLimit(
 						origin,
 						scenario.nextAddress,
 						"203.0.113.2",
+						scenario.clientIpHeader && "198.51.100.2",
 					);
 
 					expect(
