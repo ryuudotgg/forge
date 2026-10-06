@@ -32,7 +32,11 @@ import {
 } from "@ryuugg/generators";
 import { Effect, FileSystem, Result, Schema } from "effect";
 import { runCliEffectValue } from "../runtime";
-import { webAppNameIssue, webAppsSchema } from "../steps/platforms/web-apps";
+import {
+	webAppNameIssue,
+	webAppsIssueMessage,
+	webAppsSchema,
+} from "../steps/platforms/web-apps";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import { addedClientEnvMessage } from "../utils/web-apps";
@@ -610,7 +614,9 @@ async function addWebApp(
 			message: "What is the name of this web app?",
 			validate(value) {
 				const decoded = decodeApps(value ?? "");
-				if (Result.isFailure(decoded)) return decoded.failure.message;
+				if (Result.isFailure(decoded))
+					return webAppsIssueMessage(decoded.failure);
+
 				return webAppNameIssue(value ?? "", addonIds);
 			},
 		});
@@ -621,7 +627,7 @@ async function addWebApp(
 
 	const decoded = decodeApps(name);
 	if (Result.isFailure(decoded)) {
-		log.error(decoded.failure.message);
+		log.error(webAppsIssueMessage(decoded.failure));
 		process.exit(1);
 	}
 

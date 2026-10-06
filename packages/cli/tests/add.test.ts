@@ -222,6 +222,14 @@ describe("add command", () => {
 				expect(validate?.("biome")).toBe(
 					"biome is an addon id. Pick another name for this web app.",
 				);
+
+				expect(validate?.("email")).toBe(
+					"email is reserved. Pick another name for this web app.",
+				);
+
+				expect(validate?.("Bad_Name")).toBe(
+					"Bad_Name isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+				);
 			} finally {
 				exit.mockRestore();
 				process.stdin.isTTY = stdin;

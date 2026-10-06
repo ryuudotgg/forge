@@ -13,6 +13,27 @@ export const webSchema = Schema.Literals(webFrameworks.ids).pipe(
 	Schema.check(Schema.makeFilter(availableChoice(webFrameworks))),
 );
 
+export async function selectWebFramework(
+	message: string,
+	recommend: boolean,
+): Promise<typeof webSchema.Type> {
+	for (;;) {
+		const web = await select({
+			message,
+			options: choiceOptions(webFrameworks).map((option, index) =>
+				recommend && index === 0
+					? { ...option, label: `${option.label} (Recommended)` }
+					: option,
+			),
+		});
+
+		if (isCancel(web)) cancel();
+		if (webFrameworks.available(web)) return web;
+
+		log.warn(unsupportedMessage(webFrameworks, [web]));
+	}
+}
+
 const webStep = defineStep<typeof webSchema.Type>({
 	id: "web",
 	group: "platforms",
@@ -34,21 +55,7 @@ const webStep = defineStep<typeof webSchema.Type>({
 			return "nextjs";
 		}
 
-		for (;;) {
-			const web = await select({
-				message: "What is your preferred web framework?",
-				options: choiceOptions(webFrameworks).map((option, index) =>
-					index === 0
-						? { ...option, label: `${option.label} (Recommended)` }
-						: option,
-				),
-			});
-
-			if (isCancel(web)) cancel();
-			if (webFrameworks.available(web)) return web;
-
-			log.warn(unsupportedMessage(webFrameworks, [web]));
-		}
+		return selectWebFramework("What is your preferred web framework?", true);
 	},
 });
 

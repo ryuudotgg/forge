@@ -15,6 +15,7 @@ import {
 	buildFlagOverrides,
 	isParsedValues,
 	isUnknownCommand,
+	options,
 	parseCliArgs,
 	validateParsedArgs,
 } from "../src/cli";
@@ -81,19 +82,69 @@ describe("CLI argument parsing", () => {
 		expect(values["no-install"]).toBe(true);
 	});
 
+	it("marks a named web app as an API client with +client", () => {
+		expect(
+			buildFlagOverrides(
+				parse(["--web", "tanstack-router", "--web", "admin=nextjs+client"])
+					.values,
+			),
+		).toEqual({
+			web: "tanstack-router",
+			webApps: [{ name: "admin", framework: "nextjs", client: true }],
+		});
+
+		expect(
+			buildFlagOverrides(parse(["--web", "admin=nextjs+client"]).values),
+		).toEqual({
+			webApps: [{ name: "admin", framework: "nextjs", client: true }],
+		});
+	});
+
+	const frameworkChoices =
+		"nextjs, react-router, tanstack-router, or tanstack-start";
+
 	it.each([
-		"web=nextjs",
-		"server=nextjs",
-		"Admin=nextjs",
-		"admin=unknown",
-		"admin=",
-		"=nextjs",
-		"admin=nextjs=other",
-		"unknown",
-	])("rejects invalid web flag %s at the boundary", (entry) => {
-		expect(() => buildFlagOverrides(parse(["--web", entry]).values)).toThrow(
-			"CLI Args Invalid:",
-		);
+		["web=nextjs", "web is reserved. Pick another name for this web app."],
+		[
+			"server=nextjs",
+			"server is reserved. Pick another name for this web app.",
+		],
+		[
+			"Admin=nextjs",
+			"Admin isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+		],
+		[
+			"admin=unknown",
+			`unknown isn't a web framework. Use ${frameworkChoices}.`,
+		],
+		[
+			"admin=",
+			"--web admin= needs a framework after the equals sign, like admin=nextjs.",
+		],
+		[
+			"=nextjs",
+			"--web =nextjs needs a web app name before the equals sign, like admin=nextjs.",
+		],
+		[
+			"admin=nextjs=other",
+			`nextjs=other isn't a web framework. Use ${frameworkChoices}.`,
+		],
+		["unknown", `unknown isn't a web framework. Use ${frameworkChoices}.`],
+		["", "--web needs a framework, like --web nextjs."],
+		[
+			"nextjs+client",
+			"Only a named web app can be an API client, like admin=nextjs+client.",
+		],
+	])("rejects invalid web flag %j with a sentence", (entry, message) => {
+		let thrown: unknown;
+		try {
+			buildFlagOverrides(parse(["--web", entry]).values);
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(thrown).toBeInstanceOf(Error);
+		expect(thrown instanceof Error ? thrown.message : "").toBe(message);
 	});
 
 	it("rejects duplicate secondary names", () => {
@@ -101,7 +152,17 @@ describe("CLI argument parsing", () => {
 			buildFlagOverrides(
 				parse(["--web", "admin=nextjs", "--web", "admin=react-router"]).values,
 			),
-		).toThrow("more than one web app");
+		).toThrow(/^admin is used by more than one web app\.$/);
+	});
+
+	it("refuses two bare frameworks instead of keeping the last", () => {
+		expect(() =>
+			buildFlagOverrides(
+				parse(["--web", "nextjs", "--web", "react-router"]).values,
+			),
+		).toThrow(
+			/^--web takes one bare framework for the primary web app, but got nextjs and react-router\. Name the others, like admin=react-router\.$/,
+		);
 	});
 
 	it("rejects a boolean web override", () => {
@@ -123,6 +184,13 @@ describe("CLI argument parsing", () => {
 		expect(isParsedValues({ web: ["nextjs"] })).toBe(true);
 		expect(isParsedValues({ web: [42] })).toBe(false);
 		expect(isParsedValues({ name: ["project"] })).toBe(false);
+	});
+
+	it("accepts string arrays exactly on the options marked multiple", () => {
+		for (const [key, option] of Object.entries(options))
+			expect(isParsedValues({ [key]: ["value"] })).toBe(
+				"multiple" in option && option.multiple,
+			);
 	});
 
 	it("classifies a bare invocation, known commands, and unknown commands", () => {

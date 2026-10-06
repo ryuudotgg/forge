@@ -15,17 +15,21 @@ import {
 	orms,
 	rpcProviders,
 	styleFrameworks,
+	type WebAppConfig,
+	type WebFramework,
 	webFrameworks,
 } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import type { ParsedValues, SubcommandDef } from "./commands/registry";
-import { webSchema } from "./steps/platforms/web";
 import {
 	firstPartyAddonIds,
 	webAppNameIssue,
+	webAppsIssueMessage,
 	webAppsSchema,
 } from "./steps/platforms/web-apps";
 import type { PartialConfig } from "./steps/types";
+import { unsupportedMessage } from "./utils/choices";
+import { listAnd, listOr } from "./utils/list";
 
 interface CLIOption {
 	type: "string" | "boolean";
@@ -151,7 +155,7 @@ export const options = {
 		type: "string",
 		multiple: true,
 		description:
-			"Repeat with a framework for web or name=framework for another app.",
+			"Repeat per app: framework, name=framework, or name=framework+client.",
 		choices: choiceHint(webFrameworks),
 		configKey: "web",
 	},
@@ -302,10 +306,16 @@ export const sections: CLISection[] = [
 	},
 	{
 		title: "forge add/remove/update options",
-		keys: ["keep-user", "accept-forge", "yes", "name", "client"],
+		keys: ["keep-user", "accept-forge", "yes"],
+		descriptions: {
+			yes: "Install a new registry package without asking first.",
+		},
+	},
+	{
+		title: "forge add <framework> options",
+		keys: ["name", "client"],
 		descriptions: {
 			name: "Name the secondary web app to add.",
-			yes: "Install a new registry package without asking first.",
 		},
 	},
 ];
@@ -336,13 +346,19 @@ export function getParseArgsOptions(): Record<
 	return result;
 }
 
+const multipleOptionKeys = new Set(
+	Object.entries<CLIOption>(options)
+		.filter(([, option]) => option.multiple === true)
+		.map(([key]) => key),
+);
+
 export function isParsedValues(values: unknown): values is ParsedValues {
 	if (typeof values !== "object" || values === null) return false;
 	return Object.entries(values).every(
 		([key, value]) =>
 			typeof value === "string" ||
 			typeof value === "boolean" ||
-			(key === "web" &&
+			(multipleOptionKeys.has(key) &&
 				Array.isArray(value) &&
 				value.every((entry: unknown) => typeof entry === "string")),
 	);
@@ -384,6 +400,84 @@ export function isUnknownCommand(
 	return subcommand !== undefined && command === undefined;
 }
 
+const clientSuffix = "+client";
+
+function webFlagFramework(framework: string): WebFramework {
+	const id = webFrameworks.normalize(framework);
+	if (id === undefined)
+		throw new Error(
+			`${framework} isn't a web framework. Use ${listOr.format(webFrameworks.ids)}.`,
+		);
+
+	if (!webFrameworks.available(id))
+		throw new Error(unsupportedMessage(webFrameworks, [id]));
+
+	return id;
+}
+
+function webFlagOverrides(entries: ReadonlyArray<string>): PartialConfig {
+	const primaries: string[] = [];
+	const apps: WebAppConfig[] = [];
+	for (const entry of entries) {
+		if (entry === "")
+			throw new Error("--web needs a framework, like --web nextjs.");
+
+		const separator = entry.indexOf("=");
+		if (separator === -1) {
+			if (entry.endsWith(clientSuffix))
+				throw new Error(
+					`Only a named web app can be an API client, like admin=${entry}.`,
+				);
+
+			primaries.push(entry);
+			continue;
+		}
+
+		const name = entry.slice(0, separator);
+		if (name === "")
+			throw new Error(
+				`--web ${entry} needs a web app name before the equals sign, like admin${entry}.`,
+			);
+
+		const value = entry.slice(separator + 1);
+		const client = value.endsWith(clientSuffix);
+		const framework = client ? value.slice(0, -clientSuffix.length) : value;
+		if (framework === "")
+			throw new Error(
+				`--web ${entry} needs a framework after the equals sign, like ${name}=nextjs.`,
+			);
+
+		apps.push({
+			name,
+			framework: webFlagFramework(framework),
+			...(client ? { client: true } : {}),
+		});
+	}
+
+	if (primaries.length > 1)
+		throw new Error(
+			`--web takes one bare framework for the primary web app, but got ${listAnd.format(primaries)}. Name the others, like admin=${primaries[1]}.`,
+		);
+
+	const primary = primaries[0];
+	const web = primary === undefined ? undefined : webFlagFramework(primary);
+
+	const result = Schema.decodeResult(webAppsSchema)(apps);
+	if (Result.isFailure(result))
+		throw new Error(webAppsIssueMessage(result.failure));
+
+	const addonIds = firstPartyAddonIds();
+	for (const app of result.success) {
+		const issue = webAppNameIssue(app.name, addonIds);
+		if (issue !== undefined) throw new Error(issue);
+	}
+
+	return {
+		...(web === undefined ? {} : { web }),
+		...(result.success.length === 0 ? {} : { webApps: result.success }),
+	};
+}
+
 export function buildFlagOverrides(values: ParsedValues): PartialConfig {
 	const overrides: PartialConfig = {};
 	for (const [key, opt] of Object.entries<CLIOption>(options)) {
@@ -398,33 +492,7 @@ export function buildFlagOverrides(values: ParsedValues): PartialConfig {
 					"CLI Args Invalid: web must contain frameworks or name=framework entries.",
 				);
 
-			const apps = [];
-			for (const entry of entries) {
-				const separator = entry.indexOf("=");
-				const framework = separator === -1 ? entry : entry.slice(separator + 1);
-				const normalized = webFrameworks.normalize(framework) ?? framework;
-				if (separator === -1) {
-					const result = Schema.decodeUnknownResult(webSchema)(normalized);
-					if (Result.isFailure(result))
-						throw new Error(`CLI Args Invalid: ${result.failure.message}`);
-
-					overrides.web = result.success;
-				} else
-					apps.push({ name: entry.slice(0, separator), framework: normalized });
-			}
-
-			const result = Schema.decodeUnknownResult(webAppsSchema)(apps);
-			if (Result.isFailure(result))
-				throw new Error(`CLI Args Invalid: ${result.failure.message}`);
-
-			const addonIds = firstPartyAddonIds();
-			for (const app of result.success) {
-				const issue = webAppNameIssue(app.name, addonIds);
-				if (issue !== undefined) throw new Error(`CLI Args Invalid: ${issue}`);
-			}
-
-			if (result.success.length !== 0) overrides.webApps = result.success;
-
+			Object.assign(overrides, webFlagOverrides(entries));
 			continue;
 		}
 
