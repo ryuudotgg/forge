@@ -30,6 +30,11 @@ addon definitions.
 
 Always finish with the full `pnpm test`, not just the package you touched.
 
+Never set `FORGE_SMOKE` locally. Smoke runs in CI only, in
+`.depot/workflows/smoke.yml`: read the Install Smoke job on the PR. The
+Install Smoke Gate also passes when that job is skipped, so it alone proves
+nothing.
+
 ## Conventions
 
 - Effect everywhere: services (`Context.Service`), typed errors
