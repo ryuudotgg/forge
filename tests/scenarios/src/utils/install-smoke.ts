@@ -60,8 +60,6 @@ async function withPortLock<T>(run: () => Promise<T>): Promise<T> {
 
 	const path = join(inject("portLockDir"), "ports.lock");
 	const token = `${process.pid} ${randomUUID()}`;
-	const deadline = Date.now() + 300_000;
-
 	while (true) {
 		try {
 			await writeFile(path, token, { flag: "wx" });
@@ -77,9 +75,6 @@ async function withPortLock<T>(run: () => Promise<T>): Promise<T> {
 			await releaseLockHeldBy(path, holder);
 			continue;
 		}
-
-		if (Date.now() >= deadline)
-			throw new Error(`Port Lock Timeout: held by ${holder}`);
 
 		await new Promise((resolveWait) => setTimeout(resolveWait, 100));
 	}
@@ -613,7 +608,16 @@ export async function withGeneratedServer(
 
 			expect(ready, output).toBe(true);
 
-			await exercise(() => output);
+			try {
+				await exercise(() => output);
+			} catch (error) {
+				if (error instanceof TypeError)
+					throw new Error(`Generated Server Unreachable: ${output}`, {
+						cause: error,
+					});
+
+				throw error;
+			}
 		} finally {
 			const pid = server.pid;
 			if (launch === "node" || pid === undefined) {
