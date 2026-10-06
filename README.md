@@ -50,18 +50,26 @@ bunx @ryuugg/forge
 ### Secondary web apps
 
 The wizard can add web apps with separate names and frameworks. For flags, repeat
-`--web`: a bare framework selects the primary app at `apps/web`, and
-`name=framework` adds an app at `apps/<name>`.
+`--web`: a bare framework selects the primary app at `apps/web`, `name=framework`
+adds an app at `apps/<name>`, and `name=framework+client` adds one that calls
+your API.
 
 ```bash
-pnpm dlx @ryuugg/forge --web tanstack-router --web admin=nextjs
+pnpm dlx @ryuugg/forge --web tanstack-router --web admin=nextjs+client
 ```
 
-The wizard's API-client choice saves `client: true` on that app's `webApps` entry
-as future-only metadata. It does not generate RPC dependencies, providers,
-authentication clients, or API URL configuration for secondary apps. Leave it
-off unless you want to record that intent; generated files are the same either
-way. Repeatable `--web` flags do not set this metadata.
+An API client is a secondary app with `client: true` on its `webApps` entry, set
+by `+client`, by the wizard's API client question, or by `forge add` with
+`--client`. Forge wires it to call the API host:
+
+- An RPC client and its provider for tRPC or oRPC, when you picked one.
+- A Better Auth client in the app's `lib/auth-client.ts`, when you picked Better Auth.
+- An API URL variable, `NEXT_PUBLIC_SERVER_URL` for Next.js or `VITE_SERVER_URL` for the Vite frameworks, defaulting to the API host's local origin.
+- CORS trust: the app's local origin goes into `WEB_URLS`, which the API host's CORS rules and Better Auth's trusted origins read.
+
+Apps without `client: true` get none of this. Forge writes `.env` once and never
+edits it, so `forge add nextjs --name admin --client` prints the origin to add to
+`WEB_URLS` in `.env` instead, and `forge remove admin` prints the one to drop.
 
 ### Commands
 

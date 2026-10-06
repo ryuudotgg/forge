@@ -55,7 +55,8 @@ describe("printHelp", () => {
 				"        --package-manager <value>      pnpm · npm · Yarn · Bun",
 				"        --catalogs <value>             Flat · Scoped",
 				"        --linter <value>               Biome · Oxc · ESLint + Prettier (soon)",
-				"        --web <value>                  Next.js · React Router · TanStack Router · TanStack Start",
+				"        --web <value>                  Repeat per app: framework, name=framework, or name=framework+client.",
+				"                                       Next.js · React Router · TanStack Router · TanStack Start",
 				"        --desktop <value> (soon)       Electron · Tauri",
 				"        --mobile <value>               Expo · React Native (soon)",
 				"        --backend <value>              Same app · Convex (soon) · Hono · Elysia (soon) · µWebSockets (soon) · Fastify · Express",
@@ -82,6 +83,8 @@ describe("printHelp", () => {
 				"        --keep-user                    Keep your values when resolving conflicts.",
 				"        --accept-forge                 Take Forge's values when resolving conflicts.",
 				"        --yes                          Install a new registry package without asking first.",
+				"",
+				"  forge add <framework> options",
 				"        --name <value>                 Name the secondary web app to add.",
 				"        --client                       Mark the new secondary web app as an API client.",
 				"",
@@ -89,7 +92,7 @@ describe("printHelp", () => {
 				"    forge list auth",
 				"    forge info drizzle",
 				"    forge add trpc",
-				"    forge create --web tanstack-router --web admin=nextjs",
+				"    forge create --web tanstack-router --web admin=nextjs+client",
 				"",
 			]
 				.map((line) => (line.length === 0 ? "│" : `│  ${line}`))
@@ -123,6 +126,28 @@ describe("printHelp", () => {
 		});
 
 		expect(new Set(columns).size).toBe(1);
+	});
+
+	it("documents --name and --client only for forge add", () => {
+		const lines = captureHelp();
+		const sectionOf = (flag: string) =>
+			lines
+				.slice(
+					0,
+					lines.findIndex((line) => line.includes(flag)),
+				)
+				.findLast((line) => line.trim().endsWith("options"))
+				?.trim();
+
+		expect(lines.filter((line) => line.includes("--client"))).toHaveLength(1);
+		expect(sectionOf("--client")).toBe("│    forge add <framework> options");
+		expect(sectionOf("Name the secondary web app")).toBe(
+			"│    forge add <framework> options",
+		);
+
+		expect(lines.join("\n")).not.toContain(
+			"forge add/remove/update options\n│          --name",
+		);
 	});
 
 	it("derives choice hints with availability markers", () => {

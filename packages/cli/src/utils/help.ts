@@ -113,13 +113,19 @@ export function printHelp() {
 			const len = flagLength(key);
 			const padding = " ".repeat(maxLen - len + 4);
 
-			const desc =
-				"choices" in opt
-					? formatChoices(key, unavailable)
-					: color.dim(section.descriptions?.[key] ?? opt.description);
+			const description =
+				section.descriptions?.[key] ??
+				("description" in opt ? opt.description : undefined);
 
-			const row = `    ${flag}${padding}${desc}`;
-			lines.push(unavailable ? color.dim(row) : row);
+			const choices = "choices" in opt ? formatChoices(key, unavailable) : "";
+			const [summary, detail] =
+				description === undefined
+					? [choices, ""]
+					: [color.dim(description), choices];
+
+			const rows = [`    ${flag}${padding}${summary}`];
+			if (detail !== "") rows.push(`${" ".repeat(maxLen + 8)}${detail}`);
+			lines.push(...rows.map((row) => (unavailable ? color.dim(row) : row)));
 		}
 	}
 
@@ -129,7 +135,7 @@ export function printHelp() {
 		`    ${color.bold("forge list")} ${color.dim("auth")}`,
 		`    ${color.bold("forge info")} ${color.dim("drizzle")}`,
 		`    ${color.bold("forge add")} ${color.dim("trpc")}`,
-		`    ${color.bold("forge create")} ${color.dim("--web tanstack-router --web admin=nextjs")}`,
+		`    ${color.bold("forge create")} ${color.dim("--web tanstack-router --web admin=nextjs+client")}`,
 	);
 
 	log.message(`${lines.join("\n")}\n`);

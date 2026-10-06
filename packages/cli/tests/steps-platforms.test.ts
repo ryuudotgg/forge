@@ -210,12 +210,43 @@ describe("secondary web apps step", () => {
 		const first = promptMocks.text.mock.calls[0]?.[0];
 		const second = promptMocks.text.mock.calls[1]?.[0];
 
-		expect(first?.validate("web")).toBeDefined();
-		expect(first?.validate("Bad_Name")).toBeDefined();
-		expect(first?.validate(undefined)).toBeDefined();
+		expect(first?.validate("web")).toBe(
+			"web is reserved. Pick another name for this web app.",
+		);
+
+		expect(first?.validate("Bad_Name")).toBe(
+			"Bad_Name isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+		);
+
+		expect(first?.validate(undefined)).toBe("Give this web app a name.");
+		expect(first?.validate("")).toBe("Give this web app a name.");
 		expect(first?.validate("settings")).toBeUndefined();
 
-		expect(second?.validate("admin")).toBeDefined();
+		expect(second?.validate("admin")).toBe(
+			"admin is used by more than one web app.",
+		);
+	});
+
+	it("asks each secondary's framework by name without a recommendation", async () => {
+		promptMocks.confirm
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(false);
+
+		promptMocks.text.mockResolvedValue("admin");
+		promptMocks.select.mockResolvedValue("react-router");
+
+		await webAppsStep.execute({ web: "nextjs" }, true);
+
+		expect(promptMocks.select).toHaveBeenCalledWith({
+			message: "Which web framework should admin use?",
+			options: [
+				{ label: "Next.js", value: "nextjs" },
+				{ label: "React Router", value: "react-router" },
+				{ label: "TanStack Router", value: "tanstack-router" },
+				{ label: "TanStack Start", value: "tanstack-start" },
+			],
+		});
 	});
 
 	it("refuses every first-party addon id as a new app name", async () => {
@@ -249,7 +280,7 @@ describe("secondary web apps step", () => {
 				parseCliArgs(["--web", "nextjs", "--web", "tailwind=nextjs"]).values,
 			),
 		).toThrow(
-			"CLI Args Invalid: tailwind is an addon id. Pick another name for this web app.",
+			/^tailwind is an addon id\. Pick another name for this web app\.$/,
 		);
 	});
 

@@ -1,4 +1,5 @@
 import { confirm, isCancel, text } from "@clack/prompts";
+import { formatSchemaError } from "@ryuugg/core";
 import {
 	loadDefinitionRegistry,
 	reservedWebAppNames,
@@ -6,10 +7,12 @@ import {
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";
-import webStep, { webSchema } from "./web";
+import { selectWebFramework, webSchema } from "./web";
 
 const reservedNames = new Set<string>(reservedWebAppNames);
 export function webAppNameRuleIssue(name: string) {
+	if (name === "") return "Give this web app a name.";
+
 	if (!/^[a-z][a-z0-9-]*$/.test(name))
 		return `${name} isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.`;
 
@@ -51,6 +54,12 @@ export const webAppsSchema = Schema.Array(
 	}),
 );
 
+export function webAppsIssueMessage(error: Schema.SchemaError) {
+	return formatSchemaError(error)
+		.map((issue) => issue.message)
+		.join(" ");
+}
+
 export function webAppNameIssue(name: string, addonIds: ReadonlyArray<string>) {
 	if (addonIds.includes(name))
 		return `${name} is an addon id. Pick another name for this web app.`;
@@ -67,7 +76,7 @@ export default defineStep<typeof webAppsSchema.Type>({
 	schema: webAppsSchema,
 	dependencies: ["web"],
 	shouldRun: (config) => !!config.platforms?.includes("web"),
-	async execute(config, interactive) {
+	async execute(_config, interactive) {
 		if (!interactive) return SKIP;
 
 		const apps: Array<(typeof webAppsSchema.Type)[number]> = [];
@@ -90,14 +99,20 @@ export default defineStep<typeof webAppsSchema.Type>({
 						{ name: value ?? "", framework: "nextjs" },
 					]);
 
-					if (Result.isFailure(result)) return result.failure.message;
+					if (Result.isFailure(result))
+						return webAppsIssueMessage(result.failure);
+
 					return webAppNameIssue(value ?? "", addonIds);
 				},
 			});
 
 			if (isCancel(name)) cancel();
 
-			const framework = await webStep.execute(config, true);
+			const framework = await selectWebFramework(
+				`Which web framework should ${name} use?`,
+				false,
+			);
+
 			const client = await confirm({
 				message: `Mark ${name} as an API client?`,
 				initialValue: false,
