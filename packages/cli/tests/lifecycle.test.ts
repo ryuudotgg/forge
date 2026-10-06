@@ -4,6 +4,7 @@ import { type InstallRecord, ManifestSchema } from "@ryuugg/core";
 import * as generators from "@ryuugg/generators";
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { version as cliVersion } from "../package.json" with { type: "json" };
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
@@ -286,6 +287,47 @@ describe("lifecycle", () => {
 			});
 		},
 	);
+
+	it("refuses a project last written by a newer CLI before anything runs", async () => {
+		await withTempDir("lifecycle-newer-cli", async (directory) => {
+			await scaffoldWebModule(directory);
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				cliVersion: "999.0.0",
+				config: { slug: "acme", web: "nextjs" },
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			});
+
+			const manifestBefore = await readFile(
+				join(directory, ".forge/manifest.json"),
+				"utf-8",
+			);
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			try {
+				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(
+					`This project was last changed by Forge 999.0.0, but you're running Forge ${cliVersion}. Run Forge 999.0.0 or newer, for example with "npx @ryuugg/forge@latest", then try again.`,
+				);
+
+				expect(
+					await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
+				).toBe(manifestBefore);
+
+				await expect(loadDiscoveryRegistry(directory)).resolves.toBeDefined();
+				expect(promptMocks.logError).toHaveBeenCalledTimes(1);
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
 
 	it("refuses an unknown lockfile version even when the manifest is unreadable", async () => {
 		await withTempDir("lifecycle-unknown-lockfile", async (directory) => {

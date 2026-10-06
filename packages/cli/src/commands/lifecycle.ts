@@ -102,7 +102,8 @@ function reportLifecycleFailure(
 ): never {
 	if (
 		failure instanceof StateError &&
-		failure.reason === "schema-version-unknown"
+		(failure.reason === "schema-version-unknown" ||
+			failure.reason === "cli-version-older")
 	) {
 		log.error(failure.message);
 		process.exit(1);
@@ -177,6 +178,9 @@ export async function loadManagedProject(
 	const manifest = await runLifecycleEffect(
 		State.readLockfile(absoluteProjectRoot).pipe(
 			Effect.andThen(State.readManifest(absoluteProjectRoot)),
+			Effect.tap((manifest) =>
+				State.refuseOlderCli(absoluteProjectRoot, manifest),
+			),
 			Effect.catchTag("StateError", (error) =>
 				error.reason === "manifest-missing" ? Effect.void : Effect.fail(error),
 			),

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { Context, Effect, FileSystem, Layer, Schema } from "effect";
-import { CliVersion } from "./cli-version";
+import { CliVersion, compareCliVersions } from "./cli-version";
 import { ModuleIdSchema } from "./config";
 import { StateError, UNKNOWN_STATE_VERSION_MESSAGE } from "./errors";
 import { formatJson } from "./format/json";
@@ -311,6 +311,24 @@ const makeState = Effect.gen(function* () {
 			(cause) =>
 				new StateError({ filePath: path, reason: "base-hash-failed", cause }),
 		);
+	});
+
+	const refuseOlderCli = Effect.fn("State.refuseOlderCli")(function* (
+		projectRoot: string,
+		manifest: Pick<Manifest, "cliVersion">,
+	) {
+		const projectCliVersion = manifest.cliVersion;
+		if (projectCliVersion === undefined) return;
+
+		const order = compareCliVersions(projectCliVersion, cliVersion.version);
+		if (order === undefined || order <= 0) return;
+
+		return yield* new StateError({
+			filePath: manifestPath(projectRoot),
+			reason: "cli-version-older",
+			projectCliVersion,
+			runningCliVersion: cliVersion.version,
+		});
 	});
 
 	const readStateBundle = Effect.fn("State.readStateBundle")(function* (
@@ -708,6 +726,7 @@ const makeState = Effect.gen(function* () {
 		readManifest,
 		readManifestOrDefault,
 		readStateBundle,
+		refuseOlderCli,
 		writeLockfile,
 		writeManifest,
 		writeBase,
@@ -738,6 +757,9 @@ export class State extends Context.Service<State, StateService>()("State") {
 	static readonly readStateBundle = (
 		...args: Parameters<StateService["readStateBundle"]>
 	) => State.use((service) => service.readStateBundle(...args));
+	static readonly refuseOlderCli = (
+		...args: Parameters<StateService["refuseOlderCli"]>
+	) => State.use((service) => service.refuseOlderCli(...args));
 	static readonly writeBase = (
 		...args: Parameters<StateService["writeBase"]>
 	) => State.use((service) => service.writeBase(...args));

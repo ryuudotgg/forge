@@ -767,6 +767,7 @@ const makeApply = Effect.gen(function* () {
 
 		const previousLockfile = yield* State.readLockfile(projectRoot);
 		const previousManifest = yield* State.readManifestOrDefault(projectRoot);
+		yield* State.refuseOlderCli(projectRoot, previousManifest);
 
 		const previousArtifactIndex = buildArtifactIndex(previousLockfile);
 
