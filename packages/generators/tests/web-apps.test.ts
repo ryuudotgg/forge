@@ -345,6 +345,16 @@ describe("web app ports", () => {
 				],
 			}),
 		).toBe("admin and docs both use port 3003.");
+
+		const previewClash: ForgeConfig = {
+			web: "nextjs",
+			webApps: [{ name: "admin", framework: "nextjs", port: emailPreviewPort }],
+		};
+
+		expect(webAppPortIssue(previewClash)).toBeUndefined();
+		expect(webAppPortIssue({ ...previewClash, emailProvider: "resend" })).toBe(
+			`the email preview and admin both use port ${emailPreviewPort}.`,
+		);
 	});
 });
 

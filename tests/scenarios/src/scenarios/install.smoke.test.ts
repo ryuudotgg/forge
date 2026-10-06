@@ -376,6 +376,14 @@ async function expectEmailPreview(projectRoot: string) {
 		}
 
 		expect(ready, output).toBe(true);
+
+		const preview = await fetch(
+			`http://localhost:${port}/preview/verification-code`,
+			{ signal: AbortSignal.timeout(120_000) },
+		);
+
+		expect(preview.status, output).toBe(200);
+		expect(await preview.text(), output).toContain("123456");
 	} finally {
 		const pid = server.pid;
 		if (pid !== undefined) {

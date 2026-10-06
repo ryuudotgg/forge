@@ -130,7 +130,12 @@ export function removeWebAppConfig(
 }
 
 export function webAppPortIssue(config: ForgeConfig): string | undefined {
-	const owners = new Map<number, string>();
+	const owners = new Map<number, string>(
+		config.emailProvider === undefined
+			? []
+			: [[emailPreviewPort, "the email preview"]],
+	);
+
 	for (const instance of webAppInstances(config)) {
 		const owner = owners.get(instance.port);
 		if (owner !== undefined)
