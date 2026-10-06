@@ -15,6 +15,7 @@ import {
 import { selfHostedCorsRoute } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
+import { expoFramework } from "../../frameworks/expo";
 import { expressFramework } from "../../frameworks/express";
 import { fastifyFramework } from "../../frameworks/fastify";
 import { honoFramework } from "../../frameworks/hono";
@@ -160,6 +161,7 @@ export const orpcNextjsAdapters = deriveRecipeAdapters({
 			{ ...deps.tanstackReactQuery, type: "dependencies" },
 			{ ...deps.serverOnly, type: "dependencies" },
 		]),
+		...expoOrpcClientContributions(config),
 		...secondaryOrpcClients(config),
 		...secondaryOrpcDependencies(config),
 	],
@@ -238,6 +240,7 @@ export const orpcRequestAdapters = deriveRecipeAdapters({
 			{ ...deps.orpcTanstackQuery, type: "dependencies" },
 			{ ...deps.tanstackReactQuery, type: "dependencies" },
 		]),
+		...expoOrpcClientContributions(config),
 		...secondaryOrpcClients(config),
 		...secondaryOrpcDependencies(config),
 	],
@@ -307,10 +310,63 @@ export const orpcStandaloneAdapters = deriveRecipeAdapters({
 						]),
 					]
 				: []),
+			...expoOrpcClientContributions(config),
 			...secondaryOrpcDependencies(config),
 		];
 	},
 });
+
+export const orpcExpoRecipe = defineTemplateRecipe({
+	addon: "orpc",
+	markers: {
+		SLUG: marker.required,
+		AUTH_IMPORT: marker.toggleLine("__AUTH_IMPORT__;\n"),
+		AUTH_HEADERS: marker.toggleLine("  __AUTH_HEADERS__,\n"),
+	},
+	assets: [
+		sharedAsset("expo-client", {
+			template: "api/orpc/expo/client.ts",
+			destination: inSourceRoot("lib/orpc.ts"),
+		}),
+	],
+});
+
+export function expoOrpcClientContributions(config: ForgeConfig) {
+	if (config.mobile !== "expo") return [];
+
+	const markers = {
+		SLUG: config.slug ?? "my-app",
+		AUTH_IMPORT:
+			config.authentication === "better-auth"
+				? 'import { authClient } from "./auth-client";\n'
+				: "",
+		AUTH_HEADERS:
+			config.authentication === "better-auth"
+				? "  async headers() {\n    const cookies = await authClient.getCookie();\n    return cookies ? { Cookie: cookies } : {};\n  },\n"
+				: "",
+	};
+
+	const asset = orpcExpoRecipe.assets[0];
+	const rendered = renderRecipeAsset(orpcExpoRecipe, asset, expoFramework, {
+		markers,
+		readTemplate,
+		slots: {},
+	});
+
+	const target = ensuredModuleTarget("mobile");
+	return [
+		leafTextFile(target, rendered.destination, rendered.content),
+		surfaceDependencies(target, "packageJson", [
+			{
+				name: `@${markers.SLUG}/orpc`,
+				version: "workspace:*",
+				type: "dependencies",
+			},
+			{ ...deps.orpcClient, type: "dependencies" },
+			{ ...deps.orpcServer, type: "dependencies" },
+		]),
+	];
+}
 
 function secondaryOrpcClients(config: ForgeConfig) {
 	return webAppInstances(config)

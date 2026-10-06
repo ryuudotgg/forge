@@ -46,6 +46,21 @@ function expectedTrpcClient(usesAuth: boolean) {
 		);
 }
 
+function expectedOrpcClient(usesAuth: boolean) {
+	return readTemplate("api/orpc/expo/client.ts")
+		.replaceAll("__SLUG__", "acme")
+		.replace(
+			"__AUTH_IMPORT__;\n",
+			usesAuth ? 'import { authClient } from "./auth-client";\n' : "",
+		)
+		.replace(
+			"  __AUTH_HEADERS__,\n",
+			usesAuth
+				? "  async headers() {\n    const cookies = await authClient.getCookie();\n    return cookies ? { Cookie: cookies } : {};\n  },\n"
+				: "",
+		);
+}
+
 const authOverrides: ForgeConfig = {
 	authentication: "better-auth",
 	database: "sqlite",
@@ -301,6 +316,60 @@ describe("Expo mobile framework", () => {
 		},
 	);
 
+	it.each([
+		{ backend: "self", web: "nextjs" },
+		{ backend: "self", web: "react-router" },
+		{ backend: "self", web: "tanstack-start" },
+		{ backend: "hono", web: "nextjs" },
+		{ backend: "express", web: "nextjs" },
+		{ backend: "fastify", web: "nextjs" },
+		{ backend: "hono", web: undefined, platforms: ["mobile"] },
+	] satisfies ReadonlyArray<ForgeConfig>)(
+		"renders the oRPC Expo client on $backend with $web",
+		async (host) => {
+			for (const usesAuth of [false, true]) {
+				const plan = await plannedProject(
+					mobileConfig({
+						...host,
+						...(usesAuth ? authOverrides : {}),
+						rpc: "orpc",
+					}),
+				);
+
+				const content = writeContent(plan, "apps/mobile/src/lib/orpc.ts");
+				const packageJson: unknown = JSON.parse(
+					writeContent(plan, "apps/mobile/package.json"),
+				);
+
+				expect(content).toBe(expectedOrpcClient(usesAuth));
+				expect(content).not.toMatch(markerPattern);
+				expect(content).not.toContain("\t");
+				expect(
+					plan.writes.some(
+						(write) => write.path === "apps/mobile/src/lib/trpc.ts",
+					),
+				).toBe(false);
+
+				expect(packageJson).toMatchObject({
+					dependencies: {
+						"@acme/orpc": "workspace:*",
+						"@orpc/client": expect.any(String),
+						"@orpc/server": expect.any(String),
+					},
+				});
+
+				expect(packageJson).not.toHaveProperty([
+					"dependencies",
+					"@orpc/tanstack-query",
+				]);
+
+				expect(writeContent(plan, "apps/mobile/package.json")).not.toContain(
+					'"@trpc/',
+				);
+			}
+		},
+	);
+
 	it("renders self-hosted tRPC and auth mobile clients with dependencies", async () => {
 		const plan = await plannedProject(
 			mobileConfig({
@@ -388,24 +457,33 @@ describe("Expo mobile framework", () => {
 		).toBe(false);
 	});
 
-	it("rejects a mobile-only tRPC project without an API host", async () => {
-		const error = await plannedProject(
-			mobileConfig({
-				backend: undefined,
-				platforms: ["mobile"],
-				rpc: "trpc",
-				web: undefined,
-			}),
-		).catch((cause: unknown) => cause);
+	it.each([
+		{ rpc: "trpc", name: "tRPC" },
+		{ rpc: "orpc", name: "oRPC" },
+	] satisfies ReadonlyArray<{ rpc: ForgeConfig["rpc"]; name: string }>)(
+		"rejects a mobile-only $name project without an API host",
+		async ({ rpc, name }) => {
+			const error = await plannedProject(
+				mobileConfig({
+					backend: undefined,
+					platforms: ["mobile"],
+					rpc,
+					web: undefined,
+				}),
+			).catch((cause: unknown) => cause);
 
-		expect(error).toBeInstanceOf(GeneratorError);
-		expect(error).toMatchObject({
-			generatorId: "trpc",
-			reason: "framework-not-supported-yet",
-		});
+			expect(error).toBeInstanceOf(GeneratorError);
+			expect(error).toMatchObject({
+				generatorId: rpc,
+				reason: "framework-not-supported-yet",
+			});
 
-		expect(error).toHaveProperty("message", "tRPC does not support Expo yet.");
-	});
+			expect(error).toHaveProperty(
+				"message",
+				`${name} does not support Expo yet.`,
+			);
+		},
+	);
 
 	it("adds the Expo environment and gitignore entries once", async () => {
 		const plan = await plannedProject(mobileConfig());
