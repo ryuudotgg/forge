@@ -29,7 +29,7 @@ import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
-import { viteHostDriverDependencies } from "../vite-host-drivers";
+import { hostDriverDependencies } from "../host-drivers";
 import {
 	drizzleTableRelations,
 	drizzleUserRelations,
@@ -261,12 +261,9 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 								version: "workspace:*",
 								type: "dependencies",
 							},
-							...viteHostDriverDependencies(
-								config,
-								provider.drizzle.runtimeDeps,
-							),
 						]),
 					]),
+			...hostDriverDependencies(config, provider.drizzle.runtimeDeps),
 
 			surfaceLines(
 				projectTarget(),

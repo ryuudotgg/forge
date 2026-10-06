@@ -15,6 +15,20 @@ import {
 	scriptEnvironment,
 } from "../utils/install-smoke";
 
+async function pointTursoAtLocalFile(projectRoot: string) {
+	const envPath = join(projectRoot, ".env");
+	const databaseFile = join(projectRoot, "packages/db/prisma/local.db");
+	const env = await readFile(envPath, "utf8");
+
+	await writeFile(
+		envPath,
+		env.replace(
+			/^TURSO_DATABASE_URL=.*$/m,
+			`TURSO_DATABASE_URL="file:${databaseFile}"`,
+		),
+	);
+}
+
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it("requires production server URLs outside CI without bundling localhost defaults", async () => {
 		await withScenarioWorkspace("smoke-hono-server-url", async (workspace) => {
@@ -114,6 +128,40 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			}
 		});
 	}, 600_000);
+	it.each([
+		{ backend: "hono", databaseProvider: undefined },
+		{ backend: "express", databaseProvider: "turso" },
+	] as const)(
+		"starts a built $backend server on Prisma with SQLite ($databaseProvider)",
+		async ({ backend, databaseProvider }) => {
+			await withScenarioWorkspace(
+				`smoke-prisma-sqlite-${backend}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						authentication: "better-auth",
+						backend,
+						database: "sqlite",
+						databaseProvider,
+						linter: "biome",
+						orm: "prisma",
+						packageManager: "pnpm",
+						rpc: "trpc",
+						style: "tailwind",
+						web: "tanstack-router",
+					});
+
+					if (databaseProvider === "turso")
+						await pointTursoAtLocalFile(workspace.projectRoot);
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectCredentialedGeneratedServer(workspace.projectRoot, {
+						launch: "start",
+					});
+				},
+			);
+		},
+		600_000,
+	);
 
 	it.each(["tanstack-router", "react-router"])(
 		"installs, builds, and typechecks %s with an oRPC Hono host",

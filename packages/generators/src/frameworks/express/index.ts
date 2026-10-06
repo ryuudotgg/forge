@@ -178,13 +178,6 @@ function buildContributions(config: ForgeConfig) {
 			{ ...deps.typesNode, type: "devDependencies" },
 			{ ...deps.typescript, type: "devDependencies" },
 		]),
-		...(config.orm === "drizzle" && config.database === "sqlite"
-			? [
-					surfaceDependencies(ensuredModuleTarget("server"), "packageJson", [
-						{ ...deps.libsqlClient, type: "dependencies" },
-					]),
-				]
-			: []),
 		surfaceScripts(
 			ensuredModuleTarget("server"),
 			"packageJson",
