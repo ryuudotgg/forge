@@ -237,7 +237,7 @@ describe("add", () => {
 
 					if (client)
 						expect(added.stdout).toContain(
-							'Set WEB_URLS="http://localhost:3002" in .env so site can call the API.',
+							'Add http://localhost:3002 to WEB_URLS in .env so site can call the API. With only local apps, that makes WEB_URLS="http://localhost:3002".',
 						);
 
 					expect(

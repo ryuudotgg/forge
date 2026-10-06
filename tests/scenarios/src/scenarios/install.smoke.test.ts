@@ -2360,7 +2360,11 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
 
-			const printed = /Set WEB_URLS="([^"]+)" in \.env/.exec(added.stdout)?.[1];
+			const printed =
+				/Add http:\/\/localhost:3003 to WEB_URLS in \.env so portal can call the API\. With only local apps, that makes WEB_URLS="([^"]+)"\./.exec(
+					added.stdout,
+				)?.[1];
+
 			expect(printed, added.stdout).toBe(
 				"http://localhost:3002,http://localhost:3003",
 			);

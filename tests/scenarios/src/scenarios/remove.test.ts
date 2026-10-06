@@ -137,7 +137,7 @@ describe("remove", () => {
 
 					expect(removed.stdout).toContain("We removed the docs web app.");
 					expect(removed.stdout).toContain(
-						'Set WEB_URLS="http://localhost:3004" in .env so site can call the API.',
+						'Remove http://localhost:3003 from WEB_URLS in .env. With only local apps, that leaves WEB_URLS="http://localhost:3004".',
 					);
 
 					expect(

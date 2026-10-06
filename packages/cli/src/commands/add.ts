@@ -35,7 +35,7 @@ import { runCliEffectValue } from "../runtime";
 import { webAppNameIssue, webAppsSchema } from "../steps/platforms/web-apps";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
-import { webClientEnvMessage } from "../utils/web-apps";
+import { addedClientEnvMessage } from "../utils/web-apps";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
@@ -572,7 +572,7 @@ async function addWebApp(
 	);
 
 	log.success(`We added the ${name} web app.`);
-	if (values.client === true) log.info(webClientEnvMessage(nextConfig));
+	if (values.client === true) log.info(addedClientEnvMessage(nextConfig, name));
 }
 
 export async function runAdd(

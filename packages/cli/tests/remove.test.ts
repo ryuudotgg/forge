@@ -670,7 +670,7 @@ describe("remove command", () => {
 				{ name: "site", framework: "nextjs", port: 3004 },
 			],
 			info: [
-				'Set WEB_URLS="http://localhost:3002" in .env so admin can call the API.',
+				'Remove http://localhost:3003 from WEB_URLS in .env. With only local apps, that leaves WEB_URLS="http://localhost:3002".',
 			],
 		},
 		{
@@ -736,6 +736,32 @@ describe("remove command", () => {
 			);
 		},
 	);
+
+	it("names the recorded origin of a removed client", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [
+						{ name: "admin", framework: "nextjs", client: true, port: 3002 },
+						{ name: "docs", framework: "nextjs", client: true, port: 3007 },
+						{ name: "site", framework: "nextjs", client: true, port: 3004 },
+					],
+				},
+				modules: [appModule, adminModule, docsModule, siteModule],
+			}),
+		);
+
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({ retained: [] });
+
+		await runRemove("docs", { yes: true });
+
+		expect(promptMocks.logInfo.mock.calls).toEqual([
+			[
+				'Remove http://localhost:3007 from WEB_URLS in .env. With only local apps, that leaves WEB_URLS="http://localhost:3002,http://localhost:3004".',
+			],
+		]);
+	});
 
 	it("reports the removal, then the env line, then the kept files", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(

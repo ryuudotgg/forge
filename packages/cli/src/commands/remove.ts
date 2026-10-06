@@ -25,7 +25,7 @@ import {
 } from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
-import { webClientEnvMessage } from "../utils/web-apps";
+import { removedClientEnvMessage } from "../utils/web-apps";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
@@ -456,7 +456,7 @@ async function removeWebApp(
 			},
 		);
 
-		reportWebAppRemoval(selectedApp, nextConfig, retained);
+		reportWebAppRemoval(selectedApp, config, nextConfig, retained);
 		return true;
 	}
 
@@ -496,17 +496,21 @@ async function removeWebApp(
 		},
 	);
 
-	reportWebAppRemoval(selectedApp, nextConfig, retained);
+	reportWebAppRemoval(selectedApp, config, nextConfig, retained);
 	return true;
 }
 
 function reportWebAppRemoval(
 	app: NonNullable<ForgeConfig["webApps"]>[number],
+	previousConfig: ForgeConfig,
 	nextConfig: ForgeConfig,
 	retained: ReadonlyArray<string>,
 ) {
 	log.success(`We removed the ${app.name} web app.`);
-	if (app.client === true) log.info(webClientEnvMessage(nextConfig));
+
+	if (app.client === true)
+		log.info(removedClientEnvMessage(previousConfig, nextConfig, app.name));
+
 	if (retained.length > 0)
 		log.info(
 			`We kept your edited ${retained.length === 1 ? "file" : "files"} at ${listAnd.format(retained)}.`,

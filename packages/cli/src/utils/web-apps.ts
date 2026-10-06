@@ -4,7 +4,6 @@ import {
 	webAppInstances,
 	webFrameworks,
 } from "@ryuugg/generators";
-import { listAnd } from "./list";
 
 export function webAppLabels(config: ForgeConfig): string[] {
 	if (!config.webApps?.length)
@@ -15,13 +14,30 @@ export function webAppLabels(config: ForgeConfig): string[] {
 	);
 }
 
-export function webClientEnvMessage(config: ForgeConfig): string {
-	const clientNames = webAppInstances(config)
-		.filter((instance) => instance.client === true)
-		.map((instance) => instance.key);
+function webAppOrigin(config: ForgeConfig, name: string) {
+	const instance = webAppInstances(config).find(
+		(entry) => !entry.primary && entry.key === name,
+	);
 
-	if (clientNames.length === 0)
+	if (instance === undefined) throw new Error(`Web App Not Found: ${name}`);
+	return `http://localhost:${instance.port}`;
+}
+
+function localWebUrls(config: ForgeConfig) {
+	return `WEB_URLS="${secondaryClientOrigins(config).join(",")}"`;
+}
+
+export function addedClientEnvMessage(config: ForgeConfig, name: string) {
+	return `Add ${webAppOrigin(config, name)} to WEB_URLS in .env so ${name} can call the API. With only local apps, that makes ${localWebUrls(config)}.`;
+}
+
+export function removedClientEnvMessage(
+	previousConfig: ForgeConfig,
+	nextConfig: ForgeConfig,
+	name: string,
+) {
+	if (secondaryClientOrigins(nextConfig).length === 0)
 		return "Remove WEB_URLS from .env: no secondary web app calls the API now.";
 
-	return `Set WEB_URLS="${secondaryClientOrigins(config).join(",")}" in .env so ${listAnd.format(clientNames)} can call the API.`;
+	return `Remove ${webAppOrigin(previousConfig, name)} from WEB_URLS in .env. With only local apps, that leaves ${localWebUrls(nextConfig)}.`;
 }

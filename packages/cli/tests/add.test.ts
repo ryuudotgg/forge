@@ -293,7 +293,7 @@ describe("add command", () => {
 
 			expect(promptMocks.logInfo.mock.calls).toEqual([
 				[
-					'Set WEB_URLS="http://localhost:3002" in .env so site can call the API.',
+					'Add http://localhost:3002 to WEB_URLS in .env so site can call the API. With only local apps, that makes WEB_URLS="http://localhost:3002".',
 				],
 			]);
 		},
@@ -304,7 +304,7 @@ describe("add command", () => {
 			client: true,
 			info: [
 				[
-					'Set WEB_URLS="http://localhost:3002,http://localhost:3004" in .env so admin and portal can call the API.',
+					'Add http://localhost:3004 to WEB_URLS in .env so portal can call the API. With only local apps, that makes WEB_URLS="http://localhost:3002,http://localhost:3004".',
 				],
 			],
 		},
