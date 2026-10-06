@@ -42,7 +42,7 @@ export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	configFile: "next.config.ts",
 	clientEnvPrefix: "NEXT_PUBLIC_",
 	buildOutputs: [".next/**", "!.next/cache/**"],
-	ignoreDirs: [".next/"],
+	ignoreDirs: [".next/", "next-env.d.ts"],
 	name: "Next.js",
 	sourceRoot: "",
 	slots: [...Object.keys(nextjsSlots), "orpc"],

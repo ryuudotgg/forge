@@ -2,11 +2,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "vitest";
 import {
+	commitFixture,
+	expectCleanTree,
 	expectInstallAndTypecheck,
-	forgeEnvironment,
+	expectRun,
 	pathExists,
 	readJson,
-	runCommand,
 	runForge,
 	type ScenarioProject,
 } from "./harness";
@@ -20,29 +21,6 @@ export interface LinterSurfaces {
 
 const unformattedProbe = "const  probe = 'forge'\nexport { probe }\n";
 const formattedProbe = 'const probe = "forge";\nexport { probe };\n';
-
-async function expectRun(
-	workspace: ScenarioProject,
-	command: string,
-	args: ReadonlyArray<string>,
-) {
-	const result = await runCommand(command, args, {
-		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
-	});
-
-	expect(
-		result.exitCode,
-		`${command} ${args.join(" ")} failed\n${result.stdout}\n${result.stderr}`,
-	).toBe(0);
-
-	return result;
-}
-
-async function expectCleanTree(workspace: ScenarioProject) {
-	const status = await expectRun(workspace, "git", ["status", "--porcelain"]);
-	expect(status.stdout).toBe("");
-}
 
 async function expectLinterSurfaces(
 	workspace: ScenarioProject,
@@ -99,23 +77,6 @@ async function expectStagedPreCommit(workspace: ScenarioProject) {
 	]);
 
 	expect(unstagedFix.stdout).toBe("");
-}
-
-async function commitFixture(workspace: ScenarioProject) {
-	await expectRun(workspace, "git", ["add", "."]);
-	await expectRun(workspace, "git", [
-		"-c",
-		"user.name=Forge",
-		"-c",
-		"user.email=forge@example.com",
-		"-c",
-		"commit.gpgsign=false",
-		"-c",
-		"core.hooksPath=/dev/null",
-		"commit",
-		"-qm",
-		"fixture",
-	]);
 }
 
 export async function expectFreshLinterCheck(

@@ -730,7 +730,27 @@ describe("gitignore addon", () => {
 			"Build",
 		);
 
-		expect(nextjs[0]?.lines).toEqual([...baseLines, ".next/"]);
+		expect(nextjs[0]?.lines).toEqual([...baseLines, ".next/", "next-env.d.ts"]);
+
+		const secondaryNextjs = linesSurfaces(
+			contributionsOf(
+				gitignore,
+				{
+					web: "react-router",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				},
+				[nextjsFramework, reactRouterFramework],
+			),
+			"gitignore",
+			"Build",
+		);
+
+		expect(secondaryNextjs[0]?.lines).toEqual([
+			...baseLines,
+			".react-router/",
+			".next/",
+			"next-env.d.ts",
+		]);
 
 		const expo = linesSurfaces(
 			contributionsOf(gitignore, { mobile: "expo" }),
