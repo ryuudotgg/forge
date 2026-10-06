@@ -1,4 +1,4 @@
-import { basename, isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import {
 	authenticationProviders,
 	backends,
@@ -24,20 +24,25 @@ import {
 import {
 	type AdoptedModuleVersions,
 	allDependencyNames,
+	type CommandPins,
 	captureVersions,
+	commandPins,
 	databaseFromDependencies,
 	dependencyNames,
 	detectBackendPackage,
 	envNames,
 	hasTanstackRouterApplicationDependencies,
+	type ModuleKind,
 	type ModuleMappingProposal,
 	moduleProposal,
 	oneDetected,
 	packageManagerFromLockfiles,
 	providerFromSignals,
 	runtimeFromPackageJson,
+	webFrameworkCandidates,
 	webFrameworkFromPackage,
 } from "./mapping";
+import { scriptPort, type WebAppObservation } from "./web-apps";
 import {
 	AdoptionFileParseError,
 	AdoptionFileReadError,
@@ -58,10 +63,12 @@ export interface AdoptionToolingPrefills {
 
 export interface AdoptionDetection {
 	readonly catalogEntries: ReadonlyArray<CatalogEntry>;
+	readonly commandPins: CommandPins;
 	readonly config: ForgeConfig;
 	readonly modules: ReadonlyArray<ModuleMappingProposal>;
 	readonly tooling: AdoptionToolingPrefills;
 	readonly versions: ReadonlyArray<AdoptedModuleVersions>;
+	readonly webApps: ReadonlyArray<WebAppObservation>;
 }
 
 const ignoredDirectories = new Set([
@@ -517,27 +524,54 @@ const makeAdoptionDetector = Effect.gen(function* () {
 
 		const detectedEnvNames = envNames(envFiles);
 
-		const webModules = roots.flatMap((root) => {
-			const framework = webFrameworkFromPackage(
+		const modules = roots.map((root) =>
+			moduleProposal(
+				root,
 				packageJsonByRoot.get(root) ?? {},
+				componentsByRoot.has(root),
+				tanstackRouterConfigRoots.has(root),
+			),
+		);
+
+		const rpcPackageRoots = new Map(
+			modules.flatMap((module): ReadonlyArray<readonly [string, string]> => {
+				const name = packageJsonByRoot.get(module.root)?.name;
+				return (module.proposal === "trpc" || module.proposal === "orpc") &&
+					name !== undefined
+					? [[name, module.root]]
+					: [];
+			}),
+		);
+
+		const webApps = roots.flatMap((root): ReadonlyArray<WebAppObservation> => {
+			const packageJson = packageJsonByRoot.get(root) ?? {};
+			const frameworks = webFrameworkCandidates(
+				packageJson,
 				tanstackRouterConfigRoots.has(root),
 			);
 
-			return framework === undefined ? [] : [{ framework, root }];
+			if (frameworks.length === 0) return [];
+
+			return [
+				{
+					root,
+					...(packageJson.name === undefined
+						? {}
+						: { packageName: packageJson.name }),
+					frameworks,
+					scriptPort: scriptPort(packageJson.scripts),
+					rpcPackages: [...dependencyNames(packageJson)].flatMap((name) => {
+						const rpcRoot = rpcPackageRoots.get(name);
+						return rpcRoot === undefined ? [] : [rpcRoot];
+					}),
+				},
+			];
 		});
 
-		const primaryWebModule =
-			webModules.find((module) => module.root === "apps/web") ?? webModules[0];
-
-		const web =
-			primaryWebModule?.framework ??
-			webFrameworkFromPackage(rootPackageJson ?? {}, false);
-
-		const webApps = webModules.flatMap((module) =>
-			module === primaryWebModule
-				? []
-				: [{ name: basename(module.root), framework: module.framework }],
-		);
+		const hasWebApp = webApps.some((app) => app.frameworks.length === 1);
+		const rootWeb = hasWebApp
+			? undefined
+			: webFrameworkFromPackage(rootPackageJson ?? {}, false);
 
 		const orm = oneDetected([
 			directDependencies.has("drizzle-orm")
@@ -552,9 +586,14 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			? authenticationProviders.normalize("better-auth")
 			: undefined;
 
-		const rpc = directDependencies.has("@trpc/server")
-			? rpcProviders.normalize("trpc")
-			: undefined;
+		const rpc = oneDetected([
+			directDependencies.has("@trpc/server")
+				? rpcProviders.normalize("trpc")
+				: undefined,
+			directDependencies.has("@orpc/server")
+				? rpcProviders.normalize("orpc")
+				: undefined,
+		]);
 
 		const backendPackage = [...packageJsonByRoot]
 			.map(([root, packageJson]) =>
@@ -564,9 +603,9 @@ const makeAdoptionDetector = Effect.gen(function* () {
 
 		const backend = backendPackage
 			? backends.normalize(backendPackage.id)
-			: web === undefined
-				? undefined
-				: backends.normalize("self");
+			: hasWebApp || rootWeb !== undefined
+				? backends.normalize("self")
+				: undefined;
 
 		const style = allDependencies.has("tailwindcss")
 			? styleFrameworks.normalize("tailwind")
@@ -668,20 +707,10 @@ const makeAdoptionDetector = Effect.gen(function* () {
 			...(runtime === undefined ? {} : { runtime }),
 			...(style === undefined ? {} : { style }),
 			...(uiLibrary === undefined ? {} : { uiLibrary }),
-			...(webApps.length === 0 ? {} : { webApps }),
-			...(web === undefined || webPlatform === undefined
+			...(rootWeb === undefined || webPlatform === undefined
 				? {}
-				: { platforms: [webPlatform], web }),
+				: { platforms: [webPlatform], web: rootWeb }),
 		};
-
-		const modules = roots.map((root) =>
-			moduleProposal(
-				root,
-				packageJsonByRoot.get(root) ?? {},
-				componentsByRoot.has(root),
-				tanstackRouterConfigRoots.has(root),
-			),
-		);
 
 		const versions = modules.flatMap((module) => {
 			if (module.proposal === "unadopted") return [];
@@ -700,10 +729,12 @@ const makeAdoptionDetector = Effect.gen(function* () {
 
 		return {
 			catalogEntries: pnpmWorkspace?.catalogEntries ?? [],
+			commandPins: commandPins(rootPackageJson, nvmrc),
 			config,
 			modules,
 			tooling: rootEntrySet.has("turbo.json") ? { turbo: true } : {},
 			versions,
+			webApps,
 		} satisfies AdoptionDetection;
 	});
 

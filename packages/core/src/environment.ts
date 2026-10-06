@@ -1,4 +1,5 @@
-import { Context, Effect, Layer } from "effect";
+import { join } from "node:path";
+import { Context, Effect, FileSystem, Layer, Option } from "effect";
 import { CommandProbe } from "./command";
 import { type DependencyFormat, defaultDependencyFormat } from "./operations";
 
@@ -174,7 +175,7 @@ function checkCurrentRuntime(): EnvironmentCheck {
 	return { ok: true, message: `${displayName} v${version}` };
 }
 
-function buildPackageManagerCheck(
+export function buildPackageManagerCheck(
 	pm: PackageManager,
 	version: string,
 ): EnvironmentCheck {
@@ -197,6 +198,36 @@ function buildPackageManagerCheck(
 	return { ok: true, message: `${displayName} v${version}` };
 }
 
+function pathCandidates(command: string) {
+	const windows = process.platform === "win32";
+	const directories = (process.env.PATH ?? "")
+		.split(windows ? ";" : ":")
+		.filter((directory) => directory.length > 0);
+
+	const extensions = windows
+		? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")
+		: [""];
+
+	return directories.flatMap((directory) =>
+		extensions.map((extension) => join(directory, `${command}${extension}`)),
+	);
+}
+
+const isOnPath = Effect.fn("Environment.isOnPath")(function* (command: string) {
+	const fs = yield* FileSystem.FileSystem;
+	for (const candidate of pathCandidates(command)) {
+		const info = yield* fs.stat(candidate).pipe(Effect.option);
+		if (
+			Option.isSome(info) &&
+			info.value.type === "File" &&
+			(process.platform === "win32" || (info.value.mode & 0o111) !== 0)
+		)
+			return true;
+	}
+
+	return false;
+});
+
 const makeEnvironment = Effect.succeed({
 	checkRuntime: Effect.sync(checkCurrentRuntime),
 	checkPackageManager: (pm: PackageManager) => {
@@ -214,6 +245,20 @@ const makeEnvironment = Effect.succeed({
 	},
 	readPackageManagerVersion: (pm: PackageManager) =>
 		CommandProbe.readVersion(packageManagerCommand(pm)),
+	checkPackageManagerInstalled: (pm: PackageManager) => {
+		const displayName = packageManagers[pmCommandMap[pm]].displayName;
+		return isOnPath(packageManagerCommand(pm)).pipe(
+			Effect.map(
+				(found): EnvironmentCheck =>
+					found
+						? { ok: true, message: `${displayName} is installed.` }
+						: {
+								ok: false,
+								message: `You don't have ${displayName} installed, please install it and try again.`,
+							},
+			),
+		);
+	},
 });
 
 type EnvironmentService = Effect.Success<typeof makeEnvironment>;
@@ -243,4 +288,8 @@ export function checkRuntime(): EnvironmentCheck {
 
 export function checkPackageManager(pm: PackageManager) {
 	return Environment.checkPackageManager(pm);
+}
+
+export function checkPackageManagerInstalled(pm: PackageManager) {
+	return Environment.use((service) => service.checkPackageManagerInstalled(pm));
 }

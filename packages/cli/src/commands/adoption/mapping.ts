@@ -18,9 +18,15 @@ export type ModuleKind =
 	| "auth"
 	| "backend-app"
 	| "db"
+	| "orpc"
 	| "trpc"
 	| "ui"
 	| "web-app";
+
+export interface ConfirmedModule {
+	readonly kind: ModuleKind;
+	readonly root: string;
+}
 
 export type DependencySection =
 	| "dependencies"
@@ -38,6 +44,40 @@ export interface CapturedDependencyPin {
 export interface AdoptedModuleVersions {
 	readonly dependencies: ReadonlyArray<CapturedDependencyPin>;
 	readonly root: string;
+}
+
+export interface PinnedPackageManager {
+	readonly packageManager: PackageManager;
+	readonly version: string;
+}
+
+export interface CommandPins {
+	readonly packageManager?: PinnedPackageManager;
+	readonly node?: string;
+}
+
+const exactVersion = /^v?(\d+(?:\.\d+){0,2})$/;
+export function commandPins(
+	packageJson: PackageJson | undefined,
+	nvmrc: string | undefined,
+): CommandPins {
+	const [, command, version] =
+		packageJson?.packageManager?.match(/^([a-z]+)@([^+\s]+)/) ?? [];
+
+	const packageManager = Object.entries(packageManagers).find(
+		([id]) => id === command,
+	)?.[1].displayName;
+
+	const node =
+		nvmrc?.trim().match(exactVersion)?.[1] ??
+		packageJson?.engines?.node?.trim().match(exactVersion)?.[1];
+
+	return {
+		...(packageManager === undefined || version === undefined
+			? {}
+			: { packageManager: { packageManager, version } }),
+		...(node === undefined ? {} : { node }),
+	};
 }
 
 export interface ModuleMappingProposal {
@@ -136,12 +176,12 @@ export function oneDetected<T>(
 	return detected.size === 1 ? detected.values().next().value : undefined;
 }
 
-export function webFrameworkFromPackage(
+export function webFrameworkCandidates(
 	packageJson: PackageJson,
 	hasTanstackRouterConfig: boolean,
-): WebFramework | undefined {
+): ReadonlyArray<WebFramework> {
 	const dependencies = dependencyNames(packageJson);
-	return oneDetected([
+	return [
 		dependencies.has("next") ? webFrameworks.normalize("nextjs") : undefined,
 		dependencies.has("react-router")
 			? webFrameworks.normalize("react-router")
@@ -154,7 +194,16 @@ export function webFrameworkFromPackage(
 		hasTanstackRouterApplicationDependencies(packageJson)
 			? webFrameworks.normalize("tanstack-router")
 			: undefined,
-	]);
+	].filter((framework) => framework !== undefined);
+}
+
+export function webFrameworkFromPackage(
+	packageJson: PackageJson,
+	hasTanstackRouterConfig: boolean,
+): WebFramework | undefined {
+	return oneDetected(
+		webFrameworkCandidates(packageJson, hasTanstackRouterConfig),
+	);
 }
 
 export function packageManagerFromLockfiles(
@@ -263,6 +312,12 @@ export function moduleProposal(
 		signatures.push({
 			evidence: "found @trpc/server in its dependencies",
 			proposal: "trpc",
+		});
+
+	if (dependencies.has("@orpc/server"))
+		signatures.push({
+			evidence: "found @orpc/server in its dependencies",
+			proposal: "orpc",
 		});
 
 	if (dependencies.has("@base-ui/react"))

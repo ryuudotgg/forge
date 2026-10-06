@@ -1,7 +1,15 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	readdir,
+	readFile,
+	rename,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	createProject,
 	pathExists,
 	readJson,
 	runForge,
@@ -75,7 +83,7 @@ async function fixture(projectRoot: string) {
 		},
 		name: "@ajito/admin",
 		private: true,
-		scripts: { admin: "keep-me" },
+		scripts: { admin: "keep-me", dev: "next dev --port 3002" },
 	});
 
 	await mkdir(join(projectRoot, "apps/admin/app"), { recursive: true });
@@ -115,6 +123,50 @@ async function snapshotTree(projectRoot: string) {
 
 	await visit(projectRoot);
 	return snapshot;
+}
+
+async function treeContents(projectRoot: string) {
+	const contents: Record<string, string> = {};
+	for (const entry of await readdir(projectRoot, {
+		recursive: true,
+		withFileTypes: true,
+	})) {
+		if (!entry.isFile()) continue;
+		const path = join(entry.parentPath, entry.name);
+		contents[relative(projectRoot, path)] = await readFile(path, "utf-8");
+	}
+
+	return contents;
+}
+
+function withoutForgeState(contents: Readonly<Record<string, string>>) {
+	return Object.fromEntries(
+		Object.entries(contents).filter(
+			([path]) => !path.startsWith(".forge/") && !path.endsWith("forge.json"),
+		),
+	);
+}
+
+async function stripForgeState(projectRoot: string) {
+	await rm(join(projectRoot, ".forge"), { recursive: true });
+
+	for (const path of Object.keys(await treeContents(projectRoot)))
+		if (path.endsWith("forge.json")) await rm(join(projectRoot, path));
+}
+
+function printedConfig(output: string) {
+	const lines = output.split("\n");
+	const start = lines.findIndex((line) =>
+		line.includes("Forge will record this config:"),
+	);
+
+	const body: string[] = [];
+	for (const line of lines.slice(start + 1)) {
+		if (line.startsWith("├")) break;
+		body.push(line.replace(/^│ {2}/, "").replace(/\s*│\s*$/, ""));
+	}
+
+	return JSON.parse(body.join("\n"));
 }
 
 async function initConfig(
@@ -304,6 +356,158 @@ describe("init", () => {
 				'A ".forge" directory already exists here. You need to remove it before running forge init.',
 			);
 		});
+	}, 120_000);
+
+	it.each(["trpc", "orpc"])(
+		"adopts a detected multi app tree with %s clients and converges",
+		async (rpc) => {
+			await withScenarioWorkspace(`init-detected-${rpc}`, async (workspace) => {
+				await createProject(workspace, {
+					backend: "self",
+					packageManager: "pnpm",
+					rpc,
+					web: "nextjs",
+					webApps: [
+						{ name: "site", framework: "react-router", client: true },
+						{ name: "admin", framework: "nextjs" },
+					],
+				});
+
+				await stripForgeState(workspace.projectRoot);
+				const before = await treeContents(workspace.projectRoot);
+				const options = { workspaceRoot: workspace.workspaceRoot };
+				const sentence =
+					"We'll adopt admin (Next.js, port 3003) and site (React Router, port 3002, calls the API) as secondary web apps.";
+
+				const dryRun = await runForge(
+					workspace.projectRoot,
+					["init", "--dry-run", "--yes"],
+					options,
+				);
+
+				expect(dryRun.stdout + dryRun.stderr).toContain(sentence);
+				expect(await treeContents(workspace.projectRoot)).toEqual(before);
+
+				const adopted = await runForge(
+					workspace.projectRoot,
+					["init", "--yes"],
+					options,
+				);
+
+				const manifest = await readJson<{
+					config: { webApps?: ReadonlyArray<Record<string, unknown>> };
+				}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+				expect(printedConfig(dryRun.stdout)).toEqual(manifest.config);
+				expect(printedConfig(adopted.stdout)).toEqual(manifest.config);
+				expect(manifest.config).toMatchObject({ rpc, web: "nextjs" });
+				expect(manifest.config.webApps).toEqual([
+					{ name: "admin", framework: "nextjs", port: 3003 },
+					{ name: "site", framework: "react-router", port: 3002, client: true },
+				]);
+
+				for (const [root, framework] of [
+					["apps/web", "nextjs"],
+					["apps/admin", "nextjs"],
+					["apps/site", "react-router"],
+				] satisfies ReadonlyArray<readonly [string, string]>)
+					expect(
+						await readJson<{ framework: string }>(
+							join(workspace.projectRoot, root, "forge.json"),
+						),
+					).toMatchObject({ framework });
+
+				for (const round of [1, 2]) {
+					const update = await tryRunForge(
+						workspace.projectRoot,
+						["update", "--accept-forge", "--no-install"],
+						options,
+					);
+
+					expect(update.exitCode, `round ${round}: ${update.stderr}`).toBe(0);
+					expect(
+						withoutForgeState(await treeContents(workspace.projectRoot)),
+					).toEqual(before);
+				}
+			});
+		},
+		120_000,
+	);
+
+	it("refuses to pick a primary web app without apps/web under --yes", async () => {
+		await withScenarioWorkspace("init-no-primary", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+				webApps: [{ name: "site", framework: "react-router" }],
+			});
+
+			await stripForgeState(workspace.projectRoot);
+			await rename(
+				join(workspace.projectRoot, "apps/web"),
+				join(workspace.projectRoot, "apps/main"),
+			);
+
+			const before = await treeContents(workspace.projectRoot);
+			const refused = await tryRunForge(
+				workspace.projectRoot,
+				["init", "--yes"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(refused.exitCode).toBe(1);
+			expect(refused.stdout + refused.stderr).toContain(
+				"We couldn't choose a primary web app because apps/web isn't being adopted. Run forge init interactively and choose one.",
+			);
+
+			expect(await treeContents(workspace.projectRoot)).toEqual(before);
+		});
+	}, 120_000);
+
+	it("refuses same-framework apps that a later update could not bind", async () => {
+		await withScenarioWorkspace(
+			"init-unbound-secondaries",
+			async (workspace) => {
+				const { projectRoot } = workspace;
+				await writeJson(join(projectRoot, "package.json"), {
+					name: "acme",
+					private: true,
+				});
+
+				await writeFile(
+					join(projectRoot, "pnpm-workspace.yaml"),
+					"packages:\n  - 'apps/*'\n",
+					"utf-8",
+				);
+
+				for (const [root, name, port] of [
+					["apps/web", "@acme/web", undefined],
+					["apps/marketing", "@company/site", 3002],
+					["apps/console", "@company/admin", 3003],
+				] satisfies ReadonlyArray<
+					readonly [string, string, number | undefined]
+				>)
+					await writeJson(join(projectRoot, root, "package.json"), {
+						dependencies: { next: "^16.0.0" },
+						name,
+						...(port === undefined
+							? {}
+							: { scripts: { dev: `next dev --port ${port}` } }),
+					});
+
+				const before = await treeContents(projectRoot);
+				const refused = await tryRunForge(projectRoot, ["init", "--yes"], {
+					workspaceRoot: workspace.workspaceRoot,
+				});
+
+				expect(refused.exitCode).toBe(1);
+				expect(refused.stdout + refused.stderr).toContain(
+					"We couldn't adopt apps/console and apps/marketing because Forge tells web apps of the same framework apart only by their folder or package, and these match neither. On the next update it would look for admin at apps/admin or as @acme/admin and site at apps/site or as @acme/site. Move each app to apps/<its name> or rename its package to @acme/<its name>, then run forge init again.",
+				);
+
+				expect(await treeContents(projectRoot)).toEqual(before);
+			},
+		);
 	}, 120_000);
 
 	it("requires explicit consent to remove an adopted addon artifact", async () => {

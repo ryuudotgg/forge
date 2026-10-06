@@ -139,10 +139,6 @@ describe("assembleSchema", () => {
 			message: "admin needs a port between 1 and 65535.",
 		},
 		{
-			webApps: [{ name: "admin", framework: "nextjs", port: 3001 }],
-			message: "admin can't use port 3001, which the API server uses.",
-		},
-		{
 			webApps: [
 				{ name: "admin", framework: "nextjs", port: 3004 },
 				{ name: "docs", framework: "nextjs", port: 3004 },
@@ -169,6 +165,37 @@ describe("assembleSchema", () => {
 		});
 
 		expect(decodeMessages(result)).toContain(message);
+	});
+
+	it.each(["hono", "express", "fastify"])(
+		"keeps port 3001 for the %s API server",
+		(backend) => {
+			const result = decodeConfig({
+				backend,
+				name: "Acme",
+				slug: "acme",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs", port: 3001 }],
+			});
+
+			expect(decodeMessages(result)).toContain(
+				"admin can't use port 3001, which the API server uses.",
+			);
+		},
+	);
+
+	it("lets a secondary use port 3001 when no API server runs", () => {
+		const result = decodeConfig({
+			backend: "self",
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [{ name: "docs", framework: "nextjs", port: 3001 }],
+		});
+
+		expect(Result.getOrThrow(result)).toMatchObject({
+			webApps: [{ name: "docs", port: 3001 }],
+		});
 	});
 
 	it("accepts explicit secondary ports beside positional ones", () => {

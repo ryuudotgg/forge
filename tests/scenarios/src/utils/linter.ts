@@ -144,9 +144,9 @@ export async function expectLinterSwitch(
 	const expected =
 		'import { readFile } from "node:fs/promises";\nimport { join } from "node:path";\n\nexport function readProbe(root: string) {\n  return readFile(join(root, "probe.txt"), "utf-8");\n}\n';
 
-	await writeFile(probePath, probe);
 	await expectRun(workspace, "git", ["init", "-q"]);
 	await expectInstallAndTypecheck(workspace, "pnpm");
+	await writeFile(probePath, probe);
 	await commitFixture(workspace);
 
 	await runForge(workspace.projectRoot, ["add", options.to], {

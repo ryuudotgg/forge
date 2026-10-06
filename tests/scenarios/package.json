@@ -9,7 +9,9 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@effect/platform-node": "catalog:effect",
 		"@ryuugg/core": "workspace:*",
+		"@ryuugg/generators": "workspace:*",
 		"@ryuugg/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"effect": "catalog:effect",

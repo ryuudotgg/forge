@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import catalogsStep from "../src/steps/project/catalogs";
 import linterStep from "../src/steps/project/linter";
 import nameStep from "../src/steps/project/name";
-import packageManagerStep from "../src/steps/project/package-manager";
+import packageManagerStep, {
+	createPackageManagerStep,
+} from "../src/steps/project/package-manager";
 import pathStep, { pathSchema } from "../src/steps/project/path";
 import runtimeStep from "../src/steps/project/runtime";
 import { type PartialConfig, SKIP } from "../src/steps/types";
@@ -17,6 +19,7 @@ const promptMocks = vi.hoisted(() => ({
 
 const coreMocks = vi.hoisted(() => ({
 	checkPackageManager: vi.fn(),
+	checkPackageManagerInstalled: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -32,6 +35,7 @@ vi.mock("@ryuugg/core", async (importOriginal) => {
 	return {
 		...original,
 		checkPackageManager: coreMocks.checkPackageManager,
+		checkPackageManagerInstalled: coreMocks.checkPackageManagerInstalled,
 	};
 });
 
@@ -50,6 +54,11 @@ describe("project steps", () => {
 	beforeEach(() => {
 		coreMocks.checkPackageManager.mockReset();
 		coreMocks.checkPackageManager.mockReturnValue(
+			Effect.succeed({ ok: true, message: "ok" }),
+		);
+
+		coreMocks.checkPackageManagerInstalled.mockReset();
+		coreMocks.checkPackageManagerInstalled.mockReturnValue(
 			Effect.succeed({ ok: true, message: "ok" }),
 		);
 
@@ -117,6 +126,103 @@ describe("project steps", () => {
 
 			expect(coreMocks.checkPackageManager).not.toHaveBeenCalled();
 			expect(promptMocks.logError).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			["validates", "validate"],
+			["chooses", "execute"],
+		])(
+			"%s a pinned Yarn from its packageManager pin without probing",
+			async (_label, phase) => {
+				const step = createPackageManagerStep({
+					packageManager: "Yarn",
+					version: "4.5.0",
+				});
+
+				if (phase === "validate")
+					await expect(
+						Promise.resolve(step.validate?.("Yarn", {})),
+					).resolves.toBeUndefined();
+				else await expect(step.execute({}, false)).resolves.toBe("Yarn");
+
+				expect(coreMocks.checkPackageManager).not.toHaveBeenCalled();
+				expect(promptMocks.logError).not.toHaveBeenCalled();
+			},
+		);
+
+		it("checks a pinned package manager is installed without running it", async () => {
+			const step = createPackageManagerStep({
+				packageManager: "Yarn",
+				version: "4.5.0",
+			});
+
+			await step.validate?.("Yarn", {});
+			expect(coreMocks.checkPackageManagerInstalled).toHaveBeenCalledWith(
+				"Yarn",
+			);
+		});
+
+		it("refuses a pinned package manager that isn't installed", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			coreMocks.checkPackageManagerInstalled.mockReturnValue(
+				Effect.succeed({
+					ok: false,
+					message:
+						"You don't have Yarn installed, please install it and try again.",
+				}),
+			);
+
+			try {
+				const step = createPackageManagerStep({
+					packageManager: "Yarn",
+					version: "4.5.0",
+				});
+
+				await expect(step.execute({}, false)).rejects.toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"You don't have Yarn installed, please install it and try again.",
+				);
+			} finally {
+				exit.mockRestore();
+			}
+		});
+
+		it("refuses a project pinned below the supported pnpm", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			try {
+				const step = createPackageManagerStep({
+					packageManager: "pnpm",
+					version: "9.15.0",
+				});
+
+				await expect(
+					Promise.resolve(step.validate?.("pnpm", {})),
+				).rejects.toThrow("exit:1");
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"You need pnpm v10 or later to forge a project, but you're running v9.15.0.",
+				);
+
+				expect(coreMocks.checkPackageManager).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+
+		it("probes a package manager the pin does not name", async () => {
+			const step = createPackageManagerStep({
+				packageManager: "Yarn",
+				version: "4.5.0",
+			});
+
+			await step.validate?.("npm", {});
+			expect(coreMocks.checkPackageManager).toHaveBeenCalledWith("npm");
 		});
 
 		it("exits non-interactively when the smart default fails the version gate", async () => {

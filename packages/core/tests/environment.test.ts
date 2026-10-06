@@ -1,13 +1,19 @@
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	CommandProbe,
 	CommandProbeError,
 	checkPackageManager,
+	checkPackageManagerInstalled,
 	checkRuntime,
 	defaultDependencyFormat,
 	dependencyFormatFor,
 	Environment,
+	type PackageManager,
 	packageManagerAddDevCommand,
 	packageManagerExecCommand,
 	packageManagerInstallCommand,
@@ -68,6 +74,74 @@ const timedOutProbeLayer = CommandProbe.Default.pipe(
 	),
 );
 
+type PathEntries = ReadonlyArray<readonly [string, number]>;
+
+interface PathDirectories {
+	readonly first: string;
+	readonly second: string;
+}
+
+async function withPath(
+	entries: { readonly first: PathEntries; readonly second: PathEntries },
+	run: (path: string, directories: PathDirectories) => Promise<void>,
+) {
+	const root = await mkdtemp(join(tmpdir(), "forge-path-"));
+	const directories = {
+		first: join(root, "first"),
+		second: join(root, "second"),
+	};
+
+	const layout: ReadonlyArray<readonly [string, PathEntries]> = [
+		[directories.first, entries.first],
+		[directories.second, entries.second],
+	];
+
+	try {
+		for (const [directory, files] of layout) {
+			await mkdir(directory, { recursive: true });
+
+			for (const [name, mode] of files) {
+				await writeFile(join(directory, name), "");
+				await chmod(join(directory, name), mode);
+			}
+		}
+
+		await run(
+			[directories.first, directories.second].join(delimiter),
+			directories,
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+}
+
+async function withPlatform(
+	platform: NodeJS.Platform,
+	run: () => Promise<void>,
+) {
+	const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+	Object.defineProperty(process, "platform", {
+		configurable: true,
+		value: platform,
+	});
+
+	try {
+		await run();
+	} finally {
+		if (descriptor !== undefined)
+			Object.defineProperty(process, "platform", descriptor);
+	}
+}
+
+function installed(pm: PackageManager, path: string) {
+	vi.stubEnv("PATH", path);
+	return Effect.runPromise(
+		checkPackageManagerInstalled(pm).pipe(
+			Effect.provide(Layer.mergeAll(Environment.Default, NodeServices.layer)),
+		),
+	);
+}
+
 function withProcessVersion(
 	name: string,
 	value: string | undefined,
@@ -93,6 +167,10 @@ function withProcessVersion(
 }
 
 describe("environment", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it("builds mutable install commands for every package manager", () => {
 		expect(
 			Object.values(packageManagers).map(({ displayName }) =>
@@ -176,6 +254,55 @@ describe("environment", () => {
 			ok: true,
 			message: "pnpm v10.4.0",
 		});
+	});
+
+	it("finds an installed package manager on PATH without running it", async () => {
+		await withPath({ first: [], second: [["yarn", 0o755]] }, async (path) => {
+			expect(await installed("Yarn", path)).toEqual({
+				ok: true,
+				message: "Yarn is installed.",
+			});
+		});
+	});
+
+	it("reports a package manager missing from every PATH directory", async () => {
+		await withPath({ first: [["pnpm", 0o755]], second: [] }, async (path) => {
+			expect(await installed("Yarn", path)).toEqual({
+				ok: false,
+				message:
+					"You don't have Yarn installed, please install it and try again.",
+			});
+		});
+	});
+
+	it("doesn't count a file on PATH that isn't executable", async () => {
+		await withPath({ first: [["yarn", 0o644]], second: [] }, async (path) => {
+			expect((await installed("Yarn", path)).ok).toBe(false);
+		});
+	});
+
+	it("doesn't count a directory named after the command", async () => {
+		await withPath({ first: [], second: [] }, async (path, directories) => {
+			await mkdir(join(directories.first, "yarn"));
+			expect((await installed("Yarn", path)).ok).toBe(false);
+		});
+	});
+
+	it("honours PATHEXT on Windows", async () => {
+		await withPath(
+			{ first: [["yarn.CMD", 0o644]], second: [] },
+			async (_path, directories) => {
+				const path = [directories.first, directories.second].join(";");
+
+				await withPlatform("win32", async () => {
+					vi.stubEnv("PATHEXT", ".EXE;.CMD");
+					expect((await installed("Yarn", path)).ok).toBe(true);
+
+					vi.stubEnv("PATHEXT", ".EXE");
+					expect((await installed("Yarn", path)).ok).toBe(false);
+				});
+			},
+		);
 	});
 
 	it("probes the command mapped from the display name", async () => {

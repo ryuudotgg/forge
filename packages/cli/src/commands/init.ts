@@ -8,6 +8,7 @@ import {
 	multiselect,
 	note,
 	outro,
+	select,
 } from "@clack/prompts";
 import {
 	Apply,
@@ -24,6 +25,7 @@ import {
 	type LockfileArtifact,
 	type Manifest,
 	Planner,
+	packageManagerCommand,
 	State,
 	type StateBundle,
 	SURFACE_MERGE_SEMANTICS_VERSION,
@@ -34,12 +36,15 @@ import {
 	mobileAppFrameworkIds,
 	probeWorkspaceCommandVersions,
 	standaloneBackendIds,
+	webFrameworks,
 } from "@ryuugg/generators";
 import { Effect, Exit, FileSystem, Option, Result, Schema } from "effect";
 import { orchestrate } from "../orchestrator";
 import { failureFromCause, runCliEffect, runCliEffectValue } from "../runtime";
 import { steps } from "../steps";
 import { createAuthMethodsStep } from "../steps/auth/methods";
+import { firstPartyAddonIds, webAppsSchema } from "../steps/platforms/web-apps";
+import { createPackageManagerStep } from "../steps/project/package-manager";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import { slugify } from "../utils/slugify";
@@ -47,8 +52,20 @@ import {
 	type AdoptedModuleVersions,
 	type AdoptionDetection,
 	AdoptionDetector,
+	type AdoptionLayout,
+	adoptedWebConfig,
+	adoptionRefusal,
+	type CommandPins,
+	type ConfirmedModule,
 	type ModuleKind,
 	type ModuleMappingProposal,
+	primaryWebAppRefusal,
+	primaryWebRoot,
+	resolveWebAppAdoption,
+	rpcProviderRefusal,
+	secondaryWebAppsSentence,
+	type WebAppObservation,
+	webRoots,
 } from "./adoption";
 import { applyInstalledPlan } from "./lifecycle";
 import { resolutionArguments } from "./resolution";
@@ -59,33 +76,35 @@ const moduleKinds: ReadonlyArray<ModuleKind> = [
 	"db",
 	"auth",
 	"trpc",
+	"orpc",
 	"ui",
 ];
 
-const initSteps = steps
-	.filter(
-		(step) =>
-			!new Set([
-				"intro",
-				"emailProvider",
-				"summary",
-				"generate",
-				"installDeps",
-				"gitInit",
-				"outro",
-			]).has(step.id),
-	)
-	.map((step) =>
-		step.id === "authMethods" ? createAuthMethodsStep({ email: false }) : step,
-	);
-
-interface ConfirmedModule {
-	readonly kind: ModuleKind;
-	readonly root: string;
+function initSteps(commandPins: CommandPins) {
+	return steps
+		.filter(
+			(step) =>
+				!new Set([
+					"intro",
+					"emailProvider",
+					"summary",
+					"generate",
+					"installDeps",
+					"gitInit",
+					"outro",
+				]).has(step.id),
+		)
+		.map((step) =>
+			step.id === "authMethods"
+				? createAuthMethodsStep({ email: false })
+				: step.id === "packageManager"
+					? createPackageManagerStep(commandPins.packageManager)
+					: step,
+		);
 }
 
 interface InitConfigFile {
-	readonly config: Record<string, unknown>;
+	readonly config: Omit<typeof InitConfigFileSchema.Type, "modules">;
 	readonly modules: ReadonlyArray<ConfirmedModule>;
 }
 
@@ -110,7 +129,10 @@ const ConfirmedModulesSchema = Schema.Array(
 );
 
 const InitConfigFileSchema = Schema.StructWithRest(
-	Schema.Struct({ modules: ConfirmedModulesSchema }),
+	Schema.Struct({
+		modules: ConfirmedModulesSchema,
+		webApps: Schema.optional(webAppsSchema),
+	}),
 	[Schema.Record(Schema.String, Schema.Unknown)],
 );
 
@@ -197,6 +219,37 @@ function validateConfirmedModules(
 	return modules;
 }
 
+export async function choosePrimaryWebRoot(
+	modules: ReadonlyArray<ConfirmedModule>,
+	observations: ReadonlyArray<WebAppObservation>,
+	interactive: boolean,
+): Promise<string | undefined> {
+	const roots = webRoots(modules);
+	const primary = primaryWebRoot(roots);
+	if (primary !== undefined || roots.length === 0) return primary;
+	if (!interactive) return reportFailure(primaryWebAppRefusal);
+
+	const selected = await select({
+		message: "Which web app is the primary app?",
+		options: roots.map((root) => {
+			const [framework, ...others] =
+				observations.find((observation) => observation.root === root)
+					?.frameworks ?? [];
+
+			return {
+				label:
+					framework === undefined || others.length > 0
+						? root
+						: `${root} (${webFrameworks.label(framework)})`,
+				value: root,
+			};
+		}),
+	});
+
+	if (isCancel(selected)) cancel();
+	return selected;
+}
+
 export async function confirmMappings(
 	proposals: ReadonlyArray<ModuleMappingProposal>,
 ): Promise<ReadonlyArray<ConfirmedModule>> {
@@ -253,40 +306,20 @@ export function contentHashError(path: string) {
 	return new InitPlanningError({ message: `Content Hash Failed: ${path}` });
 }
 
-function configuredWebApp(config: ForgeConfig, root: string) {
-	const matches = config.webApps?.filter((app) => app.name === basename(root));
-	return matches?.length === 1 ? matches[0] : undefined;
-}
-
 function modulePrototype(
 	kind: ModuleKind,
 	modules: InstalledPlanningSeed["modules"],
 	root: string,
-	config: ForgeConfig,
-	primaryRoot: string | undefined,
+	prototypeRoots: ReadonlyMap<string, string>,
 ) {
 	if (kind === "web-app") {
-		const configured = configuredWebApp(config, root);
-		const framework = root === primaryRoot ? config.web : configured?.framework;
-
-		const prototypeRoot =
-			root === primaryRoot
-				? "apps/web"
-				: configured === undefined
-					? root
-					: `apps/${configured.name}`;
-
-		const matches = modules.filter(
+		const prototypeRoot = prototypeRoots.get(root) ?? root;
+		return modules.find(
 			(module) =>
 				module.type === "app" &&
 				!standaloneBackendIds.has(module.framework) &&
 				!mobileAppFrameworkIds.has(module.framework) &&
-				(framework === undefined || module.framework === framework),
-		);
-
-		return (
-			matches.find((module) => module.root === prototypeRoot) ??
-			(root !== primaryRoot && matches.length === 1 ? matches[0] : undefined)
+				module.root === prototypeRoot,
 		);
 	}
 
@@ -303,56 +336,27 @@ function modulePrototype(
 
 export function buildAdoptionPlan(
 	projectRoot: string,
-	inputConfig: ForgeConfig,
+	layout: AdoptionLayout,
 	confirmedModules: ReadonlyArray<ConfirmedModule>,
 	versions: ReadonlyArray<AdoptedModuleVersions>,
 	proposals: ReadonlyArray<ModuleMappingProposal> = [],
 ) {
 	return Effect.gen(function* () {
-		const webMappings = confirmedModules.filter(
-			(module) => module.kind === "web-app",
-		);
-
-		const primaryRoot = (
-			webMappings.find((module) => module.root === "apps/web") ??
-			webMappings.find(
-				(module) => configuredWebApp(inputConfig, module.root) === undefined,
-			) ??
-			webMappings[0]
-		)?.root;
-
-		const primaryFramework =
-			primaryRoot === undefined || primaryRoot === "apps/web"
-				? inputConfig.web
-				: (configuredWebApp(inputConfig, primaryRoot)?.framework ??
-					inputConfig.web);
-
-		const webApps = webMappings.flatMap((module) => {
-			if (module.root === primaryRoot) return [];
-
-			const configured = configuredWebApp(inputConfig, module.root);
-			if (configured !== undefined) return [configured];
-			if (inputConfig.web === undefined) return [];
-
-			return [{ name: basename(module.root), framework: inputConfig.web }];
-		});
-
-		if (new Set(webApps.map((app) => app.name)).size !== webApps.length)
-			return yield* new InitPlanningError({
-				message:
-					"Adoption Mapping Invalid: secondary web app names are ambiguous across confirmed roots.",
-			});
-
-		const config: ForgeConfig = {
-			...inputConfig,
-			web: primaryFramework,
-			...(inputConfig.webApps === undefined && webApps.length === 0
-				? {}
-				: { webApps }),
-		};
-
+		const { commandPins, config, prototypeRoots } = layout;
 		const loadedRegistry = yield* Effect.sync(() => loadDefinitionRegistry());
-		const commandVersions = yield* probeWorkspaceCommandVersions(config);
+		const packageManager = config.packageManager ?? "pnpm";
+		const pinnedPackageManager =
+			commandPins.packageManager?.packageManager === packageManager
+				? {
+						[packageManagerCommand(packageManager)]:
+							commandPins.packageManager.version,
+					}
+				: {};
+
+		const commandVersions = yield* probeWorkspaceCommandVersions(config, {
+			...pinnedPackageManager,
+			...(commandPins.node === undefined ? {} : { node: commandPins.node }),
+		});
 
 		const planner = yield* Planner;
 		const configStore = yield* ConfigStore;
@@ -400,8 +404,7 @@ export function buildAdoptionPlan(
 				proposal.proposal,
 				prototypes,
 				proposal.root,
-				config,
-				primaryRoot,
+				prototypeRoots,
 			);
 
 			if (prototype?.root !== proposal.root) continue;
@@ -424,8 +427,7 @@ export function buildAdoptionPlan(
 				mapping.kind,
 				prototypes,
 				mapping.root,
-				config,
-				primaryRoot,
+				prototypeRoots,
 			);
 
 			if (prototype === undefined)
@@ -597,16 +599,10 @@ function formatRows(rows: ReadonlyArray<readonly [string, string]>): string {
 }
 
 export function adoptionReport(
-	config: ForgeConfig,
 	modules: ReadonlyArray<ConfirmedModule>,
 	plan: AdoptionPlan,
 ): string {
-	const configValue = Object.entries(config)
-		.map(([key, value]) => `${key}=${displayValue(value)}`)
-		.join(", ");
-
 	const rows: Array<readonly [string, string]> = [
-		["Config", configValue],
 		["Project", existingArtifacts(plan.artifactCounts["."] ?? 0)],
 		...modules.map((module): readonly [string, string] => [
 			module.root,
@@ -618,7 +614,16 @@ export function adoptionReport(
 		]),
 	];
 
-	return formatRows(rows);
+	const config = plan.manifest.config;
+	const sentence = secondaryWebAppsSentence(
+		Schema.is(webAppsSchema)(config.webApps) ? config.webApps : undefined,
+	);
+
+	return [
+		formatRows(rows),
+		...(sentence === undefined ? [] : [sentence]),
+		`Forge will record this config:\n${JSON.stringify(config, null, 2)}`,
+	].join("\n\n");
 }
 
 export function defaultIdentity(projectRoot: string, packageName?: string) {
@@ -683,13 +688,13 @@ export function initDirectoryRefusal(projectRoot: string) {
 
 function executeAdoptionPlanning(
 	projectRoot: string,
-	config: ForgeConfig,
+	layout: AdoptionLayout,
 	modules: ReadonlyArray<ConfirmedModule>,
 	versions: ReadonlyArray<AdoptedModuleVersions>,
 	proposals: ReadonlyArray<ModuleMappingProposal>,
 ) {
 	return runCliEffectValue(
-		buildAdoptionPlan(projectRoot, config, modules, versions, proposals).pipe(
+		buildAdoptionPlan(projectRoot, layout, modules, versions, proposals).pipe(
 			Effect.catch((failure) =>
 				Effect.sync(() =>
 					reportFailure(
@@ -720,11 +725,10 @@ function formatInitApplyError(error: ApplyError): string {
 async function executePlannedAdoption(
 	values: Record<string, string | boolean | string[] | undefined>,
 	projectRoot: string,
-	config: ForgeConfig,
 	modules: ReadonlyArray<ConfirmedModule>,
 	plan: AdoptionPlan,
 ) {
-	note(adoptionReport(config, modules, plan), "Forge Adoption Plan");
+	note(adoptionReport(modules, plan), "Forge Adoption Plan");
 
 	if (values["dry-run"] === true) {
 		outro("Dry run complete. We didn't write any files.");
@@ -808,18 +812,6 @@ export async function runInit(
 
 	const yes = values.yes === true;
 	const interactive = configFile === undefined && !yes;
-	const detectedConfig = interactive
-		? await confirmDetection(detection)
-		: detection.config;
-
-	const initialConfig = {
-		...(yes ? defaultIdentity(projectRoot, rootPackageName) : {}),
-		...detectedConfig,
-		...(configFile?.config ?? {}),
-		path: ".",
-	};
-
-	const config = await orchestrate(initSteps, { initialConfig, interactive });
 	const modules =
 		configFile !== undefined
 			? validateConfirmedModules(configFile.modules, detection.modules)
@@ -834,19 +826,91 @@ export async function runInit(
 					)
 				: await confirmMappings(detection.modules);
 
-	await executeAdoptionPlanning(
+	const rpcRefusal = rpcProviderRefusal(modules);
+	if (rpcRefusal !== undefined) return reportFailure(rpcRefusal.message);
+
+	const primaryRoot = await choosePrimaryWebRoot(
+		modules,
+		detection.webApps,
+		interactive,
+	);
+
+	const resolvedExit = await runCliEffect(
+		resolveWebAppAdoption({
+			addonIds: firstPartyAddonIds(),
+			confirmed: modules,
+			observations: detection.webApps,
+			primaryRoot,
+			requested: configFile?.config ?? {},
+		}),
+	);
+
+	if (Exit.isFailure(resolvedExit))
+		return reportFailure(failureFromCause(resolvedExit.cause).message);
+
+	const resolved = resolvedExit.value;
+	const configSlug = configFile?.config.slug;
+	const earlySlug =
+		typeof configSlug === "string"
+			? configSlug
+			: yes
+				? defaultIdentity(projectRoot, rootPackageName).slug
+				: undefined;
+
+	const configBackend = configFile?.config.backend ?? detection.config.backend;
+	const earlyRefusal =
+		interactive || earlySlug === undefined
+			? undefined
+			: adoptionRefusal(resolved, {
+					slug: earlySlug,
+					slugGuessed: typeof configSlug !== "string",
+					backend: configBackend,
+				});
+
+	if (earlyRefusal !== undefined) return reportFailure(earlyRefusal.message);
+
+	const sentence = secondaryWebAppsSentence(resolved.webApps);
+	if (sentence !== undefined) log.message(sentence);
+
+	const detectedConfig = interactive
+		? await confirmDetection(detection)
+		: detection.config;
+
+	const requestedConfig = {
+		...(yes ? defaultIdentity(projectRoot, rootPackageName) : {}),
+		...detectedConfig,
+		...(configFile?.config ?? {}),
+	};
+
+	const initialConfig = {
+		...requestedConfig,
+		...adoptedWebConfig(resolved, requestedConfig),
+		path: ".",
+	};
+
+	const config = await orchestrate(initSteps(detection.commandPins), {
+		initialConfig,
+		interactive,
+	});
+
+	const lateRefusal = adoptionRefusal(resolved, {
+		slug: typeof config.slug === "string" ? config.slug : "my-app",
+		backend: config.backend,
+	});
+
+	if (lateRefusal !== undefined) return reportFailure(lateRefusal.message);
+
+	const plan = await executeAdoptionPlanning(
 		projectRoot,
-		config satisfies ForgeConfig,
+		{
+			commandPins: detection.commandPins,
+			config: config satisfies ForgeConfig,
+			prototypeRoots: resolved.prototypeRoots,
+		},
 		modules,
 		detection.versions,
 		detection.modules,
-	).then((plan) =>
-		executePlannedAdoption(
-			values,
-			projectRoot,
-			config satisfies ForgeConfig,
-			modules,
-			plan,
-		),
 	);
+
+	await executePlannedAdoption(values, projectRoot, modules, plan);
 }
