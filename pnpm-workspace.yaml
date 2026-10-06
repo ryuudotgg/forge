@@ -14,8 +14,8 @@ catalogs:
     "@react-email/components": ^1.0.12
     better-auth: 1.7.7
     expo: 57.0.26
-    react: ^19.2.5
-    react-dom: ^19.2.5
+    react: ^19.3.0
+    react-dom: ^19.3.0
 
   # ===== BUILD TOOLS =====
   build:
