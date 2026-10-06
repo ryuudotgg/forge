@@ -131,7 +131,7 @@ describe("email addon", () => {
 			);
 
 			expect(source).toContain('env.NODE_ENV !== "development"');
-			expect(source).toContain("html?: string");
+			expect(source).toContain("await renderMessage(message)");
 
 			if (provider.id === "resend")
 				expect(source).toContain("throw new Error(error.message)");
@@ -194,16 +194,21 @@ describe("email addon", () => {
 
 interface EmailMessage {
 	to: string;
-	subject: string;
-	text: string;
-	html?: string;
+	template: string;
+	props: Record<string, string>;
 }
 
 const message: EmailMessage = {
 	to: "reader@example.com",
+	template: "verificationCode",
+	props: { code: "123456" },
+};
+
+const rendering = {
+	to: "reader@example.com",
 	subject: "Hello",
-	text: "Welcome",
 	html: "<p>Welcome</p>",
+	text: "Welcome",
 };
 
 const directories: string[] = [];
@@ -233,8 +238,12 @@ async function renderedEmail(
 	envPaths.push(envPath);
 
 	const sourcePath = join(directory, "src/index.ts");
+	const messagesPath = join(directory, "src/messages.ts");
+	envPaths.push(messagesPath);
+
 	await mkdir(join(directory, "src"));
 	await writeFile(envPath, "export const env = {};\n");
+	await writeFile(messagesPath, "export {};\n");
 	await writeFile(
 		sourcePath,
 		leafFile(contributionsOf({ emailProvider: provider.id }), "src/index.ts"),
@@ -268,6 +277,10 @@ async function renderedEmail(
 	}));
 
 	vi.doMock(envPath, () => ({ env: environment }));
+	vi.doMock(messagesPath, () => ({
+		renderMessage: async () => rendering,
+	}));
+
 	const rendered: { sendEmail: (message: EmailMessage) => Promise<void> } =
 		await import(sourcePath);
 
@@ -337,12 +350,12 @@ describe.each(providers)("generated $id sendEmail", (provider) => {
 			provider.id === "postmark"
 				? {
 						From: "sender@example.com",
-						To: message.to,
-						Subject: message.subject,
-						TextBody: message.text,
-						HtmlBody: message.html,
+						To: rendering.to,
+						Subject: rendering.subject,
+						TextBody: rendering.text,
+						HtmlBody: rendering.html,
 					}
-				: { from: "sender@example.com", ...message },
+				: { from: "sender@example.com", ...rendering },
 		);
 
 		await rendered.sendEmail(message);
@@ -376,4 +389,232 @@ it("rejects when Resend reports an error", async () => {
 	await expect(rendered.sendEmail(message)).rejects.toThrow(
 		"Domain not verified",
 	);
+});
+
+interface RenderedMessages {
+	renderMessage: (
+		message: EmailMessage,
+	) => Promise<{ subject: string; html: string; text: string }>;
+}
+
+async function writeRenderSources(config: ForgeConfig) {
+	const directory = await mkdtemp(join(import.meta.dirname, ".rendered-"));
+	directories.push(directory);
+
+	const sources = contributionsOf(config).flatMap((contribution) =>
+		contribution._tag === "LeafTextFileContribution" &&
+		typeof contribution.path === "string" &&
+		/^src\/(messages\.ts|custom\.ts|layout\.tsx|templates\/)/.test(
+			contribution.path,
+		)
+			? [{ path: contribution.path, content: contribution.content }]
+			: [],
+	);
+
+	await mkdir(join(directory, "src/templates"), { recursive: true });
+
+	for (const source of sources)
+		await writeFile(join(directory, source.path), source.content);
+
+	return directory;
+}
+
+const allMessages: ForgeConfig = {
+	authentication: "better-auth",
+	authMethods: ["email-otp", "magic-link"],
+	authPlugins: ["organization"],
+	emailProvider: "resend",
+	slug: "acme",
+};
+
+function templatePaths(config: ForgeConfig) {
+	return contributionsOf(config)
+		.flatMap((contribution) =>
+			contribution._tag === "LeafTextFileContribution" &&
+			typeof contribution.path === "string"
+				? [contribution.path]
+				: [],
+		)
+		.filter((path) => path.startsWith("src/templates/"));
+}
+
+describe("email templates", () => {
+	it.each([
+		{ config: { emailProvider: "postmark" }, templates: [] },
+		{
+			config: {
+				authentication: "better-auth",
+				authMethods: ["email-password", "email-otp"],
+				emailProvider: "smtp",
+			},
+			templates: ["src/templates/verification-code.tsx"],
+		},
+		{
+			config: allMessages,
+			templates: [
+				"src/templates/invitation.tsx",
+				"src/templates/magic-link.tsx",
+				"src/templates/verification-code.tsx",
+			],
+		},
+	] satisfies ReadonlyArray<{ config: ForgeConfig; templates: string[] }>)(
+		"contributes one template per enabled message",
+		({ config, templates }) => {
+			expect(templatePaths(config)).toEqual(templates);
+			expect(leafFile(contributionsOf(config), "src/messages.ts")).not.toMatch(
+				/__[A-Z_]+__/,
+			);
+		},
+	);
+
+	it("keeps every email body inside the email package", async () => {
+		const plan = await plannedProject({
+			...allMessages,
+			backend: "self",
+			database: "postgresql",
+			orm: "drizzle",
+			packageManager: "pnpm",
+			platforms: ["web"],
+			web: "nextjs",
+		});
+
+		expect(
+			plan.writes
+				.map((write) => write.path)
+				.filter((path) => path.startsWith("packages/email/src/templates/")),
+		).toEqual([
+			"packages/email/src/templates/invitation.tsx",
+			"packages/email/src/templates/magic-link.tsx",
+			"packages/email/src/templates/verification-code.tsx",
+		]);
+
+		const auth = plan.writes.find(
+			(write) => write.path === "packages/auth/src/index.ts",
+		)?.content;
+
+		expect(auth).toContain('template: "invitation"');
+		expect(auth).toContain('template: "magicLink"');
+		expect(auth).toContain('template: "verificationCode"');
+
+		for (const write of plan.writes)
+			if (!write.path.startsWith("packages/email/"))
+				expect(write.content, write.path).not.toMatch(/\b(subject|text):\s/);
+	});
+
+	it("renders every template to inlined html and plain text", async () => {
+		const directory = await writeRenderSources(allMessages);
+		const messages: RenderedMessages = await import(
+			join(directory, "src/messages.ts")
+		);
+
+		const cases: ReadonlyArray<{
+			message: EmailMessage;
+			subject: string;
+			expected: string;
+		}> = [
+			{
+				message: {
+					to: "reader@example.com",
+					template: "verificationCode",
+					props: { code: "123456", type: "forget-password" },
+				},
+				subject: "Your password reset code",
+				expected: "123456",
+			},
+			{
+				message: {
+					to: "reader@example.com",
+					template: "magicLink",
+					props: { url: "https://app.example.com/verify?token=abc" },
+				},
+				subject: "Your sign in link",
+				expected: "https://app.example.com/verify?token=abc",
+			},
+			{
+				message: {
+					to: "invitee@example.com",
+					template: "invitation",
+					props: {
+						email: "invitee@example.com",
+						inviterName: "Ada Inviter",
+						inviterEmail: "ada@example.com",
+						organizationName: "Lumen Works",
+						invitationId: "inv_123",
+					},
+				},
+				subject: "Ada Inviter invited you to Lumen Works",
+				expected: "inv_123",
+			},
+		];
+
+		for (const { message, subject, expected } of cases) {
+			const rendered = await messages.renderMessage(message);
+
+			expect(rendered.subject).toBe(subject);
+			expect(rendered.html).toContain("font-weight:600");
+			expect(rendered.html).not.toContain("class=");
+			expect(rendered.html).not.toMatch(/<link|<img|@import/);
+			expect(rendered.text).toContain(expected);
+		}
+	}, 30_000);
+
+	it("sends a project's own template registered outside the managed files", async () => {
+		const directory = await writeRenderSources({ emailProvider: "resend" });
+		await writeFile(
+			join(directory, "src/templates/welcome.tsx"),
+			[
+				"/** @jsxRuntime automatic */",
+				'import { Text } from "@react-email/components";',
+				'import { Layout } from "../layout";',
+				"",
+				'export const subject = () => "Welcome";',
+				"",
+				"export default function Welcome({ name }: { name: string }) {",
+				'  return <Layout preview="Welcome"><Text className="font-semibold">Hi {name}</Text></Layout>;',
+				"}",
+				"",
+			].join("\n"),
+		);
+
+		await writeFile(
+			join(directory, "src/custom.ts"),
+			'import * as welcome from "./templates/welcome";\nexport const customTemplates = { welcome };\n',
+		);
+
+		const messages: RenderedMessages = await import(
+			join(directory, "src/messages.ts")
+		);
+
+		const rendered = await messages.renderMessage({
+			to: "reader@example.com",
+			template: "welcome",
+			props: { name: "Ada" },
+		});
+
+		expect(rendered.subject).toBe("Welcome");
+		expect(rendered.text).toContain("Hi Ada");
+		expect(rendered.html).not.toContain("class=");
+	}, 30_000);
+
+	it("tests each template against the mocked provider with Vitest", () => {
+		const withVitest: ForgeConfig = {
+			...allMessages,
+			addons: ["vitest"],
+			web: "nextjs",
+		};
+
+		const source = leafFile(contributionsOf(withVitest), "src/index.test.ts");
+
+		expect(source).toContain('vi.mock("resend"');
+		expect(source).toContain('RESEND_API_KEY: "test-key"');
+
+		for (const template of ["invitation", "magicLink", "verificationCode"])
+			expect(source).toContain(`template: "${template}"`);
+
+		expect(source).not.toMatch(/__[A-Z_]+__/);
+		expect(templatePaths(allMessages)).toHaveLength(3);
+		expect(() =>
+			leafFile(contributionsOf(allMessages), "src/index.test.ts"),
+		).toThrow("Missing Leaf File");
+	});
 });

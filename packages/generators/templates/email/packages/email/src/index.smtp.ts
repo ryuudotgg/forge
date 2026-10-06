@@ -1,12 +1,8 @@
 import { createTransport, type Transporter } from "nodemailer";
 import { env } from "../env";
+import { type EmailMessage, renderMessage } from "./messages";
 
-export interface EmailMessage {
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
-}
+export type { EmailMessage } from "./messages";
 
 let transport: Transporter | undefined;
 export async function sendEmail(message: EmailMessage): Promise<void> {
@@ -14,20 +10,21 @@ export async function sendEmail(message: EmailMessage): Promise<void> {
     if (env.NODE_ENV !== "development")
       throw new Error("Email isn't configured. Set EMAIL_FROM and SMTP_URL.");
 
-    console.info(
-      `Email to ${message.to}: ${message.subject}\n\n${message.text}`,
-    );
+    const { to, subject, text } = await renderMessage(message);
+    console.info(`Email to ${to}: ${subject}\n\n${text}`);
 
     return;
   }
+
+  const { to, subject, html, text } = await renderMessage(message);
 
   transport ??= createTransport(env.SMTP_URL);
 
   await transport.sendMail({
     from: env.EMAIL_FROM,
-    to: message.to,
-    subject: message.subject,
-    text: message.text,
-    html: message.html,
+    to,
+    subject,
+    text,
+    html,
   });
 }

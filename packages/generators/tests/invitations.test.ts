@@ -148,17 +148,17 @@ describe("generated invitations", () => {
 			await options.sendInvitationEmail(invitation);
 			expect(sendEmail).toHaveBeenCalledTimes(1);
 
-			const message = sendEmail.mock.calls[0]?.[0];
-			expect(message).toMatchObject({ to: "invitee@example.com" });
-			expect(JSON.stringify(message)).toContain(
-				"Ada Inviter (ada@example.com)",
-			);
-
-			expect(JSON.stringify(message)).toContain("Lumen Works");
-			expect(message).toMatchObject({
-				text: expect.stringMatching(
-					/open the link below to accept the invitation\.\n\nhttps:\/\/app\.example\.com\/accept-invitation\/inv_123$/,
-				),
+			expect(sendEmail.mock.calls[0]?.[0]).toEqual({
+				to: "invitee@example.com",
+				template: "invitation",
+				props: {
+					email: "invitee@example.com",
+					inviterName: "Ada Inviter",
+					inviterEmail: "ada@example.com",
+					organizationName: "Lumen Works",
+					invitationId: "inv_123",
+					url: "https://app.example.com/accept-invitation/inv_123",
+				},
 			});
 		},
 	);
@@ -292,10 +292,17 @@ describe("generated invitations", () => {
 		);
 
 		await options.sendInvitationEmail(invitation);
-		expect(JSON.stringify(sendEmail.mock.calls[0]?.[0])).toContain("inv_123");
-		expect(JSON.stringify(sendEmail.mock.calls[0]?.[0])).toContain(
-			"Ada Inviter (ada@example.com)",
-		);
+		expect(sendEmail.mock.calls[0]?.[0]).toEqual({
+			to: "invitee@example.com",
+			template: "invitation",
+			props: {
+				email: "invitee@example.com",
+				inviterName: "Ada Inviter",
+				inviterEmail: "ada@example.com",
+				organizationName: "Lumen Works",
+				invitationId: "inv_123",
+			},
+		});
 	});
 
 	it.each(["hono", "express", "fastify", "self"] as const)(

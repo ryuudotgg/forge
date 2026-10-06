@@ -1,12 +1,8 @@
 import { ServerClient } from "postmark";
 import { env } from "../env";
+import { type EmailMessage, renderMessage } from "./messages";
 
-export interface EmailMessage {
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
-}
+export type { EmailMessage } from "./messages";
 
 export async function sendEmail(message: EmailMessage): Promise<void> {
   if (!env.EMAIL_FROM || !env.POSTMARK_SERVER_TOKEN) {
@@ -15,18 +11,19 @@ export async function sendEmail(message: EmailMessage): Promise<void> {
         "Email isn't configured. Set EMAIL_FROM and POSTMARK_SERVER_TOKEN.",
       );
 
-    console.info(
-      `Email to ${message.to}: ${message.subject}\n\n${message.text}`,
-    );
+    const { to, subject, text } = await renderMessage(message);
+    console.info(`Email to ${to}: ${subject}\n\n${text}`);
 
     return;
   }
 
+  const { to, subject, html, text } = await renderMessage(message);
+
   await new ServerClient(env.POSTMARK_SERVER_TOKEN).sendEmail({
     From: env.EMAIL_FROM,
-    To: message.to,
-    Subject: message.subject,
-    TextBody: message.text,
-    HtmlBody: message.html,
+    To: to,
+    Subject: subject,
+    TextBody: text,
+    HtmlBody: html,
   });
 }
