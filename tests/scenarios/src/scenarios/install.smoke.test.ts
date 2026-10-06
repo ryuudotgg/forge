@@ -836,18 +836,35 @@ async function expectOrpcRouteEdges(origin: string, output: () => string) {
 	expect(output().slice(logged)).toContain("❌ oRPC failed on health:");
 	expect(output().slice(logged)).toContain("Context Probe Failed");
 
-	const upload = new FormData();
-	upload.set("data", JSON.stringify({ json: {}, maps: [[]] }));
-	upload.set("0", new File(["hello"], "a.txt", { type: "text/plain" }));
+	const multipart = async (data: string) => {
+		const upload = new FormData();
+		upload.set("data", data);
+		upload.set("0", new File(["hello"], "a.txt", { type: "text/plain" }));
 
-	const multipart = await fetch(`${origin}/api/orpc/health`, {
-		method: "POST",
-		headers: { "x-csrf-token": "orpc" },
-		body: upload,
+		return await fetch(`${origin}/api/orpc/health`, {
+			method: "POST",
+			headers: { "x-csrf-token": "orpc" },
+			body: upload,
+		});
+	};
+
+	const accepted = await multipart(JSON.stringify({ json: {}, maps: [[]] }));
+
+	expect(accepted.status, output()).toBe(200);
+	expect(await accepted.json()).toEqual({ json: { status: "ok" } });
+
+	const undecodable = await multipart("not json");
+
+	expect(undecodable.status, output()).toBe(400);
+	expect(await undecodable.json()).toEqual({
+		json: {
+			defined: false,
+			code: "BAD_REQUEST",
+			status: 400,
+			message:
+				"Malformed request. Ensure the request body is properly formatted and the 'Content-Type' header is set correctly.",
+		},
 	});
-
-	expect(multipart.status, output()).toBe(200);
-	expect(await multipart.json()).toEqual({ json: { status: "ok" } });
 }
 
 async function expectStandaloneOrpcRoute(projectRoot: string) {

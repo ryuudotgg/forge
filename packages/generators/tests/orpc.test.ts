@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createRouterClient, ORPCError, onError, type os } from "@orpc/server";
+import { RPCHandler } from "@orpc/server/fetch";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	apiHostError,
 	type ForgeConfig,
@@ -988,14 +995,10 @@ describe("oRPC route bodies and errors", () => {
 			);
 
 			expect(orpc).toContain(
-				"if (error instanceof ORPCError && error.status < 500) return;",
-			);
-
-			expect(orpc).toContain(
 				`console.error(\`❌ oRPC failed on \${path}:\`, error)`,
 			);
 			expect(orpc).toMatch(
-				/\} catch \(error\) \{\s*reportServerError\(error, path\.join\("\."\)\);\s*throw error;/,
+				/\} catch \(error\) \{\s*if \(error instanceof ORPCError && error\.status < 500\) throw error;\s*reportServerError\(error, path\.join\("\."\)\);\s*throw reported\(error\);/,
 			);
 
 			expect(writeContent(plan, "packages/orpc/src/index.ts")).toContain(
@@ -1058,6 +1061,139 @@ describe("oRPC route bodies and errors", () => {
 			);
 		},
 	);
+});
+
+const renderedOrpcDirectories: Array<string> = [];
+
+afterEach(async () => {
+	vi.restoreAllMocks();
+	await Promise.all(
+		renderedOrpcDirectories
+			.splice(0)
+			.map((directory) => rm(directory, { recursive: true, force: true })),
+	);
+});
+
+async function renderedOrpcPackage() {
+	const plan = await plannedProject(supportedConfig);
+	const directory = await mkdtemp(join(tmpdir(), "forge-orpc-"));
+	const path = join(directory, "orpc.ts");
+	const server = pathToFileURL(
+		createRequire(import.meta.url).resolve("@orpc/server"),
+	).href;
+
+	renderedOrpcDirectories.push(directory);
+	await writeFile(
+		path,
+		writeContent(plan, "packages/orpc/src/orpc.ts").replace(
+			'from "@orpc/server"',
+			`from ${JSON.stringify(server)}`,
+		),
+	);
+
+	const rendered: {
+		publicProcedure: ReturnType<typeof os.$context<{ headers: Headers }>>;
+		reportServerError: (error: unknown, path: string) => void;
+	} = await import(path);
+
+	return rendered;
+}
+
+function failingRouter(
+	publicProcedure: ReturnType<typeof os.$context<{ headers: Headers }>>,
+	error: unknown,
+) {
+	return { health: publicProcedure.handler(() => Promise.reject(error)) };
+}
+
+async function postHealth(
+	handler: RPCHandler<{ headers: Headers }>,
+): Promise<Response> {
+	const request = new Request("http://localhost/api/orpc/health", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ json: null }),
+	});
+
+	const { response } = await handler.handle(request, {
+		prefix: "/api/orpc",
+		context: { headers: request.headers },
+	});
+
+	if (response === undefined) throw new Error("Unmatched Request: health");
+	return response;
+}
+
+describe("generated oRPC error reporting", () => {
+	it.each([
+		{
+			name: "a shared error",
+			error: new Error("Session store unreachable"),
+			body: {
+				defined: false,
+				code: "INTERNAL_SERVER_ERROR",
+				status: 500,
+				message: "Internal server error",
+			},
+		},
+		{
+			name: "a shared 503",
+			error: new ORPCError("SERVICE_UNAVAILABLE", { message: "Paused" }),
+			body: {
+				defined: false,
+				code: "SERVICE_UNAVAILABLE",
+				status: 503,
+				message: "Paused",
+			},
+		},
+	])("logs $name once per request, every request", async ({ error, body }) => {
+		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		const { publicProcedure, reportServerError } = await renderedOrpcPackage();
+		const router = failingRouter(publicProcedure, error);
+		const handler = new RPCHandler(router, {
+			interceptors: [
+				onError((thrown, { request }) =>
+					reportServerError(thrown, request.url.pathname),
+				),
+			],
+		});
+
+		for (const attempt of [1, 2]) {
+			const response = await postHealth(handler);
+
+			expect(response.status).toBe(body.status);
+			expect(await response.json()).toEqual({ json: body });
+			expect(logged).toHaveBeenCalledTimes(attempt);
+			expect(logged).toHaveBeenLastCalledWith(
+				"❌ oRPC failed on health:",
+				error,
+			);
+		}
+
+		const client = createRouterClient(router, {
+			context: () => ({ headers: new Headers() }),
+		});
+
+		for (const attempt of [3, 4]) {
+			await expect(client.health()).rejects.toMatchObject({
+				code: body.code,
+				cause: error,
+			});
+
+			expect(logged).toHaveBeenCalledTimes(attempt);
+		}
+	});
+
+	it("leaves client errors unlogged", async () => {
+		const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+		const { publicProcedure } = await renderedOrpcPackage();
+		const handler = new RPCHandler(
+			failingRouter(publicProcedure, new ORPCError("UNAUTHORIZED")),
+		);
+
+		expect((await postHealth(handler)).status).toBe(401);
+		expect(logged).not.toHaveBeenCalled();
+	});
 });
 
 describe("rpcProviderError", () => {
