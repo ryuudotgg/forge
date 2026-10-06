@@ -1,4 +1,6 @@
 import { auth } from "@__SLUG__/auth";
+import { withClientAddress } from "@__SLUG__/auth/client-address";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { __SERVER_ENV_BINDING__ } from "../../env.js";
@@ -17,4 +19,6 @@ authRoutes.use(
   }),
 );
 
-authRoutes.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+authRoutes.on(["POST", "GET"], "/api/auth/*", (c) =>
+  auth.handler(withClientAddress(c.req.raw, getConnInfo(c).remote.address)),
+);

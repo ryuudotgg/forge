@@ -127,6 +127,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					".": "./src/index.ts",
 					"./env": "./env.ts",
 					"./client": "./src/client.ts",
+					"./client-address": "./src/client-address.ts",
 				},
 				scripts: { typecheck: "tsc --noEmit" },
 			}),
@@ -187,6 +188,11 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				ensuredModuleTarget("auth"),
 				"src/client.ts",
 				renderBetterAuthTemplate(config, "packages/auth/src/client.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("auth"),
+				"src/client-address.ts",
+				renderBetterAuthTemplate(config, "packages/auth/src/client-address.ts"),
 			),
 			...webAppInstances(config)
 				.filter((instance) => instance.client === true)
@@ -250,6 +256,8 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					`# @use ${secretCommand}`,
 					`AUTH_SECRET="${generateAuthSecret()}"`,
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
+					'AUTH_TRUSTED_PROXIES="" # comma separated proxy IPs or CIDRs, proxies must append the client to X-Forwarded-For, empty for direct connections',
+					'AUTH_CLIENT_IP_HEADER="" # only set a header your platform overwrites with the client IP, eg. x-real-ip on Vercel, empty for none',
 					"",
 					envFileLine("APP_ORIGIN", origin),
 					...selfHostedOrigins,
@@ -268,6 +276,8 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					`# @use ${secretCommand}`,
 					'AUTH_SECRET=""',
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
+					'AUTH_TRUSTED_PROXIES="" # comma separated proxy IPs or CIDRs, proxies must append the client to X-Forwarded-For, empty for direct connections',
+					'AUTH_CLIENT_IP_HEADER="" # only set a header your platform overwrites with the client IP, eg. x-real-ip on Vercel, empty for none',
 					"",
 					envFileLine("APP_ORIGIN", origin),
 					...selfHostedOrigins,
