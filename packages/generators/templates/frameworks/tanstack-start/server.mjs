@@ -15,8 +15,9 @@ const compressible = /^(text\/|application\/(json|javascript|xml)|image\/svg)/;
 
 function acceptsGzip(request) {
   const encodings = request.headers.get("accept-encoding") ?? "";
+  const entries = encodings.toLowerCase().split(",");
   const quality = new Map(
-    encodings.split(",").map((entry) => {
+    entries.map((entry) => {
       const [name, ...params] = entry.split(";").map((part) => part.trim());
       const q = params.find((param) => param.startsWith("q="));
 
