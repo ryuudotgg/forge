@@ -106,26 +106,25 @@ export function withServerEnvOrigins(
 	config: ForgeConfig,
 	content: string,
 ): string {
-	const owner = webOriginsOwner(config);
-	if (owner?.kind === "server-env") {
-		const declaration = webOriginsDeclaration("export const", [
-			["WEB_URL", "env.WEB_URL"],
-			["WEB_URLS", "env.WEB_URLS"],
-		]);
-
-		return `${content.replace(/( {4}WEB_URL: .*\n)/, "$1    WEB_URLS: z.string().optional(),\n")}\n${declaration}`;
-	}
-
-	if (owner?.kind === "auth-env")
+	if (webOriginsOwner(config)?.kind === "auth-env")
 		return `${content}\nexport { webOrigins } from "@${config.slug ?? "my-app"}/auth/env";\n`;
 
-	return content;
-}
+	const secondary = hasSecondaryClients(config);
+	const sources: OriginSource[] = secondary
+		? [
+				["WEB_URL", "env.WEB_URL"],
+				["WEB_URLS", "env.WEB_URLS"],
+			]
+		: [["WEB_URL", "env.WEB_URL"]];
 
-export function serverCorsMarkers(config: ForgeConfig) {
-	return hasSecondaryClients(config)
-		? { SERVER_ENV_BINDING: "webOrigins", WEB_ORIGINS: "webOrigins" }
-		: { SERVER_ENV_BINDING: "env", WEB_ORIGINS: "env.WEB_URL" };
+	const schema = secondary
+		? content.replace(
+				/( {4}WEB_URL: .*\n)/,
+				"$1    WEB_URLS: z.string().optional(),\n",
+			)
+		: content;
+
+	return `${schema}\n${webOriginsDeclaration("export const", sources)}`;
 }
 
 export function selfHostedOriginsSource(config: ForgeConfig): string {
@@ -136,18 +135,11 @@ export function selfHostedOriginsSource(config: ForgeConfig): string {
 			]).trimEnd();
 }
 
-export function webOriginsCors(config: ForgeConfig, content: string): string {
-	const headers =
-		config.rpc === "trpc" ? withTrpcStreamingHeader(content) : content;
-
-	return hasSecondaryClients(config)
-		? headers
-				.replace(
-					'import { env } from "../env.js";',
-					'import { webOrigins } from "../env.js";',
-				)
-				.replace("origin: env.WEB_URL,", "origin: webOrigins,")
-		: headers;
+export function serverCorsHeaders(
+	config: ForgeConfig,
+	content: string,
+): string {
+	return config.rpc === "trpc" ? withTrpcStreamingHeader(content) : content;
 }
 
 const trpcSourceHeaders =

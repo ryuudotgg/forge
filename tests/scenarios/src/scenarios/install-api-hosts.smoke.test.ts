@@ -11,6 +11,7 @@ import {
 import {
 	expectClientIpRateLimit,
 	expectCredentialedGeneratedServer,
+	expectProductionOriginsRequired,
 	expectStandaloneOrpcRoute,
 	injectOrpcContextProbe,
 	scriptEnvironment,
@@ -158,6 +159,29 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					await expectCredentialedGeneratedServer(workspace.projectRoot, {
 						launch: "start",
 					});
+				},
+			);
+		},
+		600_000,
+	);
+
+	it.each(["hono", "express", "fastify"])(
+		"refuses a production %s start without auth until WEB_URL is set",
+		async (backend) => {
+			await withScenarioWorkspace(
+				`smoke-origins-${backend}`,
+				async (workspace) => {
+					await createProject(workspace, {
+						backend,
+						linter: "biome",
+						packageManager: "pnpm",
+						rpc: "trpc",
+						style: "tailwind",
+						web: "tanstack-router",
+					});
+
+					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+					await expectProductionOriginsRequired(workspace.projectRoot);
 				},
 			);
 		},

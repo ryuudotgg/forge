@@ -1,6 +1,6 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
-import { env } from "../env.js";
+import { webOrigins } from "../env.js";
 // __AUTH_IMPORT__
 // __TRPC_IMPORT__
 
@@ -12,7 +12,7 @@ app.register(cors, {
   exposedHeaders: ["Content-Length"],
   maxAge: 600,
   methods: ["GET", "POST", "OPTIONS"],
-  origin: env.WEB_URL,
+  origin: webOrigins,
 });
 
 app.get("/", () => ({ ok: true }));

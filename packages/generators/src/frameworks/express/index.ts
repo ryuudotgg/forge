@@ -17,9 +17,9 @@ import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
 import {
 	secondaryClientOrigins,
+	serverCorsHeaders,
 	standaloneApiOrigin,
 	webDevOrigin,
-	webOriginsCors,
 	withServerEnvOrigins,
 } from "../../origins";
 import { resolvePackageManager } from "../../pm";
@@ -124,7 +124,6 @@ function buildContributions(config: ForgeConfig) {
 
 	const vars = {
 		SLUG: slug,
-		WEB_ORIGIN: webOrigin,
 		"// __TRPC_IMPORT__\n":
 			rpc !== undefined
 				? `import { ${rpc.routes.register} } from "${rpc.routes.module}";\n`
@@ -192,7 +191,7 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("server"),
 			"src/app.ts",
-			webOriginsCors(
+			serverCorsHeaders(
 				config,
 				rpcCorsHeaders(
 					config,

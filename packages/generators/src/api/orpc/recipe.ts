@@ -28,7 +28,6 @@ import { nextjsFramework } from "../../frameworks/nextjs";
 import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
-import { serverCorsMarkers } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import {
 	interpolate,
@@ -73,8 +72,6 @@ export const orpcStandaloneRecipe = defineTemplateRecipe({
 	addon: "orpc",
 	markers: {
 		SLUG: marker.required,
-		SERVER_ENV_BINDING: marker.required,
-		WEB_ORIGINS: marker.required,
 		HEADERS_FROM_REQUEST: marker.required,
 	},
 	assets: [
@@ -222,7 +219,6 @@ export const orpcStandaloneAdapters = deriveRecipeAdapters({
 	requiredSlots: ["orpc"],
 	markers: ({ config, framework }: AdapterContext<ForgeConfig>) => ({
 		SLUG: orpcTemplateVars(config).SLUG,
-		...serverCorsMarkers(config),
 		HEADERS_FROM_REQUEST: renderHeadersFromRequest(
 			framework.id === "fastify" ? "FastifyRequest" : "Request",
 		),

@@ -211,12 +211,17 @@ describe("origin lists", () => {
 		);
 
 		expect(writeContent(plan, "apps/server/src/routes/trpc.ts")).toContain(
-			"origin: env.WEB_URL,",
+			"origin: webOrigins,",
 		);
 
+		const serverEnv = writeContent(plan, "apps/server/env.ts");
+		expect(serverEnv).toContain("  WEB_URL: env.WEB_URL,\n});");
+		expect(serverEnv).not.toContain("WEB_URLS");
 		expect(
-			plan.writes.some((write) => write.content.includes("originList")),
-		).toBe(false);
+			plan.writes
+				.filter((write) => write.content.includes("originList"))
+				.map((write) => write.path),
+		).toEqual(["apps/server/env.ts"]);
 	});
 
 	it("feeds every Better Auth trust list from the same binding", async () => {
