@@ -49,9 +49,11 @@ const betterAuthMarkers = {
 	CLIENT_PLUGINS: marker.toggleLine("    // __CLIENT_PLUGINS__\n"),
 	TRUSTED_ORIGINS: marker.toggleLine("  // __TRUSTED_ORIGINS__\n"),
 	EMAIL_PASSWORD: marker.toggleLine("  // __EMAIL_PASSWORD__\n"),
+	DATABASE_HOOKS: marker.toggleLine("  // __DATABASE_HOOKS__\n\n"),
 	SOCIAL_DECLARATION: marker.toggleLine("// __SOCIAL_DECLARATION__\n"),
 	SOCIAL_OPTION: marker.toggleLine("  // __SOCIAL_OPTION__\n\n"),
 	SOCIAL_FUNCTION: marker.toggleLine("// __SOCIAL_FUNCTION__\n\n"),
+	DB_HELPER_IMPORT: marker.toggleLine("__DB_HELPER_IMPORT__\n"),
 	ADAPTER_SCHEMA_IMPORT: marker.toggleLine("__ADAPTER_SCHEMA_IMPORT__\n"),
 	ADAPTER_MODELS: marker.toggleLine("__ADAPTER_MODELS__\n"),
 } as const;

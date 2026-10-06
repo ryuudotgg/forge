@@ -1,4 +1,5 @@
 import {
+	authPasskeyIssue,
 	unmetAuthPluginRequirements,
 	webAppPortIssue,
 } from "@ryuugg/generators";
@@ -90,6 +91,11 @@ export function assembleSchema(steps: Step[]) {
 
 				if (platforms?.includes("mobile") && !data.mobile)
 					return "A mobile framework wasn't selected.";
+
+				if (Schema.is(authPluginConfigSchema)(data)) {
+					const passkeyIssue = authPasskeyIssue(data);
+					if (passkeyIssue !== undefined) return passkeyIssue;
+				}
 			}),
 		),
 	);

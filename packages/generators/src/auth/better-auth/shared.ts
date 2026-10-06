@@ -2,6 +2,7 @@ import type { FrameworkDefinition } from "@ryuugg/core";
 import type { ForgeConfig, WebFramework } from "../../config";
 import {
 	drizzleAdapterProvider,
+	drizzleForeignKeys,
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { expoScheme } from "../../frameworks/expo";
@@ -198,6 +199,22 @@ export function betterAuthRecipeVars(
 	const isTanstackStart = framework.id === "tanstack-start";
 	const usesMobile = config.mobile === "expo";
 	const usesSocial = authSocialProviders(config).length > 0;
+	const userDeleteTargets =
+		config.orm === "drizzle" &&
+		!drizzleForeignKeys(resolveDatabaseProvider(config))
+			? authPluginTables(config).flatMap(({ model, references }) =>
+					references
+						.filter(
+							({ target, onDelete }) =>
+								target === "user" && onDelete === "cascade",
+						)
+						.map(({ name }) => ({
+							table: authModels[model].table,
+							column: name,
+						})),
+				)
+			: [];
+
 	const pluginImports = [
 		...authPluginBindings(config, "server"),
 		...(authRefusesInvitations(config)
@@ -285,9 +302,34 @@ export function betterAuthRecipeVars(
 				: trustedOrigins.length === 1 && webOrigins === "...webOrigins"
 					? "  trustedOrigins: webOrigins,\n"
 					: `  trustedOrigins: [${trustedOrigins.join(", ")}],\n`,
+		DB_HELPER_IMPORT:
+			userDeleteTargets.length === 0
+				? ""
+				: `import { eq } from "@${values.SLUG}/db";\n`,
 		EMAIL_PASSWORD: authUsesPassword(config)
 			? "  emailAndPassword: { enabled: true },\n"
 			: "",
+		DATABASE_HOOKS:
+			userDeleteTargets.length === 0
+				? ""
+				: [
+						"  databaseHooks: {",
+						"    user: {",
+						"      delete: {",
+						"        after: async ({ id }) => {",
+						userDeleteTargets
+							.map(
+								({ table, column }) =>
+									`          await db.delete(${table}).where(eq(${table}.${column}, id));`,
+							)
+							.join("\n\n"),
+						"        },",
+						"      },",
+						"    },",
+						"  },",
+						"",
+						"",
+					].join("\n"),
 		SOCIAL_DECLARATION: usesSocial
 			? "const socialProviders = getSocialProviders();\n"
 			: "",

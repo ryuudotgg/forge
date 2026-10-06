@@ -17,6 +17,7 @@ import {
 } from "../../auth/plugins";
 import type { Database, ForgeConfig } from "../../config";
 import {
+	drizzleForeignKeys,
 	drizzleKitCredentials,
 	envFileLine,
 	envRuntimeLines,
@@ -245,7 +246,7 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 								),
 								tables,
 								provider.dialect,
-								provider.drizzle.schemaTemplates.auth !== "auth.planetscale",
+								drizzleForeignKeys(provider),
 							),
 						),
 					]

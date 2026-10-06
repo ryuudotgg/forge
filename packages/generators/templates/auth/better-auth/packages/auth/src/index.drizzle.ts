@@ -1,4 +1,5 @@
 import { __AUTH_ENV_NAMES__ } from "@__SLUG__/auth/env";
+__DB_HELPER_IMPORT__
 import { db } from "@__SLUG__/db/client";
 __ADAPTER_SCHEMA_IMPORT__
 __SCOPED_PLUGIN_IMPORTS__
@@ -35,6 +36,8 @@ __ADAPTER_MODELS__
   // __EMAIL_PASSWORD__
 
   // __PLUGINS__
+
+  // __DATABASE_HOOKS__
 
   session: {
     expiresIn: SESSION_EXPIRES_IN,

@@ -17,6 +17,48 @@ function decodeMessages(result: ReturnType<typeof decodeConfig>) {
 }
 
 describe("assembleSchema", () => {
+	it.each([["passkey"], ["passkey", "passkey"]])(
+		"refuses passkey-only methods %j",
+		(...authMethods) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authMethods,
+				web: "nextjs",
+			});
+
+			expect(decodeMessages(result)).toEqual([
+				"Passkeys need another sign-in method to create accounts.",
+			]);
+		},
+	);
+
+	it("refuses passkeys with only an Expo app", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods: ["email-password", "passkey"],
+			platforms: ["mobile"],
+			mobile: "expo",
+		});
+
+		expect(decodeMessages(result)).toEqual(["Passkeys need a web app."]);
+	});
+
+	it("accepts passkeys with another method and a web app", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods: ["email-password", "passkey"],
+			web: "nextjs",
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
 	it.each(["email-otp", "magic-link"])(
 		"requires an email provider for %s",
 		(method) => {

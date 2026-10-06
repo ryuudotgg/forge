@@ -72,7 +72,7 @@ describe("auth methods step", () => {
 		promptMocks.multiselect.mockResolvedValue(["google"]);
 
 		await expect(
-			createAuthMethodsStep({ email: false }).execute({}, true),
+			createAuthMethodsStep({ email: false }).execute({ web: "nextjs" }, true),
 		).resolves.toEqual(["google"]);
 
 		expect(promptMocks.multiselect).toHaveBeenCalledWith(
@@ -106,10 +106,9 @@ describe("auth methods step", () => {
 	it("returns the selection and requires at least one method", async () => {
 		promptMocks.multiselect.mockResolvedValue(["email-password", "google"]);
 
-		await expect(authMethodsStep.execute({}, true)).resolves.toEqual([
-			"email-password",
-			"google",
-		]);
+		await expect(
+			authMethodsStep.execute({ web: "nextjs" }, true),
+		).resolves.toEqual(["email-password", "google"]);
 
 		expect(promptMocks.multiselect).toHaveBeenCalledWith({
 			message: "How should people sign in?",
@@ -125,6 +124,65 @@ describe("auth methods step", () => {
 			],
 		});
 	});
+
+	it.each([true, false])(
+		"omits passkeys without a web app when email is %s",
+		async (email) => {
+			promptMocks.multiselect.mockResolvedValue(["email-password"]);
+
+			await createAuthMethodsStep({ email }).execute(
+				{
+					mobile: "expo",
+					authMethods: ["email-password", "passkey", "email-otp", "magic-link"],
+				},
+				true,
+			);
+
+			expect(promptMocks.multiselect).toHaveBeenCalledWith(
+				expect.objectContaining({
+					initialValues: email
+						? ["email-password", "email-otp", "magic-link"]
+						: ["email-password"],
+					options: [
+						{ label: "Email and password", value: "email-password" },
+						{ label: "Google", value: "google" },
+						{ label: "Apple", value: "apple" },
+						...(email
+							? [
+									{ label: "Email OTP", value: "email-otp" },
+									{ label: "Magic link", value: "magic-link" },
+								]
+							: []),
+					],
+				}),
+			);
+		},
+	);
+
+	it.each([["passkey"], ["passkey", "passkey"]])(
+		"warns and retries passkey-only selection %j",
+		async (...selection) => {
+			promptMocks.multiselect
+				.mockResolvedValueOnce(selection)
+				.mockResolvedValueOnce(["email-password", "passkey"]);
+
+			await expect(
+				authMethodsStep.execute(
+					{ web: "nextjs", authMethods: ["passkey"] },
+					true,
+				),
+			).resolves.toEqual(["email-password", "passkey"]);
+
+			expect(promptMocks.logWarn).toHaveBeenCalledWith(
+				"Passkeys need another sign-in method to create accounts.",
+			);
+
+			expect(promptMocks.multiselect).toHaveBeenCalledTimes(2);
+			expect(promptMocks.multiselect).toHaveBeenCalledWith(
+				expect.objectContaining({ initialValues: ["passkey"] }),
+			);
+		},
+	);
 
 	it.each([
 		{ backend: "hono" },

@@ -3,6 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createContext, Script } from "node:vm";
 import { ManifestSchema } from "@ryuugg/core";
 import { Schema } from "effect";
@@ -80,6 +81,140 @@ registerHooks({
   },
 });
 `;
+
+const userDeleteClientSource = `import { relations } from "@acme/db/relations";
+import { drizzle } from "drizzle-orm/mysql2";
+import { createPool } from "mysql2/promise";
+
+export const client = createPool({ uri: process.env.DATABASE_URL, timezone: "Z" });
+export const db = drizzle({ client, relations });
+`;
+
+const userDeleteProbeSource = `import { randomUUID } from "node:crypto";
+import { eq } from "@acme/db";
+import { db, client } from "@acme/db/client";
+import { invitations, members, organizations, passkeys, two_factors } from "@acme/db/schema";
+import { auth } from "./index.ts";
+
+const targets = [
+  { name: "passkeys", table: passkeys, column: passkeys.userId },
+  { name: "two_factors", table: two_factors, column: two_factors.userId },
+  { name: "members", table: members, column: members.userId },
+  { name: "invitations", table: invitations, column: invitations.inviterId },
+];
+
+async function expectPluginRows(userId, expected) {
+  for (const { name, table, column } of targets) {
+    const rows = await db.select().from(table).where(eq(column, userId));
+    if (rows.length !== expected)
+      throw new Error(\`Plugin Cleanup Mismatch: \${name} for \${userId} expected \${expected}, received \${rows.length}\`);
+  }
+}
+
+async function seedPluginRows(userId, organizationId) {
+  await db.insert(passkeys).values({
+    id: randomUUID(), userId, publicKey: "smoke-key", credentialID: randomUUID(),
+    counter: 0, deviceType: "singleDevice", backedUp: false, createdAt: new Date(),
+  });
+
+  await db.insert(two_factors).values({
+    id: randomUUID(), userId, secret: "smoke-secret", backupCodes: "[]",
+  });
+
+  await db.insert(members).values({
+    id: randomUUID(), userId, organizationId, role: "member", createdAt: new Date(),
+  });
+
+  await db.insert(invitations).values({
+    id: randomUUID(), inviterId: userId, organizationId,
+    email: \`invite-\${userId}@example.com\`, expiresAt: new Date(Date.now() + 60_000),
+  });
+}
+
+try {
+  const [foreignKeys] = await client.query(
+    "SELECT COUNT(*) AS count FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE()",
+  );
+  if (Number(foreignKeys[0]?.count) !== 0)
+    throw new Error(\`Unexpected Foreign Keys: \${JSON.stringify(foreignKeys)}\`);
+
+  const { internalAdapter } = await auth.$context;
+  const first = await internalAdapter.createUser({
+    name: "First", email: "first@example.com", emailVerified: true,
+  });
+  const second = await internalAdapter.createUser({
+    name: "Second", email: "second@example.com", emailVerified: true,
+  });
+
+  const organizationId = randomUUID();
+  await db.insert(organizations).values({
+    id: organizationId, name: "Smoke", slug: "smoke", createdAt: new Date(),
+  });
+
+  await seedPluginRows(first.id, organizationId);
+  await seedPluginRows(second.id, organizationId);
+
+  await expectPluginRows(first.id, 1);
+  await expectPluginRows(second.id, 1);
+
+  await internalAdapter.deleteUser(first.id);
+
+  await expectPluginRows(first.id, 0);
+  await expectPluginRows(second.id, 1);
+} finally {
+  await client.end();
+}
+
+process.exit(0);
+`;
+
+async function runUserDeleteProbe(
+	workspace: ScenarioProject,
+	url: string,
+): Promise<ForgeCommandResult> {
+	const authRoot = join(workspace.projectRoot, "packages/auth");
+	const server = await readFile(join(authRoot, "src/index.ts"), "utf-8");
+	expect(server).toContain("databaseHooks");
+
+	const clientPath = join(
+		workspace.projectRoot,
+		"packages/db/src/user-delete-client.ts",
+	);
+
+	await writeFile(clientPath, userDeleteClientSource);
+	await writeFile(
+		join(authRoot, "src/user-delete-probe.mjs"),
+		userDeleteProbeSource,
+	);
+
+	const hookPath = join(workspace.workspaceRoot, "user-delete-resolve.mjs");
+	await writeFile(
+		hookPath,
+		`${typeScriptResolveHookSource}
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "@acme/db/client")
+      return nextResolve(${JSON.stringify(pathToFileURL(clientPath).href)}, context);
+
+    return nextResolve(specifier, context);
+  },
+});
+`,
+	);
+
+	return await runCommand(
+		"node",
+		["--import", hookPath, "src/user-delete-probe.mjs"],
+		{
+			cwd: authRoot,
+			env: {
+				...forgeEnvironment(workspace.workspaceRoot),
+				...(await readGeneratedEnv(workspace.projectRoot)),
+				DATABASE_URL: url,
+			},
+		},
+	);
+}
 
 function smokeDatabaseUrl() {
 	const url = process.env.FORGE_SMOKE_DATABASE_URL;
@@ -3378,6 +3513,13 @@ export async function GET() {
 					workspace.projectRoot,
 					mysqlDatabaseEnv("forge_smoke_drizzle_planetscale"),
 				);
+
+				const probe = await runUserDeleteProbe(
+					workspace,
+					smokeDatabaseOn(smokeMysqlUrl(), "forge_smoke_drizzle_planetscale"),
+				);
+
+				expect(probe.exitCode, `${probe.stdout}\n${probe.stderr}`).toBe(0);
 			},
 		);
 	}, 600_000);
