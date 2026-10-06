@@ -527,6 +527,26 @@ export function scriptEnvironment(
 	return { ...scrubbed, ...overrides };
 }
 
+async function stopChild(
+	child: ChildProcessWithoutNullStreams,
+	exited: Promise<unknown>,
+) {
+	if (child.pid === undefined) return;
+
+	if (child.exitCode === null) child.kill("SIGTERM");
+
+	const stopped = await Promise.race([
+		exited.then(() => true),
+		new Promise<false>((resolveWait) =>
+			setTimeout(() => resolveWait(false), 5_000),
+		),
+	]);
+
+	if (!stopped) child.kill("SIGKILL");
+
+	await exited;
+}
+
 function stopProcessGroup(pid: number, signal: NodeJS.Signals) {
 	try {
 		process.kill(-pid, signal);
@@ -621,8 +641,7 @@ export async function withGeneratedServer(
 		} finally {
 			const pid = server.pid;
 			if (launch === "node" || pid === undefined) {
-				if (server.exitCode === null) server.kill("SIGTERM");
-				await exited;
+				await stopChild(server, exited);
 			} else {
 				stopProcessGroup(pid, "SIGTERM");
 
@@ -2203,18 +2222,7 @@ export async function expectDrainingWorker(projectRoot: string) {
 			expect(idle.status, output).toBe(200);
 			expect(await idle.json()).toMatchObject({ inFlight: 0, ok: true });
 		} finally {
-			if (worker.exitCode === null) worker.kill("SIGTERM");
-
-			const stopped = await Promise.race([
-				exited.then(() => true),
-				new Promise<false>((resolveWait) =>
-					setTimeout(() => resolveWait(false), 5_000),
-				),
-			]);
-
-			if (!stopped) worker.kill("SIGKILL");
-
-			await exited;
+			await stopChild(worker, exited);
 		}
 
 		expect(await exited, output).toBe(0);
