@@ -8,12 +8,11 @@ import { createIsomorphicFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 
 const getClient = createIsomorphicFn()
-  .server(
-    (): RouterClient<AppRouter> =>
-      createRouterClient(appRouter, {
-        context: () => ({ headers: getRequest().headers }),
-      }),
-  )
+  .server((): RouterClient<AppRouter> => {
+    return createRouterClient(appRouter, {
+      context: () => ({ headers: getRequest().headers }),
+    });
+  })
   .client((): RouterClient<AppRouter> => {
     const link = new RPCLink({
       url: () => new URL("/api/orpc", window.location.origin),
