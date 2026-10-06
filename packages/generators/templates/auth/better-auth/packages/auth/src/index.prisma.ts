@@ -1,3 +1,4 @@
+import { clientIpHeader, trustedProxies } from "@__SLUG__/auth/client-address";
 import { __AUTH_ENV_NAMES__ } from "@__SLUG__/auth/env";
 import { db } from "@__SLUG__/db/client";
 __SCOPED_PLUGIN_IMPORTS__
@@ -39,6 +40,10 @@ const config = {
   account: { accountLinking: { enabled: true } },
 
   advanced: {
+    ipAddress: {
+      ipAddressHeaders: [clientIpHeader],
+      trustedProxies,
+    },
     useSecureCookies: env.NODE_ENV !== "development",
     ...(cookieDomain
       ? { crossSubDomainCookies: { enabled: true, domain: cookieDomain } }

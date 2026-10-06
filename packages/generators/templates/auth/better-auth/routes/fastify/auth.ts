@@ -1,4 +1,5 @@
 import { auth } from "@__SLUG__/auth";
+import { withClientAddress } from "@__SLUG__/auth/client-address";
 import { fromNodeHeaders } from "better-auth/node";
 import type { FastifyInstance } from "fastify";
 
@@ -16,16 +17,19 @@ export function registerAuthRoutes(app: FastifyInstance) {
       url: "/api/auth/*",
       async handler(request, reply) {
         const response = await auth.handler(
-          new Request(
-            new URL(
-              request.url,
-              `http://${request.headers.host ?? "localhost"}`,
+          withClientAddress(
+            new Request(
+              new URL(
+                request.url,
+                `http://${request.headers.host ?? "localhost"}`,
+              ),
+              {
+                body: Buffer.isBuffer(request.body) ? request.body : undefined,
+                headers: fromNodeHeaders(request.headers),
+                method: request.method,
+              },
             ),
-            {
-              body: Buffer.isBuffer(request.body) ? request.body : undefined,
-              headers: fromNodeHeaders(request.headers),
-              method: request.method,
-            },
+            request.socket.remoteAddress,
           ),
         );
 

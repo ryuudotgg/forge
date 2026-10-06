@@ -1,3 +1,4 @@
+import { clientIpHeader, trustedProxies } from "@__SLUG__/auth/client-address";
 import { __AUTH_ENV_NAMES__ } from "@__SLUG__/auth/env";
 __DB_HELPER_IMPORT__
 import { db } from "@__SLUG__/db/client";
@@ -53,6 +54,10 @@ __ADAPTER_MODELS__
   account: { accountLinking: { enabled: true } },
 
   advanced: {
+    ipAddress: {
+      ipAddressHeaders: [clientIpHeader],
+      trustedProxies,
+    },
     useSecureCookies: env.NODE_ENV !== "development",
     ...(cookieDomain
       ? { crossSubDomainCookies: { enabled: true, domain: cookieDomain } }

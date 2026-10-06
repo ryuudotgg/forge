@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { createServer } from "node:net";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -580,13 +581,13 @@ export async function withGeneratedServer(
 	env: NodeJS.ProcessEnv,
 	serverOrigin: string,
 	exercise: (output: () => string) => Promise<void>,
-	host: "server" | "nextjs" = "server",
+	host: "server" | "nextjs" | "tanstack-start" = "server",
 	launch: ServerLaunch = "node",
 ) {
 	return withPortLock(async () => {
 		const cwd = join(
 			projectRoot,
-			host === "nextjs" ? "apps/web" : "apps/server",
+			host === "server" ? "apps/server" : "apps/web",
 		);
 
 		const ambientEnv = { ...process.env };
@@ -658,6 +659,157 @@ export async function withGeneratedServer(
 			else await stopDetached(pid);
 		}
 	});
+}
+
+async function signInFromAddress(
+	serverOrigin: string,
+	origin: string,
+	localAddress: string,
+	forwarded: string,
+	platformClient?: string,
+): Promise<number> {
+	const body = JSON.stringify({
+		email: "rate-limit-missing@example.com",
+		password: "forge-smoke-password",
+	});
+
+	return new Promise((resolveStatus, rejectStatus) => {
+		const request = httpRequest(
+			`${serverOrigin}/api/auth/sign-in/email`,
+			{
+				method: "POST",
+				localAddress,
+				headers: {
+					"Content-Type": "application/json",
+					"Content-Length": Buffer.byteLength(body),
+					Origin: origin,
+					"X-Forwarded-For": forwarded,
+					...(platformClient === undefined
+						? {}
+						: { "X-Real-IP": platformClient }),
+				},
+			},
+			(response) => {
+				response.on("error", rejectStatus);
+				response.resume();
+				response.on("end", () => {
+					if (response.statusCode === undefined)
+						rejectStatus(new Error("Missing Auth Status: sign-in response"));
+					else resolveStatus(response.statusCode);
+				});
+			},
+		);
+
+		request.on("error", rejectStatus);
+		request.setTimeout(5_000, () => {
+			request.destroy(new Error("Auth Request Timeout: client address smoke"));
+		});
+
+		request.end(body);
+	});
+}
+
+export async function expectClientIpRateLimit(
+	projectRoot: string,
+	host: "server" | "tanstack-start",
+) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const appOrigin = generatedEnv.APP_ORIGIN;
+	if (appOrigin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	const port = new URL(appOrigin).port;
+	const serverOrigin = `http://127.0.0.1:${port}`;
+	const origin = generatedEnv.WEB_URL || appOrigin;
+	const cases = [
+		{
+			name: "trusted proxy",
+			clientIpHeader: undefined,
+			proxies: "127.0.0.1/32",
+			localAddress: "127.0.0.1",
+			variesForwarded: false,
+			nextAddress: "127.0.0.1",
+		},
+		{
+			name: "untrusted socket",
+			clientIpHeader: undefined,
+			proxies: "127.0.0.1/32",
+			localAddress: "127.0.0.2",
+			variesForwarded: true,
+			nextAddress: undefined,
+		},
+		{
+			name: "direct connection",
+			clientIpHeader: undefined,
+			proxies: undefined,
+			localAddress: "127.0.0.1",
+			variesForwarded: true,
+			nextAddress: "127.0.0.2",
+		},
+		{
+			name: "platform header",
+			proxies: undefined,
+			clientIpHeader: "x-real-ip",
+			localAddress: "127.0.0.1",
+			variesForwarded: true,
+			nextAddress: "127.0.0.1",
+		},
+	];
+
+	await expectSchemaPush(projectRoot, generatedEnv);
+
+	for (const scenario of cases)
+		await withGeneratedServer(
+			projectRoot,
+			{
+				...generatedEnv,
+				AUTH_TRUSTED_PROXIES: scenario.proxies,
+				AUTH_CLIENT_IP_HEADER: scenario.clientIpHeader,
+				NODE_ENV: "production",
+				PORT: port,
+			},
+			serverOrigin,
+			async (output) => {
+				const started = Date.now();
+
+				for (let attempt = 1; attempt <= 4; attempt += 1) {
+					const status = await signInFromAddress(
+						serverOrigin,
+						origin,
+						scenario.localAddress,
+						`203.0.113.${scenario.variesForwarded ? attempt : 1}`,
+						scenario.clientIpHeader && "198.51.100.1",
+					);
+
+					expect(
+						status,
+						`${scenario.name}, attempt ${attempt}\n${output()}`,
+					).toBe(attempt === 4 ? 429 : 401);
+				}
+
+				if (scenario.nextAddress !== undefined) {
+					const status = await signInFromAddress(
+						serverOrigin,
+						origin,
+						scenario.nextAddress,
+						"203.0.113.2",
+						scenario.clientIpHeader && "198.51.100.2",
+					);
+
+					expect(
+						status,
+						`${scenario.name}, independent client\n${output()}`,
+					).toBe(401);
+				}
+
+				expect(
+					Date.now() - started,
+					`${scenario.name} exceeded the rate limit window`,
+				).toBeLessThan(10_000);
+			},
+			host,
+			"start",
+		);
 }
 
 export async function expectEmailPreview(projectRoot: string) {

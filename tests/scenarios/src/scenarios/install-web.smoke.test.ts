@@ -4,7 +4,10 @@ import {
 	expectInstallBuildAndTypecheck,
 	withScenarioWorkspace,
 } from "../utils/harness";
-import { expectDrainingWorker } from "../utils/install-smoke";
+import {
+	expectClientIpRateLimit,
+	expectDrainingWorker,
+} from "../utils/install-smoke";
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it.each([
@@ -23,6 +26,8 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 						backend,
 						rpc: "trpc",
 						authentication: "better-auth",
+						authMethods:
+							primary === "tanstack-start" ? ["email-password"] : undefined,
 						orm: "drizzle",
 						database: "sqlite",
 						style: "tailwind",
@@ -32,6 +37,12 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					});
 
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
+
+					if (primary === "tanstack-start")
+						await expectClientIpRateLimit(
+							workspace.projectRoot,
+							"tanstack-start",
+						);
 				},
 			);
 		},

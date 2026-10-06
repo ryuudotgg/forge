@@ -9,6 +9,7 @@ import {
 	withScenarioWorkspace,
 } from "../utils/harness";
 import {
+	expectClientIpRateLimit,
 	expectCredentialedGeneratedServer,
 	expectStandaloneOrpcRoute,
 	injectOrpcContextProbe,
@@ -262,6 +263,8 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				polar: true,
 				username: "hono_smoke",
 			});
+
+			await expectClientIpRateLimit(workspace.projectRoot, "server");
 		});
 	}, 600_000);
 
