@@ -44,7 +44,6 @@ export const deps = {
 	reactRouter: dep("reactRouter"),
 	reactRouterDev: dep("reactRouterDev"),
 	reactRouterNode: dep("reactRouterNode"),
-	reactRouterServe: dep("reactRouterServe"),
 	srvx: dep("srvx"),
 
 	tanstackReactRouter: dep("tanstackReactRouter"),

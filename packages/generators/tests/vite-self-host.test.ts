@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src/config";
+import { readTemplate } from "../src/template";
 import { plannedProject } from "./planner-harness";
 
 type Plan = Awaited<ReturnType<typeof plannedProject>>;
@@ -171,12 +172,8 @@ describe("self hosted Vite database drivers", () => {
 	});
 });
 
-const startScripts = {
-	"react-router":
-		"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- react-router-serve ./build/server/index.js",
-	"tanstack-start":
-		"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- srvx --prod -s ../client dist/server/server.js",
-} as const;
+const startScript =
+	"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs";
 
 function productionPort(plan: Plan, app: string): number {
 	const content = writeContent(plan, `apps/${app}/.env.production`);
@@ -197,7 +194,11 @@ describe("self hosted Vite production start", () => {
 			});
 
 			expect(packageJsonAt(plan, "apps/web/package.json").scripts?.start).toBe(
-				startScripts[web],
+				startScript,
+			);
+
+			expect(writeContent(plan, "apps/web/server.mjs")).toBe(
+				readTemplate(`frameworks/${web}/server.mjs`),
 			);
 
 			expect(productionPort(plan, "web")).toBe(
@@ -222,7 +223,10 @@ describe("secondary Vite production start", () => {
 			if (devPort === undefined)
 				throw new Error(`Missing Secondary Dev Port: ${framework}`);
 
-			expect(scripts?.start).toBe(startScripts[framework]);
+			expect(scripts?.start).toBe(startScript);
+			expect(writeContent(plan, "apps/admin/server.mjs")).toBe(
+				readTemplate(`frameworks/${framework}/server.mjs`),
+			);
 			expect(productionPort(plan, "admin")).toBe(Number(devPort));
 		},
 	);

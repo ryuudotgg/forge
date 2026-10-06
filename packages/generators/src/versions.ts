@@ -145,11 +145,6 @@ export const versions = {
 		version: "8.3.1",
 		group: "Framework",
 	},
-	reactRouterServe: {
-		name: "@react-router/serve",
-		version: "8.3.1",
-		group: "Framework",
-	},
 	srvx: { name: "srvx", version: "1.0.5", group: "Framework" },
 
 	tanstackReactRouter: {

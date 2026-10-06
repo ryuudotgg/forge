@@ -273,7 +273,7 @@ export default config;
 			pretypecheck: "pnpm generate-routes",
 			preview: "pnpm with-env vite preview",
 			start:
-				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- srvx --prod -s ../client dist/server/server.js",
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs",
 			typecheck: "tsc --noEmit",
 			"with-env": "dotenv -e ../../.env --",
 		});
