@@ -35,6 +35,9 @@ const oxc = defineAddon<ForgeConfig, "oxc">({
 	version: "0.1.0",
 	category: "linter",
 	exclusive: true,
+	switching: {
+		reformat: { bin: "oxfmt", args: ["--no-error-on-unmatched-pattern"] },
+	},
 	targetMode: "single",
 	when: (config) => config.linter === "oxc",
 	contribute: () => [

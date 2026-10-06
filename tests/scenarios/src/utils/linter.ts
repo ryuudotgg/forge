@@ -7,6 +7,7 @@ import {
 	pathExists,
 	readJson,
 	runCommand,
+	runForge,
 	type ScenarioProject,
 } from "./harness";
 
@@ -132,4 +133,46 @@ export async function expectFreshLinterCheck(
 	await expectCleanTree(workspace);
 
 	await expectStagedPreCommit(workspace);
+}
+
+export async function expectLinterSwitch(
+	workspace: ScenarioProject,
+	options: { readonly to: string; readonly surfaces: LinterSurfaces },
+) {
+	const probePath = join(workspace.projectRoot, "apps/web/app/switch-probe.ts");
+	const probe =
+		"import {join} from 'node:path'\nimport {readFile} from 'node:fs/promises'\n\nexport function readProbe(root:string){return readFile(join(root,'probe.txt'),'utf-8')}\n";
+
+	const expected =
+		'import { readFile } from "node:fs/promises";\nimport { join } from "node:path";\n\nexport function readProbe(root: string) {\n  return readFile(join(root, "probe.txt"), "utf-8");\n}\n';
+
+	await writeFile(probePath, probe);
+	await expectRun(workspace, "git", ["init", "-q"]);
+	await expectInstallAndTypecheck(workspace, "pnpm");
+	await commitFixture(workspace);
+
+	await runForge(workspace.projectRoot, ["add", options.to], {
+		workspaceRoot: workspace.workspaceRoot,
+	});
+
+	await expectLinterSurfaces(workspace, options.surfaces);
+
+	const manifest = await readJson<{
+		readonly config: { readonly linter: string };
+	}>(join(workspace.projectRoot, ".forge/manifest.json"));
+
+	expect(manifest.config.linter).toBe(options.to);
+	await expectRun(workspace, "pnpm", ["check"]);
+	expect(await readFile(probePath, "utf-8")).toBe(expected);
+
+	await commitFixture(workspace);
+
+	await expectRun(workspace, "pnpm", ["check:fix"]);
+	await expectCleanTree(workspace);
+
+	await runForge(workspace.projectRoot, ["update", "--keep-user"], {
+		workspaceRoot: workspace.workspaceRoot,
+	});
+
+	await expectCleanTree(workspace);
 }

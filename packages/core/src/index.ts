@@ -22,6 +22,7 @@ export type {
 	AdapterModule,
 	AddonDefinition,
 	AddonId,
+	AddonSwitching,
 	AppCompatibility,
 	CapabilityId,
 	Compatibility,
@@ -148,6 +149,8 @@ export {
 	isPackageManager,
 	packageManagerAddDevCommand,
 	packageManagerCommand,
+	packageManagerExecCommand,
+	packageManagerInstallCommand,
 	packageManagerRemoveCommand,
 	packageManagers,
 	packageManagerViewCommand,
@@ -175,6 +178,8 @@ export {
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
+export type { WorkingTreeStatus } from "./git";
+export { GitError, trackedFiles, workingTreeStatus } from "./git";
 export { hashContentHex } from "./hash";
 export type { FormattedSchemaIssue } from "./json";
 export {

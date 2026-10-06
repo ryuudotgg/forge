@@ -35,6 +35,18 @@ const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 	version: "0.1.0",
 	category: "linter",
 	exclusive: true,
+	switching: {
+		reformat: {
+			bin: "biome",
+			args: [
+				"check",
+				"--write",
+				"--linter-enabled=false",
+				"--files-ignore-unknown=true",
+				"--no-errors-on-unmatched",
+			],
+		},
+	},
 	targetMode: "single",
 	when: (config) => config.linter === "biome",
 	contribute: () => [

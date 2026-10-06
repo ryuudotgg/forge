@@ -66,6 +66,34 @@ export function packageManagerAddDevCommand(
 	};
 }
 
+export function packageManagerInstallCommand(pm: PackageManager) {
+	const command = packageManagerCommand(pm);
+	const args = {
+		pnpm: ["install", "--no-frozen-lockfile"],
+		npm: ["install"],
+		yarn: ["install", "--no-immutable"],
+		bun: ["install"],
+	} satisfies Record<PackageManagerId, ReadonlyArray<string>>;
+
+	return { command, args: args[command] };
+}
+
+export function packageManagerExecCommand(
+	pm: PackageManager,
+	bin: string,
+	args: ReadonlyArray<string>,
+) {
+	const command = packageManagerCommand(pm);
+	const prefix = {
+		pnpm: ["exec"],
+		npm: ["exec", "--no", "--"],
+		yarn: ["exec"],
+		bun: ["x"],
+	} satisfies Record<PackageManagerId, ReadonlyArray<string>>;
+
+	return { command, args: [...prefix[command], bin, ...args] };
+}
+
 export function packageManagerRemoveCommand(
 	pm: PackageManager,
 	packageId: string,

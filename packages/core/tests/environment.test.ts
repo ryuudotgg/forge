@@ -9,6 +9,8 @@ import {
 	dependencyFormatFor,
 	Environment,
 	packageManagerAddDevCommand,
+	packageManagerExecCommand,
+	packageManagerInstallCommand,
 	packageManagerRemoveCommand,
 	packageManagers,
 	packageManagerViewCommand,
@@ -91,6 +93,38 @@ function withProcessVersion(
 }
 
 describe("environment", () => {
+	it("builds mutable install commands for every package manager", () => {
+		expect(
+			Object.values(packageManagers).map(({ displayName }) =>
+				packageManagerInstallCommand(displayName),
+			),
+		).toEqual([
+			{ command: "pnpm", args: ["install", "--no-frozen-lockfile"] },
+			{ command: "npm", args: ["install"] },
+			{ command: "yarn", args: ["install", "--no-immutable"] },
+			{ command: "bun", args: ["install"] },
+		]);
+	});
+
+	it("executes a local binary through every package manager", () => {
+		expect(
+			Object.values(packageManagers).map(({ displayName }) =>
+				packageManagerExecCommand(displayName, "formatter", [
+					"--write",
+					"./file.ts",
+				]),
+			),
+		).toEqual([
+			{ command: "pnpm", args: ["exec", "formatter", "--write", "./file.ts"] },
+			{
+				command: "npm",
+				args: ["exec", "--no", "--", "formatter", "--write", "./file.ts"],
+			},
+			{ command: "yarn", args: ["exec", "formatter", "--write", "./file.ts"] },
+			{ command: "bun", args: ["x", "formatter", "--write", "./file.ts"] },
+		]);
+	});
+
 	it("checks the current runtime through the service", async () => {
 		const result = await Effect.runPromise(
 			Environment.checkRuntime.pipe(Effect.provide(Environment.Default)),
