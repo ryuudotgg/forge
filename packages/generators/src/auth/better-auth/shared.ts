@@ -43,6 +43,13 @@ const webFrameworks = [
 	tanstackStartFramework,
 ];
 
+function pluginsProperty(plugins: ReadonlyArray<string>): string {
+	const inline = `  plugins: [${plugins.join(", ")}],`;
+	if (inline.length <= 80) return inline;
+
+	return `  plugins: [\n${plugins.map((plugin) => `    ${plugin},\n`).join("")}  ],`;
+}
+
 function clientEnvPrefix(config: ForgeConfig): string {
 	return (
 		webFrameworks.find((framework) => framework.id === config.web)
@@ -72,7 +79,7 @@ function authClientCall(
 						'  fetchOptions: { credentials: "include" },',
 					]
 				: []),
-			`  plugins: [${plugins.map(({ name }) => `${name}()`).join(", ")}],`,
+			pluginsProperty(plugins.map(({ name }) => `${name}()`)),
 			"});",
 			"",
 		].join("\n");
@@ -290,12 +297,7 @@ export function betterAuthRecipeVars(
 		RELATIVE_PLUGIN_IMPORTS: authPluginImports(
 			pluginImports.filter(({ module }) => module.startsWith(".")),
 		),
-		PLUGINS:
-			plugins.length === 0
-				? ""
-				: `  plugins: [${plugins.join(", ")}],`.length <= 80
-					? `  plugins: [${plugins.join(", ")}],\n\n`
-					: `  plugins: [\n${plugins.map((plugin) => `    ${plugin},\n`).join("")}  ],\n\n`,
+		PLUGINS: plugins.length === 0 ? "" : `${pluginsProperty(plugins)}\n\n`,
 		TRUSTED_ORIGINS:
 			trustedOrigins.length === 0
 				? ""

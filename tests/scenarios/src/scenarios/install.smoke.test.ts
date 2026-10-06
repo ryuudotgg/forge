@@ -943,7 +943,9 @@ async function injectOrpcContextProbe(projectRoot: string) {
 		contextPath,
 		context.replace(
 			orpcContextProbeAnchor,
-			`if (context.headers.get("x-context-probe") === "fail") throw new Error("Context Probe Failed");
+			`if (context.headers.get("x-context-probe") === "fail")
+        throw new Error("Context Probe Failed");
+
       ${orpcContextProbeAnchor}`,
 		),
 	);
@@ -2594,14 +2596,22 @@ export const Route = createFileRoute("/api/caller-probe")({
     handlers: {
       GET: async ({ request }) => {
         const clientHealth = await client.health();
-        if (clientHealth.status !== "ok") throw new Error("Unexpected Client Health");
+        if (clientHealth.status !== "ok")
+          throw new Error("Unexpected Client Health");
 
         const caller = await createServerCaller(request);
 
         try {
-          return Response.json({ health: await caller.health(), me: await caller.me() });
+          return Response.json({
+            health: await caller.health(),
+            me: await caller.me(),
+          });
         } catch (error) {
-          if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
+          if (error instanceof ORPCError)
+            return Response.json(
+              { code: error.code },
+              { status: error.status },
+            );
 
           throw error;
         }
@@ -2617,7 +2627,8 @@ import { createServerCaller } from "../orpc/server";
 export async function loader({ request }: { request: Request }) {
   const browserOnly = await client.health().then(
     () => false,
-    (error) => error instanceof ReferenceError && error.message.includes("window"),
+    (error) =>
+      error instanceof ReferenceError && error.message.includes("window"),
   );
 
   if (!browserOnly) throw new Error("Browser Client Ran On The Server");
@@ -2625,9 +2636,13 @@ export async function loader({ request }: { request: Request }) {
   const caller = await createServerCaller(request);
 
   try {
-    return Response.json({ health: await caller.health(), me: await caller.me() });
+    return Response.json({
+      health: await caller.health(),
+      me: await caller.me(),
+    });
   } catch (error) {
-    if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
+    if (error instanceof ORPCError)
+      return Response.json({ code: error.code }, { status: error.status });
 
     throw error;
   }
@@ -3049,6 +3064,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					authMethods: ["email-password", "passkey"],
 					backend: "self",
 					database: "sqlite",
+					linter: "biome",
 					orm: "drizzle",
 					packageManager: "pnpm",
 					rpc: "trpc",
@@ -3186,6 +3202,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				authMethods: ["email-password"],
 				backend: "self",
 				database: "sqlite",
+				linter: "biome",
 				orm: "drizzle",
 				packageManager: "pnpm",
 				rpc: "orpc",
@@ -3206,9 +3223,13 @@ import { client } from "@/orpc/client";
 
 export async function GET() {
   try {
-    return Response.json({ health: await client.health(), me: await client.me() });
+    return Response.json({
+      health: await client.health(),
+      me: await client.me(),
+    });
   } catch (error) {
-    if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
+    if (error instanceof ORPCError)
+      return Response.json({ code: error.code }, { status: error.status });
 
     throw error;
   }
@@ -3224,8 +3245,8 @@ export async function GET() {
 			await mkdir(hydrationRoot, { recursive: true });
 			await writeFile(
 				join(hydrationRoot, "route.ts"),
-				`import { orpc } from "@/orpc/client";
-import { dehydrate, QueryClient } from "@tanstack/react-query";
+				`import { dehydrate, QueryClient } from "@tanstack/react-query";
+import { orpc } from "@/orpc/client";
 
 export async function GET() {
   const queryClient = new QueryClient();
@@ -3321,6 +3342,7 @@ export async function GET() {
 						authMethods: ["email-password"],
 						backend: "self",
 						database: "sqlite",
+						linter: "biome",
 						orm,
 						packageManager: "pnpm",
 						rpc,
@@ -3818,6 +3840,7 @@ export async function GET() {
 					authPlugins: ["polar"],
 					backend: "hono",
 					database: "sqlite",
+					linter: "biome",
 					mobile: "expo",
 					nativeStyleFramework: "nativewind",
 					orm: "drizzle",

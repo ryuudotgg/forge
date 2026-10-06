@@ -12,7 +12,7 @@ import {
 	selfHostedOriginsSource,
 	webDevOrigin,
 } from "./origins";
-import { interpolate, readTemplate } from "./template";
+import { interpolate, readTemplate, replaceAnchor } from "./template";
 import { type WebAppInstance, webAppInstances } from "./web-apps";
 
 export function selfHostedCorsViteConfig(
@@ -103,16 +103,21 @@ export function selfHostedCorsRoute(
 		return content;
 
 	if (framework === "react-router") {
-		const imported = `import { preflight, withCors } from "../lib/api-cors";\n${content}`;
+		const imported = replaceAnchor(
+			content,
+			'from "react-router";\n',
+			'from "react-router";\nimport { preflight, withCors } from "../lib/api-cors";\n',
+		);
+
 		if (imported.includes("export const loader ="))
 			return imported
 				.replace(
 					"export const loader = (args: LoaderFunctionArgs) => handler(args);",
-					'export const loader = (args: LoaderFunctionArgs) => args.request.method === "OPTIONS" ? preflight(args.request) : withCors(args.request, handler(args));',
+					'export const loader = (args: LoaderFunctionArgs) =>\n  args.request.method === "OPTIONS"\n    ? preflight(args.request)\n    : withCors(args.request, handler(args));',
 				)
 				.replace(
 					"export const action = (args: ActionFunctionArgs) => handler(args);",
-					'export const action = (args: ActionFunctionArgs) => args.request.method === "OPTIONS" ? preflight(args.request) : withCors(args.request, handler(args));',
+					'export const action = (args: ActionFunctionArgs) =>\n  args.request.method === "OPTIONS"\n    ? preflight(args.request)\n    : withCors(args.request, handler(args));',
 				);
 
 		return imported
@@ -137,11 +142,11 @@ export function selfHostedCorsRoute(
 			? imported
 					.replace(
 						"  return fetchRequestHandler({",
-						"  return withCors(request, fetchRequestHandler({",
+						"  const response = fetchRequestHandler({",
 					)
 					.replace(
 						"\n  });\n}\n\nexport const Route",
-						"\n  }));\n}\n\nexport const Route",
+						"\n  });\n\n  return withCors(request, response);\n}\n\nexport const Route",
 					)
 			: imported.includes("rpcHandler.handle")
 				? imported
@@ -160,7 +165,7 @@ export function selfHostedCorsRoute(
 
 		return wrapped.replace(
 			"      POST: handler,",
-			"      POST: handler,\n      OPTIONS: ({ request }: { readonly request: Request }) => preflight(request),",
+			"      POST: handler,\n      OPTIONS: ({ request }: { readonly request: Request }) =>\n        preflight(request),",
 		);
 	}
 

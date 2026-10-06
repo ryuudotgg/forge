@@ -161,7 +161,7 @@ export default {
 		);
 
 		expect(leafFile(contributions, "public/favicon.svg").content).toContain(
-			"<svg",
+			"<title>App icon</title>",
 		);
 	});
 

@@ -2,8 +2,8 @@ import type { AppRouter } from "@__SLUG__/trpc";
 import { QueryClient } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import SuperJSON from "superjson";
-// __AUTH_IMPORT__
 import { env } from "../../env";
+// __AUTH_IMPORT__
 
 export const queryClient = new QueryClient();
 

@@ -411,22 +411,38 @@ describe("secondary web app planning", () => {
 			);
 
 			const rpcContent = contentAt(plan, `apps/web/${rpcRoute}`);
-			expect(rpcContent).toContain(
-				web === "react-router"
-					? 'loader = (args: LoaderFunctionArgs) => args.request.method === "OPTIONS" ? preflight(args.request)'
-					: "preflight(request)",
-			);
+			const authContent = contentAt(plan, `apps/web/${authRoute}`);
+			if (web === "react-router") {
+				for (const [name, args] of [
+					["loader", "LoaderFunctionArgs"],
+					["action", "ActionFunctionArgs"],
+				])
+					expect(rpcContent).toContain(
+						[
+							`export const ${name} = (args: ${args}) =>`,
+							'  args.request.method === "OPTIONS"',
+							"    ? preflight(args.request)",
+							"    : withCors(args.request, handler(args));",
+						].join("\n"),
+					);
 
-			if (web === "react-router")
+				for (const content of [rpcContent, authContent])
+					expect(content).toContain(
+						'from "react-router";\nimport { preflight, withCors } from "../lib/api-cors";\n\n',
+					);
+			} else {
 				expect(rpcContent).toContain(
-					'action = (args: ActionFunctionArgs) => args.request.method === "OPTIONS" ? preflight(args.request)',
+					"  const response = fetchRequestHandler({",
 				);
 
-			expect(rpcContent).toContain(
-				web === "react-router" ? "withCors(args.request" : "withCors(request",
-			);
+				expect(rpcContent).toContain("  return withCors(request, response);");
 
-			const authContent = contentAt(plan, `apps/web/${authRoute}`);
+				for (const content of [rpcContent, authContent])
+					expect(content).toContain(
+						"      OPTIONS: ({ request }: { readonly request: Request }) =>\n        preflight(request),\n",
+					);
+			}
+
 			expect(authContent).toContain("preflight(request)");
 
 			if (web === "react-router")
