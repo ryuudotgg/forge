@@ -27,7 +27,7 @@ import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
-import { rpcDescriptor } from "../../rpc";
+import { rpcCorsHeaders, rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
 import { standaloneServerScripts } from "../server-scripts";
 
@@ -199,12 +199,9 @@ function buildContributions(config: ForgeConfig) {
 			"src/app.ts",
 			webOriginsCors(
 				config,
-				interpolate(
-					readTemplate("frameworks/fastify/src/app.ts"),
-					vars,
-				).replace(
-					'"x-trpc-source"',
-					config.rpc === "orpc" ? '"x-csrf-token"' : '"x-trpc-source"',
+				rpcCorsHeaders(
+					config,
+					interpolate(readTemplate("frameworks/fastify/src/app.ts"), vars),
 				),
 			),
 		),

@@ -949,22 +949,22 @@ async function injectOrpcContextProbe(projectRoot: string) {
 	);
 }
 
-async function expectOrpcRouteEdges(origin: string, output: () => string) {
-	const probe = {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"x-context-probe": "fail",
-			"x-csrf-token": "orpc",
-		},
-		body: JSON.stringify({ json: null }),
-	};
+const orpcContextProbeRequest = {
+	method: "POST",
+	headers: {
+		"Content-Type": "application/json",
+		"x-context-probe": "fail",
+		"x-csrf-token": "orpc",
+	},
+	body: JSON.stringify({ json: null }),
+};
 
-	const missing = await fetch(`${origin}/api/orpc/missing`, probe);
-	expect(missing.status, output()).toBe(404);
-
+async function expectOrpcContextFailure(origin: string, output: () => string) {
 	const logged = output().length;
-	const failure = await fetch(`${origin}/api/orpc/health`, probe);
+	const failure = await fetch(
+		`${origin}/api/orpc/health`,
+		orpcContextProbeRequest,
+	);
 
 	expect(failure.status, output()).toBe(500);
 	expect(failure.headers.get("content-type")).toContain("application/json");
@@ -980,6 +980,15 @@ async function expectOrpcRouteEdges(origin: string, output: () => string) {
 	await waitForOutput(output, "Context Probe Failed", logged);
 	expect(output().slice(logged)).toContain("❌ oRPC failed on health:");
 	expect(output().slice(logged)).toContain("Context Probe Failed");
+}
+
+async function expectOrpcRouteEdges(origin: string, output: () => string) {
+	const missing = await fetch(
+		`${origin}/api/orpc/missing`,
+		orpcContextProbeRequest,
+	);
+
+	expect(missing.status, output()).toBe(404);
 
 	const multipart = async (data: string) => {
 		const upload = new FormData();
@@ -1012,7 +1021,10 @@ async function expectOrpcRouteEdges(origin: string, output: () => string) {
 	});
 }
 
-async function expectStandaloneOrpcRoute(projectRoot: string) {
+async function expectStandaloneOrpcRoute(
+	projectRoot: string,
+	contextProbe: boolean,
+) {
 	const generatedEnv = await readGeneratedEnv(projectRoot);
 	const serverOrigin = generatedEnv.APP_ORIGIN;
 	if (serverOrigin === undefined)
@@ -1030,6 +1042,7 @@ async function expectStandaloneOrpcRoute(projectRoot: string) {
 			}
 
 			await expectOrpcRouteEdges(serverOrigin, output);
+			if (contextProbe) await expectOrpcContextFailure(serverOrigin, output);
 		},
 	);
 }
@@ -1188,7 +1201,10 @@ async function expectBundledOrpcClient(
 
 	const result = await build({
 		configFile: false,
-		define: { "process.env.NODE_ENV": JSON.stringify("production") },
+		define: {
+			"process.env.NODE_ENV": JSON.stringify("production"),
+			"typeof window": JSON.stringify("object"),
+		},
 		root: webRoot,
 		logLevel: "error",
 		build: {
@@ -1357,11 +1373,14 @@ async function bundleText(root: string) {
 	return contents.join("\n");
 }
 
-async function expectServerOnlyCodeOutOfClientBundle(projectRoot: string) {
-	const dist = join(projectRoot, "apps/web/dist");
-	const client = await bundleText(join(dist, "client"));
-	const server = await bundleText(join(dist, "server"));
-	for (const marker of ["AUTH_SECRET", "DATABASE_URL", "@libsql"]) {
+async function expectServerOnlyCodeOutOfClientBundle(
+	bundles: { readonly client: string; readonly server: string },
+	markers: ReadonlyArray<string>,
+) {
+	const client = await bundleText(bundles.client);
+	const server = await bundleText(bundles.server);
+
+	for (const marker of markers) {
 		expect(server, marker).toContain(marker);
 		expect(client, marker).not.toContain(marker);
 	}
@@ -1740,6 +1759,7 @@ async function expectSelfHostedRpc(
 
 		await expectSameOriginOrpcSession(origin, session.cookie, session.userId);
 		await expectOrpcRouteEdges(origin, output);
+		await expectOrpcContextFailure(origin, output);
 
 		if (web !== "tanstack-start") {
 			await expectBundledOrpcClient(
@@ -1770,7 +1790,14 @@ async function expectSelfHostedRpc(
 		await waitForOutput(output, "Context Probe Failed", rendered);
 		expect(output().slice(rendered)).toContain("❌ oRPC failed on me:");
 
-		await expectServerOnlyCodeOutOfClientBundle(projectRoot);
+		await expectServerOnlyCodeOutOfClientBundle(
+			{
+				client: join(projectRoot, "apps/web/dist/client"),
+				server: join(projectRoot, "apps/web/dist/server"),
+			},
+			["AUTH_SECRET", "DATABASE_URL", "@libsql"],
+		);
+
 		await expectBrowserOrpcClientBundle(projectRoot);
 	} finally {
 		await server.stop();
@@ -2566,7 +2593,8 @@ export const Route = createFileRoute("/api/caller-probe")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        if (typeof client.health !== "function") throw new Error("Missing Browser Client");
+        const clientHealth = await client.health();
+        if (clientHealth.status !== "ok") throw new Error("Unexpected Client Health");
 
         const caller = await createServerCaller(request);
 
@@ -2587,7 +2615,12 @@ import { client } from "../orpc/client";
 import { createServerCaller } from "../orpc/server";
 
 export async function loader({ request }: { request: Request }) {
-  if (typeof client.health !== "function") throw new Error("Missing Browser Client");
+  const browserOnly = await client.health().then(
+    () => false,
+    (error) => error instanceof ReferenceError && error.message.includes("window"),
+  );
+
+  if (!browserOnly) throw new Error("Browser Client Ran On The Server");
 
   const caller = await createServerCaller(request);
 
@@ -3169,13 +3202,11 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			await writeFile(
 				join(probeRoot, "route.ts"),
 				`import { ORPCError } from "@orpc/server";
-import { createServerCaller } from "@/orpc/server";
+import { client } from "@/orpc/client";
 
 export async function GET() {
-  const caller = await createServerCaller();
-
   try {
-    return Response.json({ health: await caller.health(), me: await caller.me() });
+    return Response.json({ health: await client.health(), me: await client.me() });
   } catch (error) {
     if (error instanceof ORPCError) return Response.json({ code: error.code }, { status: error.status });
 
@@ -3193,13 +3224,10 @@ export async function GET() {
 			await mkdir(hydrationRoot, { recursive: true });
 			await writeFile(
 				join(hydrationRoot, "route.ts"),
-				`import { createServerCaller } from "@/orpc/server";
-import { createTanstackQueryUtils } from "@orpc/tanstack-query";
+				`import { orpc } from "@/orpc/client";
 import { dehydrate, QueryClient } from "@tanstack/react-query";
 
 export async function GET() {
-  const caller = await createServerCaller();
-  const orpc = createTanstackQueryUtils(caller);
   const queryClient = new QueryClient();
 
   await queryClient.fetchQuery(orpc.health.queryOptions());
@@ -3211,6 +3239,20 @@ export async function GET() {
 
 			await injectOrpcContextProbe(workspace.projectRoot);
 			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+			await expectServerOnlyCodeOutOfClientBundle(
+				{
+					client: join(workspace.projectRoot, "apps/web/.next/static"),
+					server: join(workspace.projectRoot, "apps/web/.next/server"),
+				},
+				[
+					"AUTH_SECRET",
+					"DATABASE_URL",
+					"createRouterClient",
+					"getSession",
+					"@libsql",
+				],
+			);
+
 			await expectSelfHostedRpc(workspace.projectRoot, {
 				web: "nextjs",
 				rpc: "orpc",
@@ -3218,9 +3260,12 @@ export async function GET() {
 		});
 	}, 600_000);
 
-	it.each(["express", "fastify"])(
-		"installs, builds, and typechecks TanStack Router with an oRPC %s host",
-		async (backend) => {
+	it.each([
+		{ backend: "express", contextProbe: false },
+		{ backend: "fastify", contextProbe: true },
+	])(
+		"installs, builds, and typechecks TanStack Router with an oRPC $backend host",
+		async ({ backend, contextProbe }) => {
 			await withScenarioWorkspace(
 				`smoke-orpc-${backend}-spa`,
 				async (workspace) => {
@@ -3236,13 +3281,14 @@ export async function GET() {
 						web: "tanstack-router",
 					});
 
-					await injectOrpcContextProbe(workspace.projectRoot);
+					if (contextProbe) await injectOrpcContextProbe(workspace.projectRoot);
+
 					await expectInstallBuildAndTypecheck(workspace, "pnpm");
 					await expectCredentialedGeneratedServer(workspace.projectRoot, {
 						rpc: "orpc",
 					});
 
-					await expectStandaloneOrpcRoute(workspace.projectRoot);
+					await expectStandaloneOrpcRoute(workspace.projectRoot, contextProbe);
 				},
 			);
 		},

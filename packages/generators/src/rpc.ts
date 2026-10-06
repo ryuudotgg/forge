@@ -1,4 +1,5 @@
 import type { ForgeConfig, RpcProvider, WebFramework } from "./config";
+import { replaceAnchor } from "./template";
 
 export type RpcHostFramework =
 	| "nextjs"
@@ -71,13 +72,15 @@ export function rpcDescriptor(config: ForgeConfig): RpcDescriptor | undefined {
 export function rpcProviderTemplate(template: string, id: RpcProvider): string {
 	if (id === "trpc") return template;
 
-	let rendered = template;
-	for (const anchor of ["trpc?: ElementType", "dataProviders.trpc"]) {
-		if (rendered.split(anchor).length !== 2)
-			throw new Error(`Template Anchor Not Unique: ${anchor}`);
+	return ["trpc?: ElementType", "dataProviders.trpc"].reduce(
+		(rendered, anchor) =>
+			replaceAnchor(rendered, anchor, anchor.replace("trpc", id)),
+		template,
+	);
+}
 
-		rendered = rendered.replace(anchor, anchor.replace("trpc", id));
-	}
-
-	return rendered;
+export function rpcCorsHeaders(config: ForgeConfig, template: string): string {
+	return config.rpc === "orpc"
+		? replaceAnchor(template, '"x-trpc-source"', '"x-csrf-token"')
+		: template;
 }

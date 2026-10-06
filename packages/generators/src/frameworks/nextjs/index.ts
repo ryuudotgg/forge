@@ -21,7 +21,7 @@ import type {
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
 import { rpcDescriptor } from "../../rpc";
-import { interpolate, readTemplate } from "../../template";
+import { interpolate, readTemplate, replaceAnchor } from "../../template";
 import { catalogRef } from "../../versions";
 import {
 	type WebAppInstance,
@@ -218,7 +218,8 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			slots: instance.primary
 				? {
 						...nextjsSlots,
-						...(renderConfig.rpc === "orpc"
+						...(renderConfig.rpc === "orpc" &&
+						(config.backend === undefined || config.backend === "self")
 							? { orpc: "app/api/orpc/[[...rest]]/route.ts" }
 							: {}),
 					}
@@ -287,12 +288,13 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 					leafTextFile(
 						ensuredModuleTarget(instance.key),
 						"proxy.ts",
-						readTemplate("frameworks/nextjs/proxy.ts").replace(
-							'"/api/trpc/:path*"',
-							renderConfig.rpc === "orpc"
-								? '"/api/orpc/:path*"'
-								: '"/api/trpc/:path*"',
-						),
+						renderConfig.rpc === "orpc"
+							? replaceAnchor(
+									readTemplate("frameworks/nextjs/proxy.ts"),
+									'"/api/trpc/:path*"',
+									'"/api/orpc/:path*"',
+								)
+							: readTemplate("frameworks/nextjs/proxy.ts"),
 					),
 				]
 			: []),

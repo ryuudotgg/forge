@@ -25,7 +25,7 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { serverCorsMarkers } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
-import { readTemplate } from "../../template";
+import { readTemplate, renderHeadersFromRequest } from "../../template";
 import { webAppInstances } from "../../web-apps";
 import {
 	trpcRecipeMarkers,
@@ -164,6 +164,7 @@ export const trpcFastifyRecipe = defineTemplateRecipe({
 		SLUG: marker.required,
 		AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
 		AUTH_ARG: marker.toggleLine("          /* __AUTH_ARG__ */\n"),
+		HEADERS_FROM_REQUEST: marker.required,
 	},
 	assets: [
 		slotAsset("trpc", {
@@ -184,6 +185,7 @@ export const trpcFastifyAdapters = deriveRecipeAdapters({
 			AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],
 			AUTH_ARG:
 				config.authentication === "better-auth" ? "          auth,\n" : "",
+			HEADERS_FROM_REQUEST: renderHeadersFromRequest("FastifyRequest"),
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),
@@ -206,6 +208,7 @@ export const trpcExpressRecipe = defineTemplateRecipe({
 		SLUG: marker.required,
 		AUTH_IMPORT: marker.toggleLine("// __AUTH_IMPORT__\n"),
 		AUTH_ARG: marker.toggleLine("          /* __AUTH_ARG__ */\n"),
+		HEADERS_FROM_REQUEST: marker.required,
 	},
 	assets: [
 		slotAsset("trpc", {
@@ -226,6 +229,7 @@ export const trpcExpressAdapters = deriveRecipeAdapters({
 			AUTH_IMPORT: values["// __AUTH_IMPORT__\n"],
 			AUTH_ARG:
 				config.authentication === "better-auth" ? "          auth,\n" : "",
+			HEADERS_FROM_REQUEST: renderHeadersFromRequest("Request"),
 		};
 	},
 	target: (_asset, context) => moduleTarget(context.module),

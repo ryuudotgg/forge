@@ -480,25 +480,40 @@ describe("oRPC Next.js self host", () => {
 				const page = writeContent(plan, "apps/web/app/orpc-example/page.tsx");
 				const health = writeContent(plan, "apps/web/orpc/health.tsx");
 
-				expect(server).toContain('import "server-only"');
-				expect(server).toContain("createServerCaller = cache(async () =>");
-				expect(server).toContain("const requestHeaders = await headers()");
+				expect(server).not.toContain("server-only");
+				expect(server).toContain(
+					"globalThis.$client = createRouterClient(appRouter, {",
+				);
 
-				expect(server).toContain("context: { headers: requestHeaders }");
-				expect(server).toContain("export async function createServerORPC()");
+				expect(server).toContain(
+					'const { headers } = await import("next/headers");',
+				);
+
+				expect(server).not.toMatch(/^import .*next\/headers/m);
+				expect(server).toContain("return { headers: await headers() };");
+
 				expect(server).not.toContain('from "./client"');
 
 				expect(route).toContain("SimpleCsrfProtectionHandlerPlugin");
 				expect(route).toContain("headers: request.headers");
 				expect(route).toContain('prefix: "/api/orpc"');
 
-				expect(route).toContain("export const GET = handler");
-				expect(route).toContain("export const POST = handler");
+				for (const method of ["HEAD", "GET", "POST", "PUT", "PATCH", "DELETE"])
+					expect(route).toContain(`export const ${method} = handler;`);
+
 				expect(route).toContain('new Response("Not Found", { status: 404 })');
 
-				expect(client).toMatch(/^"use client";/);
+				expect(client).not.toContain('"use client"');
 				expect(client).toContain(
-					"export const client: RouterClient<AppRouter>",
+					'if (typeof window === "undefined") await import("./server");',
+				);
+
+				expect(client).toContain(
+					"var $client: RouterClient<AppRouter> | undefined;",
+				);
+
+				expect(client).toContain(
+					"export const client: RouterClient<AppRouter> =\n  globalThis.$client ?? createORPCClient(link);",
 				);
 
 				expect(client).toContain(
@@ -522,6 +537,8 @@ describe("oRPC Next.js self host", () => {
 				}
 
 				expect(page).not.toContain('"use client"');
+				expect(page).toContain('import { orpc } from "@/orpc/client";');
+				expect(page).not.toContain("createServerORPC");
 				expect(page).toContain("export default async function Page()");
 				expect(page).toContain("const queryClient = new QueryClient()");
 				expect(page).toContain(
@@ -539,9 +556,19 @@ describe("oRPC Next.js self host", () => {
 				expect(page).not.toMatch(/data\.status|\.health\.call\(/);
 				expect(health).toContain("useQuery(orpc.health.queryOptions())");
 				expect(health).toContain('data-testid="orpc-health"');
-				expect(writeContent(plan, "apps/web/orpc/react.tsx")).toContain(
-					"staleTime: 30 * 1000",
+				const provider = writeContent(plan, "apps/web/orpc/react.tsx");
+				expect(provider).toMatch(/^"use client";/);
+				expect(provider).toContain("staleTime: 30 * 1000");
+				expect(provider).not.toContain("useState");
+				expect(provider).toContain(
+					'if (typeof window === "undefined") return createQueryClient();',
 				);
+
+				expect(provider).toContain(
+					"browserQueryClient ??= createQueryClient();",
+				);
+
+				expect(provider).toContain("const queryClient = getQueryClient();");
 
 				expect(writeContent(plan, "apps/web/app/providers.tsx")).toContain(
 					"<ORPCReactProvider>{children}</ORPCReactProvider>",
@@ -571,6 +598,56 @@ describe("oRPC Next.js self host", () => {
 			}
 		},
 	);
+
+	it("renders the client and provider from the React Router templates", async () => {
+		const nextjs = await plannedProject({
+			...supportedConfig,
+			backend: "self",
+			web: "nextjs",
+		});
+
+		const reactRouter = await plannedProject({
+			...supportedConfig,
+			backend: "self",
+			web: "react-router",
+		});
+
+		const browserClient = writeContent(nextjs, "apps/web/orpc/client.ts")
+			.replace(
+				'\ndeclare global {\n  var $client: RouterClient<AppRouter> | undefined;\n}\n\nif (typeof window === "undefined") await import("./server");\n',
+				"",
+			)
+			.replace(
+				"=\n  globalThis.$client ?? createORPCClient",
+				"= createORPCClient",
+			);
+
+		expect(browserClient).toBe(
+			writeContent(reactRouter, "apps/web/app/orpc/client.ts"),
+		);
+
+		expect(writeContent(nextjs, "apps/web/orpc/react.tsx")).toBe(
+			`"use client";\n\n${writeContent(reactRouter, "apps/web/app/orpc/react.tsx")}`,
+		);
+	});
+
+	it.each(["hono", "express", "fastify"] satisfies ReadonlyArray<
+		ForgeConfig["backend"]
+	>)("records no orpc slot when Next.js is a client of %s", async (backend) => {
+		const plan = await plannedProject({
+			...supportedConfig,
+			backend,
+			web: "nextjs",
+		});
+
+		expect(
+			JSON.parse(writeContent(plan, "apps/web/forge.json")).slots,
+		).not.toHaveProperty("orpc");
+
+		expect(
+			JSON.parse(writeContent(plan, "apps/server/forge.json")).slots.orpc,
+		).toBe("src/routes/orpc.ts");
+	});
 
 	it.each([undefined, "trpc"] satisfies ReadonlyArray<ForgeConfig["rpc"]>)(
 		"preserves legacy Next.js slots for %s",
@@ -1058,7 +1135,9 @@ describe("oRPC route bodies and errors", () => {
 			expect(writeContent(plan, caller)).toMatch(
 				caller.endsWith("client.ts")
 					? /context: \(\) => \(\{ headers: getRequest\(\)\.headers \}\)/
-					: /createRouterClient\(appRouter, \{\s*context: \{ headers: /,
+					: config.web === "nextjs"
+						? /createRouterClient\(appRouter, \{\s*context: async \(\) => \{/
+						: /createRouterClient\(appRouter, \{\s*context: \{ headers: /,
 			);
 		},
 	);
