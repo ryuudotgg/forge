@@ -26,6 +26,7 @@ import {
 	AdoptionTraversalLimitError,
 } from "../src/commands/adoption";
 import { AdoptionDetectorTest } from "../src/commands/adoption/detector";
+import { commandPins } from "../src/commands/adoption/mapping";
 
 const detectorLayer = AdoptionDetector.Default.pipe(
 	Layer.provide(NodeServices.layer),
@@ -417,14 +418,26 @@ describe("AdoptionDetector", () => {
 					linter: "biome",
 					orm: "drizzle",
 					packageManager: "pnpm",
-					platforms: ["web"],
 					rpc: "trpc",
 					runtime: "Node.js",
 					style: "tailwind",
 					uiLibrary: "base-ui",
-					web: "nextjs",
-					webApps: [{ name: "admin", framework: "nextjs" }],
 				});
+
+				expect(result.webApps).toEqual([
+					{
+						client: "none",
+						frameworks: ["nextjs"],
+						root: "apps/admin",
+						scriptPort: { kind: "absent" },
+					},
+					{
+						client: "none",
+						frameworks: ["nextjs"],
+						root: "apps/web",
+						scriptPort: { kind: "absent" },
+					},
+				]);
 
 				expect(result.tooling).toEqual({ turbo: true });
 				expect(result.modules).toEqual([
@@ -639,11 +652,13 @@ describe("AdoptionDetector", () => {
 				catalogs: "scoped",
 				database: "sqlite",
 				orm: "prisma",
-				platforms: ["web"],
 				rpc: "trpc",
 				uiLibrary: "radix",
-				web: "tanstack-start",
 			});
+
+			expect(result.webApps.map((app) => [app.root, app.frameworks])).toEqual([
+				["apps/web", ["tanstack-start"]],
+			]);
 
 			expect(result.config).not.toHaveProperty("databaseProvider");
 			expect(
@@ -1108,24 +1123,37 @@ describe("AdoptionDetector", () => {
 	});
 
 	it.each(["next", "react-router"])(
-		"selects apps/web as primary beside an admin using %s",
+		"observes an admin using %s beside apps/web without choosing a primary",
 		async (dependency) => {
 			await withFixture(
 				"multiple-web-apps",
 				{
 					"apps/admin/package.json": json({
 						dependencies: { [dependency]: "^1" },
+						name: "@acme/admin",
+						scripts: { dev: "vite dev --port 3003" },
 					}),
 					"apps/web/package.json": json({ dependencies: { next: "^16" } }),
 					"package.json": json({ workspaces: ["apps/*"] }),
 				},
 				async (root) => {
 					const result = await detect(root);
-					expect(result.config.web).toBe("nextjs");
-					expect(result.config.webApps).toEqual([
+					expect(result.config).not.toHaveProperty("web");
+					expect(result.config).not.toHaveProperty("webApps");
+					expect(result.config.backend).toBe("self");
+					expect(result.webApps).toEqual([
 						{
-							name: "admin",
-							framework: dependency === "next" ? "nextjs" : "react-router",
+							client: "none",
+							frameworks: [dependency === "next" ? "nextjs" : "react-router"],
+							packageName: "@acme/admin",
+							root: "apps/admin",
+							scriptPort: { kind: "literal", port: 3003 },
+						},
+						{
+							client: "none",
+							frameworks: ["nextjs"],
+							root: "apps/web",
+							scriptPort: { kind: "absent" },
 						},
 					]);
 				},
@@ -1168,6 +1196,113 @@ describe("AdoptionDetector", () => {
 		},
 	);
 
+	it.each([
+		{
+			dependencies: { "@acme/trpc": "workspace:*" },
+			expected: "client",
+			name: "the declared tRPC package",
+			rpc: { "@trpc/server": "^11" },
+		},
+		{
+			dependencies: { "@acme/orpc": "workspace:*" },
+			expected: "client",
+			name: "the declared oRPC package",
+			rpc: { "@orpc/server": "^1" },
+		},
+		{
+			dependencies: { "@acme/trpc-extra": "workspace:*" },
+			expected: "none",
+			name: "a package with a similar name",
+			rpc: { "@trpc/server": "^11" },
+		},
+		{
+			dependencies: { "@trpc/client": "^11" },
+			expected: "none",
+			name: "only the tRPC client library",
+			rpc: { "@trpc/server": "^11" },
+		},
+	])("reads client $expected from $name", async (fixture) => {
+		const provider = "@trpc/server" in fixture.rpc ? "trpc" : "orpc";
+		await withFixture(
+			`rpc-client-${provider}`,
+			{
+				"apps/site/package.json": json({
+					dependencies: { ...fixture.dependencies, next: "^16" },
+				}),
+				"apps/web/package.json": json({ dependencies: { next: "^16" } }),
+				"package.json": json({ workspaces: ["apps/*", "packages/*"] }),
+				[`packages/${provider}/package.json`]: json({
+					dependencies: fixture.rpc,
+					name: `@acme/${provider}`,
+				}),
+			},
+			async (root) => {
+				const result = await detect(root);
+				expect(result.config.rpc).toBe(provider);
+				expect(
+					result.modules.find(
+						(module) => module.root === `packages/${provider}`,
+					),
+				).toMatchObject({ proposal: provider });
+
+				expect(
+					result.webApps.find((app) => app.root === "apps/site")?.client,
+				).toBe(fixture.expected);
+			},
+		);
+	});
+
+	it("marks a client ambiguous when both RPC packages exist", async () => {
+		await withFixture(
+			"rpc-client-both",
+			{
+				"apps/site/package.json": json({
+					dependencies: { "@acme/trpc": "workspace:*", next: "^16" },
+				}),
+				"apps/web/package.json": json({ dependencies: { next: "^16" } }),
+				"package.json": json({ workspaces: ["apps/*", "packages/*"] }),
+				"packages/orpc/package.json": json({
+					dependencies: { "@orpc/server": "^1" },
+					name: "@acme/orpc",
+				}),
+				"packages/trpc/package.json": json({
+					dependencies: { "@trpc/server": "^11" },
+					name: "@acme/trpc",
+				}),
+			},
+			async (root) => {
+				const result = await detect(root);
+				expect(result.config).not.toHaveProperty("rpc");
+				expect(
+					result.webApps.find((app) => app.root === "apps/site")?.client,
+				).toBe("conflict");
+			},
+		);
+	});
+
+	it("keeps a root package framework when no workspace app has one", async () => {
+		await withFixture(
+			"root-web-app",
+			{
+				"package.json": json({
+					dependencies: { next: "^16" },
+					workspaces: ["packages/*"],
+				}),
+				"packages/db/package.json": json({ dependencies: { pg: "^8" } }),
+			},
+			async (root) => {
+				const result = await detect(root);
+				expect(result.config).toMatchObject({
+					backend: "self",
+					platforms: ["web"],
+					web: "nextjs",
+				});
+
+				expect(result.webApps).toEqual([]);
+			},
+		);
+	});
+
 	it("leaves ambiguous and absent signals undefined", async () => {
 		await withFixture(
 			"ambiguous",
@@ -1190,6 +1325,10 @@ describe("AdoptionDetector", () => {
 				});
 
 				expect(result.tooling).toEqual({});
+				expect(result.webApps.map((app) => app.frameworks)).toEqual([
+					["nextjs", "tanstack-start"],
+				]);
+
 				expect(
 					result.modules.find((module) => module.root === "packages/db"),
 				).toEqual({
@@ -1349,10 +1488,9 @@ describe("AdoptionDetector", () => {
 			},
 			async (root) => {
 				const result = await detect(root);
-				expect(result.config).toMatchObject({
-					platforms: ["web"],
-					web: "react-router",
-				});
+				expect(result.webApps.map((app) => [app.root, app.frameworks])).toEqual(
+					[["apps/web", ["react-router"]]],
+				);
 
 				expect(result.modules).toEqual([
 					{
@@ -1385,10 +1523,9 @@ describe("AdoptionDetector", () => {
 			},
 			async (root) => {
 				const result = await detect(root);
-				expect(result.config).toMatchObject({
-					platforms: ["web"],
-					web: "tanstack-router",
-				});
+				expect(result.webApps.map((app) => [app.root, app.frameworks])).toEqual(
+					[["apps/web", ["tanstack-router"]]],
+				);
 
 				expect(result.modules).toEqual([
 					{
@@ -1413,10 +1550,9 @@ describe("AdoptionDetector", () => {
 			},
 			async (root) => {
 				const result = await detect(root);
-				expect(result.config).toMatchObject({
-					platforms: ["web"],
-					web: "nextjs",
-				});
+				expect(result.webApps.map((app) => [app.root, app.frameworks])).toEqual(
+					[["apps/web", ["nextjs"]]],
+				);
 
 				expect(result.modules).toEqual([
 					{
@@ -1450,10 +1586,9 @@ describe("AdoptionDetector", () => {
 			},
 			async (root) => {
 				const result = await detect(root);
-				expect(result.config).toMatchObject({
-					platforms: ["web"],
-					web: "nextjs",
-				});
+				expect(result.webApps.map((app) => [app.root, app.frameworks])).toEqual(
+					[["apps/web", ["nextjs"]]],
+				);
 
 				expect(result.modules).toEqual([
 					{
@@ -1480,10 +1615,9 @@ describe("AdoptionDetector", () => {
 			},
 			async (root) => {
 				const result = await detect(root);
-				expect(result.config).toMatchObject({
-					platforms: ["web"],
-					web: "tanstack-start",
-				});
+				expect(result.webApps.map((app) => [app.root, app.frameworks])).toEqual(
+					[["apps/web", ["tanstack-start"]]],
+				);
 
 				expect(result.modules).toEqual([
 					{
@@ -1622,5 +1756,37 @@ describe("AdoptionDetector", () => {
 				});
 			},
 		);
+	});
+
+	it.each([
+		[
+			"a Corepack Yarn pin",
+			{ packageManager: "yarn@4.5.0" },
+			undefined,
+			{ packageManager: { packageManager: "Yarn", version: "4.5.0" } },
+		],
+		[
+			"a pnpm pin with an integrity hash",
+			{ packageManager: "pnpm@12.6.0+sha512.abc" },
+			undefined,
+			{ packageManager: { packageManager: "pnpm", version: "12.6.0" } },
+		],
+		["an exact .nvmrc", {}, "v22.11.0\n", { node: "22.11.0" }],
+		[
+			"an exact engines.node",
+			{ engines: { node: "24.1.0" } },
+			undefined,
+			{ node: "24.1.0" },
+		],
+		["a range in engines.node", { engines: { node: ">=22" } }, undefined, {}],
+		["an alias in .nvmrc", { engines: { node: ">=22" } }, "lts/*\n", {}],
+		[
+			"an unknown package manager",
+			{ packageManager: "deno@2.0.0" },
+			undefined,
+			{},
+		],
+	])("reads command pins from %s", (_label, packageJson, nvmrc, pins) => {
+		expect(commandPins(packageJson, nvmrc)).toEqual(pins);
 	});
 });

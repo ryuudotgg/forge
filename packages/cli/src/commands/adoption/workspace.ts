@@ -13,7 +13,9 @@ export const PackageJsonSchema = Schema.fromJsonString(
 		main: Schema.optional(Schema.String),
 		module: Schema.optional(Schema.String),
 		optionalDependencies: Schema.optional(DependencyRecordSchema),
+		packageManager: Schema.optional(Schema.String),
 		peerDependencies: Schema.optional(DependencyRecordSchema),
+		scripts: Schema.optional(DependencyRecordSchema),
 		workspaces: Schema.optional(
 			Schema.Union([
 				Schema.Array(Schema.String),

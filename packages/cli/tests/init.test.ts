@@ -1,4 +1,4 @@
-import { access, mkdir, readFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { log } from "@clack/prompts";
 import { NodeServices } from "@effect/platform-node";
@@ -7,9 +7,16 @@ import { type ForgeConfig, loadDefinitionRegistry } from "@ryuugg/generators";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
+	type AdoptedModuleVersions,
 	AdoptionDetector,
 	AdoptionFileReadError,
+	adoptedWebConfig,
+	type ConfirmedModule,
 	type ModuleKind,
+	type ModuleMappingProposal,
+	primaryWebRoot,
+	resolveWebAppAdoption,
+	webRoots,
 } from "../src/commands/adoption";
 import {
 	adoptionConflictGuidance,
@@ -22,6 +29,7 @@ import {
 	runInit,
 } from "../src/commands/init";
 import { cliLayer, withCliRuntime } from "../src/runtime";
+import { firstPartyAddonIds } from "../src/steps/platforms/web-apps";
 import { withTempDir, writeJson, writeText } from "./lifecycle-fixtures";
 
 const coreLayer = CoreLive.pipe(
@@ -30,14 +38,41 @@ const coreLayer = CoreLive.pipe(
 );
 
 function buildAdoptionPlanForTest(
-	...parameters: Parameters<typeof buildAdoptionPlan>
+	directory: string,
+	inputConfig: ForgeConfig,
+	confirmed: ReadonlyArray<ConfirmedModule>,
+	adoptedVersions: ReadonlyArray<AdoptedModuleVersions>,
+	proposals: ReadonlyArray<ModuleMappingProposal> = [],
 ) {
 	const versions = new Map([
 		["node", "22.11.0"],
 		["pnpm", "10.12.1"],
 	]);
 
-	return buildAdoptionPlan(...parameters).pipe(
+	const plan = Effect.gen(function* () {
+		const detection = yield* AdoptionDetector.detect(directory);
+		const resolved = yield* resolveWebAppAdoption({
+			addonIds: firstPartyAddonIds(),
+			confirmed,
+			observations: detection.webApps,
+			primaryRoot: primaryWebRoot(webRoots(confirmed)),
+			requested: inputConfig,
+		});
+
+		return yield* buildAdoptionPlan(
+			directory,
+			{
+				commandPins: detection.commandPins,
+				config: { ...inputConfig, ...adoptedWebConfig(resolved, inputConfig) },
+				prototypeRoots: resolved.prototypeRoots,
+			},
+			confirmed,
+			adoptedVersions,
+			proposals,
+		);
+	});
+
+	return plan.pipe(
 		Effect.provideService(CommandProbe, {
 			readVersion: (command: string) =>
 				Effect.sync(() => {
@@ -77,7 +112,7 @@ async function fixture(directory: string) {
 
 	await writeText(
 		join(directory, "pnpm-workspace.yaml"),
-		"packages:\n  - 'apps/*'\n  - 'packages/*'\n",
+		"packages:\n  - 'apps/*'\n  - 'packages/*'\n  - 'sites/*'\n",
 	);
 
 	await writeJson(join(directory, "apps/web/package.json"), {
@@ -91,6 +126,21 @@ async function fixture(directory: string) {
 		name: "@acme/db",
 		private: true,
 	});
+}
+
+async function snapshot(directory: string) {
+	const files = await readdir(directory, {
+		recursive: true,
+		withFileTypes: true,
+	});
+
+	const contents: Record<string, string> = {};
+	for (const entry of files.filter((file) => file.isFile())) {
+		const path = join(entry.parentPath, entry.name);
+		contents[path] = await readFile(path, "utf-8");
+	}
+
+	return contents;
 }
 
 async function exists(path: string) {
@@ -188,7 +238,7 @@ describe("init command", () => {
 
 				expect(() => readInitConfigFile(invalid)).toThrow("exit:1");
 				expect(logError).toHaveBeenLastCalledWith(
-					'Your config file is invalid.\n  modules: Expected ReadonlyArray<{ readonly kind: "web-app" | "backend-app" | "db" | "auth" | "trpc" | "ui"; readonly root: string }>, actual "bad"',
+					'Your config file is invalid.\n  modules: Expected ReadonlyArray<{ readonly kind: "web-app" | "backend-app" | "db" | "auth" | "trpc" | "orpc" | "ui"; readonly root: string }>, actual "bad"',
 				);
 
 				const missing = join(directory, "missing-modules.json");
@@ -209,11 +259,12 @@ describe("init command", () => {
 		const loaded = loadDefinitionRegistry();
 		const packageKinds: ReadonlyArray<
 			Exclude<ModuleKind, "backend-app" | "web-app">
-		> = ["db", "auth", "trpc", "ui"];
+		> = ["db", "auth", "trpc", "orpc", "ui"];
 
 		const packageAddons = {
 			auth: "better-auth",
 			db: "drizzle",
+			orpc: "orpc",
 			trpc: "trpc",
 			ui: "ui",
 		} satisfies Readonly<
@@ -267,36 +318,45 @@ describe("init command", () => {
 		});
 	});
 
-	it("formats an aligned adoption report with project counts and grammar", () => {
-		const report = adoptionReport(
-			config,
-			[{ kind: "web-app", root: "apps/web" }],
-			{
-				applyPlan: {
-					lockfile: { artifacts: {} },
-					manifest: { config: {}, installs: [], modules: {} },
-					removals: [],
-					writes: [],
-				},
-				artifactCounts: { ".": 2, "apps/web": 1 },
-				commandVersions: {},
-				manifest: {
-					config: {},
-					installs: [],
-					modules: {},
-					schemaVersion: 1,
-				},
-				markerPaths: ["apps/web/forge.json"],
+	it("formats an aligned adoption report from the planned config", () => {
+		const plannedConfig = {
+			...config,
+			webApps: [
+				{ name: "admin", framework: "react-router", port: 3003, client: true },
+			],
+		};
+
+		const report = adoptionReport([{ kind: "web-app", root: "apps/web" }], {
+			applyPlan: {
+				lockfile: { artifacts: {} },
+				manifest: { config: {}, installs: [], modules: {} },
+				removals: [],
+				writes: [],
 			},
-		);
+			artifactCounts: { ".": 2, "apps/web": 1 },
+			commandVersions: {},
+			manifest: {
+				config: plannedConfig,
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			},
+			markerPaths: ["apps/web/forge.json"],
+		});
 
-		expect(report).toMatch(/^Config:\s{2,}/);
-		expect(report).toContain("name=Acme");
-		expect(report).not.toContain(JSON.stringify(config));
-
+		expect(report).toMatch(/^Project:\s{2,}/);
 		expect(report).toContain("Project:       2 existing artifacts");
 		expect(report).toContain("apps/web:      web-app, 1 existing artifact");
 		expect(report).toContain("Write marker:  apps/web/forge.json");
+		expect(report).toContain(
+			"We'll adopt admin (React Router, port 3003, calls the API) as a secondary web app.",
+		);
+
+		expect(report).toContain(
+			`Forge will record this config:\n${JSON.stringify(plannedConfig, null, 2)}`,
+		);
+
+		expect(report).not.toContain("[object Object]");
 	});
 
 	it("captures existing bytes as bases and applies only module markers", async () => {
@@ -466,6 +526,57 @@ describe("init command", () => {
 		});
 	});
 
+	it.each([
+		[
+			"a Yarn pin and an exact .nvmrc",
+			{ packageManager: "yarn@4.5.0" },
+			"24.1.0\n",
+			"Yarn",
+			{ node: "24.1.0", yarn: "4.5.0" },
+		],
+		[
+			"a pnpm pin and an engines range",
+			{ packageManager: "pnpm@9.15.0", engines: { node: ">=22" } },
+			undefined,
+			"pnpm",
+			{ node: "22.11.0", pnpm: "9.15.0" },
+		],
+	] satisfies ReadonlyArray<
+		readonly [
+			string,
+			Record<string, unknown>,
+			string | undefined,
+			"Yarn" | "pnpm",
+			Record<string, string>,
+		]
+	>)(
+		"records versions from %s without probing pinned commands",
+		async (_label, rootFields, nvmrc, packageManager, commandVersions) => {
+			await withTempDir("init-pins", async (directory) => {
+				await fixture(directory);
+				await writeJson(join(directory, "package.json"), {
+					name: "acme",
+					private: true,
+					...rootFields,
+				});
+
+				if (nvmrc !== undefined)
+					await writeText(join(directory, ".nvmrc"), nvmrc);
+
+				const plan = await Effect.runPromise(
+					buildAdoptionPlanForTest(
+						directory,
+						{ ...config, packageManager },
+						[{ kind: "web-app", root: "apps/web" }],
+						[],
+					),
+				);
+
+				expect(plan.commandVersions).toEqual(commandVersions);
+			});
+		},
+	);
+
 	it("maps a backend app onto the standalone hono prototype", async () => {
 		await withTempDir("init-backend", async (directory) => {
 			await fixture(directory);
@@ -504,6 +615,18 @@ describe("init command", () => {
 
 	it("adopts mixed frameworks with each matching template", async () => {
 		await withTempDir("init-mixed-frameworks", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "apps/web/package.json"), {
+				dependencies: { "@tanstack/react-start": "^1.0.0" },
+				name: "@acme/web",
+			});
+
+			await writeJson(join(directory, "apps/admin/package.json"), {
+				dependencies: { next: "^16.0.0" },
+				name: "@acme/admin",
+				scripts: { dev: "next dev --port 3002" },
+			});
+
 			const plan = await Effect.runPromise(
 				buildAdoptionPlanForTest(
 					directory,
@@ -539,6 +662,7 @@ describe("init command", () => {
 			await fixture(directory);
 			await writeJson(join(directory, "apps/admin/package.json"), {
 				dependencies: { next: "16.0.0" },
+				scripts: { dev: "next dev --port 3002" },
 			});
 
 			const beforeAdmin = await readFile(
@@ -624,7 +748,7 @@ describe("init command", () => {
 					{
 						...config,
 						orm: undefined,
-						webApps: [{ name: "admin", framework: "react-router" }],
+						webApps: [],
 					},
 					[{ kind: "web-app", root: "apps/web" }],
 					[],
@@ -669,7 +793,7 @@ describe("init command", () => {
 					{
 						...config,
 						orm: undefined,
-						webApps: [{ name: "admin", framework: "react-router" }],
+						webApps: [],
 					},
 					[{ kind: "web-app", root: "apps/admin" }],
 					[],
@@ -700,7 +824,7 @@ describe("init command", () => {
 					{
 						...config,
 						orm: undefined,
-						webApps: [{ name: "admin", framework: "nextjs" }],
+						webApps: [{ name: "admin", framework: "nextjs", port: 3002 }],
 					},
 					[
 						{ kind: "web-app", root: "apps/web" },
@@ -711,7 +835,7 @@ describe("init command", () => {
 			);
 
 			expect(plan.manifest.config.webApps).toEqual([
-				{ name: "admin", framework: "nextjs" },
+				{ name: "admin", framework: "nextjs", port: 3002 },
 			]);
 
 			expect(plan.markerPaths.sort()).toEqual([
@@ -735,6 +859,17 @@ describe("init command", () => {
 
 	it("rejects ambiguous secondary identities across layouts", async () => {
 		await withTempDir("init-ambiguous-secondary", async (directory) => {
+			await fixture(directory);
+
+			for (const [root, port] of [
+				["sites/admin", 3002],
+				["apps/admin", 3003],
+			] satisfies ReadonlyArray<readonly [string, number]>)
+				await writeJson(join(directory, root, "package.json"), {
+					dependencies: { next: "16.0.0" },
+					scripts: { dev: `next dev --port ${port}` },
+				});
+
 			const error = await Effect.runPromise(
 				Effect.flip(
 					buildAdoptionPlanForTest(
@@ -755,7 +890,7 @@ describe("init command", () => {
 			);
 
 			expect(error.message).toBe(
-				"Adoption Mapping Invalid: secondary web app names are ambiguous across confirmed roots.",
+				"We couldn't adopt apps/admin and sites/admin because each would be the web app named admin. Rename one package and run forge init again.",
 			);
 		});
 	});
@@ -875,6 +1010,7 @@ describe("init command", () => {
 				dependencies: { next: "^16.0.0", react: "^19.0.0" },
 				name: "@acme/admin",
 				private: true,
+				scripts: { dev: "next dev --port 3002" },
 			});
 
 			const plan = await Effect.runPromise(
@@ -1000,6 +1136,156 @@ describe("init command", () => {
 			await fixture(directory);
 			await runInit({ "dry-run": true, yes: true }, directory);
 			expect(await exists(join(directory, ".forge"))).toBe(false);
+		});
+	});
+
+	it("adopts a detected multi app tree with its names, ports and clients", async () => {
+		await withTempDir("init-detected-web-apps", async (directory) => {
+			await fixture(directory);
+			await writeJson(join(directory, "apps/site/package.json"), {
+				dependencies: { "@acme/trpc": "workspace:*", next: "^16.0.0" },
+				name: "@acme/site",
+				scripts: { dev: "next dev --port 3002" },
+			});
+
+			await writeJson(join(directory, "apps/Admin_Panel/package.json"), {
+				dependencies: { "react-router": "^7.0.0" },
+				name: "@acme/admin",
+				scripts: { dev: "react-router dev --port 3004" },
+			});
+
+			await writeJson(join(directory, "packages/trpc/package.json"), {
+				dependencies: { "@trpc/server": "^11.0.0" },
+				name: "@acme/trpc",
+			});
+
+			const before = await snapshot(directory);
+			await runInit({ "dry-run": true, yes: true }, directory);
+			expect(await snapshot(directory)).toEqual(before);
+
+			await runInit({ yes: true }, directory);
+			const manifest = JSON.parse(
+				await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
+			);
+
+			expect(manifest.config).toMatchObject({
+				platforms: ["web"],
+				rpc: "trpc",
+				web: "nextjs",
+				webApps: [
+					{ name: "admin", framework: "react-router", port: 3004 },
+					{ name: "site", framework: "nextjs", port: 3002, client: true },
+				],
+			});
+
+			expect(
+				await readFile(join(directory, "apps/Admin_Panel/forge.json"), "utf-8"),
+			).toContain('"framework": "react-router"');
+		});
+	}, 30_000);
+
+	it.each([
+		["yes", { yes: true }],
+		["a config file", { config: "forge.init.json" }],
+	])("refuses to pick a primary web app with %s", async (_mode, values) => {
+		await withTempDir("init-no-primary", async (directory) => {
+			await writeJson(join(directory, "package.json"), { name: "acme" });
+			await writeText(
+				join(directory, "pnpm-workspace.yaml"),
+				"packages:\n  - 'apps/*'\n",
+			);
+
+			await writeJson(join(directory, "apps/admin/package.json"), {
+				dependencies: { "react-router": "^7.0.0" },
+				scripts: { dev: "react-router dev --port 3004" },
+			});
+
+			await writeJson(join(directory, "apps/frontend/package.json"), {
+				dependencies: { next: "^16.0.0" },
+				scripts: { dev: "next dev --port 3002" },
+			});
+
+			await writeJson(join(directory, "forge.init.json"), {
+				...config,
+				modules: [
+					{ kind: "web-app", root: "apps/admin" },
+					{ kind: "web-app", root: "apps/frontend" },
+				],
+			});
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			const logError = vi.spyOn(log, "error").mockImplementation(() => {});
+			try {
+				await expect(
+					runInit(
+						"config" in values
+							? { config: join(directory, values.config) }
+							: values,
+						directory,
+					),
+				).rejects.toThrow("exit:1");
+
+				expect(logError).toHaveBeenCalledWith(
+					"We couldn't choose a primary web app because apps/web isn't being adopted. Run forge init interactively and choose one.",
+				);
+
+				expect(await exists(join(directory, ".forge"))).toBe(false);
+			} finally {
+				logError.mockRestore();
+				exit.mockRestore();
+			}
+		});
+	});
+
+	it("refuses unbindable apps under yes before announcing them", async () => {
+		await withTempDir("init-early-refusal", async (directory) => {
+			await writeJson(join(directory, "package.json"), { name: "acme" });
+			await writeText(
+				join(directory, "pnpm-workspace.yaml"),
+				"packages:\n  - 'apps/*'\n",
+			);
+
+			await writeJson(join(directory, "apps/web/package.json"), {
+				dependencies: { next: "^16.0.0" },
+			});
+
+			for (const [root, name, port] of [
+				["apps/marketing", "@company/site", 3002],
+				["apps/console", "@company/admin", 3003],
+			] satisfies ReadonlyArray<readonly [string, string, number]>)
+				await writeJson(join(directory, root, "package.json"), {
+					dependencies: { next: "^16.0.0" },
+					name,
+					scripts: { dev: `next dev --port ${port}` },
+				});
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			const logError = vi.spyOn(log, "error").mockImplementation(() => {});
+			const logMessage = vi.spyOn(log, "message").mockImplementation(() => {});
+			try {
+				await expect(runInit({ yes: true }, directory)).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(logMessage).not.toHaveBeenCalled();
+				expect(logError).toHaveBeenCalledWith(
+					expect.stringMatching(
+						/^We couldn't adopt apps\/console and apps\/marketing because .* Forge guessed the slug acme\. To use another, set slug in an init config and pass it with --config\.$/,
+					),
+				);
+
+				expect(await exists(join(directory, ".forge"))).toBe(false);
+			} finally {
+				logMessage.mockRestore();
+				logError.mockRestore();
+				exit.mockRestore();
+			}
 		});
 	});
 

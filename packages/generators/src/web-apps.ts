@@ -1,6 +1,7 @@
 import type { ForgeConfig, WebFramework } from "./config";
 import {
 	emailPreviewPort,
+	standaloneApiOrigin,
 	standaloneBackendDevPort,
 	webDevPort,
 } from "./origins";
@@ -137,6 +138,12 @@ export function webAppPortIssue(config: ForgeConfig): string | undefined {
 	);
 
 	for (const instance of webAppInstances(config)) {
+		if (
+			instance.port === standaloneBackendDevPort &&
+			standaloneApiOrigin(config) !== undefined
+		)
+			return `${instance.key} can't use port ${standaloneBackendDevPort}, which the API server uses.`;
+
 		const owner = owners.get(instance.port);
 		if (owner !== undefined)
 			return `${owner} and ${instance.key} both use port ${instance.port}.`;

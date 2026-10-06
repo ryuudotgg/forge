@@ -1,6 +1,11 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { checkPackageManager, packageManagers } from "@ryuugg/core";
+import {
+	buildPackageManagerCheck,
+	checkPackageManager,
+	packageManagers,
+} from "@ryuugg/core";
 import { Result, Schema } from "effect";
+import type { PinnedPackageManager } from "../../commands/adoption";
 import { runCliEffectValue } from "../../runtime";
 import { cancel } from "../../utils/cancel";
 import { defineStep, type PartialConfig } from "../types";
@@ -26,57 +31,66 @@ function getSmartDefault(
 	}
 }
 
-const packageManagerStep = defineStep<typeof packageManagerSchema.Type>({
-	id: "packageManager",
-	group: "project",
-	schema: packageManagerSchema,
-	configKey: "packageManager",
+async function requirePackageManager(
+	packageManager: typeof packageManagerSchema.Type,
+	pin: PinnedPackageManager | undefined,
+) {
+	const check =
+		pin?.packageManager === packageManager
+			? buildPackageManagerCheck(packageManager, pin.version)
+			: await runCliEffectValue(checkPackageManager(packageManager));
 
-	dependencies: ["runtime"],
+	if (!check.ok) {
+		log.error(check.message);
+		process.exit(1);
+	}
+}
 
-	shouldRun: () => true,
+export function createPackageManagerStep(pin?: PinnedPackageManager) {
+	return defineStep<typeof packageManagerSchema.Type>({
+		id: "packageManager",
+		group: "project",
+		schema: packageManagerSchema,
+		configKey: "packageManager",
 
-	async validate(value) {
-		const result = Schema.decodeUnknownResult(packageManagerSchema)(value);
-		if (Result.isFailure(result)) return;
+		dependencies: ["runtime"],
 
-		const check = await runCliEffectValue(checkPackageManager(result.success));
-		if (!check.ok) {
-			log.error(check.message);
-			process.exit(1);
-		}
-	},
+		shouldRun: () => true,
 
-	async execute(config, interactive) {
-		const smartDefault = getSmartDefault(config.runtime);
-		if (!interactive) {
-			const check = await runCliEffectValue(checkPackageManager(smartDefault));
-			if (!check.ok) {
-				log.error(check.message);
-				process.exit(1);
+		async validate(value) {
+			const result = Schema.decodeUnknownResult(packageManagerSchema)(value);
+			if (Result.isFailure(result)) return;
+			await requirePackageManager(result.success, pin);
+		},
+
+		async execute(config, interactive) {
+			if (pin !== undefined) {
+				await requirePackageManager(pin.packageManager, pin);
+				return pin.packageManager;
 			}
 
-			return smartDefault;
-		}
+			const smartDefault = getSmartDefault(config.runtime);
+			if (!interactive) {
+				await requirePackageManager(smartDefault, pin);
+				return smartDefault;
+			}
 
-		const packageManager = await select({
-			message: "What package manager do you want to use?",
-			options: packageManagerOptions.map((option) => ({
-				label: option === smartDefault ? `${option} (Recommended)` : option,
-				value: option,
-			})),
-		});
+			const packageManager = await select({
+				message: "What package manager do you want to use?",
+				options: packageManagerOptions.map((option) => ({
+					label: option === smartDefault ? `${option} (Recommended)` : option,
+					value: option,
+				})),
+			});
 
-		if (isCancel(packageManager)) cancel();
+			if (isCancel(packageManager)) cancel();
 
-		const check = await runCliEffectValue(checkPackageManager(packageManager));
-		if (!check.ok) {
-			log.error(check.message);
-			process.exit(1);
-		}
+			await requirePackageManager(packageManager, pin);
+			return packageManager;
+		},
+	});
+}
 
-		return packageManager;
-	},
-});
+const packageManagerStep = createPackageManagerStep();
 
 export default packageManagerStep;

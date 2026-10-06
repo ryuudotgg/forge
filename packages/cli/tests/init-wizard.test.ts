@@ -6,6 +6,7 @@ import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModuleMappingProposal } from "../src/commands/adoption";
 import {
+	choosePrimaryWebRoot,
 	confirmDetection,
 	confirmMappings,
 	runInit,
@@ -36,6 +37,7 @@ const promptMocks = vi.hoisted(() => ({
 	isCancel: vi.fn(),
 	note: vi.fn(),
 	multiselect: vi.fn(),
+	select: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -47,6 +49,7 @@ vi.mock("@clack/prompts", () => ({
 	multiselect: promptMocks.multiselect,
 	note: promptMocks.note,
 	outro: vi.fn(),
+	select: promptMocks.select,
 }));
 
 describe("init wizard", () => {
@@ -58,6 +61,7 @@ describe("init wizard", () => {
 		promptMocks.isCancel.mockReturnValue(false);
 		promptMocks.multiselect.mockReset();
 		promptMocks.note.mockReset();
+		promptMocks.select.mockReset();
 	});
 
 	it("refuses pre-existing Forge directories without deleting their contents", async () => {
@@ -195,8 +199,8 @@ describe("init wizard", () => {
 			await runInit({ "dry-run": true, yes: true }, directory);
 
 			const [report] = promptMocks.note.mock.calls[0] ?? [];
-			expect(report).toContain("name=Acme Root");
-			expect(report).toContain("slug=acme-root");
+			expect(report).toContain('"name": "Acme Root"');
+			expect(report).toContain('"slug": "acme-root"');
 		});
 	});
 
@@ -280,10 +284,12 @@ describe("init wizard", () => {
 			await expect(
 				confirmDetection({
 					catalogEntries: [],
+					commandPins: {},
 					config: { runtime: "Node.js" },
 					modules: [],
 					tooling: {},
 					versions: [],
+					webApps: [],
 				}),
 			).rejects.toThrow("cancelled");
 
@@ -310,10 +316,12 @@ describe("init wizard", () => {
 
 		const config = await confirmDetection({
 			catalogEntries: [],
+			commandPins: {},
 			config: { packageManager: "pnpm", runtime: "Node.js" },
 			modules: [],
 			tooling: {},
 			versions: [],
+			webApps: [],
 		});
 
 		expect(config).toEqual({ packageManager: "pnpm" });
@@ -325,6 +333,99 @@ describe("init wizard", () => {
 		expect(promptMocks.confirm).toHaveBeenNthCalledWith(2, {
 			initialValue: true,
 			message: "We detected runtime as Node.js. Use it?",
+		});
+	});
+
+	it("asks which web app is primary when apps/web isn't adopted", async () => {
+		promptMocks.select.mockResolvedValue("apps/frontend");
+
+		await expect(
+			choosePrimaryWebRoot(
+				[
+					{ kind: "web-app", root: "apps/admin" },
+					{ kind: "web-app", root: "apps/frontend" },
+					{ kind: "db", root: "packages/db" },
+				],
+				[
+					{
+						client: "none",
+						frameworks: ["react-router"],
+						root: "apps/admin",
+						scriptPort: { kind: "absent" },
+					},
+					{
+						client: "none",
+						frameworks: ["nextjs"],
+						root: "apps/frontend",
+						scriptPort: { kind: "absent" },
+					},
+				],
+				true,
+			),
+		).resolves.toBe("apps/frontend");
+
+		expect(promptMocks.select).toHaveBeenCalledExactlyOnceWith({
+			message: "Which web app is the primary app?",
+			options: [
+				{ label: "apps/admin (React Router)", value: "apps/admin" },
+				{ label: "apps/frontend (Next.js)", value: "apps/frontend" },
+			],
+		});
+
+		await expect(
+			choosePrimaryWebRoot(
+				[
+					{ kind: "web-app", root: "apps/site" },
+					{ kind: "web-app", root: "apps/web" },
+				],
+				[],
+				true,
+			),
+		).resolves.toBe("apps/web");
+
+		expect(promptMocks.select).toHaveBeenCalledTimes(1);
+	});
+
+	it("writes nothing when the primary web app prompt is cancelled", async () => {
+		await withTempDir("init-primary-cancel", async (directory) => {
+			await writeJson(join(directory, "package.json"), { name: "acme" });
+			await writeText(
+				join(directory, "pnpm-workspace.yaml"),
+				"packages:\n  - 'apps/*'\n",
+			);
+
+			await writeJson(join(directory, "apps/admin/package.json"), {
+				dependencies: { "react-router": "^7.0.0" },
+			});
+
+			await writeJson(join(directory, "apps/frontend/package.json"), {
+				dependencies: { next: "^16.0.0" },
+			});
+
+			promptMocks.multiselect.mockResolvedValue([
+				"apps/admin",
+				"apps/frontend",
+			]);
+
+			promptMocks.select.mockResolvedValue(Symbol("cancel"));
+			promptMocks.isCancel.mockImplementation(
+				(value: unknown) => typeof value === "symbol",
+			);
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("cancelled");
+			});
+
+			try {
+				await expect(runInit({}, directory)).rejects.toThrow("cancelled");
+				expect(promptMocks.select).toHaveBeenCalledOnce();
+				expect(promptMocks.confirm).not.toHaveBeenCalled();
+				await expect(
+					readFile(join(directory, ".forge/manifest.json")),
+				).rejects.toThrow();
+			} finally {
+				exit.mockRestore();
+			}
 		});
 	});
 

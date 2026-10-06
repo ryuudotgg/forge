@@ -142,6 +142,7 @@ export type {
 	Runtime,
 } from "./environment";
 export {
+	buildPackageManagerCheck,
 	checkPackageManager,
 	checkRuntime,
 	dependencyFormatFor,

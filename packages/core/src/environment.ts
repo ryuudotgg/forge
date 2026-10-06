@@ -174,7 +174,7 @@ function checkCurrentRuntime(): EnvironmentCheck {
 	return { ok: true, message: `${displayName} v${version}` };
 }
 
-function buildPackageManagerCheck(
+export function buildPackageManagerCheck(
 	pm: PackageManager,
 	version: string,
 ): EnvironmentCheck {

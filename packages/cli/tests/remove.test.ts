@@ -335,6 +335,85 @@ describe("remove command", () => {
 		},
 	);
 
+	it.each(["legacy-console", "@company/legacy-console"])(
+		"finds an adopted secondary named after its package %s",
+		async (packageName) => {
+			const selectedModule = {
+				...adminModule,
+				root: "sites/admin",
+				packageName,
+			};
+
+			const project = managedProject({
+				config: {
+					slug: "acme",
+					web: "nextjs",
+					webApps: [{ name: "legacy-console", framework: "nextjs" }],
+				},
+				modules: [appModule, selectedModule],
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runRemove("legacy-console", { yes: true });
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{ slug: "acme", web: "nextjs", webApps: [] },
+				[],
+				undefined,
+				undefined,
+				{},
+				{
+					modules: [appModule],
+					records: project.manifest.modules,
+					removedRoots: ["sites/admin"],
+				},
+			);
+		},
+	);
+
+	it("refuses when the canonical root and the generated package name point at different apps", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		const project = managedProject({
+			config: {
+				slug: "acme",
+				web: "nextjs",
+				webApps: [
+					{ name: "admin", framework: "nextjs" },
+					{ name: "dashboard", framework: "nextjs" },
+				],
+			},
+			modules: [
+				appModule,
+				{ ...adminModule, packageName: "@acme/console" },
+				{
+					...adminModule,
+					id: "dashboard",
+					root: "apps/dashboard",
+					packageName: "@acme/admin",
+				},
+			],
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+		try {
+			await expect(runRemove("admin", { yes: true })).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				'We can\'t identify one managed web app named "admin".',
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
 	it("removes a secondary whose directory is gone through its manifest record", async () => {
 		const baseProject = managedProject({
 			config: {

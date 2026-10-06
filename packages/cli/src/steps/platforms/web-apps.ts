@@ -2,7 +2,6 @@ import { confirm, isCancel, text } from "@clack/prompts";
 import {
 	loadDefinitionRegistry,
 	reservedWebAppNames,
-	standaloneBackendDevPort,
 } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
@@ -10,15 +9,16 @@ import { defineStep, SKIP } from "../types";
 import webStep, { webSchema } from "./web";
 
 const reservedNames = new Set<string>(reservedWebAppNames);
+export function webAppNameRuleIssue(name: string) {
+	if (!/^[a-z][a-z0-9-]*$/.test(name))
+		return `${name} isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.`;
+
+	if (reservedNames.has(name))
+		return `${name} is reserved. Pick another name for this web app.`;
+}
 
 const webAppNameSchema = Schema.String.check(
-	Schema.makeFilter((name) => {
-		if (!/^[a-z][a-z0-9-]*$/.test(name))
-			return `${name} isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.`;
-
-		if (reservedNames.has(name))
-			return `${name} is reserved. Pick another name for this web app.`;
-	}),
+	Schema.makeFilter(webAppNameRuleIssue),
 );
 
 export const webAppsSchema = Schema.Array(
@@ -41,9 +41,6 @@ export const webAppsSchema = Schema.Array(
 
 			if (!Number.isInteger(app.port) || app.port < 1 || app.port > 65535)
 				return `${app.name} needs a port between 1 and 65535.`;
-
-			if (app.port === standaloneBackendDevPort)
-				return `${app.name} can't use port ${standaloneBackendDevPort}, which the API server uses.`;
 
 			const owner = portOwners.get(app.port);
 			if (owner !== undefined)

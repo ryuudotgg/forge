@@ -311,7 +311,7 @@ function secondaryAppModules(
 	return compatibleModules.filter(
 		(module) =>
 			basename(project.manifest.modules[module.id]?.root ?? module.root) ===
-			app.name,
+				app.name || module.packageName?.split("/").at(-1) === app.name,
 	);
 }
 

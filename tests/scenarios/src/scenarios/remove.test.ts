@@ -9,6 +9,14 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { NodeServices } from "@effect/platform-node";
+import { Apply, CliVersion, CoreLive, Planner } from "@ryuugg/core";
+import {
+	type ForgeConfig,
+	loadDefinitionRegistry,
+	withWebAppPorts,
+} from "@ryuugg/generators";
+import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	addAddon,
@@ -16,11 +24,46 @@ import {
 	pathExists,
 	readJson,
 	removeAddon,
+	repoRoot,
 	runForge,
 	tryRunForge,
 	withScenarioWorkspace,
 	writeJson,
 } from "../utils/harness";
+
+async function createLegacyProject(projectRoot: string, config: ForgeConfig) {
+	const { version } = await readJson<{ version: string }>(
+		join(repoRoot, "packages/cli/package.json"),
+	);
+
+	const layer = CoreLive.pipe(
+		Layer.provide(Layer.succeed(CliVersion, { version })),
+		Layer.provideMerge(NodeServices.layer),
+	);
+
+	const plan = Effect.gen(function* () {
+		const planner = yield* Planner;
+		const created = yield* planner.planCreate(
+			projectRoot,
+			withWebAppPorts(config),
+			loadDefinitionRegistry().registry,
+			{ node: process.versions.node, pnpm: "10.12.1" },
+		);
+
+		yield* Apply.applyPlan(projectRoot, {
+			lockfile: created.lockfile,
+			manifest: created.manifest,
+			removals: created.removals,
+			writes: created.writes.map((write) => ({
+				artifactId: write.artifactId,
+				content: write.content,
+				path: write.path,
+			})),
+		});
+	});
+
+	await Effect.runPromise(plan.pipe(Effect.provide(layer)));
+}
 
 async function treeHashes(projectRoot: string, excludedRoot?: string) {
 	const entries = await readdir(projectRoot, {
@@ -290,7 +333,7 @@ describe("remove", () => {
 				const adopted = await treeHashes(workspace.projectRoot);
 				const forced = await tryRunForge(
 					workspace.projectRoot,
-					["remove", "admin", "--accept-forge"],
+					["remove", "legacy-console", "--accept-forge"],
 					{ workspaceRoot: workspace.workspaceRoot },
 				);
 
@@ -330,7 +373,7 @@ describe("remove", () => {
 
 				const removed = await tryRunForge(
 					workspace.projectRoot,
-					["remove", "admin"],
+					["remove", "legacy-console"],
 					{ workspaceRoot: workspace.workspaceRoot },
 				);
 
@@ -356,22 +399,7 @@ describe("remove", () => {
 		await withScenarioWorkspace(
 			"remove-app-addon-collision",
 			async (workspace) => {
-				await createProject(workspace, {
-					packageManager: "pnpm",
-					web: "nextjs",
-					linter: "biome",
-					webApps: [{ name: "legacy", framework: "nextjs" }],
-				});
-
-				const legacyRoot = join(workspace.projectRoot, "apps/biome");
-				await rename(join(workspace.projectRoot, "apps/legacy"), legacyRoot);
-				await rm(join(workspace.projectRoot, ".forge"), { recursive: true });
-
-				for (const root of ["apps/web", "apps/biome", "packages/ui"])
-					await rm(join(workspace.projectRoot, root, "forge.json"));
-
-				const initConfigPath = join(workspace.workspaceRoot, "forge.init.json");
-				await writeJson(initConfigPath, {
+				await createLegacyProject(workspace.projectRoot, {
 					name: "acme",
 					slug: "acme",
 					path: ".",
@@ -380,25 +408,16 @@ describe("remove", () => {
 					runtime: "Node.js",
 					web: "nextjs",
 					linter: "biome",
-					modules: [
-						{ kind: "web-app", root: "apps/biome" },
-						{ kind: "web-app", root: "apps/web" },
-						{ kind: "ui", root: "packages/ui" },
-					],
+					webApps: [{ name: "biome", framework: "nextjs" }],
 				});
 
-				await runForge(
-					workspace.projectRoot,
-					["init", "--config", initConfigPath, "--no-install"],
-					{ workspaceRoot: workspace.workspaceRoot },
-				);
-
-				const adopted = await readJson<{
+				const legacyRoot = join(workspace.projectRoot, "apps/biome");
+				const legacy = await readJson<{
 					config: { webApps?: ReadonlyArray<{ name: string }> };
 				}>(join(workspace.projectRoot, ".forge/manifest.json"));
 
-				expect(adopted.config.webApps).toEqual([
-					{ name: "biome", framework: "nextjs" },
+				expect(legacy.config.webApps).toEqual([
+					{ name: "biome", framework: "nextjs", port: 3002 },
 				]);
 
 				await removeAddon(workspace.projectRoot, "biome");

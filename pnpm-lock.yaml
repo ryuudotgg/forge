@@ -451,9 +451,15 @@ importers:
 
   tests/scenarios:
     devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(redis@6.2.1)
       '@ryuugg/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@ryuugg/generators':
+        specifier: workspace:*
+        version: link:../../packages/generators
       '@ryuugg/tsconfig':
         specifier: workspace:*
         version: link:../../tooling/typescript

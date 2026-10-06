@@ -324,6 +324,19 @@ describe("web app ports", () => {
 		).toThrow("Web App Port Unavailable: portal");
 	});
 
+	it("reserves the API server port only when a standalone backend runs", () => {
+		const docs = {
+			web: "nextjs",
+			webApps: [{ name: "docs", framework: "nextjs", port: 3001 }],
+		} satisfies ForgeConfig;
+
+		expect(webAppPortIssue(docs)).toBeUndefined();
+		expect(webAppPortIssue({ ...docs, backend: "self" })).toBeUndefined();
+		expect(webAppPortIssue({ ...docs, backend: "hono" })).toBe(
+			"docs can't use port 3001, which the API server uses.",
+		);
+	});
+
 	it("names the apps that share a port", () => {
 		expect(webAppPortIssue(legacyTriple)).toBeUndefined();
 		expect(
