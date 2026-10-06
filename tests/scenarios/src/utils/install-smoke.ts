@@ -838,7 +838,7 @@ async function expectStartRefusal(projectRoot: string, variable: string) {
 		);
 
 		if (exitCode === "running" && server.pid !== undefined)
-			stopProcessGroup(server.pid, "SIGKILL");
+			await stopDetached(server.pid);
 
 		expect(exitCode, output).not.toBe("running");
 		expect(exitCode, output).not.toBe(0);
