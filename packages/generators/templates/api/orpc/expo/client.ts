@@ -3,8 +3,8 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { SimpleCsrfProtectionLinkPlugin } from "@orpc/client/plugins";
 import type { RouterClient } from "@orpc/server";
-__AUTH_IMPORT__;
 import { env } from "../../env";
+__AUTH_IMPORT__;
 
 const link = new RPCLink({
   url: `${env.EXPO_PUBLIC_SERVER_URL}/api/orpc`,

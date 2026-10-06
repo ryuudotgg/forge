@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ForgeConfig } from "../src";
 import { plannedProject } from "./planner-harness";
@@ -55,6 +55,16 @@ describe("guarded template patches", () => {
 			},
 			template: "frameworks/nextjs/proxy.ts",
 			anchor: '"/api/trpc/:path*"',
+		},
+		{
+			name: "React Router CORS import",
+			config: {
+				backend: "self",
+				web: "react-router",
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+			},
+			template: "api/orpc/routes/react-router/api.orpc.$.ts",
+			anchor: 'from "react-router";\n',
 		},
 	] satisfies ReadonlyArray<{
 		name: string;
@@ -113,5 +123,19 @@ describe("generator source", () => {
 		);
 
 		expect(definitions.flat()).toHaveLength(1);
+	});
+
+	it("indents templates with spaces, as the generated formatter expects", async () => {
+		const templatesRoot = join(import.meta.dirname, "../templates");
+		const files = await sourceFiles(templatesRoot);
+
+		const tabbed = await Promise.all(
+			files.map(async (file) => {
+				const content = await readFile(file, "utf8");
+				return /^\t/m.test(content) ? [relative(templatesRoot, file)] : [];
+			}),
+		);
+
+		expect(tabbed.flat()).toEqual([]);
 	});
 });

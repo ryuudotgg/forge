@@ -126,8 +126,6 @@ export async function expectFreshLinterCheck(
 	await expectInstallAndTypecheck(workspace, "pnpm");
 	await commitFixture(workspace);
 
-	await expectRun(workspace, "pnpm", ["check"]);
-
 	await expectRun(workspace, "pnpm", ["check:fix"]);
 	await expectCleanTree(workspace);
 

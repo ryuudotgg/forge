@@ -290,6 +290,11 @@ describe("Expo mobile framework", () => {
 					expectedTrpcClient(usesAuth),
 				);
 
+			if (usesTrpc && usesAuth)
+				expect(writeContent(plan, "apps/mobile/src/lib/trpc.ts")).toContain(
+					'import { env } from "../../env";\nimport { authClient } from "./auth-client";\n',
+				);
+
 			if (usesAuth)
 				expect(writeContent(plan, "apps/mobile/src/lib/auth-client.ts")).toBe(
 					readTemplate("auth/better-auth/expo/auth-client.ts")
@@ -342,6 +347,11 @@ describe("Expo mobile framework", () => {
 				);
 
 				expect(content).toBe(expectedOrpcClient(usesAuth));
+				if (usesAuth)
+					expect(content).toContain(
+						'import { env } from "../../env";\nimport { authClient } from "./auth-client";\n',
+					);
+
 				expect(content).not.toMatch(markerPattern);
 				expect(content).not.toContain("\t");
 				expect(

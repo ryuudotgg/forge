@@ -310,6 +310,58 @@ const buildArgsFor: Record<
 	yarn: ["build"],
 };
 
+const lintDiagnosticPattern = /Found [1-9]\d* (?:warning|info)/;
+
+export function lintScriptsFor(
+	manifest: { readonly config?: { readonly linter?: string } },
+	scripts: Readonly<Record<string, string>> | undefined,
+): ReadonlyArray<string> {
+	const linter = manifest.config?.linter;
+	if (linter !== undefined && scripts?.check === undefined)
+		throw new Error(`Missing Check Script: ${linter}`);
+
+	return ["check", "check:ws"].filter((script) => scripts?.[script]);
+}
+
+export function lintScriptFailure(
+	script: string,
+	result: ForgeCommandResult,
+): string | undefined {
+	if (result.exitCode !== 0)
+		return `${script} failed with code ${result.exitCode}`;
+
+	const output = stripVTControlCharacters(`${result.stdout}\n${result.stderr}`);
+	if (lintDiagnosticPattern.test(output))
+		return `${script} reported warnings or infos`;
+
+	return undefined;
+}
+
+async function expectLintScriptsPass(
+	workspace: ScenarioProject,
+	pm: "pnpm" | "npm" | "yarn" | "bun",
+) {
+	const manifest = await readJson<{
+		readonly config?: { readonly linter?: string };
+	}>(join(workspace.projectRoot, ".forge", "manifest.json"));
+
+	const { scripts } = await readJson<{
+		readonly scripts?: Readonly<Record<string, string>>;
+	}>(join(workspace.projectRoot, "package.json"));
+
+	for (const script of lintScriptsFor(manifest, scripts)) {
+		const result = await runCommand(pm, ["run", script], {
+			cwd: workspace.projectRoot,
+			env: forgeEnvironment(workspace.workspaceRoot),
+		});
+
+		expect(
+			lintScriptFailure(script, result),
+			`${pm} run ${script}\n${result.stdout}\n${result.stderr}`,
+		).toBeUndefined();
+	}
+}
+
 export async function expectInstallAndTypecheck(
 	workspace: ScenarioProject,
 	pm: "pnpm" | "npm" | "yarn" | "bun",
@@ -323,6 +375,8 @@ export async function expectInstallAndTypecheck(
 		installResult.exitCode,
 		`${pm} install failed with code ${installResult.exitCode}\n${installResult.stdout}\n${installResult.stderr}`,
 	).toBe(0);
+
+	await expectLintScriptsPass(workspace, pm);
 
 	const result = await runCommand(pm, typecheckArgsFor[pm], {
 		cwd: workspace.projectRoot,
@@ -350,6 +404,8 @@ export async function expectInstallAndBuild(
 		installResult.exitCode,
 		`${pm} install failed with code ${installResult.exitCode}\n${installResult.stdout}\n${installResult.stderr}`,
 	).toBe(0);
+
+	await expectLintScriptsPass(workspace, pm);
 
 	const buildResult = await runCommand(pm, buildArgsFor[pm], {
 		cwd: workspace.projectRoot,

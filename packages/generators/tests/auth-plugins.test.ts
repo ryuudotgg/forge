@@ -543,6 +543,76 @@ describe("auth plugins", () => {
 		);
 	});
 
+	it("wraps the web client plugins array when it exceeds 80 columns", async () => {
+		const plan = await plannedProject({
+			...baseConfig,
+			backend: "self",
+			orm: "drizzle",
+			database: "mysql",
+			authMethods: ["email-password", "google", "passkey"],
+			authPlugins: ["two-factor", "username", "admin", "organization"],
+		});
+
+		expect(writeContent(plan, "packages/auth/src/client.ts")).toContain(
+			[
+				"export const authClient = createAuthClient({",
+				"  plugins: [",
+				"    passkeyClient(),",
+				"    twoFactorClient(),",
+				"    usernameClient(),",
+				"    adminClient(),",
+				"    organizationClient(),",
+				"  ],",
+				"});",
+			].join("\n"),
+		);
+	});
+
+	it.each([
+		{
+			columns: 80,
+			authMethods: ["email-password", "email-otp", "passkey"],
+			authPlugins: ["username", "admin"],
+			plugins:
+				"  plugins: [passkeyClient(), emailOTPClient(), usernameClient(), adminClient()],",
+		},
+		{
+			columns: 81,
+			authMethods: ["email-password", "passkey"],
+			authPlugins: ["two-factor", "username", "admin"],
+			plugins: [
+				"  plugins: [",
+				"    passkeyClient(),",
+				"    twoFactorClient(),",
+				"    usernameClient(),",
+				"    adminClient(),",
+				"  ],",
+			].join("\n"),
+		},
+	] satisfies ReadonlyArray<{
+		columns: number;
+		authMethods: ForgeConfig["authMethods"];
+		authPlugins: ForgeConfig["authPlugins"];
+		plugins: string;
+	}>)(
+		"keeps a $columns column client plugins line inline only up to 80",
+		async ({ authMethods, authPlugins, plugins }) => {
+			const plan = await plannedProject({
+				...baseConfig,
+				backend: "self",
+				orm: "drizzle",
+				database: "sqlite",
+				emailProvider: "resend",
+				authMethods,
+				authPlugins,
+			});
+
+			expect(writeContent(plan, "packages/auth/src/client.ts")).toContain(
+				`export const authClient = createAuthClient({\n${plugins}\n});`,
+			);
+		},
+	);
+
 	it("canonicalizes and deduplicates without mutating the selection", () => {
 		const selected: ReadonlyArray<AuthPlugin> = ["admin", "username", "admin"];
 		const config: ForgeConfig = { ...baseConfig, authPlugins: selected };

@@ -537,6 +537,10 @@ describe("oRPC Next.js self host", () => {
 				}
 
 				expect(page).not.toContain('"use client"');
+				expect(page).toContain(
+					'import {\n  dehydrate,\n  HydrationBoundary,\n  QueryClient,\n} from "@tanstack/react-query";\n',
+				);
+
 				expect(page).toContain('import { orpc } from "@/orpc/client";');
 				expect(page).not.toContain("createServerORPC");
 				expect(page).toContain("export default async function Page()");
