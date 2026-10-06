@@ -454,16 +454,37 @@ describe("project steps", () => {
 			}
 		});
 
-		it("refuses a target directory it cannot read", async () => {
-			const root = await mkdtemp(join(tmpdir(), "forge-path-"));
+		it.skipIf(process.getuid?.() === 0)(
+			"refuses a target directory it cannot read",
+			async () => {
+				const root = await mkdtemp(join(tmpdir(), "forge-path-"));
+				try {
+					await chmod(root, 0o000);
+					expect(occupiedTargetIssue(root)).toBe(
+						`"${root}" can't be read, so we can't create your project there. Pick another path.`,
+					);
+				} finally {
+					await chmod(root, 0o700);
+					await rm(root, { force: true, recursive: true });
+				}
+			},
+		);
+
+		it("exits when the default slug directory is occupied", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
 			try {
-				await chmod(root, 0o000);
-				expect(occupiedTargetIssue(root)).toBe(
-					`"${root}" can't be read, so we can't create your project there. Pick another path.`,
+				await expect(pathStep.execute({ slug: "src" }, false)).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					expect.stringMatching(/^"\.\/src" already holds /),
 				);
 			} finally {
-				await chmod(root, 0o700);
-				await rm(root, { force: true, recursive: true });
+				exit.mockRestore();
 			}
 		});
 
