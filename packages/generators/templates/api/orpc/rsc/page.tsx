@@ -1,9 +1,8 @@
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
+import { orpc } from "@/orpc/client";
 import { Health } from "@/orpc/health";
-import { createServerORPC } from "@/orpc/server";
 
 export default async function Page() {
-  const orpc = await createServerORPC();
   const queryClient = new QueryClient();
 
   await queryClient.prefetchQuery(orpc.health.queryOptions());

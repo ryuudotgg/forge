@@ -1,4 +1,9 @@
-import type { AdapterContext } from "@ryuugg/core";
+import type {
+	AdapterContext,
+	AdapterModule,
+	FrameworkDefinition,
+	FrameworkId,
+} from "@ryuugg/core";
 import {
 	defineTemplateRecipe,
 	ensuredModuleTarget,
@@ -25,7 +30,11 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { serverCorsMarkers } from "../../origins";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
-import { interpolate, readTemplate } from "../../template";
+import {
+	interpolate,
+	readTemplate,
+	renderHeadersFromRequest,
+} from "../../template";
 import { webAppInstances } from "../../web-apps";
 import { orpcTemplateVars, renderOrpcTemplate } from "./shared";
 
@@ -66,6 +75,7 @@ export const orpcStandaloneRecipe = defineTemplateRecipe({
 		SLUG: marker.required,
 		SERVER_ENV_BINDING: marker.required,
 		WEB_ORIGINS: marker.required,
+		HEADERS_FROM_REQUEST: marker.required,
 	},
 	assets: [
 		slotAsset("orpc", {
@@ -122,14 +132,14 @@ export const orpcNextjsAdapters = deriveRecipeAdapters({
 		SLUG: orpcTemplateVars(config).SLUG,
 	}),
 	target: (_asset, context) => moduleTarget(context.module),
-	before: ({ config, module }) =>
-		["client.ts", "server.ts", "react.tsx"].map((name) =>
-			leafTextFile(
-				moduleTarget(module),
-				`orpc/${name}`,
-				renderOrpcTemplate(config, `rsc/${name}`),
-			),
+	before: ({ config, framework, module }) => [
+		...orpcRequestClientFiles(config, framework, module),
+		leafTextFile(
+			moduleTarget(module),
+			"orpc/server.ts",
+			renderOrpcTemplate(config, "rsc/server.ts"),
 		),
+	],
 	after: ({ config, module }) => [
 		leafTextFile(
 			moduleTarget(module),
@@ -148,7 +158,6 @@ export const orpcNextjsAdapters = deriveRecipeAdapters({
 			{ ...deps.orpcServer, type: "dependencies" },
 			{ ...deps.orpcTanstackQuery, type: "dependencies" },
 			{ ...deps.tanstackReactQuery, type: "dependencies" },
-			{ ...deps.serverOnly, type: "dependencies" },
 		]),
 		...expoOrpcClientContributions(config),
 		...secondaryOrpcClients(config),
@@ -170,31 +179,7 @@ export const orpcRequestAdapters = deriveRecipeAdapters({
 			? selfHostedCorsRoute(config, framework.id, content)
 			: content,
 	before: ({ config, framework, module }) =>
-		orpcWebRecipe.assets.map((asset) => {
-			const rendered = renderRecipeAsset(orpcWebRecipe, asset, framework, {
-				markers: {
-					SLUG: config.slug ?? "my-app",
-					ENV_IMPORT: "../../env",
-					SERVER_URL: "VITE_SERVER_URL",
-					CLIENT_DIRECTIVE: "",
-				},
-				readTemplate,
-				slots: {},
-			});
-
-			return leafTextFile(
-				moduleTarget(module),
-				rendered.destination,
-				asset.name === "client"
-					? renderOrpcTemplate(
-							config,
-							framework.id === "tanstack-start"
-								? "request/client.tanstack-start.ts"
-								: "request/client.ts",
-						)
-					: rendered.content,
-			);
-		}),
+		orpcRequestClientFiles(config, framework, module),
 	after: ({ config, framework, module }) => [
 		...(framework.id === "tanstack-start"
 			? [
@@ -235,9 +220,12 @@ export const orpcStandaloneAdapters = deriveRecipeAdapters({
 	frameworks: [honoFramework, expressFramework, fastifyFramework],
 	readTemplate,
 	requiredSlots: ["orpc"],
-	markers: ({ config }: AdapterContext<ForgeConfig>) => ({
+	markers: ({ config, framework }: AdapterContext<ForgeConfig>) => ({
 		SLUG: orpcTemplateVars(config).SLUG,
 		...serverCorsMarkers(config),
+		HEADERS_FROM_REQUEST: renderHeadersFromRequest(
+			framework.id === "fastify" ? "FastifyRequest" : "Request",
+		),
 	}),
 	target: (_asset, context) => moduleTarget(context.module),
 	before: ({ config }) => {
@@ -344,6 +332,47 @@ export function expoOrpcClientContributions(config: ForgeConfig) {
 			{ ...deps.orpcClient, type: "dependencies" },
 			{ ...deps.orpcServer, type: "dependencies" },
 		]),
+	];
+}
+
+function orpcRequestClient(config: ForgeConfig, framework: FrameworkId) {
+	if (framework === "tanstack-start")
+		return renderOrpcTemplate(config, "request/client.tanstack-start.ts");
+
+	const serverClient = framework === "nextjs";
+
+	return interpolate(renderOrpcTemplate(config, "request/client.ts"), {
+		SERVER_CLIENT: serverClient
+			? readTemplate("api/orpc/request/client.nextjs.ts")
+			: "",
+		SERVER_CLIENT_FALLBACK: serverClient ? "\n  globalThis.$client ??" : "",
+	});
+}
+
+function orpcRequestClientFiles(
+	config: ForgeConfig,
+	framework: FrameworkDefinition,
+	module: AdapterModule,
+) {
+	const orpcPath = (name: string) =>
+		framework.sourceRoot.length === 0
+			? `orpc/${name}`
+			: `${framework.sourceRoot}/orpc/${name}`;
+
+	return [
+		leafTextFile(
+			moduleTarget(module),
+			orpcPath("client.ts"),
+			orpcRequestClient(config, framework.id),
+		),
+		leafTextFile(
+			moduleTarget(module),
+			orpcPath("react.tsx"),
+			interpolate(readTemplate("api/orpc/web/react.tsx"), {
+				"__CLIENT_DIRECTIVE__\n":
+					framework.id === "nextjs" ? '"use client";\n\n' : "",
+			}),
+		),
 	];
 }
 

@@ -4,7 +4,7 @@ import { RPCLink } from "@orpc/client/fetch";
 import { SimpleCsrfProtectionLinkPlugin } from "@orpc/client/plugins";
 import type { RouterClient } from "@orpc/server";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-
+__SERVER_CLIENT__
 const link = new RPCLink({
   url: () => new URL("/api/orpc", window.location.origin),
   fetch: (request, init) =>
@@ -15,5 +15,5 @@ const link = new RPCLink({
   plugins: [new SimpleCsrfProtectionLinkPlugin()],
 });
 
-export const client: RouterClient<AppRouter> = createORPCClient(link);
+export const client: RouterClient<AppRouter> =__SERVER_CLIENT_FALLBACK__ createORPCClient(link);
 export const orpc = createTanstackQueryUtils(client);
