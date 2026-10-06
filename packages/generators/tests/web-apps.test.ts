@@ -701,7 +701,7 @@ describe("secondary web app planning", () => {
 		});
 
 		expect(contentAt(plan, "apps/admin/env.ts")).toContain(
-			'NEXT_PUBLIC_SERVER_URL: z.url().default("http://localhost:3000")',
+			'NEXT_PUBLIC_SERVER_URL:\n      process.env.NODE_ENV === "production"\n        ? z.url()\n        : z.url().default("http://localhost:3000")',
 		);
 
 		expect(contentAt(plan, "apps/admin/lib/auth-client.ts")).toContain(
@@ -797,7 +797,7 @@ describe("secondary web app planning", () => {
 			});
 
 			expect(contentAt(plan, "apps/admin/env.ts")).toContain(
-				`NEXT_PUBLIC_SERVER_URL: z.url().default("http://localhost:${backend === "hono" ? 3001 : 3000}")`,
+				`NEXT_PUBLIC_SERVER_URL:\n      process.env.NODE_ENV === "production"\n        ? z.url()\n        : z.url().default("http://localhost:${backend === "hono" ? 3001 : 3000}")`,
 			);
 
 			for (const path of ["apps/docs/env.ts", "apps/blog/env.ts"])
@@ -823,7 +823,7 @@ describe("secondary web app planning", () => {
 
 			expect(contentAt(plan, "apps/web/env.ts")).not.toContain("SERVER_URL");
 			expect(contentAt(plan, "apps/admin/env.ts")).toContain(
-				`VITE_SERVER_URL: z.url().default("http://localhost:${web === "react-router" ? 5173 : 3000}")`,
+				`VITE_SERVER_URL:\n      import.meta.env?.PROD || processEnv.NODE_ENV === "production"\n        ? z.url()\n        : z.url().default("http://localhost:${web === "react-router" ? 5173 : 3000}")`,
 			);
 		},
 	);

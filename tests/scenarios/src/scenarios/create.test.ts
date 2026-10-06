@@ -93,7 +93,7 @@ describe("create", () => {
 					readFile(join(workspace.projectRoot, path), "utf8");
 
 				expect(await readText("apps/admin/env.ts")).toContain(
-					'NEXT_PUBLIC_SERVER_URL: z.url().default("http://localhost:3000")',
+					'NEXT_PUBLIC_SERVER_URL:\n      process.env.NODE_ENV === "production"\n        ? z.url()\n        : z.url().default("http://localhost:3000")',
 				);
 
 				expect(await readText("apps/admin/lib/auth-client.ts")).toContain(

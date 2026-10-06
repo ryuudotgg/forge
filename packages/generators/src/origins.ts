@@ -189,7 +189,7 @@ export function viteServerEnvMarkers(
 		"  // __SERVER_ENV__\n  client: {},\n":
 			origin === undefined
 				? "  client: {},\n"
-				: `  client: {\n    VITE_SERVER_URL: z.url().default("${origin}"),\n  },\n`,
+				: `  client: {\n    VITE_SERVER_URL:\n      import.meta.env?.PROD || processEnv.NODE_ENV === "production"\n        ? z.url()\n        : z.url().default("${origin}"),\n  },\n`,
 	};
 }
 
@@ -202,7 +202,7 @@ export function nextServerEnvMarkers(
 		"  // __SERVER_ENV__\n":
 			origin === undefined
 				? ""
-				: `  client: {\n    NEXT_PUBLIC_SERVER_URL: z.url().default("${origin}"),\n  },\n`,
+				: `  client: {\n    NEXT_PUBLIC_SERVER_URL:\n      process.env.NODE_ENV === "production"\n        ? z.url()\n        : z.url().default("${origin}"),\n  },\n`,
 		"  // __SERVER_RUNTIME__\n  experimental__runtimeEnv: process.env,\n":
 			origin === undefined
 				? "  experimental__runtimeEnv: process.env,\n"

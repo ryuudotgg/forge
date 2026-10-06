@@ -1,16 +1,120 @@
-import { describe, it } from "vitest";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 import {
 	createProject,
 	expectInstallBuildAndTypecheck,
+	forgeEnvironment,
+	runCommand,
 	withScenarioWorkspace,
 } from "../utils/harness";
 import {
 	expectCredentialedGeneratedServer,
 	expectStandaloneOrpcRoute,
 	injectOrpcContextProbe,
+	scriptEnvironment,
 } from "../utils/install-smoke";
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
+	it("requires production server URLs outside CI without bundling localhost defaults", async () => {
+		await withScenarioWorkspace("smoke-hono-server-url", async (workspace) => {
+			await createProject(workspace, {
+				backend: "hono",
+				linter: "biome",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				style: "tailwind",
+				web: "tanstack-router",
+				webApps: [{ name: "admin", framework: "nextjs", client: true }],
+			});
+
+			const install = await runCommand("pnpm", ["install"], {
+				cwd: workspace.projectRoot,
+				env: forgeEnvironment(workspace.workspaceRoot),
+			});
+
+			expect(install.exitCode, install.stdout + install.stderr).toBe(0);
+
+			const apps = [
+				{ directory: "apps/web", variable: "VITE_SERVER_URL", output: "dist" },
+				{
+					directory: "apps/admin",
+					variable: "NEXT_PUBLIC_SERVER_URL",
+					output: ".next",
+				},
+			];
+
+			const buildEnvironment = {
+				...forgeEnvironment(workspace.workspaceRoot),
+				...scriptEnvironment({}),
+				VITE_SERVER_URL: undefined,
+				NEXT_PUBLIC_SERVER_URL: undefined,
+			};
+
+			for (const app of apps) {
+				const build = await runCommand("pnpm", ["run", "build"], {
+					cwd: join(workspace.projectRoot, app.directory),
+					env: buildEnvironment,
+				});
+
+				expect(build.exitCode, build.stdout + build.stderr).toBe(0);
+			}
+
+			const envPath = join(workspace.projectRoot, ".env");
+			const generatedEnv = await readFile(envPath, "utf8");
+			await writeFile(
+				envPath,
+				generatedEnv
+					.split("\n")
+					.filter(
+						(line) =>
+							!/^\s*(?:export\s+)?(?:VITE_SERVER_URL|NEXT_PUBLIC_SERVER_URL)\s*=/.test(
+								line,
+							),
+					)
+					.join("\n"),
+			);
+
+			for (const app of apps) {
+				const cwd = join(workspace.projectRoot, app.directory);
+				const missingUrl = await runCommand("pnpm", ["run", "build"], {
+					cwd,
+					env: buildEnvironment,
+				});
+
+				const missingOutput = missingUrl.stdout + missingUrl.stderr;
+				expect(missingUrl.exitCode, missingOutput).not.toBe(0);
+				expect(missingOutput, missingOutput).toContain(app.variable);
+
+				const outputDirectory = join(cwd, app.output);
+				await rm(outputDirectory, { force: true, recursive: true });
+
+				const ciBuild = await runCommand("pnpm", ["run", "build"], {
+					cwd,
+					env: { ...buildEnvironment, CI: "true" },
+				});
+
+				const ciOutput = ciBuild.stdout + ciBuild.stderr;
+				expect(ciBuild.exitCode, ciOutput).toBe(0);
+
+				const files = await readdir(outputDirectory, {
+					recursive: true,
+					withFileTypes: true,
+				});
+
+				for (const file of files) {
+					if (!file.isFile() || file.name.endsWith(".map")) continue;
+
+					const path = join(file.parentPath, file.name);
+					const content = await readFile(path, "utf8");
+					expect(content, `${path}\n${ciOutput}`).not.toContain(
+						"localhost:3001",
+					);
+				}
+			}
+		});
+	}, 600_000);
+
 	it.each(["tanstack-router", "react-router"])(
 		"installs, builds, and typechecks %s with an oRPC Hono host",
 		async (web) => {
