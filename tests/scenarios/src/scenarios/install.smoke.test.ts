@@ -93,25 +93,35 @@ export const db = drizzle({ client, relations });
 const userDeleteProbeSource = `import { randomUUID } from "node:crypto";
 import { eq } from "@acme/db";
 import { db, client } from "@acme/db/client";
-import { invitations, members, organizations, passkeys, two_factors } from "@acme/db/schema";
+import { accounts, invitations, members, organizations, passkeys, sessions, two_factors } from "@acme/db/schema";
 import { auth } from "./index.ts";
 
 const targets = [
+  { name: "accounts", table: accounts, column: accounts.userId },
+  { name: "sessions", table: sessions, column: sessions.userId },
   { name: "passkeys", table: passkeys, column: passkeys.userId },
   { name: "two_factors", table: two_factors, column: two_factors.userId },
   { name: "members", table: members, column: members.userId },
   { name: "invitations", table: invitations, column: invitations.inviterId },
 ];
 
-async function expectPluginRows(userId, expected) {
+async function expectUserRows(userId, expected) {
   for (const { name, table, column } of targets) {
     const rows = await db.select().from(table).where(eq(column, userId));
     if (rows.length !== expected)
-      throw new Error(\`Plugin Cleanup Mismatch: \${name} for \${userId} expected \${expected}, received \${rows.length}\`);
+      throw new Error(\`User Cleanup Mismatch: \${name} for \${userId} expected \${expected}, received \${rows.length}\`);
   }
 }
 
-async function seedPluginRows(userId, organizationId) {
+async function seedUserRows(userId, organizationId) {
+  await db.insert(accounts).values({
+    id: randomUUID(), userId, accountId: userId, providerId: "credential",
+  });
+
+  await db.insert(sessions).values({
+    id: randomUUID(), userId, token: randomUUID(), expiresAt: new Date(Date.now() + 60_000),
+  });
+
   await db.insert(passkeys).values({
     id: randomUUID(), userId, publicKey: "smoke-key", credentialID: randomUUID(),
     counter: 0, deviceType: "singleDevice", backedUp: false, createdAt: new Date(),
@@ -151,16 +161,16 @@ try {
     id: organizationId, name: "Smoke", slug: "smoke", createdAt: new Date(),
   });
 
-  await seedPluginRows(first.id, organizationId);
-  await seedPluginRows(second.id, organizationId);
+  await seedUserRows(first.id, organizationId);
+  await seedUserRows(second.id, organizationId);
 
-  await expectPluginRows(first.id, 1);
-  await expectPluginRows(second.id, 1);
+  await expectUserRows(first.id, 1);
+  await expectUserRows(second.id, 1);
 
   await internalAdapter.deleteUser(first.id);
 
-  await expectPluginRows(first.id, 0);
-  await expectPluginRows(second.id, 1);
+  await expectUserRows(first.id, 0);
+  await expectUserRows(second.id, 1);
 } finally {
   await client.end();
 }
