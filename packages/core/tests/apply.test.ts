@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, rm, stat, symlink } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, FileSystem, Layer, PlatformError } from "effect";
@@ -226,7 +226,6 @@ describe("apply", () => {
 	it("still applies when a stale declined report cannot be cleared", async () => {
 		await withTempDir("apply-declined-stuck", async (directory) => {
 			const path = "config.txt";
-			const locked = join(directory, ".forge/declined/locked");
 
 			await Effect.runPromise(
 				Apply.applyPlan(
@@ -235,29 +234,55 @@ describe("apply", () => {
 				).pipe(Effect.provide(coreLayer)),
 			);
 
-			await writeText(join(locked, "stale.diff"), "stale\n");
-			await chmod(locked, 0o500);
 			await writeText(join(directory, path), "user\n");
 
-			try {
-				const result = await Effect.runPromise(
-					Apply.applyPlan(
-						directory,
-						await declinedPlan(path, "forge\n", "opaque"),
-						{
-							resolutionPolicy: "keep-user",
-						},
-					).pipe(Effect.provide(coreLayer)),
-				);
+			const failingFileSystem = Layer.effect(
+				FileSystem.FileSystem,
+				Effect.map(FileSystem.FileSystem, (fileSystem) => ({
+					...fileSystem,
+					remove: (
+						removed: string,
+						options?: Parameters<FileSystem.FileSystem["remove"]>[1],
+					) =>
+						removed.endsWith(join(".forge", "declined"))
+							? Effect.fail(
+									PlatformError.systemError({
+										method: "remove",
+										module: "FileSystem",
+										pathOrDescriptor: removed,
+										_tag: "PermissionDenied",
+									}),
+								)
+							: fileSystem.remove(removed, options),
+				})),
+			).pipe(Layer.provide(NodeServices.layer));
 
-				expect(
-					result.declined.map(({ path, diffPath }) => ({ path, diffPath })),
-				).toEqual([{ path, diffPath: undefined }]);
+			const reportFailingLayer = Layer.mergeAll(
+				Apply.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+			).pipe(Layer.provide(failingFileSystem));
 
-				expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
-			} finally {
-				await chmod(locked, 0o700);
-			}
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, "forge\n", "opaque"),
+					{ resolutionPolicy: "keep-user" },
+				).pipe(Effect.provide(reportFailingLayer)),
+			);
+
+			expect(
+				result.declined.map(({ path, diffPath }) => ({ path, diffPath })),
+			).toEqual([{ path, diffPath: undefined }]);
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
 		});
 	});
 
