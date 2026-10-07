@@ -1,8 +1,9 @@
-import { mkdir, readFile, stat, symlink } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import { describe, expect, it } from "vitest";
+import { unifiedDiff } from "../src/diff";
 import {
 	Apply,
 	ApplyError,
@@ -17,6 +18,33 @@ import {
 	State,
 } from "../src/index";
 import { hashContent, readJson, withTempDir, writeText } from "./harness";
+
+async function declinedPlan(
+	path: string,
+	content: string,
+	mergeKind: "opaque" | "json",
+): Promise<ApplyPlan> {
+	const hash = await hashContent(content);
+	const kind = mergeKind === "json" ? "surface" : "file";
+	const artifactId = `project:${kind}:${path}`;
+	return {
+		baseContents: { [artifactId]: content },
+		lockfile: {
+			artifacts: {
+				[artifactId]: {
+					base: { hash, mergeKind, semanticsVersion: 1 },
+					definitionIds: ["test"],
+					hash,
+					kind,
+					path,
+				},
+			},
+		},
+		manifest: { config: {}, installs: [], modules: {} },
+		removals: [],
+		writes: [{ artifactId, path, content }],
+	};
+}
 
 async function pathExists(path: string) {
 	try {
@@ -33,6 +61,320 @@ const coreLayer = CoreLive.pipe(
 );
 
 describe("apply", () => {
+	it("persists declined opaque changes and clears them on the next apply", async () => {
+		await withTempDir("apply-declined-opaque", async (directory) => {
+			const path = "apps/web/src/auth.ts";
+			const base = "original\n";
+			const user = "user\n";
+			const incoming = "forge\nextra\n";
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, base, "opaque"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, path), user);
+
+			const plan = await declinedPlan(path, incoming, "opaque");
+			const result = await Effect.runPromise(
+				Apply.applyPlan(directory, plan, {
+					resolutionPolicy: "keep-user",
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const diff = unifiedDiff(path, base, incoming);
+			const diffPath = `.forge/declined/${path}.diff`;
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe(user);
+			expect(result.declined).toEqual([
+				{ path, diff, added: 2, removed: 1, diffPath },
+			]);
+
+			expect(await readFile(join(directory, diffPath), "utf-8")).toBe(diff);
+
+			const repeated = await Effect.runPromise(
+				Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(repeated.declined).toEqual([]);
+			expect(await pathExists(join(directory, ".forge/declined"))).toBe(false);
+		});
+	});
+
+	it("reports nothing when an opaque render has not changed", async () => {
+		await withTempDir("apply-declined-unchanged", async (directory) => {
+			const plan = await declinedPlan("config.txt", "original\n", "opaque");
+			await Effect.runPromise(
+				Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, "config.txt"), "user\n");
+
+			const result = await Effect.runPromise(
+				Apply.applyPlan(directory, plan, {
+					resolutionPolicy: "keep-user",
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(result.declined).toEqual([]);
+			expect(await pathExists(join(directory, ".forge/declined"))).toBe(false);
+		});
+	});
+
+	it("reports an unmanaged write without an artifact that keep-user declines", async () => {
+		await withTempDir("apply-declined-unowned", async (directory) => {
+			await writeText(join(directory, "notes.txt"), "user\n");
+
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [{ path: "notes.txt", content: "forge\n" }],
+					},
+					{ resolutionPolicy: "keep-user" },
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, "notes.txt"), "utf-8")).toBe(
+				"user\n",
+			);
+
+			expect(result.declined.map((change) => change.diff)).toEqual([
+				unifiedDiff("notes.txt", "user\n", "forge\n"),
+			]);
+		});
+	});
+
+	it("keeps the user's file when its stored base is missing", async () => {
+		await withTempDir("apply-declined-base-missing", async (directory) => {
+			const path = "config.txt";
+			const original = "original\n";
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, original, "opaque"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await rm(join(directory, ".forge/bases", await hashContent(original)));
+			await writeText(join(directory, path), "user\n");
+
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, "forge\n", "opaque"),
+					{
+						resolutionPolicy: "keep-user",
+					},
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+			expect(result.declined.map((change) => change.diff)).toEqual([
+				unifiedDiff(path, "user\n", "forge\n"),
+			]);
+		});
+	});
+
+	it("refuses before publishing when the declined reports escape the project", async () => {
+		await withTempDir("apply-declined-escape", async (directory) => {
+			const path = "config.txt";
+			const project = join(directory, "project");
+			const outside = join(directory, "outside");
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					project,
+					await declinedPlan(path, "original\n", "opaque"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await mkdir(outside);
+			await symlink(outside, join(project, ".forge/declined"));
+
+			const lockfile = await readFile(
+				join(project, ".forge/lock.json"),
+				"utf-8",
+			);
+			const result = await Effect.runPromise(
+				Effect.result(
+					Apply.applyPlan(
+						project,
+						await declinedPlan(path, "forge\n", "opaque"),
+					),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(result).toMatchObject({
+				_tag: "Failure",
+				failure: { reason: "path-escapes-project-root" },
+			});
+
+			expect(await readFile(join(project, path), "utf-8")).toBe("original\n");
+			expect(await readFile(join(project, ".forge/lock.json"), "utf-8")).toBe(
+				lockfile,
+			);
+		});
+	});
+
+	it("still applies when a stale declined report cannot be cleared", async () => {
+		await withTempDir("apply-declined-stuck", async (directory) => {
+			const path = "config.txt";
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, "original\n", "opaque"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, path), "user\n");
+
+			const failingFileSystem = Layer.effect(
+				FileSystem.FileSystem,
+				Effect.map(FileSystem.FileSystem, (fileSystem) => ({
+					...fileSystem,
+					remove: (
+						removed: string,
+						options?: Parameters<FileSystem.FileSystem["remove"]>[1],
+					) =>
+						removed.endsWith(join(".forge", "declined"))
+							? Effect.fail(
+									PlatformError.systemError({
+										method: "remove",
+										module: "FileSystem",
+										pathOrDescriptor: removed,
+										_tag: "PermissionDenied",
+									}),
+								)
+							: fileSystem.remove(removed, options),
+				})),
+			).pipe(Layer.provide(NodeServices.layer));
+
+			const reportFailingLayer = Layer.mergeAll(
+				Apply.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+			).pipe(Layer.provide(failingFileSystem));
+
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, "forge\n", "opaque"),
+					{ resolutionPolicy: "keep-user" },
+				).pipe(Effect.provide(reportFailingLayer)),
+			);
+
+			expect(
+				result.declined.map(({ path, diffPath }) => ({ path, diffPath })),
+			).toEqual([{ path, diffPath: undefined }]);
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+		});
+	});
+
+	it("reports nothing for an edited file without a base when Forge's render is unchanged", async () => {
+		await withTempDir("apply-declined-baseless", async (directory) => {
+			const path = "apps/web/app/page.tsx";
+			const content = "render\n";
+			const artifactId = `project:file:${path}`;
+			const plan: ApplyPlan = {
+				lockfile: {
+					artifacts: {
+						[artifactId]: {
+							definitionIds: ["test"],
+							hash: await hashContent(content),
+							kind: "file",
+							path,
+						},
+					},
+				},
+				manifest: { config: {}, installs: [], modules: {} },
+				removals: [],
+				writes: [{ artifactId, path, content }],
+			};
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, path), "user\n");
+
+			const result = await Effect.runPromise(
+				Apply.applyPlan(directory, plan, {
+					resolutionPolicy: "keep-user",
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+			expect(result.declined).toEqual([]);
+		});
+	});
+
+	it.each([false, true])(
+		"reports only conflicting package keys (conflict: %s)",
+		async (conflict) => {
+			await withTempDir("apply-declined-keyed", async (directory) => {
+				const path = "package.json";
+				const base = '{\n  "name": "original",\n  "version": "1"\n}\n';
+				const user = '{\n  "name": "user",\n  "version": "1"\n}\n';
+				const incoming = `{\n  "name": "${conflict ? "forge" : "original"}",\n  "version": "2"\n}\n`;
+
+				await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						await declinedPlan(path, base, "json"),
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				await writeText(join(directory, path), user);
+
+				const result = await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						await declinedPlan(path, incoming, "json"),
+						{ resolutionPolicy: "keep-user" },
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				const merged = '{\n  "name": "user",\n  "version": "2"\n}\n';
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe(merged);
+				expect(result.declined).toEqual(
+					conflict
+						? [
+								{
+									path,
+									diff: unifiedDiff(path, merged, incoming),
+									added: 1,
+									removed: 1,
+									diffPath: `.forge/declined/${path}.diff`,
+								},
+							]
+						: [],
+				);
+
+				if (!conflict)
+					expect(await pathExists(join(directory, ".forge/declined"))).toBe(
+						false,
+					);
+			});
+		},
+	);
+
 	it.each([
 		{ path: ".gitattributes", policy: "refuse" },
 		{ path: "nested/.gitattributes", policy: "refuse" },
@@ -365,6 +707,7 @@ describe("apply", () => {
 			const writes: Array<ApplyPlan["writes"][number]> = [];
 			const removals: string[] = [];
 			outcomes.length = 0;
+
 			for (const entry of fixture.entries) {
 				const isJson = entry.startsWith("json");
 				const mergeKind = isJson
@@ -503,6 +846,7 @@ describe("apply", () => {
 
 				if (!suggested.includes(flag)) {
 					expect(result._tag).toBe("Failure");
+
 					if (result._tag === "Failure")
 						expect(result.failure).toMatchObject({
 							reason: expect.stringMatching(
@@ -514,6 +858,7 @@ describe("apply", () => {
 				}
 
 				expect(result._tag).toBe("Success");
+
 				for (const outcome of outcomes) {
 					const content = await readFile(
 						join(directory, outcome.path),
@@ -5603,6 +5948,7 @@ describe("apply", () => {
 				expect(await readFile(join(directory, routeTree), "utf-8")).toBe(
 					generated,
 				);
+
 				expect(await readJson(join(directory, ".forge/lock.json"))).toEqual({
 					schemaVersion: 1,
 					artifacts: nextPlan.lockfile.artifacts,
@@ -5654,6 +6000,7 @@ describe("apply", () => {
 						expect(await readFile(join(directory, currentPath), "utf-8")).toBe(
 							generated,
 						);
+
 						return;
 					}
 

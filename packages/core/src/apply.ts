@@ -9,6 +9,7 @@ import {
 } from "node:path";
 import { Context, Effect, FileSystem, Layer, Result } from "effect";
 import { CliVersion } from "./cli-version";
+import { unifiedDiff } from "./diff";
 import { ApplyError, type ApplyRefusalReason, type StateError } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
@@ -57,6 +58,15 @@ export interface ApplyPlan {
 
 export interface ApplyResult {
 	readonly retained: ReadonlyArray<string>;
+	readonly declined: ReadonlyArray<DeclinedChange>;
+}
+
+export interface DeclinedChange {
+	readonly path: string;
+	readonly diff: string;
+	readonly added: number;
+	readonly removed: number;
+	readonly diffPath: string | undefined;
 }
 
 export type ResolutionPolicy = "accept-forge" | "keep-user" | "refuse";
@@ -193,7 +203,7 @@ interface PublicationPhaseContract {
 		| "atomic-lockfile-write-failed"
 		| "atomic-state-publish-failed"
 	>;
-	readonly result: ReturnType<() => void>;
+	readonly result: { readonly reportsSaved: boolean };
 }
 
 type PublicationPhaseError = ApplyError;
@@ -870,6 +880,21 @@ const makeApply = Effect.gen(function* () {
 		const writesToApply: PreflightPhaseContract["result"]["writes"] = [];
 		const removalsToApply: PreflightPhaseContract["result"]["removals"] = [];
 		const retained: Array<string> = [];
+		const declined: DeclinedChange[] = [];
+		const recordDeclined = (path: string, before: string, after: string) => {
+			const diff = unifiedDiff(path, before, after);
+			if (diff === "") return;
+
+			const body = diff.split("\n").slice(2);
+			declined.push({
+				path,
+				diff,
+				added: body.filter((line) => line.startsWith("+")).length,
+				removed: body.filter((line) => line.startsWith("-")).length,
+				diffPath: `.forge/declined/${path}.diff`,
+			});
+		};
+
 		const preservedBaseContents = new Map<string, string>();
 
 		const conflicts: ApplyConflict[] = [];
@@ -1199,7 +1224,10 @@ const makeApply = Effect.gen(function* () {
 					!isModuleMarker &&
 					descriptorsAreCompatible
 				) {
-					if (file.artifactId === undefined) continue;
+					if (file.artifactId === undefined) {
+						recordDeclined(file.path, currentContent, file.content);
+						continue;
+					}
 
 					if (nextArtifact !== undefined) {
 						committedArtifacts[file.artifactId] = {
@@ -1215,6 +1243,7 @@ const makeApply = Effect.gen(function* () {
 
 						preservedBaseContents.set(file.artifactId, currentContent);
 						policyReadHashes.set(file.path, currentHash);
+						recordDeclined(file.path, currentContent, file.content);
 						continue;
 					}
 				}
@@ -1299,8 +1328,16 @@ const makeApply = Effect.gen(function* () {
 					semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
 				} satisfies ArtifactBase;
 
-				if (fileResolution === "user" && rebaseCurrentContent(declinedBase))
+				if (fileResolution === "user" && rebaseCurrentContent(declinedBase)) {
+					const base = yield* readBase(
+						projectRoot,
+						managedArtifact,
+						previousBase,
+					).pipe(Effect.orElseSucceed(() => currentContent));
+
+					recordDeclined(file.path, base, file.content);
 					continue;
+				}
 
 				refusals.push({
 					path: file.path,
@@ -1326,8 +1363,12 @@ const makeApply = Effect.gen(function* () {
 						semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
 					} satisfies ArtifactBase);
 
-				if (fileResolution === "user" && rebaseCurrentContent(declinedBase))
+				if (fileResolution === "user" && rebaseCurrentContent(declinedBase)) {
+					if (managedArtifact.hash !== nextHash)
+						recordDeclined(file.path, currentContent, file.content);
+
 					continue;
+				}
 
 				refusals.push({
 					path: file.path,
@@ -1386,8 +1427,10 @@ const makeApply = Effect.gen(function* () {
 					continue;
 				}
 
-				if (fileResolution === "user" && rebaseCurrentContent(nextBase))
+				if (fileResolution === "user" && rebaseCurrentContent(nextBase)) {
+					recordDeclined(file.path, base, file.content);
 					continue;
+				}
 
 				refusals.push({
 					path: file.path,
@@ -1432,6 +1475,26 @@ const makeApply = Effect.gen(function* () {
 				discoveredConflicts.length > 0 && unresolvedConflicts.length === 0;
 
 			if (merged.conflicts.length === 0 || conflictsResolved) {
+				if (
+					conflictsResolved &&
+					discoveredConflicts.some(
+						(conflict) =>
+							resolutionFor(file.path, conflict.label, conflict) === "user",
+					)
+				) {
+					const forgeMerged = yield* mergeSurface(
+						previousBase.mergeKind,
+						file.path,
+						mergeBase,
+						currentContent,
+						file.content,
+						"forge",
+						() => "forge",
+					);
+
+					recordDeclined(file.path, merged.merged, forgeMerged.merged);
+				}
+
 				if (mergeResolutionFor(file.path) !== undefined || conflictsResolved)
 					policyReadHashes.set(file.path, currentHash);
 
@@ -1737,6 +1800,19 @@ const makeApply = Effect.gen(function* () {
 					stagedPath: yield* stageWrite(`bases/${hash}`, content),
 				});
 
+			for (const change of declined)
+				yield* stageWrite(`declined/${change.path}.diff`, change.diff);
+
+			const stagedDeclined =
+				declined.length === 0
+					? undefined
+					: yield* ensureContained(projectRoot, `${stagingRelative}/declined`);
+
+			const declinedDirectory = yield* ensureContained(
+				projectRoot,
+				".forge/declined",
+			);
+
 			const stagedManifest: StagingPhaseContract["result"]["manifestPath"] =
 				yield* stageWrite(
 					"state/manifest.json",
@@ -1898,6 +1974,20 @@ const makeApply = Effect.gen(function* () {
 			yield* State.garbageCollectBases(projectRoot, committedLockfile).pipe(
 				Effect.catchTag("StateError", () => Effect.void),
 			);
+
+			const reportsSaved = yield* fs
+				.remove(declinedDirectory, { recursive: true, force: true })
+				.pipe(
+					Effect.andThen(
+						stagedDeclined === undefined
+							? Effect.void
+							: fs.rename(stagedDeclined, declinedDirectory),
+					),
+					Effect.as(true),
+					Effect.orElseSucceed(() => false),
+				);
+
+			return { reportsSaved };
 		}).pipe(
 			Effect.ensuring(
 				fs
@@ -1906,7 +1996,7 @@ const makeApply = Effect.gen(function* () {
 			),
 		);
 
-		yield* commit;
+		const { reportsSaved } = yield* commit;
 
 		const rootPath = resolve(projectRoot);
 		const realRoot = yield* fs
@@ -1940,7 +2030,14 @@ const makeApply = Effect.gen(function* () {
 			}
 		}
 
-		return { retained: retained.sort() } satisfies ApplyResult;
+		return {
+			retained: retained.sort(),
+			declined: declined
+				.map((change) =>
+					reportsSaved ? change : { ...change, diffPath: undefined },
+				)
+				.sort((left, right) => left.path.localeCompare(right.path)),
+		} satisfies ApplyResult;
 	});
 
 	return { applyPlan };
