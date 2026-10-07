@@ -608,6 +608,37 @@ describe("project state", () => {
 		});
 	});
 
+	it("maps a manifest existence failure behind a missing lockfile", async () => {
+		await withTempDir("lockfile-manifest-exists-failure", async (directory) => {
+			const path = join(directory, ".forge/manifest.json");
+			const cause = PlatformError.systemError({
+				method: "exists",
+				module: "FileSystem",
+				pathOrDescriptor: path,
+				_tag: "PermissionDenied",
+			});
+
+			const failingLayer = await stateLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				exists: (target) =>
+					target === path ? Effect.fail(cause) : Effect.succeed(false),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					State.readLockfile(directory).pipe(Effect.provide(failingLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "StateError",
+				filePath: path,
+				reason: "manifest-read-failed",
+				cause: { _tag: "PlatformError" },
+			});
+		});
+	});
+
 	it.each([
 		["state bundle", ".forge/state.json", "state-bundle-read-failed"],
 		["lockfile", ".forge/lock.json", "lockfile-read-failed"],
