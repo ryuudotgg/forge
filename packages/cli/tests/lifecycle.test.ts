@@ -3,8 +3,10 @@ import { isAbsolute, join, resolve } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import {
 	Apply,
+	type ApplyPlan,
 	CliVersion,
 	CoreLive,
+	type DeclinedChange,
 	type InstallRecord,
 	ManifestSchema,
 	Planner,
@@ -15,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { version as cliVersion } from "../package.json" with { type: "json" };
 import {
 	applyInstalledPlan,
+	applyLifecyclePlan,
 	configuredPackageManager,
 	generatedRemovalPaths,
 	hasProjectDevDependency,
@@ -804,5 +807,74 @@ describe("lifecycle", () => {
 		).rejects.toBe(defect);
 
 		expect(promptMocks.logError).not.toHaveBeenCalled();
+	});
+});
+
+const plan: ApplyPlan = {
+	lockfile: { artifacts: {} },
+	manifest: { config: {}, installs: [], modules: {} },
+	removals: [],
+	writes: [],
+};
+
+describe("applyLifecyclePlan", () => {
+	it.each([
+		{
+			declined: [],
+			message: undefined,
+		},
+		{
+			declined: [
+				{
+					path: "biome.json",
+					diff: "not printed",
+					added: 1,
+					removed: 1,
+					diffPath: ".forge/declined/biome.json.diff",
+				},
+			],
+			message:
+				'We kept your version of 1 file and skipped Forge\'s changes to it:\nbiome.json: 1 line added and 1 removed. Run "cat .forge/declined/biome.json.diff" to see them.',
+		},
+		{
+			declined: [
+				{
+					path: "apps/web/src/auth.ts",
+					diff: "not printed",
+					added: 12,
+					removed: 3,
+					diffPath: ".forge/declined/apps/web/src/auth.ts.diff",
+				},
+				{
+					path: "biome.json",
+					diff: "not printed",
+					added: 1,
+					removed: 1,
+					diffPath: ".forge/declined/biome.json.diff",
+				},
+			],
+			message:
+				'We kept your version of 2 files and skipped Forge\'s changes to them:\napps/web/src/auth.ts: 12 lines added and 3 removed. Run "cat .forge/declined/apps/web/src/auth.ts.diff" to see them.\nbiome.json: 1 line added and 1 removed. Run "cat .forge/declined/biome.json.diff" to see them.',
+		},
+	] satisfies ReadonlyArray<{
+		declined: DeclinedChange[];
+		message: string | undefined;
+	}>)("reports declined files: $message", async ({ declined, message }) => {
+		const apply = vi
+			.spyOn(Apply, "applyPlan")
+			.mockReturnValue(Effect.succeed({ retained: [], declined }));
+		const warn = promptMocks.logWarn;
+		warn.mockClear();
+
+		const result = await applyLifecyclePlan("unused", plan, {});
+		apply.mockRestore();
+
+		expect(result.declined).toEqual(declined);
+
+		if (message === undefined) expect(warn).not.toHaveBeenCalled();
+		else {
+			expect(warn).toHaveBeenCalledExactlyOnceWith(message);
+			expect(message).not.toContain("not printed");
+		}
 	});
 });

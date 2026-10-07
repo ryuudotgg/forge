@@ -161,6 +161,21 @@ function reportLifecycleFailure(
 	process.exit(1);
 }
 
+function reportDeclinedChanges(result: ApplyResult): ApplyResult {
+	if (result.declined.length === 0) return result;
+
+	const count = result.declined.length;
+	const lines = result.declined.map(
+		(change) =>
+			`${change.path}: ${change.added} ${change.added === 1 ? "line" : "lines"} added and ${change.removed} removed. Run "cat ${change.diffPath}" to see them.`,
+	);
+	log.warn(
+		`We kept your version of ${count} ${count === 1 ? "file" : "files"} and skipped Forge's changes to ${count === 1 ? "it" : "them"}:\n${lines.join("\n")}`,
+	);
+
+	return result;
+}
+
 export async function applyLifecyclePlan(
 	projectRoot: string,
 	plan: ApplyPlan,
@@ -170,7 +185,7 @@ export async function applyLifecyclePlan(
 		Apply.applyPlan(projectRoot, plan, applyOptions);
 
 	const exit = await runCliEffect(apply(options));
-	if (Exit.isSuccess(exit)) return exit.value;
+	if (Exit.isSuccess(exit)) return reportDeclinedChanges(exit.value);
 
 	const failure = failureFromCause(exit.cause);
 	if (
@@ -185,7 +200,7 @@ export async function applyLifecyclePlan(
 
 		if (Exit.isSuccess(retry)) {
 			log.success(resolution.summary);
-			return retry.value;
+			return reportDeclinedChanges(retry.value);
 		}
 
 		return reportLifecycleFailure(
