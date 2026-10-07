@@ -104,11 +104,11 @@ describe("module config store", () => {
 				throw new Error("Expected Duplicate Module Id");
 
 			expect(error.moduleId).toBe("aaaaa");
-			expect(error.message).toBe("Duplicate Module Id");
-			expect([error.firstPath, error.secondPath].sort()).toEqual([
-				"apps/admin",
-				"apps/web",
-			]);
+			expect(error.firstPath).toBe("apps/admin/forge.json");
+			expect(error.secondPath).toBe("apps/web/forge.json");
+			expect(error.message).toBe(
+				'apps/admin/forge.json and apps/web/forge.json both use module id "aaaaa". Delete the copy, or give it its own five letter id.',
+			);
 		});
 	});
 
@@ -123,7 +123,9 @@ describe("module config store", () => {
 			if (error._tag !== "ModuleConfigError")
 				throw new Error("Expected Module Config Error");
 
-			expect(error.message).toBe("Module Config Not Found");
+			expect(error.message).toBe(
+				`Module Config Not Found: ${join(directory, "forge.json")}`,
+			);
 			expect(error.filePath).toBe(join(directory, "forge.json"));
 		});
 	});
@@ -155,7 +157,7 @@ describe("module config store", () => {
 
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("read-failed");
-			expect(error.message).toBe("Module Config Read Failed");
+			expect(error.message).toBe(`Module Config Read Failed: ${path}`);
 			expect(error.cause).toMatchObject({
 				_tag: "PlatformError",
 				reason: {
@@ -180,7 +182,9 @@ describe("module config store", () => {
 			if (error._tag !== "ModuleConfigError")
 				throw new Error("Expected Module Config Error");
 
-			expect(error.message).toMatch(/^Module Config Parse Failed: /);
+			expect(error.message).toContain(
+				`Module Config Parse Failed: ${join(directory, "forge.json")}: `,
+			);
 		});
 	});
 
@@ -197,7 +201,9 @@ describe("module config store", () => {
 			if (error._tag !== "ModuleConfigError")
 				throw new Error("Expected Module Config Error");
 
-			expect(error.message).toMatch(/^Invalid Module Config\n/);
+			expect(error.message).toContain(
+				`Invalid Module Config: ${join(directory, "forge.json")}\n`,
+			);
 			expect(error.message).toContain(
 				'  id: Expected a string matching the pattern ^[a-z]{5}$, actual "ABC"',
 			);
@@ -355,6 +361,51 @@ describe("module config store", () => {
 		});
 	});
 
+	it("skips gitignored build copies but discovers modules in other folders", async () => {
+		await withTempDir("config-build-copies", async (directory) => {
+			await writeJson(
+				join(directory, "apps/web/forge.json"),
+				appConfig("aaaaa"),
+			);
+
+			await writeJson(
+				join(directory, "out/apps/web/forge.json"),
+				appConfig("aaaaa"),
+			);
+
+			await writeJson(
+				join(directory, "build/apps/web/forge.json"),
+				appConfig("aaaaa"),
+			);
+
+			await writeJson(
+				join(directory, "services/api/forge.json"),
+				appConfig("bbbbb"),
+			);
+
+			await writeJson(
+				join(directory, "packages/build/forge.json"),
+				appConfig("ccccc"),
+			);
+
+			await writeJson(
+				join(directory, "packages/out/forge.json"),
+				appConfig("ddddd"),
+			);
+
+			const modules = await Effect.runPromise(
+				ConfigStore.discover(directory).pipe(Effect.provide(projectLayer)),
+			);
+
+			expect(modules.map((module) => module.root)).toEqual([
+				"apps/web",
+				"packages/build",
+				"packages/out",
+				"services/api",
+			]);
+		});
+	});
+
 	it("writes a module config that reads back identically", async () => {
 		await withTempDir("config-write", async (directory) => {
 			const moduleRoot = join(directory, "packages/utils");
@@ -442,7 +493,7 @@ describe("module config store", () => {
 
 			expect(error.filePath).toBe(path);
 			expect(error.reason).toBe("directory-failed");
-			expect(error.message).toBe("Module Config Directory Failed");
+			expect(error.message).toBe(`Module Config Directory Failed: ${path}`);
 			expect(error.cause).toMatchObject({
 				_tag: "PlatformError",
 				reason: {

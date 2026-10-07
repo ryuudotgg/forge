@@ -130,6 +130,7 @@ export {
 	AppConfigSchema,
 	ConfigSchema,
 	ConfigStore,
+	GITIGNORED_MODULE_DIRS,
 	ModuleIdSchema,
 	PackageConfigSchema,
 	SlotsSchema,

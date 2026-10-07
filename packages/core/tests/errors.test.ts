@@ -172,7 +172,9 @@ describe("structured error rendering", () => {
 			cause,
 		});
 
-		expect(error.message).toBe("Module Config Read Failed");
+		expect(error.message).toBe(
+			"Module Config Read Failed: apps/web/forge.json",
+		);
 		expect(error.cause).toBe(cause);
 	});
 
@@ -184,7 +186,9 @@ describe("structured error rendering", () => {
 			cause,
 		});
 
-		expect(error.message).toBe("Module Config Directory Failed");
+		expect(error.message).toBe(
+			"Module Config Directory Failed: apps/web/forge.json",
+		);
 		expect(error.cause).toBe(cause);
 	});
 
@@ -196,7 +200,9 @@ describe("structured error rendering", () => {
 			cause,
 		});
 
-		expect(error.message).toBe("Module Config Write Failed");
+		expect(error.message).toBe(
+			"Module Config Write Failed: apps/web/forge.json",
+		);
 		expect(error.cause).toBe(cause);
 	});
 

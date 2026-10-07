@@ -6,6 +6,7 @@ import type {
 } from "@ryuugg/core";
 import {
 	defineFramework,
+	GITIGNORED_MODULE_DIRS,
 	moduleCapabilities,
 	moduleTarget,
 	slotPath,
@@ -32,6 +33,7 @@ import { honoFramework } from "../src/frameworks/hono";
 import { nextjsFramework } from "../src/frameworks/nextjs";
 import { reactRouterFramework } from "../src/frameworks/react-router";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
+import { firstPartyRegistry } from "../src/registry/first-party";
 import { readTemplate } from "../src/template";
 import { versions } from "../src/versions";
 import { plannedDefinitionIds } from "./planner-harness";
@@ -788,6 +790,25 @@ describe("gitignore addon", () => {
 			".tanstack/",
 			".output/",
 		]);
+	});
+
+	it("matches the folders module discovery skips", () => {
+		const staticLines = ofTag(
+			contributionsOf(gitignore, {}, []),
+			"ManagedLinesSurfaceContribution",
+		)
+			.filter((contribution) => contribution.surface === "gitignore")
+			.flatMap((contribution) => contribution.lines);
+
+		const frameworkLines = firstPartyRegistry.frameworks.flatMap(
+			(framework) => framework.ignoreDirs,
+		);
+
+		const folders = [...staticLines, ...frameworkLines]
+			.filter((line) => line.endsWith("/"))
+			.map((line) => line.slice(0, -1));
+
+		expect(new Set(folders)).toEqual(new Set(GITIGNORED_MODULE_DIRS));
 	});
 
 	it("emits the static sections exactly once", () => {
