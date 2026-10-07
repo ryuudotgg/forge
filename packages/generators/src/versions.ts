@@ -28,17 +28,17 @@ const nodeMajor = Number(process.versions.node.split(".")[0]);
 export const versions = {
 	biome: {
 		name: "@biomejs/biome",
-		version: "^2.5.14",
+		version: "2.5.14",
 		group: "Tooling",
 		linter: "biome",
 	},
 	oxlint: {
 		name: "oxlint",
-		version: "^1.86.0",
+		version: "1.86.0",
 		group: "Tooling",
 		linter: "oxc",
 	},
-	oxfmt: { name: "oxfmt", version: "^0.71.0", group: "Tooling", linter: "oxc" },
+	oxfmt: { name: "oxfmt", version: "0.71.0", group: "Tooling", linter: "oxc" },
 	commitlintCli: {
 		name: "@commitlint/cli",
 		version: "^21.0.2",
@@ -57,7 +57,7 @@ export const versions = {
 	lefthook: { name: "lefthook", version: "^2.1.9", group: "Tooling" },
 	sherif: { name: "sherif", version: "^1.11.1", group: "Tooling" },
 	turbo: { name: "turbo", version: "^2.9.18", group: "Tooling" },
-	typescript: { name: "typescript", version: "^7.0.2", group: "Tooling" },
+	typescript: { name: "typescript", version: "7.0.2", group: "Tooling" },
 	vitest: { name: "vitest", version: "^5.0.0", group: "Tooling" },
 	tsdown: { name: "tsdown", version: "^0.23.0", group: "Tooling" },
 	tsx: { name: "tsx", version: "^4.23.12", group: "Tooling" },

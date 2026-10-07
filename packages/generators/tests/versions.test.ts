@@ -1,8 +1,77 @@
 import { readFileSync } from "node:fs";
 import { runtimes } from "@ryuugg/core";
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src/config";
 import { catalogEntries, catalogRef, versions } from "../src/versions";
+
+describe("tool pins", () => {
+	const toolKeys: ReadonlyArray<"biome" | "oxlint" | "oxfmt" | "typescript"> = [
+		"biome",
+		"oxlint",
+		"oxfmt",
+		"typescript",
+	];
+
+	it("uses digits and dots only for tool versions", () => {
+		for (const key of toolKeys) {
+			expect(versions[key].version).toMatch(/^\d+(\.\d+)*$/);
+		}
+	});
+
+	it("keeps exact tool pins discoverable by Renovate", () => {
+		const renovate = Schema.decodeUnknownSync(
+			Schema.fromJsonString(
+				Schema.Struct({
+					customManagers: Schema.Array(
+						Schema.Struct({
+							managerFilePatterns: Schema.Array(Schema.String),
+							matchStrings: Schema.Array(Schema.String),
+						}),
+					),
+				}),
+			),
+		)(
+			readFileSync(
+				new URL("../../../.github/renovate.json", import.meta.url),
+				"utf-8",
+			),
+		);
+
+		const manager = renovate.customManagers.find(({ managerFilePatterns }) =>
+			managerFilePatterns.some((pattern) =>
+				new RegExp(pattern.slice(1, -1)).test(
+					"packages/generators/src/versions.ts",
+				),
+			),
+		);
+
+		if (manager === undefined) throw new Error("Missing Versions Manager");
+
+		const source = readFileSync(
+			new URL("../src/versions.ts", import.meta.url),
+			"utf-8",
+		);
+
+		const capturedVersions = new Map(
+			manager.matchStrings.flatMap((pattern) =>
+				Array.from(
+					source.matchAll(new RegExp(pattern, "g")),
+					(match): [string | undefined, string | undefined] => [
+						match.groups?.depName,
+						match.groups?.currentValue,
+					],
+				),
+			),
+		);
+
+		for (const key of toolKeys) {
+			expect(capturedVersions.get(versions[key].name)).toBe(
+				versions[key].version,
+			);
+		}
+	});
+});
 
 describe("catalogEntries", () => {
 	it.each([
