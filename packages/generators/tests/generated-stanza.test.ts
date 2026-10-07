@@ -72,6 +72,8 @@ describe("generated TypeScript layout", () => {
 			encoding: "utf8",
 		});
 
+		expect(result.error).toBeUndefined();
+
 		const findings: Array<{ path: string; line: number; rule: string }> =
 			result.stdout.trim() === "" ? [] : JSON.parse(result.stdout);
 
