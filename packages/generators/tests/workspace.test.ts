@@ -502,6 +502,33 @@ describe("root workspace", () => {
 });
 
 describe("pnpm workspace", () => {
+	it.each(["biome", "oxc"] satisfies ReadonlyArray<
+		NonNullable<ForgeConfig["linter"]>
+	>)("emits exact tool catalog versions for %s", (linter) => {
+		const yaml = leafFile(
+			syncContributions(pnpm, { linter }),
+			"pnpm-workspace.yaml",
+		);
+
+		const entries = [
+			versions.typescript,
+			...(linter === "biome"
+				? [versions.biome]
+				: [versions.oxlint, versions.oxfmt]),
+		];
+
+		for (const entry of entries) {
+			const name = entry.name.startsWith("@") ? `"${entry.name}"` : entry.name;
+
+			const line = yaml
+				.split("\n")
+				.find((line) => line.startsWith(`  ${name}: `));
+
+			expect(line).toBe(`  ${name}: ${entry.version}`);
+			expect(line?.slice(`  ${name}: `.length)).not.toMatch(/^[\^~]/);
+		}
+	});
+
 	it("quotes scoped catalog entries and leaves bare names unquoted", () => {
 		const contributions = syncContributions(pnpm, {});
 
