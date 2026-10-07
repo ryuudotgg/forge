@@ -1,4 +1,5 @@
 import type { LineMergeConflict } from "./lines";
+import { lcsMatchPairs } from "./lines";
 import type { MergeConflictResolution, MergeConflictResolver } from "./types";
 
 export interface EnvMergeResult {
@@ -10,6 +11,23 @@ export interface EnvMergeResult {
 interface EnvLine {
 	readonly name?: string;
 	readonly raw: string;
+}
+
+function envLineKey(line: EnvLine): string {
+	return line.name === undefined ? `text:${line.raw}` : `variable:${line.name}`;
+}
+
+function envKeysEqual(
+	left: ReadonlyArray<EnvLine>,
+	right: ReadonlyArray<EnvLine>,
+): boolean {
+	return (
+		left.length === right.length &&
+		left.every((line, index) => {
+			const other = right[index];
+			return other !== undefined && envLineKey(line) === envLineKey(other);
+		})
+	);
 }
 
 function parseEnv(content: string): EnvLine[] {
@@ -186,59 +204,168 @@ export function threeWayMergeEnv(
 
 	const baseVariables = variables(baseLines);
 	const currentVariables = variables(currentLines);
-
-	const baseNonVariables = new Set(
-		baseLines.filter((line) => line.name === undefined).map((line) => line.raw),
-	);
-
-	const incomingNonVariables = new Set(
-		incomingLines
-			.filter((line) => line.name === undefined)
-			.map((line) => line.raw),
-	);
-
-	const output: string[] = [];
-	const emitted = new Set<string>();
+	const incomingVariables = variables(incomingLines);
+	const selectedVariables = new Map<string, string>();
 	for (const line of incomingLines) {
-		if (line.name === undefined) {
-			output.push(line.raw);
-			continue;
-		}
-
-		if (emitted.has(line.name)) continue;
+		if (line.name === undefined) continue;
 
 		const currentLine = currentVariables.get(line.name);
 		const baseLine = baseVariables.get(line.name);
 
-		output.push(
+		selectedVariables.set(
+			line.name,
 			currentLine !== undefined &&
 				(baseLine === undefined || currentLine !== baseLine)
 				? currentLine
 				: line.raw,
 		);
-
-		emitted.add(line.name);
 	}
 
 	for (const line of currentLines) {
-		if (line.name === undefined) {
-			if (
-				!baseNonVariables.has(line.raw) &&
-				!incomingNonVariables.has(line.raw)
-			)
-				output.push(line.raw);
-
-			continue;
-		}
-
-		if (emitted.has(line.name)) continue;
+		if (line.name === undefined || incomingVariables.has(line.name)) continue;
 
 		const baseLine = baseVariables.get(line.name);
-		if (baseLine === undefined || baseLine !== line.raw) output.push(line.raw);
+		if (baseLine === undefined || baseLine !== line.raw)
+			selectedVariables.set(line.name, line.raw);
+	}
+
+	const baseKeys = baseLines.map(envLineKey);
+	const baseToCurrent = new Map(
+		lcsMatchPairs(baseKeys, currentLines.map(envLineKey)),
+	);
+
+	const baseToIncoming = new Map(
+		lcsMatchPairs(baseKeys, incomingLines.map(envLineKey)),
+	);
+
+	const anchors = [...baseToCurrent.keys()].filter((index) =>
+		baseToIncoming.has(index),
+	);
+
+	const matchedCurrent = new Set(baseToCurrent.values());
+	const baseRaw = new Set(baseLines.map((line) => line.raw));
+	const currentRaw = new Set(currentLines.map((line) => line.raw));
+	const isUserComment = (line: EnvLine | undefined) =>
+		line !== undefined &&
+		line.name === undefined &&
+		line.raw.trim() !== "" &&
+		!baseRaw.has(line.raw);
+
+	const userPlaced = new Set(
+		currentLines.flatMap((line, index) =>
+			line.name === undefined ||
+			(matchedCurrent.has(index) && !isUserComment(currentLines[index - 1]))
+				? []
+				: [line.name],
+		),
+	);
+
+	const userRemoved = (line: EnvLine) =>
+		line.name === undefined &&
+		line.raw.trim() !== "" &&
+		baseRaw.has(line.raw) &&
+		!currentRaw.has(line.raw);
+
+	const output: EnvLine[] = [];
+	const emitted = new Set<string>();
+	const emit = (line: EnvLine) => {
+		if (line.name === undefined) {
+			output.push(line);
+			return;
+		}
+
+		const raw = selectedVariables.get(line.name);
+		if (raw === undefined || emitted.has(line.name)) return;
+
+		emitted.add(line.name);
+		output.push({ name: line.name, raw });
+	};
+
+	let previousBase = 0;
+	let previousCurrent = 0;
+	let previousIncoming = 0;
+	for (const anchor of [...anchors, -1]) {
+		const baseEnd = anchor === -1 ? baseLines.length : anchor;
+		const currentEnd =
+			anchor === -1
+				? currentLines.length
+				: (baseToCurrent.get(anchor) ?? currentLines.length);
+
+		const incomingEnd =
+			anchor === -1
+				? incomingLines.length
+				: (baseToIncoming.get(anchor) ?? incomingLines.length);
+
+		const baseSegment = baseLines.slice(previousBase, baseEnd);
+		const currentSegment = currentLines.slice(previousCurrent, currentEnd);
+		const incomingSegment = incomingLines.slice(previousIncoming, incomingEnd);
+		if (envKeysEqual(currentSegment, incomingSegment))
+			currentSegment.forEach(emit);
+		else if (envKeysEqual(baseSegment, currentSegment)) {
+			for (const line of incomingSegment)
+				if (
+					line.name === undefined
+						? !userRemoved(line)
+						: !userPlaced.has(line.name)
+				)
+					emit(line);
+
+			for (const line of currentSegment)
+				if (
+					line.name !== undefined &&
+					(userPlaced.has(line.name) || !incomingVariables.has(line.name))
+				)
+					emit(line);
+		} else {
+			const baseSegmentKeys = new Set(baseSegment.map(envLineKey));
+			const currentSegmentKeys = new Set(currentSegment.map(envLineKey));
+			const incomingSegmentKeys = new Set(incomingSegment.map(envLineKey));
+
+			const merged = currentSegment.filter((line) =>
+				line.name === undefined
+					? !baseSegmentKeys.has(envLineKey(line)) ||
+						incomingSegmentKeys.has(envLineKey(line))
+					: userPlaced.has(line.name) ||
+						!incomingVariables.has(line.name) ||
+						incomingSegmentKeys.has(envLineKey(line)),
+			);
+
+			let insertAt = 0;
+			for (const line of incomingSegment) {
+				const found = merged.findIndex(
+					(candidate, index) =>
+						index >= insertAt && envLineKey(candidate) === envLineKey(line),
+				);
+
+				if (found !== -1) insertAt = found + 1;
+				else if (
+					line.name === undefined
+						? !baseSegmentKeys.has(envLineKey(line)) &&
+							!currentSegmentKeys.has(envLineKey(line)) &&
+							!userRemoved(line)
+						: !userPlaced.has(line.name) &&
+							!currentSegmentKeys.has(envLineKey(line))
+				) {
+					merged.splice(insertAt, 0, line);
+					insertAt++;
+				}
+			}
+
+			merged.forEach(emit);
+		}
+
+		if (anchor !== -1) {
+			const line = currentLines[currentEnd];
+			if (line !== undefined) emit(line);
+		}
+
+		previousBase = baseEnd + (anchor === -1 ? 0 : 1);
+		previousCurrent = currentEnd + (anchor === -1 ? 0 : 1);
+		previousIncoming = incomingEnd + (anchor === -1 ? 0 : 1);
 	}
 
 	return {
-		merged: output.length === 0 ? "" : output.join("\n").concat("\n"),
+		merged: serializeEnv(output),
 		conflicts: [],
 	};
 }

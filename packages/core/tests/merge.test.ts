@@ -626,6 +626,108 @@ describe("merge helpers", () => {
 		).toBe("# Build\n.cache/\n");
 	});
 
+	it("keeps an edited env header above its variable", () => {
+		const result = threeWayMergeEnv(
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n",
+			"# Auth (generate with openssl)\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n",
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\nDATABASE_POOL=\n",
+		);
+
+		expect(result.merged).toBe(
+			"# Auth (generate with openssl)\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\nDATABASE_POOL=\n",
+		);
+
+		expect(result.conflicts).toEqual([]);
+		expect(result.merged.split("\n")).not.toContain("# Auth");
+	});
+
+	it("keeps user lines above the first forge section", () => {
+		const result = threeWayMergeSections(
+			"# Build\ndist/\n\n# Test\ncoverage/\n",
+			"local1\nlocal2\n\n# Build\ndist/\n\n# Test\ncoverage/\n",
+			"# Build\ndist/\n\n# Test\ncoverage/\n.nyc/\n",
+		);
+
+		expect(result.merged).toBe(
+			"local1\nlocal2\n\n# Build\ndist/\n\n# Test\ncoverage/\n.nyc/\n",
+		);
+
+		expect(result.conflicts).toEqual([]);
+	});
+
+	it("keeps a moved env variable in the user's section", () => {
+		const result = threeWayMergeEnv(
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n",
+			"# Auth\n\n# Database\nDATABASE_URL=\nAUTH_SECRET=\n",
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\nDATABASE_POOL=\n",
+		);
+
+		expect(result.merged).toBe(
+			"# Auth\n\n# Database\nDATABASE_URL=\nDATABASE_POOL=\nAUTH_SECRET=\n",
+		);
+
+		expect(result.conflicts).toEqual([]);
+		expect(
+			result.merged.split("\n").filter((line) => line === "AUTH_SECRET="),
+		).toHaveLength(1);
+	});
+
+	it("keeps both appended env sections and forge's separator", () => {
+		const result = threeWayMergeEnv(
+			"# Auth\nAUTH_SECRET=\n",
+			"# Auth\nAUTH_SECRET=\n# Local\nLOCAL=value\n",
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n",
+		);
+
+		expect(result.merged).toBe(
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n# Local\nLOCAL=value\n",
+		);
+
+		expect(result.conflicts).toEqual([]);
+	});
+
+	it("follows a forge env section move the user never touched", () => {
+		const untouched = "# A\nA=\n\n# B\nB=\n";
+		expect(
+			threeWayMergeEnv(untouched, untouched, "# B\nB=\n\n# A\nA=\n"),
+		).toEqual({ conflicts: [], merged: "# B\nB=\n\n# A\nA=\n" });
+	});
+
+	it("keeps an edited env header with its variable when forge moves it", () => {
+		const merged = threeWayMergeEnv(
+			"# A\nA=\n# B\nB=\n",
+			"# A\nA=\n# B user\nB=\n",
+			"# B\nB=\n# A\nA=\nN=\n",
+		).merged;
+
+		expect(merged).toContain("# B user\nB=\n");
+		expect(merged.split("\n")).not.toContain("# B");
+		expect(merged.split("\n").filter((line) => line === "B=")).toHaveLength(1);
+	});
+
+	it("keeps unsectioned user lines above a new leading section", () => {
+		expect(
+			threeWayMergeSections(
+				"baseignore\n# Build\ndist/\n",
+				"baseignore\nlocalignore\n# Build\ndist/\n",
+				"# New\nnewignore\n# Build\ndist/\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "localignore\n\n# New\nnewignore\n\n# Build\ndist/\n",
+		});
+	});
+
+	it("keeps forge variables under a header both sides inserted", () => {
+		expect(
+			threeWayMergeEnv(
+				"BASE=\n",
+				"BASE=\n# Shared\nUSER=\n",
+				"BASE=\n# Shared\nFORGE=\n",
+			),
+		).toEqual({ conflicts: [], merged: "BASE=\n# Shared\nFORGE=\nUSER=\n" });
+	});
+
 	it("merges env examples by variable name", () => {
 		expect(
 			threeWayMergeEnv(

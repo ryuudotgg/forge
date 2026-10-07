@@ -210,11 +210,24 @@ export function threeWayMergeSections(
 	const currentByHeader = byHeader(currentSections);
 	const incomingByHeader = byHeader(incomingSections);
 
-	const headers = new Set([
-		...currentSections.map((section) => section.header),
-		...incomingSections.map((section) => section.header),
-		...baseSections.map((section) => section.header),
-	]);
+	const headers = currentSections.map((section) => section.header);
+	for (const source of [incomingSections, baseSections]) {
+		let preceding: string | undefined;
+		for (const section of source) {
+			if (!headers.includes(section.header))
+				headers.splice(
+					preceding !== undefined
+						? headers.indexOf(preceding) + 1
+						: headers[0] === ""
+							? 1
+							: 0,
+					0,
+					section.header,
+				);
+
+			preceding = section.header;
+		}
+	}
 
 	const sections: Section[] = [];
 
@@ -482,7 +495,7 @@ function linesEqual(
 	return true;
 }
 
-function lcsMatchPairs(
+export function lcsMatchPairs(
 	a: ReadonlyArray<string>,
 	b: ReadonlyArray<string>,
 ): Array<[number, number]> {
