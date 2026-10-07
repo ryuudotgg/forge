@@ -23,6 +23,7 @@ import {
 } from "../utils/harness";
 
 import { expectPasskeyCeremony } from "../utils/passkey";
+import { startSmtpSink } from "./smtp-sink";
 
 const portLockStore = new AsyncLocalStorage<true>();
 
@@ -708,6 +709,182 @@ async function signInFromAddress(
 
 		request.end(body);
 	});
+}
+
+export async function expectOtpSendTiming(
+	projectRoot: string,
+	host: "server" | "nextjs" | "tanstack-start",
+) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const appOrigin = generatedEnv.APP_ORIGIN;
+	if (appOrigin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	const port = new URL(appOrigin).port;
+	const serverOrigin = `http://127.0.0.1:${port}`;
+	const origin = generatedEnv.WEB_URL || appOrigin;
+
+	await expectSchemaPush(projectRoot, generatedEnv);
+	const sink = await startSmtpSink();
+	try {
+		await withGeneratedServer(
+			projectRoot,
+			{
+				...generatedEnv,
+				NODE_ENV: "production",
+				PORT: port,
+				EMAIL_FROM: "Forge <noreply@example.com>",
+				SMTP_URL: sink.url,
+				AUTH_TRUSTED_PROXIES: "127.0.0.1/32",
+			},
+			serverOrigin,
+			async (output) => {
+				let address = 0;
+				const known = `known-${randomUUID()}@example.com`;
+				const post = (path: string, body: Record<string, string>) => {
+					address += 1;
+					return fetch(`${serverOrigin}/api/auth/${path}`, {
+						method: "POST",
+						body: JSON.stringify(body),
+						headers: {
+							"Content-Type": "application/json",
+							Origin: origin,
+							"X-Forwarded-For": `10.0.0.${address}`,
+						},
+					});
+				};
+
+				const signup = await post("sign-up/email", {
+					email: known,
+					name: "Known",
+					password: "forge-smoke-password",
+				});
+
+				const signupBody = await signup.text();
+
+				expect(signup.status, `${signupBody}\n${output()}`).toBe(200);
+
+				const warmUp = await post("email-otp/request-password-reset", {
+					email: known,
+				});
+
+				expect(warmUp.status, `${await warmUp.text()}\n${output()}`).toBe(200);
+
+				const warmDeadline = Date.now() + 30_000;
+				while (
+					!sink.received.some((delivery) => delivery.to === known) &&
+					Date.now() < warmDeadline
+				)
+					await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+
+				expect(
+					sink.received.some((delivery) => delivery.to === known),
+					`the first OTP email never reached the SMTP sink\n${output()}`,
+				).toBe(true);
+
+				sink.received.length = 0;
+
+				for (const path of [
+					"email-otp/request-password-reset",
+					"email-otp/send-verification-otp",
+				]) {
+					const timings: Record<"known" | "unknown", number[]> = {
+						known: [],
+						unknown: [],
+					};
+
+					const responded: number[] = [];
+					for (let round = 0; round < 10; round += 1)
+						for (const kind of ["known", "unknown"] satisfies ReadonlyArray<
+							keyof typeof timings
+						>) {
+							const email =
+								kind === "known"
+									? known
+									: `missing-${randomUUID()}@example.com`;
+
+							const started = performance.now();
+							const response = await post(path, {
+								email,
+								...(path === "email-otp/send-verification-otp"
+									? { type: "email-verification" }
+									: {}),
+							});
+
+							const body = await response.text();
+							const elapsed = performance.now() - started;
+
+							expect(
+								response.status,
+								`${path} ${kind}: ${body}\n${output()}`,
+							).toBe(200);
+
+							timings[kind].push(elapsed);
+							if (kind === "known") responded.push(Date.now());
+						}
+
+					const median = (values: number[]) => {
+						const sorted = [...values].sort((left, right) => left - right);
+						const lower = sorted[4];
+						const upper = sorted[5];
+						if (lower === undefined || upper === undefined)
+							throw new Error(`Missing OTP Timings: ${path}\n${output()}`);
+
+						return (lower + upper) / 2;
+					};
+
+					const knownMedian = median(timings.known);
+					const unknownMedian = median(timings.unknown);
+					const diagnostic = `${path}: known ${knownMedian} ms, unknown ${unknownMedian} ms\n${output()}`;
+
+					expect(knownMedian, diagnostic).toBeLessThan(1000);
+					expect(unknownMedian, diagnostic).toBeLessThan(1000);
+					expect(
+						Math.abs(knownMedian - unknownMedian),
+						diagnostic,
+					).toBeLessThanOrEqual(100);
+
+					for (const at of responded) {
+						const deadline = at + 5000;
+						while (
+							!sink.received.some((delivery) => delivery.to === known) &&
+							Date.now() < deadline
+						)
+							await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+
+						const deliveryIndex = sink.received.findIndex(
+							(delivery) => delivery.to === known,
+						);
+
+						const delivery = sink.received[deliveryIndex];
+						expect(
+							delivery,
+							`Missing OTP Delivery: ${path}\n${output()}`,
+						).toBeDefined();
+
+						if (delivery === undefined)
+							throw new Error(`Missing OTP Delivery: ${path}\n${output()}`);
+
+						expect(
+							delivery.at - at,
+							`${path} delivery delay\n${output()}`,
+						).toBeGreaterThanOrEqual(0);
+
+						expect(
+							delivery.at - at,
+							`${path} delivery delay\n${output()}`,
+						).toBeLessThanOrEqual(5000);
+
+						sink.received.splice(deliveryIndex, 1);
+					}
+				}
+			},
+			host,
+			"start",
+		);
+	} finally {
+		await sink.close();
+	}
 }
 
 export async function expectClientIpRateLimit(

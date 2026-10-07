@@ -128,6 +128,7 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				type: "module",
 				exports: {
 					".": "./src/index.ts",
+					"./background": "./src/background.ts",
 					"./env": "./env.ts",
 					"./client": "./src/client.ts",
 					"./client-address": "./src/client-address.ts",
@@ -196,6 +197,11 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				ensuredModuleTarget("auth"),
 				"src/client-address.ts",
 				renderBetterAuthTemplate(config, "packages/auth/src/client-address.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("auth"),
+				"src/background.ts",
+				renderBetterAuthTemplate(config, "packages/auth/src/background.ts"),
 			),
 			...webAppInstances(config)
 				.filter((instance) => instance.client === true)

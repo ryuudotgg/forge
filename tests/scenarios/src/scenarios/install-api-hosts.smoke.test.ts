@@ -12,6 +12,7 @@ import {
 	expectClientIpRateLimit,
 	expectCredentialedGeneratedServer,
 	expectOrpcBodyLimitOnServer,
+	expectOtpSendTiming,
 	expectProductionOriginsRequired,
 	expectStandaloneOrpcRoute,
 	injectOrpcContextProbe,
@@ -320,7 +321,13 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-hono-nextjs", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
-				authMethods: ["email-password", "google", "apple", "passkey"],
+				authMethods: [
+					"email-password",
+					"email-otp",
+					"google",
+					"apple",
+					"passkey",
+				],
 				authPlugins: ["username", "admin", "polar"],
 				backend: "hono",
 				database: "sqlite",
@@ -341,6 +348,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			});
 
 			await expectClientIpRateLimit(workspace.projectRoot, "server");
+			await expectOtpSendTiming(workspace.projectRoot, "server");
 		});
 	}, 600_000);
 
