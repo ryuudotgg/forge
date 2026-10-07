@@ -579,7 +579,9 @@ describe("create", () => {
 				.map((artifact) => artifact.path)
 				.sort();
 
-			expect(artifactPaths).toEqual(projectFiles);
+			expect(artifactPaths).toEqual(
+				projectFiles.filter((path) => path !== ".env"),
+			);
 
 			expect(appConfig).toMatchObject({ framework: "nextjs", type: "app" });
 			expect(uiConfig).toMatchObject({

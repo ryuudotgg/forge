@@ -1,13 +1,12 @@
 import { log } from "@clack/prompts";
 import { Apply, ApplyError, formatApplyError, Planner } from "@ryuugg/core";
 import {
-	authenticationProviders,
 	loadDefinitionRegistry,
-	orms,
 	probeWorkspaceCommandVersions,
 	withWebAppPorts,
 } from "@ryuugg/generators";
 import { Effect } from "effect";
+import { ormIssue } from "../config/schema";
 import { runCliEffectValue } from "../runtime";
 import { refusalMessage } from "../utils/refusal";
 import type { PartialConfig } from "./types";
@@ -22,12 +21,9 @@ const generateStep = defineStep({
 	shouldRun: () => true,
 
 	async execute(config: PartialConfig) {
-		if (
-			authenticationProviders.normalize(config.authentication) ===
-				"better-auth" &&
-			!orms.normalize(config.orm)
-		) {
-			log.error("You need to add an ORM before you can use Better Auth.");
+		const issue = ormIssue(config);
+		if (issue !== undefined) {
+			log.error(issue);
 			process.exit(1);
 		}
 

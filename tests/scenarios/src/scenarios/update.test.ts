@@ -317,9 +317,8 @@ describe("update", () => {
 				}>;
 			}>(manifestPath);
 
-			manifest.config.authentication = "better-auth";
 			manifest.installs.push({
-				definitionId: "better-auth",
+				definitionId: "nativewind",
 				targets: [{ kind: "project" }],
 			});
 

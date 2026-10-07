@@ -1,12 +1,15 @@
+import { formatSchemaError } from "@ryuugg/core";
 import {
+	authenticationProviders,
 	authPasskeyIssue,
 	authPluginRequirementMessage,
+	orms,
 	twoFactorSkippedMessage,
 	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
 	webAppPortIssue,
 } from "@ryuugg/generators";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import * as schemas from "../steps/schemas";
 import type { Step } from "../steps/types";
 
@@ -23,6 +26,98 @@ const webAppsConfigSchema = Schema.Struct({
 	web: Schema.optional(schemas.web),
 	webApps: schemas.webApps,
 });
+
+const checkedConfigSchema = Schema.Struct({
+	authentication: Schema.optional(schemas.authentication),
+	authMethods: Schema.optional(schemas.authMethods),
+	authPlugins: Schema.optional(schemas.authPlugins),
+	backend: Schema.optional(schemas.backend),
+	desktop: Schema.optional(schemas.desktop),
+	emailProvider: Schema.optional(schemas.emailProvider),
+	mobile: Schema.optional(schemas.mobile),
+	platforms: Schema.optional(schemas.platforms),
+	web: Schema.optional(schemas.web),
+	webApps: Schema.optional(schemas.webApps),
+});
+
+export function invalidConfigMessage(
+	error: Schema.SchemaError,
+	config: Record<string, unknown>,
+) {
+	const issues = formatSchemaError(error, config)
+		.map((issue) =>
+			issue.path.length > 0
+				? `  ${issue.path.join(".")}: ${issue.message}`
+				: `  ${issue.message}`,
+		)
+		.join("\n");
+
+	return `Invalid Configuration:\n${issues}`;
+}
+
+export function malformedConfigIssue(
+	config: Record<string, unknown>,
+): string | undefined {
+	const result = Schema.decodeUnknownResult(checkedConfigSchema)(config);
+	if (Result.isFailure(result))
+		return invalidConfigMessage(result.failure, config);
+}
+
+export function configIssue(data: Record<string, unknown>): string | undefined {
+	if (Schema.is(webAppsConfigSchema)(data)) {
+		if (data.web === undefined && data.webApps.length !== 0)
+			return "Secondary web apps need a web framework.";
+
+		const portIssue = webAppPortIssue(data);
+		if (portIssue !== undefined) return portIssue;
+	}
+
+	if (data.authMethods !== undefined && data.authentication !== "better-auth")
+		return "Authentication methods need Better Auth.";
+
+	if (data.authPlugins !== undefined && data.authentication !== "better-auth")
+		return "Authentication plugins need Better Auth.";
+
+	if (
+		Array.isArray(data.authMethods) &&
+		(data.authMethods.includes("email-otp") ||
+			data.authMethods.includes("magic-link")) &&
+		data.emailProvider === undefined
+	)
+		return "Email OTP and magic link need an email provider.";
+
+	if (Schema.is(authPluginConfigSchema)(data)) {
+		const missing = unmetAuthPluginRequirements(data);
+		if (missing.length !== 0) return authPluginRequirementMessage(missing);
+
+		const skipping = twoFactorSkippingMethods(data);
+		if (skipping.length !== 0) return twoFactorSkippedMessage(skipping);
+	}
+
+	const platforms = Array.isArray(data.platforms) ? data.platforms : undefined;
+	if (platforms?.includes("web") && !data.web)
+		return "A web framework wasn't selected.";
+
+	if (platforms?.includes("desktop") && !data.desktop)
+		return "A desktop framework wasn't selected.";
+
+	if (platforms?.includes("mobile") && !data.mobile)
+		return "A mobile framework wasn't selected.";
+
+	if (Schema.is(authPluginConfigSchema)(data)) {
+		const passkeyIssue = authPasskeyIssue(data);
+		if (passkeyIssue !== undefined) return passkeyIssue;
+	}
+}
+
+export function ormIssue(config: Record<string, unknown>): string | undefined {
+	if (
+		authenticationProviders.normalize(config.authentication) ===
+			"better-auth" &&
+		!orms.normalize(config.orm)
+	)
+		return "You need to add an ORM before you can use Better Auth.";
+}
 
 export function assembleSchema(steps: Step[]) {
 	const fields: Record<
@@ -45,64 +140,7 @@ export function assembleSchema(steps: Step[]) {
 		}
 
 	return Schema.Struct(fields).pipe(
-		Schema.check(
-			Schema.makeFilter((data) => {
-				if (Schema.is(webAppsConfigSchema)(data)) {
-					if (data.web === undefined && data.webApps.length !== 0)
-						return "Secondary web apps need a web framework.";
-
-					const portIssue = webAppPortIssue(data);
-					if (portIssue !== undefined) return portIssue;
-				}
-
-				if (
-					data.authMethods !== undefined &&
-					data.authentication !== "better-auth"
-				)
-					return "Authentication methods need Better Auth.";
-
-				if (
-					data.authPlugins !== undefined &&
-					data.authentication !== "better-auth"
-				)
-					return "Authentication plugins need Better Auth.";
-
-				if (
-					Array.isArray(data.authMethods) &&
-					(data.authMethods.includes("email-otp") ||
-						data.authMethods.includes("magic-link")) &&
-					data.emailProvider === undefined
-				)
-					return "Email OTP and magic link need an email provider.";
-
-				if (Schema.is(authPluginConfigSchema)(data)) {
-					const missing = unmetAuthPluginRequirements(data);
-					if (missing.length !== 0)
-						return authPluginRequirementMessage(missing);
-
-					const skipping = twoFactorSkippingMethods(data);
-					if (skipping.length !== 0) return twoFactorSkippedMessage(skipping);
-				}
-
-				const platforms = Array.isArray(data.platforms)
-					? data.platforms
-					: undefined;
-
-				if (platforms?.includes("web") && !data.web)
-					return "A web framework wasn't selected.";
-
-				if (platforms?.includes("desktop") && !data.desktop)
-					return "A desktop framework wasn't selected.";
-
-				if (platforms?.includes("mobile") && !data.mobile)
-					return "A mobile framework wasn't selected.";
-
-				if (Schema.is(authPluginConfigSchema)(data)) {
-					const passkeyIssue = authPasskeyIssue(data);
-					if (passkeyIssue !== undefined) return passkeyIssue;
-				}
-			}),
-		),
+		Schema.check(Schema.makeFilter(configIssue)),
 	);
 }
 
