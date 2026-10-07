@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import { version } from "../package.json" with { type: "json" };
 import {
 	buildFlagOverrides,
+	findOptionMissingValue,
 	isParsedValues,
 	isUnknownCommand,
 	options,
@@ -32,6 +33,22 @@ function parse(args: string[]) {
 }
 
 describe("CLI argument parsing", () => {
+	it.each([
+		{ args: ["--config"], expected: "--config" },
+		{ args: ["--config", "--json"], expected: "--config" },
+		{ args: ["--config", "-file"], expected: "--config" },
+		{ args: ["--name", "app", "--config"], expected: "--config" },
+		{ args: ["--config", "--name"], expected: "--config" },
+		{ args: ["--unknown"], expected: undefined },
+		{ args: ["--json"], expected: undefined },
+		{ args: ["--config", "forge.json"], expected: undefined },
+		{ args: ["--config=-file"], expected: undefined },
+		{ args: ["--config="], expected: undefined },
+		{ args: ["--", "--config"], expected: undefined },
+	])("finds a missing string option value in $args", ({ args, expected }) => {
+		expect(findOptionMissingValue(args)).toBe(expected);
+	});
+
 	it("accepts named secondary web app flags", () => {
 		const { values, positionals } = parse([
 			"add",
@@ -515,6 +532,23 @@ describe("CLI entry dispatch", () => {
 		expect(runAdd).not.toHaveBeenCalled();
 	});
 
+	it.each([["--config"], ["--config", "--json"]])(
+		"reports a missing --config value for %j",
+		async (...args) => {
+			const testCli = createTestCli({
+				defaultCommand: command(async () => {}),
+			});
+
+			await runCli(args, testCli.cli);
+
+			expect(testCli.error).toHaveBeenCalledExactlyOnceWith(
+				"--config needs a value. Run forge --help to see the available flags.",
+			);
+			expect(testCli.setExitCode).toHaveBeenCalledExactlyOnceWith(1);
+			expect(testCli.log).not.toHaveBeenCalled();
+		},
+	);
+
 	it("reports runtime, option, command, and command-runner failures", async () => {
 		const runCreate = vi.fn(
 			async (
@@ -545,7 +579,11 @@ describe("CLI entry dispatch", () => {
 		expect(runtimeCli.error).toHaveBeenCalledWith("Unsupported runtime");
 		expect(runtimeCli.exit).toHaveBeenCalledWith(1);
 
+		expect(optionCli.error).toHaveBeenCalledExactlyOnceWith(
+			"We don't recognize that option. Run forge --help to see the available flags.",
+		);
 		expect(optionCli.setExitCode).toHaveBeenCalledWith(1);
+		expect(optionCli.log).not.toHaveBeenCalled();
 
 		expect(unknownCli.setExitCode).toHaveBeenCalledWith(1);
 

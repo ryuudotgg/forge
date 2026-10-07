@@ -170,7 +170,17 @@ describe("forge list builders", () => {
 		expect(parseCatalogKind("framework")).toBe("framework");
 		expect(parseCatalogKind("template")).toBe("template");
 		expect(parseCatalogKind(undefined)).toBeUndefined();
-		expect(() => parseCatalogKind("plugin")).toThrow("Catalog Kind Invalid");
+		expect(() => parseCatalogKind("plugin")).toThrow(
+			"plugin isn't a catalog kind. Use addon, framework, or template.",
+		);
+
+		expect(() => parseCatalogKind(true)).toThrow(
+			"true isn't a catalog kind. Use addon, framework, or template.",
+		);
+
+		expect(() => parseCatalogKind(["addon", "framework"])).toThrow(
+			"addon,framework isn't a catalog kind. Use addon, framework, or template.",
+		);
 	});
 
 	it("builds the stable JSON envelope without hidden entries", () => {

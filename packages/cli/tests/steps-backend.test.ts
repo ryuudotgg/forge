@@ -111,7 +111,7 @@ describe("backend step", () => {
 			promptMocks.select.mockResolvedValue(Symbol.for("clack:cancel"));
 			promptMocks.isCancel.mockReturnValue(true);
 
-			await expect(backendStep.execute({}, true)).rejects.toThrow("exit:0");
+			await expect(backendStep.execute({}, true)).rejects.toThrow("exit:1");
 
 			expect(promptMocks.cancel).toHaveBeenCalledWith(
 				"You've extinguished the forge.",

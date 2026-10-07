@@ -3,7 +3,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { checkRuntime, type EnvironmentCheck } from "@ryuugg/core";
 import { version } from "../package.json" with { type: "json" };
-import { isUnknownCommand, parseCliArgs } from "./cli";
+import { findOptionMissingValue, isUnknownCommand, parseCliArgs } from "./cli";
 import {
 	defaultCommand,
 	getSubcommand,
@@ -64,8 +64,12 @@ export async function runCli(
 	try {
 		parsed = parseCliArgs(args);
 	} catch {
+		const missingValue = findOptionMissingValue(args);
+
 		cli.error(
-			"We don't recognize that option. Run forge --help to see the available flags.",
+			missingValue === undefined
+				? "We don't recognize that option. Run forge --help to see the available flags."
+				: `${missingValue} needs a value. Run forge --help to see the available flags.`,
 		);
 
 		cli.setExitCode(1);
