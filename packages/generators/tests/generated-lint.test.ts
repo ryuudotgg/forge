@@ -66,6 +66,8 @@ describe("generated lint", () => {
 		{ slug: "meisai", linter: "oxc" },
 		{ slug: "hono-api", linter: "biome" },
 		{ slug: "hono-api", linter: "oxc" },
+		{ slug: "trpc", linter: "biome" },
+		{ slug: "trpc", linter: "oxc" },
 	] as const)(
 		"passes $linter as generated for the $slug Hono project",
 		async ({ slug, linter }) => {

@@ -25,20 +25,39 @@ describe("sort scoped imports", () => {
 	});
 
 	it.each([
+		{ order: "scope", first: "@expo/a/b", second: "@expo/a-b" },
+		{ order: "text", first: "@expo/a-b", second: "@expo/a/b" },
+		{ order: "text", first: "@expo/a", second: "@expo/a-b" },
 		{ order: "scope", first: "@hono/node-server", second: "@hono-api/auth" },
 		{ order: "text", first: "@hono-api/auth", second: "@hono/node-server" },
 	] as const)(
-		"orders a hyphenated scope by the $order rule",
+		"orders $first before $second by the $order rule",
 		({ order, first, second }) => {
 			const source = lines(
-				'import { a } from "@hono-api/auth";',
-				'import { b } from "@hono/node-server";',
+				`import { a } from "${second}";`,
+				`import { b } from "${first}";`,
 			);
 
 			const sorted = sortScopedImports("index.ts", source, order);
 			expect(sorted.indexOf(first)).toBeLessThan(sorted.indexOf(second));
 		},
 	);
+
+	it("orders packages that share a scope", () => {
+		const source = lines(
+			'import { appRouter } from "@trpc/trpc";',
+			'import { createCaller } from "@trpc/trpc/caller";',
+			'import { createHydrationHelpers } from "@trpc/react-query/rsc";',
+		);
+
+		expect(sortScopedImports("server.ts", source, "scope")).toBe(
+			lines(
+				'import { createHydrationHelpers } from "@trpc/react-query/rsc";',
+				'import { appRouter } from "@trpc/trpc";',
+				'import { createCaller } from "@trpc/trpc/caller";',
+			),
+		);
+	});
 
 	it("compares digit runs by value and keeps hyphens before digits", () => {
 		const source = lines(
@@ -96,13 +115,12 @@ describe("sort scoped imports", () => {
 		expect(sortScopedImports("index.ts", source, "scope")).toBe(source);
 	});
 
-	it("moves multi line statements whole and keeps one scope in template order", () => {
+	it("moves multi line statements whole", () => {
 		const source = lines(
 			"import {",
 			"  accounts,",
 			"  sessions,",
 			'} from "@zeta/db/schema";',
-			'import { db } from "@zeta/db";',
 			'import { expo } from "@better-auth/expo";',
 		);
 
@@ -113,7 +131,6 @@ describe("sort scoped imports", () => {
 				"  accounts,",
 				"  sessions,",
 				'} from "@zeta/db/schema";',
-				'import { db } from "@zeta/db";',
 			),
 		);
 	});

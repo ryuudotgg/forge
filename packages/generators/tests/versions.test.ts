@@ -181,7 +181,7 @@ describe("catalogRef", () => {
 		);
 	});
 
-	it("matches the repository scaffold catalog to the passkey pins", () => {
+	function scaffoldCatalog() {
 		const workspace = readFileSync(
 			new URL("../../../pnpm-workspace.yaml", import.meta.url),
 			"utf-8",
@@ -193,7 +193,7 @@ describe("catalogRef", () => {
 
 		if (scaffold === undefined) throw new Error("Missing Scaffold Catalog");
 
-		const entries = Object.fromEntries(
+		return Object.fromEntries(
 			Array.from(
 				scaffold.matchAll(/^ {4}("[^"]+"|[\w@/.-]+): ([^\s]+)$/gm),
 				([, name, version]) => [
@@ -202,6 +202,17 @@ describe("catalogRef", () => {
 				],
 			),
 		);
+	}
+
+	it("matches the repository scaffold catalog to the generated lint pins", () => {
+		const entries = scaffoldCatalog();
+
+		for (const tool of [versions.biome, versions.oxlint, versions.oxfmt])
+			expect(entries[tool.name], tool.name).toBe(tool.version);
+	});
+
+	it("matches the repository scaffold catalog to the passkey pins", () => {
+		const entries = scaffoldCatalog();
 
 		expect(entries["better-auth"]).toBe(
 			catalogRef("betterAuth", {

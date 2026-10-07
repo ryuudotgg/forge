@@ -27,7 +27,7 @@
 	},
 	"devDependencies": {
 		"@better-auth/passkey": "catalog:scaffold",
-		"@biomejs/biome": "catalog:lint",
+		"@biomejs/biome": "catalog:scaffold",
 		"@effect/platform-node": "catalog:effect",
 		"@effect/tsgo": "catalog:effect",
 		"@orpc/server": "catalog:scaffold",

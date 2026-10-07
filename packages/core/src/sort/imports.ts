@@ -5,7 +5,7 @@ export type ImportOrder = "scope" | "text";
 
 interface ImportStatement {
 	readonly lines: ReadonlyArray<string>;
-	readonly scope: string | undefined;
+	readonly scopedSource: string | undefined;
 }
 
 type Segment =
@@ -21,7 +21,7 @@ const singleLineImport = /^import\s+(?!["']).*\bfrom\s+["']([^"']+)["'];?$/;
 const openImport = /^import\s+(?:type\s+)?\{$/;
 const importSpecifier = /^\s+(?:type\s+)?[\w$]+(?:\s+as\s+[\w$]+)?,?$/;
 const closeImport = /^\}\s*from\s+["']([^"']+)["'];?$/;
-const scopedSource = /^@([^/]+)\//;
+const scopedSource = /^@[^/]+\//;
 const digitRun = /^\d+/;
 
 function characterRank(character: string, order: ImportOrder) {
@@ -50,7 +50,7 @@ function compareDigitRuns(left: string, right: string, order: ImportOrder) {
 	return byLength || compareText(left, right);
 }
 
-function compareScopes(left: string, right: string, order: ImportOrder) {
+function compareSources(left: string, right: string, order: ImportOrder) {
 	let leftIndex = 0;
 	let rightIndex = 0;
 
@@ -86,7 +86,10 @@ function compareScopes(left: string, right: string, order: ImportOrder) {
 }
 
 function statementOf(lines: ReadonlyArray<string>, source: string) {
-	return { lines, scope: scopedSource.exec(source)?.[1] };
+	return {
+		lines,
+		scopedSource: scopedSource.test(source) ? source : undefined,
+	};
 }
 
 function readStatement(lines: ReadonlyArray<string>, start: number) {
@@ -144,16 +147,18 @@ function sortChunk(
 	order: ImportOrder,
 ): ReadonlyArray<ImportStatement> {
 	const scoped = statements.filter(
-		(statement) => statement.scope !== undefined,
+		(statement) => statement.scopedSource !== undefined,
 	);
 
 	const sorted = [...scoped].sort((left, right) =>
-		compareScopes(`${left.scope}/`, `${right.scope}/`, order),
+		compareSources(left.scopedSource ?? "", right.scopedSource ?? "", order),
 	);
 
 	let next = 0;
 	return statements.map((statement) =>
-		statement.scope === undefined ? statement : (sorted[next++] ?? statement),
+		statement.scopedSource === undefined
+			? statement
+			: (sorted[next++] ?? statement),
 	);
 }
 
