@@ -23,7 +23,7 @@ const MODULE_ID_LENGTH = 5;
 const MODULE_ID_ATTEMPTS = 32;
 const MODULE_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz";
 
-export const GITIGNORED_MODULE_DIRS = [
+const GITIGNORED_NESTED_DIRS = [
 	".cache",
 	".expo",
 	".next",
@@ -31,19 +31,27 @@ export const GITIGNORED_MODULE_DIRS = [
 	".tanstack",
 	".turbo",
 	".vercel",
-	"build",
 	"coverage",
 	"dist",
 	"node_modules",
-	"out",
 ] as const;
 
+// Real packages are named build or out often enough that only the root copies are output.
+const GITIGNORED_ROOT_DIRS = ["build", "out"] as const;
+
+export const GITIGNORED_MODULE_DIRS = [
+	...GITIGNORED_NESTED_DIRS,
+	...GITIGNORED_ROOT_DIRS,
+];
+
 const MODULE_IGNORED_DIRS = new Set<string>([
-	...GITIGNORED_MODULE_DIRS,
+	...GITIGNORED_NESTED_DIRS,
 	".forge",
 	".git",
 	".yarn",
 ]);
+
+const ROOT_IGNORED_DIRS = new Set<string>(GITIGNORED_ROOT_DIRS);
 
 export const ModuleIdSchema = Schema.String.check(
 	Schema.isPattern(new RegExp(`^[a-z]{${String(MODULE_ID_LENGTH)}}$`), {
@@ -165,9 +173,12 @@ function scanModuleRoots(
 		const roots: string[] = [];
 		if (entries.includes(MODULE_CONFIG_FILE)) roots.push(currentPath);
 
+		const atRoot = currentPath === projectRoot;
 		for (const entry of entries) {
 			if (entry === MODULE_CONFIG_FILE || MODULE_IGNORED_DIRS.has(entry))
 				continue;
+
+			if (atRoot && ROOT_IGNORED_DIRS.has(entry)) continue;
 
 			const fullPath = join(currentPath, entry);
 			const stat = yield* fs

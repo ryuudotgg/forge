@@ -383,12 +383,24 @@ describe("module config store", () => {
 				appConfig("bbbbb"),
 			);
 
+			await writeJson(
+				join(directory, "packages/build/forge.json"),
+				appConfig("ccccc"),
+			);
+
+			await writeJson(
+				join(directory, "packages/out/forge.json"),
+				appConfig("ddddd"),
+			);
+
 			const modules = await Effect.runPromise(
 				ConfigStore.discover(directory).pipe(Effect.provide(projectLayer)),
 			);
 
 			expect(modules.map((module) => module.root)).toEqual([
 				"apps/web",
+				"packages/build",
+				"packages/out",
 				"services/api",
 			]);
 		});
