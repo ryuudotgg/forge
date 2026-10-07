@@ -14,21 +14,27 @@ import {
 } from "@ryuugg/core";
 import {
 	type AddonCatalogEntry,
+	authChoice,
+	authChoiceLabel,
 	authEmailMethods,
 	authMethods,
 	configWithoutInstall,
 	type ForgeConfig,
 	findRemovalBlockers,
+	hasAuthChoice,
 	type LoadedDefinitionRegistry,
 	loadAddonDefinition,
 	RegistryLoadError,
 	removeWebAppConfig,
+	resolveAuthMethods,
 	webFrameworks,
 } from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
 import { completionLine } from "../utils/completion";
 import { listAnd } from "../utils/list";
+import { reportRetainedFiles } from "../utils/retained";
 import { removedClientEnvMessage } from "../utils/web-apps";
+import { runAuthChoiceChange } from "./auth-choice";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
@@ -100,10 +106,22 @@ function assertNoRemovalBlockers(
 			emailMethods.map((method) => authMethods.label(method)),
 		);
 
+		const commands = listAnd.format(
+			emailMethods.map((method) => `forge remove ${method}`),
+		);
+
+		const keepsSignIn = resolveAuthMethods(config).some(
+			(method) => !emailMethods.includes(method) && method !== "passkey",
+		);
+
+		const next = keepsSignIn
+			? `Run ${commands} first.`
+			: `Run forge add email-password, then ${commands}.`;
+
 		log.error(
 			emailMethods.length === 1
-				? `We can't remove email until you remove this sign-in method: ${methods}.`
-				: `We can't remove email until you remove these sign-in methods: ${methods}.`,
+				? `We can't remove email until you remove this sign-in method: ${methods}. ${next}`
+				: `We can't remove email until you remove these sign-in methods: ${methods}. ${next}`,
 		);
 
 		process.exit(1);
@@ -534,10 +552,7 @@ function reportWebAppRemoval(
 	if (app.client === true)
 		log.info(removedClientEnvMessage(previousConfig, nextConfig, app.name));
 
-	if (retained.length > 0)
-		log.info(
-			`We kept your edited ${retained.length === 1 ? "file" : "files"} at ${listAnd.format(retained)}.`,
-		);
+	reportRetainedFiles(retained);
 
 	const retainedRoots = removedRoots.filter((root) =>
 		retained.includes(`${root}/package.json`),
@@ -557,16 +572,28 @@ function installedAddonNamed(
 	name: string,
 ) {
 	const config: ForgeConfig = project.config;
-	if (
-		!(config.webApps ?? []).some((app) => app.name === name) ||
-		!project.manifest.installs.some((install) => install.definitionId === name)
-	)
+	if (!(config.webApps ?? []).some((app) => app.name === name))
 		return undefined;
 
-	return {
-		name:
-			loaded.registry.addons.find((addon) => addon.id === name)?.name ?? name,
-	};
+	if (
+		project.manifest.installs.some((install) => install.definitionId === name)
+	)
+		return {
+			kind: "addon",
+			name:
+				loaded.registry.addons.find((addon) => addon.id === name)?.name ?? name,
+		};
+
+	if (loaded.descriptors.some((descriptor) => descriptor.id === name))
+		return undefined;
+
+	const choice = authChoice(name);
+	return choice !== undefined && hasAuthChoice(config, choice)
+		? {
+				kind: choice.kind,
+				name: authChoiceLabel(choice),
+			}
+		: undefined;
 }
 
 async function chooseWebAppOverAddon(
@@ -583,12 +610,13 @@ async function chooseWebAppOverAddon(
 	)
 		return true;
 
+	const label = `${addon.name} ${addon.kind === "method" ? "sign-in method" : addon.kind}`;
 	const choice = await select({
-		message: `Do you want to remove the ${name} web app or the ${addon.name} addon?`,
+		message: `Do you want to remove the ${name} web app or the ${label}?`,
 		initialValue: "app",
 		options: [
 			{ label: `The ${name} web app`, value: "app" },
-			{ label: `The ${addon.name} addon`, value: "addon" },
+			{ label: `The ${label}`, value: "addon" },
 		],
 	});
 
@@ -623,9 +651,27 @@ export async function runRemove(
 			(values.yes === true || !isInteractiveLifecycleSession())
 		)
 			log.info(
-				`The ${installedAddon.name} addon is still installed. Run forge remove without a name to choose it.`,
+				installedAddon.kind === "addon"
+					? `The ${installedAddon.name} addon is still installed. Run forge remove without a name to choose it.`
+					: `The ${installedAddon.name} ${installedAddon.kind === "method" ? "sign-in method" : "plugin"} is still set up. Run forge remove ${addonId} again to remove it.`,
 			);
 
+		return;
+	}
+
+	const choice = addonId === undefined ? undefined : authChoice(addonId);
+	const removableIds = new Set([
+		...project.manifest.installs.map((install) => install.definitionId),
+		...loadedRegistry.descriptors.map((entry) => entry.id),
+	]);
+
+	if (
+		choice !== undefined &&
+		addonId !== undefined &&
+		!removableIds.has(addonId) &&
+		!removableIds.has(choice.id)
+	) {
+		await runAuthChoiceChange(project, choice, "remove", values);
 		return;
 	}
 

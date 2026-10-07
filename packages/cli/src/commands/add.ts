@@ -20,6 +20,7 @@ import {
 import {
 	type AddonCatalogEntry,
 	addWebAppConfig,
+	authChoice,
 	configWithInstall,
 	type ForgeConfig,
 	installChange,
@@ -41,6 +42,7 @@ import { cancel } from "../utils/cancel";
 import { completionLine } from "../utils/completion";
 import { listAnd } from "../utils/list";
 import { addedClientEnvMessage } from "../utils/web-apps";
+import { runAuthChoiceChange } from "./auth-choice";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
@@ -695,6 +697,23 @@ export async function runAdd(
 		registryIds ?? [],
 	);
 
+	const choice = addonId === undefined ? undefined : authChoice(addonId);
+	const knownIds = new Set([
+		...loadedRegistry.registry.addons.map((addon) => addon.id),
+		...loadedRegistry.catalog.map((entry) => entry.id),
+		...loadedRegistry.descriptors.map((entry) => entry.id),
+	]);
+
+	if (
+		choice !== undefined &&
+		addonId !== undefined &&
+		!knownIds.has(addonId) &&
+		!knownIds.has(choice.id)
+	) {
+		await runAuthChoiceChange(project, choice, "add", values);
+		return;
+	}
+
 	let resolvedAddonId = addonId ?? (await promptForAddonId(loadedRegistry));
 
 	const barePackageId = barePackageIdFromVersionedId(resolvedAddonId);
@@ -860,7 +879,6 @@ export async function runAdd(
 	}
 
 	const record = selectInstallRecord(project, addon, loadedRegistry);
-
 	if (
 		registeredRegistry === undefined &&
 		coversInstall(project.manifest.installs, record)

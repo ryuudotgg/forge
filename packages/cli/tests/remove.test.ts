@@ -322,6 +322,7 @@ describe("remove command", () => {
 				packageName: "@company/control-panel",
 				root,
 			};
+
 			const baseProject = managedProject({
 				config: {
 					web: "nextjs",
@@ -329,6 +330,7 @@ describe("remove command", () => {
 				},
 				modules: [appModule, adoptedModule],
 			});
+
 			const project = {
 				...baseProject,
 				manifest: {
@@ -1922,12 +1924,22 @@ describe("remove command", () => {
 		{
 			authMethods: ["email-password", "magic-link", "email-otp"],
 			message:
-				"We can't remove email until you remove these sign-in methods: Magic link and Email OTP.",
+				"We can't remove email until you remove these sign-in methods: Magic link and Email OTP. Run forge remove magic-link and forge remove email-otp first.",
 		},
 		{
 			authMethods: ["email-otp"],
 			message:
-				"We can't remove email until you remove this sign-in method: Email OTP.",
+				"We can't remove email until you remove this sign-in method: Email OTP. Run forge add email-password, then forge remove email-otp.",
+		},
+		{
+			authMethods: ["passkey", "email-otp", "magic-link"],
+			message:
+				"We can't remove email until you remove these sign-in methods: Email OTP and Magic link. Run forge add email-password, then forge remove email-otp and forge remove magic-link.",
+		},
+		{
+			authMethods: ["email-password", "email-otp", "magic-link"],
+			message:
+				"We can't remove email until you remove these sign-in methods: Email OTP and Magic link. Run forge remove email-otp and forge remove magic-link first.",
 		},
 	];
 
