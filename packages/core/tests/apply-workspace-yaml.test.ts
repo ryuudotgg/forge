@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
+import { unifiedDiff } from "../src/diff";
 import {
 	Apply,
 	type ArtifactBase,
@@ -322,6 +323,40 @@ describe("pnpm-workspace.yaml key merge", () => {
 		});
 	});
 
+	it("reports the Forge side it skipped when an older lockfile stored no base and the user wins", async () => {
+		await withTempDir("apply-workspace-yaml-legacy-user", async (directory) => {
+			await Effect.runPromise(
+				apply(directory, base, {
+					definitionIds: ["pnpm"],
+					hash: await hashContent(base),
+					kind: "file",
+					path,
+				}),
+			);
+
+			await writeText(join(directory, path), user);
+
+			const result = await Effect.runPromise(
+				apply(directory, incoming, await yamlArtifact(incoming), "keep-user"),
+			);
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe(
+				user
+					.replace('  - "docs/*"', '  - "tooling/*"\n  - "docs/*"')
+					.replace(
+						"  vitest: 3.0.0\n",
+						'  vitest: 3.0.0\n  "@vitest/coverage-v8": 3.1.0\n',
+					)
+					.replace(
+						"  esbuild: true",
+						'  "@parcel/watcher": true\n  esbuild: true',
+					),
+			);
+
+			expect(result.declined.map((change) => change.path)).toEqual([path]);
+		});
+	});
+
 	it("merges against the stored render when the previous base was opaque", async () => {
 		await withTempDir("apply-workspace-yaml-opaque", async (directory) => {
 			const hash = await hashContent(base);
@@ -360,6 +395,30 @@ describe("pnpm-workspace.yaml key merge", () => {
 				reason: "managed-file-modified",
 			});
 		});
+	});
+
+	it("keeps an edit that cannot be split into keys with keep-user and reports Forge's change", async () => {
+		await withTempDir(
+			"apply-workspace-yaml-unparseable-keep",
+			async (directory) => {
+				await scaffold(directory, base);
+				await writeText(join(directory, path), "- apps/*\n");
+
+				const result = await Effect.runPromise(
+					apply(directory, incoming, await yamlArtifact(incoming), "keep-user"),
+				);
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe(
+					"- apps/*\n",
+				);
+				expect(result.declined).toEqual([
+					expect.objectContaining({
+						path,
+						diff: unifiedDiff(path, base, incoming),
+					}),
+				]);
+			},
+		);
 	});
 
 	it("fails loudly when Forge's own render cannot be split into keys", async () => {
