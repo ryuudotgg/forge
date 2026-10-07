@@ -258,7 +258,7 @@ describe("databaseProvider step", () => {
 
 			await expect(
 				databaseProviderStep.execute({ database: "mysql" }, true),
-			).rejects.toThrow("exit:0");
+			).rejects.toThrow("exit:1");
 
 			expect(promptMocks.cancel).toHaveBeenCalledWith(
 				"You've extinguished the forge.",

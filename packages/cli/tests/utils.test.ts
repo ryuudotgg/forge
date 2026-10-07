@@ -50,15 +50,13 @@ describe("cancel", () => {
 		promptMocks.cancel.mockReset();
 	});
 
-	it("prints the farewell message and exits cleanly by default", () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation(((
-			code?: string | number | null,
-		) => {
+	it("prints the farewell message and exits nonzero by default", () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
 			throw new Error(`exit:${code ?? 0}`);
-		}) as never);
+		});
 
 		try {
-			expect(() => cancel()).toThrow("exit:0");
+			expect(() => cancel()).toThrow("exit:1");
 			expect(promptMocks.cancel).toHaveBeenCalledWith(
 				"You've extinguished the forge.",
 			);
@@ -68,14 +66,12 @@ describe("cancel", () => {
 	});
 
 	it("forwards a custom message and exit code", () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation(((
-			code?: string | number | null,
-		) => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
 			throw new Error(`exit:${code ?? 0}`);
-		}) as never);
+		});
 
 		try {
-			expect(() => cancel("bye", 1)).toThrow("exit:1");
+			expect(() => cancel("bye", 0)).toThrow("exit:0");
 			expect(promptMocks.cancel).toHaveBeenCalledWith("bye");
 		} finally {
 			exit.mockRestore();

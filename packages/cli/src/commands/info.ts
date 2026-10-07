@@ -189,10 +189,8 @@ export async function runInfo(
 		: loadRegistry());
 
 	const entry = loadedRegistry.catalog.find((candidate) => candidate.id === id);
-	if (!entry || entry.hidden) {
-		log.error(buildInfoNotFoundMessage(id, loadedRegistry.catalog));
-		process.exit(1);
-	}
+	if (!entry || entry.hidden)
+		throw new Error(buildInfoNotFoundMessage(id, loadedRegistry.catalog));
 
 	if (values.json === true) {
 		console.log(

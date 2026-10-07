@@ -592,7 +592,7 @@ describe("interactive resolution", () => {
 				);
 
 				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
-					"exit:0",
+					"exit:1",
 				);
 
 				expect(promptMocks.cancel).toHaveBeenCalledWith(
@@ -635,7 +635,7 @@ describe("interactive resolution", () => {
 				);
 
 				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
-					"exit:0",
+					"exit:1",
 				);
 
 				expect(promptMocks.select).toHaveBeenCalledTimes(1);

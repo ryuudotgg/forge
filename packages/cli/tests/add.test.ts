@@ -187,7 +187,7 @@ describe("add command", () => {
 
 			try {
 				if (cancelled) {
-					await expect(runAdd("nextjs", {})).rejects.toThrow("exit:0");
+					await expect(runAdd("nextjs", {})).rejects.toThrow("exit:1");
 					expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 				} else {
 					await runAdd("nextjs", {});
@@ -1707,6 +1707,30 @@ describe("add command", () => {
 			}
 		});
 
+		it("exits nonzero without installing when the user cancels", async () => {
+			const restore = interactiveSession();
+			const exitSpy = exit();
+			emptyRegistryProject();
+			promptMocks.confirm.mockResolvedValue(Symbol.for("clack:cancel"));
+			promptMocks.isCancel.mockReturnValue(true);
+
+			try {
+				await expect(runAdd("@acme/forge-empty", {})).rejects.toThrow("exit:1");
+				expect(promptMocks.cancel).toHaveBeenCalledWith(
+					"We didn't install @acme/forge-empty.",
+				);
+
+				expect(
+					lifecycleMocks.runPackageManagerOperation,
+				).not.toHaveBeenCalled();
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			} finally {
+				exitSpy.mockRestore();
+				restore();
+			}
+		});
+
 		it("refuses under CI without --yes and names the flag", async () => {
 			const restore = interactiveSession("1");
 			const exitSpy = exit();
@@ -2002,7 +2026,7 @@ describe("add command", () => {
 				(value: unknown) => value === cancelSentinel,
 			);
 
-			await expect(runAdd(undefined, {})).rejects.toThrow("exit:0");
+			await expect(runAdd(undefined, {})).rejects.toThrow("exit:1");
 
 			expect(promptMocks.cancel).toHaveBeenCalledWith(
 				"You've extinguished the forge.",

@@ -393,6 +393,32 @@ export function parseCliArgs(args: readonly string[]): {
 	return validateParsedArgs(parsed);
 }
 
+export function findOptionMissingValue(
+	args: readonly string[],
+): string | undefined {
+	const parseOptions = getParseArgsOptions();
+	const { tokens } = parseArgs({
+		options: parseOptions,
+		allowPositionals: true,
+		args,
+		strict: false,
+		tokens: true,
+	});
+
+	for (const token of tokens) {
+		if (token.kind !== "option" || parseOptions[token.name]?.type !== "string")
+			continue;
+
+		if (
+			token.value === undefined ||
+			(token.value.startsWith("-") && token.inlineValue === false)
+		)
+			return token.rawName;
+	}
+
+	return undefined;
+}
+
 export function isUnknownCommand(
 	subcommand: string | undefined,
 	command: SubcommandDef | undefined,

@@ -14,13 +14,11 @@ import {
 import { withTempDir } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
-	logError: vi.fn(),
 	logMessage: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
 	log: {
-		error: promptMocks.logError,
 		message: promptMocks.logMessage,
 	},
 }));
@@ -32,7 +30,6 @@ function requireEntry(id: string) {
 }
 
 beforeEach(() => {
-	promptMocks.logError.mockReset();
 	promptMocks.logMessage.mockReset();
 });
 
@@ -318,25 +315,12 @@ describe("forge info builders", () => {
 	});
 
 	it("reports missing and hidden ids as exact command errors", async () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
-			throw new Error(`exit:${code ?? 0}`);
-		});
+		await expect(runInfo("missing", { json: true })).rejects.toThrow(
+			new Error('We couldn\'t find "missing" in the catalog.'),
+		);
 
-		try {
-			await expect(runInfo("missing", {})).rejects.toThrow("exit:1");
-			await expect(runInfo("root", {})).rejects.toThrow("exit:1");
-
-			expect(promptMocks.logError).toHaveBeenNthCalledWith(
-				1,
-				'We couldn\'t find "missing" in the catalog.',
-			);
-
-			expect(promptMocks.logError).toHaveBeenNthCalledWith(
-				2,
-				'We couldn\'t find "root" in the catalog.',
-			);
-		} finally {
-			exit.mockRestore();
-		}
+		await expect(runInfo("root", { json: true })).rejects.toThrow(
+			new Error('We couldn\'t find "root" in the catalog.'),
+		);
 	});
 });

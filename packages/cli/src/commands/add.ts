@@ -421,8 +421,8 @@ async function confirmRegistryInstall(
 		inactive: "No",
 	});
 
-	if (isCancel(accepted) || !accepted)
-		cancel(`We didn't install ${registryId}.`);
+	if (isCancel(accepted)) cancel(`We didn't install ${registryId}.`);
+	if (!accepted) cancel(`We didn't install ${registryId}.`, 0);
 
 	return release === undefined
 		? registryId
@@ -852,7 +852,6 @@ export async function runAdd(
 	}
 
 	const record = selectInstallRecord(project, addon, loadedRegistry);
-
 	if (change._tag === "Switch") {
 		const holder =
 			addonFromRegistry(loadedRegistry, change.holderId) ??
@@ -870,6 +869,7 @@ export async function runAdd(
 			noInstall: values["no-install"] === true,
 			resolution,
 		});
+
 		return;
 	}
 

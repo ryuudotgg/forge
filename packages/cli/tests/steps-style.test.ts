@@ -305,7 +305,7 @@ describe("ui library step", () => {
 
 			await expect(
 				uiLibraryStep.execute({ web: "nextjs" }, true),
-			).rejects.toThrow("exit:0");
+			).rejects.toThrow("exit:1");
 
 			expect(promptMocks.cancel).toHaveBeenCalledWith(
 				"You've extinguished the forge.",
