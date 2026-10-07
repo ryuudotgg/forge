@@ -1375,12 +1375,11 @@ const makeApply = Effect.gen(function* () {
 			const syntheticBase =
 				previousBase === undefined || previousBase.origin === "adopted";
 
-			const mergeBase =
-				previousBase === undefined || previousBase.origin === "adopted"
-					? kind === "json"
-						? "{}\n"
-						: ""
-					: yield* readBase(projectRoot, managedArtifact, previousBase);
+			const mergeBase = syntheticBase
+				? kind === "json"
+					? "{}\n"
+					: ""
+				: yield* readBase(projectRoot, managedArtifact, previousBase);
 
 			if (mergeBase === undefined) {
 				if (fileResolution === "forge") {
