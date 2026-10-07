@@ -509,9 +509,7 @@ async function removeWebApp(
 					removal.roots,
 				);
 
-	const relocations = Object.entries(removalRootRelocations).sort(
-		([, leftRoot], [, rightRoot]) => rightRoot.length - leftRoot.length,
-	);
+	const relocations = Object.entries(removalRootRelocations);
 
 	const generatedRemovals = currentGeneratedPaths.map((path) => {
 		const relocation = relocations.find(
