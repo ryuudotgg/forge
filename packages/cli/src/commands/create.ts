@@ -3,6 +3,7 @@ import { log } from "@clack/prompts";
 import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { buildFlagOverrides, decodeChoice, options } from "../cli";
+import { acceptedConfigKeys, droppedValueIssue } from "../config/schema";
 import { orchestrate } from "../orchestrator";
 import { presets } from "../presets";
 import { steps } from "../steps";
@@ -12,6 +13,7 @@ import {
 	webAppsSchema,
 } from "../steps/platforms/web-apps";
 import type { PartialConfig } from "../steps/types";
+import { editDistance } from "../utils/edit-distance";
 import { listOr } from "../utils/list";
 
 export async function runCreate(
@@ -62,6 +64,34 @@ export async function runCreate(
 			process.exit(1);
 		}
 
+		const acceptedKeys = acceptedConfigKeys(steps);
+		const unknownKeys = Object.keys(configResult.success).filter(
+			(key) => !acceptedKeys.includes(key),
+		);
+
+		for (const key of unknownKeys) {
+			const alias = Object.entries(options).flatMap(([flag, option]) =>
+				flag === key && "configKey" in option && option.configKey !== key
+					? [option.configKey]
+					: [],
+			)[0];
+
+			const suggestion =
+				alias ??
+				acceptedKeys.reduce((closest, candidate) =>
+					editDistance(key.toLowerCase(), candidate.toLowerCase()) <
+					editDistance(key.toLowerCase(), closest.toLowerCase())
+						? candidate
+						: closest,
+				);
+
+			log.error(
+				`Your config file sets ${JSON.stringify(key)}, which isn't a setting. Did you mean ${JSON.stringify(suggestion)}?`,
+			);
+		}
+
+		if (unknownKeys.length !== 0) process.exit(1);
+
 		const config = { ...configResult.success };
 		for (const option of Object.values(options)) {
 			if (!("choices" in option)) continue;
@@ -93,6 +123,12 @@ export async function runCreate(
 	}
 
 	initialConfig = { ...initialConfig, ...overrides };
+
+	const droppedIssue = droppedValueIssue(initialConfig);
+	if (droppedIssue !== undefined) {
+		log.error(droppedIssue);
+		process.exit(1);
+	}
 
 	const configuredApps = Schema.decodeUnknownResult(webAppsSchema)(
 		initialConfig.webApps ?? [],

@@ -97,6 +97,7 @@ export type {
 	ProviderEnvVar,
 } from "./data/providers";
 export {
+	databaseProviderIdsFor,
 	localMysql,
 	localPostgres,
 	localSqlite,

@@ -1,4 +1,10 @@
-import type { Database, DatabaseProvider, ForgeConfig, Orm } from "../config";
+import {
+	type Database,
+	type DatabaseProvider,
+	databaseProviders,
+	type ForgeConfig,
+	type Orm,
+} from "../config";
 import type { VersionKey } from "../versions";
 
 export interface ProviderEnvVar {
@@ -453,6 +459,14 @@ const profilesByDialect: Record<
 	postgresql: postgresProfiles,
 	sqlite: { turso },
 };
+
+export function databaseProviderIdsFor(
+	database: Database,
+): ReadonlyArray<DatabaseProvider> {
+	return databaseProviders.ids.filter(
+		(provider) => profilesByDialect[database][provider] !== undefined,
+	);
+}
 
 export function resolveDatabaseProvider(
 	config: ForgeConfig,
