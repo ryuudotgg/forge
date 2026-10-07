@@ -6,10 +6,8 @@ import {
 	commitFixture,
 	createProject,
 	expectCleanTree,
-	expectInstallAndBuild,
 	expectInstallBuildAndTypecheck,
 	expectRun,
-	forgeEnvironment,
 	runCommand,
 	runForge,
 	withScenarioWorkspace,
@@ -461,22 +459,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				web: "nextjs",
 			});
 
-			await expectInstallAndBuild(workspace, "pnpm");
-
-			const pageTypecheck = await runCommand(
-				"pnpm",
-				["--filter", "@acme/web", "typecheck"],
-				{
-					cwd: workspace.projectRoot,
-					env: forgeEnvironment(workspace.workspaceRoot),
-				},
-			);
-
-			expect(
-				pageTypecheck.exitCode,
-				`${pageTypecheck.stdout}\n${pageTypecheck.stderr}`,
-			).toBe(0);
-
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
 			await expectInvitationFlow(workspace.projectRoot, "Acme Works");
 		});
 	}, 600_000);

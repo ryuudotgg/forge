@@ -569,6 +569,35 @@ describe("auth plugins", () => {
 		);
 	});
 
+	it("turns off auth declarations for organization without passkey", async () => {
+		const config: ForgeConfig = {
+			...baseConfig,
+			backend: "self",
+			orm: "drizzle",
+			database: "sqlite",
+			authMethods: ["email-password"],
+			authPlugins: ["two-factor", "organization"],
+		};
+
+		const declarationsOff = {
+			compilerOptions: { declaration: false, declarationMap: false },
+		};
+
+		const plan = await plannedProject(config);
+		expect(
+			JSON.parse(writeContent(plan, "packages/auth/tsconfig.json")),
+		).toMatchObject(declarationsOff);
+
+		const baseline = await plannedProject({
+			...config,
+			authPlugins: ["two-factor"],
+		});
+
+		expect(
+			JSON.parse(writeContent(baseline, "packages/auth/tsconfig.json")),
+		).not.toMatchObject(declarationsOff);
+	});
+
 	it.each([
 		{
 			columns: 80,
