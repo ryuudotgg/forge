@@ -848,7 +848,10 @@ describe("remove command", () => {
 				}),
 			);
 
-			lifecycleMocks.applyInstalledPlan.mockResolvedValue({ retained: [] });
+			lifecycleMocks.applyInstalledPlan.mockResolvedValue({
+				dependenciesChanged: false,
+				retained: [],
+			});
 
 			await runRemove(removed, { yes: true });
 
@@ -882,7 +885,10 @@ describe("remove command", () => {
 			}),
 		);
 
-		lifecycleMocks.applyInstalledPlan.mockResolvedValue({ retained: [] });
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
+			dependenciesChanged: false,
+			retained: [],
+		});
 
 		await runRemove("docs", { yes: true });
 
@@ -931,7 +937,10 @@ describe("remove command", () => {
 			}),
 		);
 
-		lifecycleMocks.applyInstalledPlan.mockResolvedValue({ retained: [] });
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
+			dependenciesChanged: false,
+			retained: [],
+		});
 
 		await runRemove("admin", { yes: true });
 
@@ -1133,7 +1142,10 @@ describe("remove command", () => {
 		);
 
 		lifecycleMocks.runPackageManagerOperation.mockResolvedValue(true);
-		lifecycleMocks.applyInstalledPlan.mockResolvedValue({ retained: [] });
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
+			dependenciesChanged: false,
+			retained: [],
+		});
 	});
 
 	it("offers to remove a registry after its last installed addon", async () => {

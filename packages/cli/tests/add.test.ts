@@ -597,6 +597,10 @@ describe("add command", () => {
 		switchMocks.runSwitch.mockReset();
 
 		lifecycleMocks.applyInstalledPlan.mockReset();
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
+			dependenciesChanged: false,
+			retained: [],
+		});
 		lifecycleMocks.configuredPackageManager.mockReset();
 		lifecycleMocks.hasProjectDevDependency.mockReset();
 
@@ -2420,7 +2424,7 @@ describe("add command", () => {
 		);
 	});
 
-	it("keeps config and installs unchanged when re-adding an installed addon", async () => {
+	it("leaves the project untouched when re-adding an installed addon", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				config: { slug: "acme", style: "tailwind", web: "nextjs" },
@@ -2432,12 +2436,9 @@ describe("add command", () => {
 
 		await runAdd("tailwind", {});
 
-		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
-			".",
-			{ slug: "acme", style: "tailwind", web: "nextjs" },
-			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
-			undefined,
-			undefined,
+		expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		expect(promptMocks.logInfo).toHaveBeenCalledWith(
+			"Tailwind CSS is already installed.",
 		);
 	});
 

@@ -63,6 +63,19 @@ async function rerunCreate(workspaceRoot: string) {
 }
 
 describe("create", () => {
+	it("ends a non interactive create with the next commands", async () => {
+		await withScenarioWorkspace("create-completion", async (workspace) => {
+			const result = await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			expect(result.stdout).toContain(
+				'We created acme in ./project. Run "cd ./project", then "pnpm install" to install its dependencies.',
+			);
+		});
+	}, 120_000);
+
 	it("creates an opted-in admin with RPC and auth clients", async () => {
 		await withScenarioWorkspace(
 			"create-admin-api-client",

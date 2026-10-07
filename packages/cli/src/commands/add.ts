@@ -38,6 +38,7 @@ import {
 	webAppsSchema,
 } from "../steps/platforms/web-apps";
 import { cancel } from "../utils/cancel";
+import { completionLine } from "../utils/completion";
 import { listAnd } from "../utils/list";
 import { addedClientEnvMessage } from "../utils/web-apps";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
@@ -52,6 +53,24 @@ import {
 import { resolveRegistryRelease } from "./registry-release";
 import { resolutionArguments } from "./resolution";
 import { runSwitch } from "./switch";
+
+function targetKey(target: InstallRecord["targets"][number]) {
+	return target.kind === "project" ? "project" : `module:${target.moduleId}`;
+}
+
+function coversInstall(
+	installs: ReadonlyArray<InstallRecord>,
+	record: InstallRecord,
+) {
+	const installed = installs.find(
+		(entry) => entry.definitionId === record.definitionId,
+	);
+
+	if (installed === undefined) return false;
+
+	const installedKeys = new Set(installed.targets.map(targetKey));
+	return record.targets.every((target) => installedKeys.has(targetKey(target)));
+}
 
 function mergeInstallRecord(
 	existing: ReadonlyArray<InstallRecord>,
@@ -71,19 +90,8 @@ function mergeInstallRecord(
 	const current = records.get(record.definitionId) ?? [];
 	const next = [...current];
 	for (const target of record.targets) {
-		const key =
-			target.kind === "project" ? "project" : `module:${target.moduleId}`;
-
-		if (
-			next.some(
-				(entry) =>
-					(entry.kind === "project"
-						? "project"
-						: `module:${entry.moduleId}`) === key,
-			)
-		)
-			continue;
-
+		const key = targetKey(target);
+		if (next.some((entry) => targetKey(entry) === key)) continue;
 		next.push(target);
 	}
 
@@ -852,6 +860,15 @@ export async function runAdd(
 	}
 
 	const record = selectInstallRecord(project, addon, loadedRegistry);
+
+	if (
+		registeredRegistry === undefined &&
+		coversInstall(project.manifest.installs, record)
+	) {
+		log.info(`${addon.name} is already installed.`);
+		return;
+	}
+
 	if (change._tag === "Switch") {
 		const holder =
 			addonFromRegistry(loadedRegistry, change.holderId) ??
@@ -880,7 +897,7 @@ export async function runAdd(
 		addon.targetMode,
 	);
 
-	await applyInstalledPlan(
+	const applied = await applyInstalledPlan(
 		project.projectRoot,
 		nextConfig,
 		nextInstalls,
@@ -891,4 +908,12 @@ export async function runAdd(
 
 	if (registeredRegistry !== undefined)
 		announceAdapterSupport(loadedRegistry, registeredRegistry.id);
+
+	log.success(
+		completionLine(
+			`We added ${addon.name}.`,
+			applied,
+			configuredPackageManager(nextConfig),
+		),
+	);
 }

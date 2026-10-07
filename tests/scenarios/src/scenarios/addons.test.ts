@@ -6,6 +6,7 @@ import {
 	createProject,
 	pathExists,
 	readJson,
+	removeAddon,
 	updateProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
@@ -230,6 +231,40 @@ describe("addons", () => {
 			);
 
 			expect(lefthookAfterUpdate).toBe(lefthookFullYaml);
+		});
+	}, 240_000);
+
+	it("ends add and remove with a completion line and skips a repeat add", async () => {
+		await withScenarioWorkspace("addons-completion", async (workspace) => {
+			await createProject(workspace, {
+				linter: "biome",
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			const added = await addAddon(workspace.projectRoot, "commitlint");
+			expect(added.stdout).toContain(
+				'We added commitlint. Run "pnpm install" to update your dependencies.',
+			);
+
+			const state = async () =>
+				await Promise.all(
+					[".forge/manifest.json", ".forge/lock.json"].map(
+						async (file) =>
+							await readFile(join(workspace.projectRoot, file), "utf-8"),
+					),
+				);
+
+			const before = await state();
+			const repeated = await addAddon(workspace.projectRoot, "commitlint");
+
+			expect(repeated.stdout).toContain("commitlint is already installed.");
+			expect(await state()).toEqual(before);
+
+			const removed = await removeAddon(workspace.projectRoot, "commitlint");
+			expect(removed.stdout).toContain(
+				'We removed commitlint. Run "pnpm install" to update your dependencies.',
+			);
 		});
 	}, 240_000);
 });
