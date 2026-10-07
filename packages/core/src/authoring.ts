@@ -57,6 +57,7 @@ export const projectSurfaceNames = {
 	oxlintConfig: "oxlintConfig",
 	oxfmtConfig: "oxfmtConfig",
 	gitignore: "gitignore",
+	gitattributes: "gitattributes",
 	rootEnv: "rootEnv",
 	rootEnvExample: "rootEnvExample",
 } as const;

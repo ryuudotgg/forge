@@ -320,6 +320,37 @@ describe("renderer", () => {
 		]);
 	});
 
+	it("renders the gitattributes surface as a lines merge at the root", async () => {
+		const rendered = await render(
+			[
+				{
+					bucket: { kind: "project" },
+					contribution: surfaceLines(
+						projectTarget(),
+						"gitattributes",
+						[".forge/** -text"],
+						{ section: "Forge state" },
+					),
+					definitionId: "root",
+					order: 0,
+				},
+			],
+			[],
+		);
+
+		expect(rendered).toEqual([
+			{
+				bucket: { kind: "project" },
+				content: "# Forge state\n.forge/** -text\n",
+				definitionIds: ["root"],
+				key: "gitattributes",
+				kind: "surface",
+				mergeKind: "lines",
+				path: ".gitattributes",
+			},
+		]);
+	});
+
 	it("prefers the highest priority text contribution", async () => {
 		const inputs = [
 			{

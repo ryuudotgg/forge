@@ -8,6 +8,7 @@ import {
 	runtimeCommand,
 	surfaceDependencies,
 	surfaceJson,
+	surfaceLines,
 	surfaceScripts,
 } from "@ryuugg/core";
 import { Effect } from "effect";
@@ -146,6 +147,9 @@ function buildContributions(
 	if (outputs.length > 0) buildTask.outputs = outputs;
 
 	return [
+		surfaceLines(projectTarget(), "gitattributes", [".forge/** -text"], {
+			section: "Forge state",
+		}),
 		surfaceJson(projectTarget(), "rootPackageJson", packageJson),
 		surfaceDependencies(projectTarget(), "rootPackageJson", [
 			tsconfigDevDep,
