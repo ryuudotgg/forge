@@ -18,6 +18,8 @@ const tools = {
 	oxfmt: bin("oxfmt"),
 };
 
+const singleThreaded = { ...process.env, RAYON_NUM_THREADS: "1" };
+
 const checks = {
 	biome: [[tools.biome, "check", ".", "--error-on-warnings"]],
 	oxc: [
@@ -77,6 +79,7 @@ describe("generated lint", () => {
 					const result = spawnSync(process.execPath, [command, ...args], {
 						cwd: root,
 						encoding: "utf-8",
+						env: singleThreaded,
 					});
 
 					expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
