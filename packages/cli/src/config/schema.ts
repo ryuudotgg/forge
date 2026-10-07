@@ -3,7 +3,11 @@ import {
 	authenticationProviders,
 	authPasskeyIssue,
 	authPluginRequirementMessage,
+	databaseProviderIdsFor,
+	databaseProviders,
+	databases,
 	orms,
+	platforms,
 	twoFactorSkippedMessage,
 	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
@@ -12,6 +16,8 @@ import {
 import { Effect, Result, Schema } from "effect";
 import * as schemas from "../steps/schemas";
 import type { Step } from "../steps/types";
+import { unsupportedMessage } from "../utils/choices";
+import { listOr } from "../utils/list";
 
 const authPluginConfigSchema = Schema.Struct({
 	authentication: Schema.optional(schemas.authentication),
@@ -63,7 +69,41 @@ export function malformedConfigIssue(
 		return invalidConfigMessage(result.failure, config);
 }
 
+export function droppedValueIssue(
+	data: Record<string, unknown>,
+): string | undefined {
+	if (
+		Schema.is(schemas.database)(data.database) &&
+		Schema.is(schemas.databaseProvider)(data.databaseProvider)
+	) {
+		const providers = databaseProviderIdsFor(data.database);
+		if (!providers.includes(data.databaseProvider))
+			return `${databaseProviders.label(data.databaseProvider)} doesn't host ${databases.label(data.database)}, so pick ${listOr.format(providers.map((provider) => databaseProviders.label(provider)))}.`;
+	}
+
+	if (
+		data.catalogs !== undefined &&
+		data.packageManager !== undefined &&
+		data.packageManager !== "pnpm"
+	)
+		return "pnpm Catalogs need pnpm.";
+
+	if (data.desktop !== undefined) {
+		if (!platforms.available("desktop"))
+			return unsupportedMessage(platforms, ["desktop"]);
+
+		if (Array.isArray(data.platforms) && !data.platforms.includes("desktop"))
+			return "A desktop framework needs the Desktop platform.";
+	}
+}
+
 export function configIssue(data: Record<string, unknown>): string | undefined {
+	if (data.databaseProvider !== undefined && data.database === undefined)
+		return "A database provider needs a database.";
+
+	const droppedIssue = droppedValueIssue(data);
+	if (droppedIssue !== undefined) return droppedIssue;
+
 	if (Schema.is(webAppsConfigSchema)(data)) {
 		if (data.web === undefined && data.webApps.length !== 0)
 			return "Secondary web apps need a web framework.";
@@ -119,7 +159,7 @@ export function ormIssue(config: Record<string, unknown>): string | undefined {
 		return "You need to add an ORM before you can use Better Auth.";
 }
 
-export function assembleSchema(steps: Step[]) {
+function schemaFields(steps: Step[]) {
 	const fields: Record<
 		string,
 		Schema.Codec<unknown, unknown, never, never>
@@ -139,7 +179,17 @@ export function assembleSchema(steps: Step[]) {
 			else fields[key] = Schema.optional(step.schema);
 		}
 
-	return Schema.Struct(fields).pipe(
+	return fields;
+}
+
+export function acceptedConfigKeys(steps: Step[]): string[] {
+	return [
+		...new Set([...Object.keys(schemaFields(steps)), "installDeps", "gitInit"]),
+	];
+}
+
+export function assembleSchema(steps: Step[]) {
+	return Schema.Struct(schemaFields(steps)).pipe(
 		Schema.check(Schema.makeFilter(configIssue)),
 	);
 }

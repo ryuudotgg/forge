@@ -110,6 +110,39 @@ pnpm dlx @ryuugg/forge --config forge.json
 
 Pass `--no-install` to skip dependency installation and `--no-git` to skip Git initialization.
 
+Config files accept these top level keys. Unknown keys are rejected. Choice values take an ID or display name unless noted.
+
+| Key | Value |
+| --- | --- |
+| `name` | Project name, up to 15 characters. |
+| `slug` | Lowercase project slug, up to 15 characters. |
+| `path` | Directory for the project. |
+| `runtime` | Node.js, Bun, or Deno. |
+| `packageManager` | pnpm, npm, Yarn, or Bun. |
+| `catalogs` | Flat or scoped catalogs, requires pnpm. |
+| `linter` | Linter choice. |
+| `platforms` | Array of platform IDs: web, mobile, or desktop (unavailable). |
+| `web` | Primary web framework choice. |
+| `webApps` | Array of objects with name, framework, and optional client boolean and port number. |
+| `desktop` | Desktop framework choice, currently unavailable. |
+| `mobile` | Mobile framework choice. |
+| `backend` | Backend framework choice. |
+| `rpc` | RPC provider choice. |
+| `database` | MySQL, PostgreSQL, or SQLite. |
+| `orm` | Drizzle ORM or Prisma. |
+| `databaseProvider` | Hosting provider choice, requires a supported database. |
+| `authentication` | Authentication provider choice. |
+| `authMethods` | Nonempty array of authentication method IDs, requires Better Auth. |
+| `authPlugins` | Array of authentication plugin IDs, requires Better Auth. |
+| `authenticationCustomUI` | Boolean for a custom authentication UI. |
+| `style` | Web styling framework choice. |
+| `nativeStyleFramework` | Mobile styling framework choice. |
+| `uiLibrary` | UI library ID. |
+| `addons` | Array of optional addon IDs. |
+| `emailProvider` | Email provider choice. |
+| `installDeps` | Boolean to install dependencies. |
+| `gitInit` | Boolean to initialize Git. |
+
 Lifecycle commands support explicit conflict resolution:
 
 | Flag | What it does |

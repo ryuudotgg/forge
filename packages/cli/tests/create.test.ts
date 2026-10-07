@@ -48,6 +48,194 @@ describe("create command", () => {
 		promptMocks.logError.mockReset();
 	});
 
+	it("refuses every unknown config key before decoding choices", async () => {
+		await withTempDir("create-unknown-keys", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+			await writeFile(
+				configPath,
+				JSON.stringify({
+					auth: "invalid",
+					databse: "postgresql",
+					email: "resend",
+					"database-provider": "neon",
+					"package-manager": "pnpm",
+					"native-style": "nativewind",
+					DataBase: "sqlite",
+					x: "test",
+				}),
+			);
+
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				await expect(runCreate({ config: configPath })).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError.mock.calls).toEqual([
+					[
+						'Your config file sets "auth", which isn\'t a setting. Did you mean "authentication"?',
+					],
+					[
+						'Your config file sets "databse", which isn\'t a setting. Did you mean "database"?',
+					],
+					[
+						'Your config file sets "email", which isn\'t a setting. Did you mean "emailProvider"?',
+					],
+					[
+						'Your config file sets "database-provider", which isn\'t a setting. Did you mean "databaseProvider"?',
+					],
+					[
+						'Your config file sets "package-manager", which isn\'t a setting. Did you mean "packageManager"?',
+					],
+					[
+						'Your config file sets "native-style", which isn\'t a setting. Did you mean "nativeStyleFramework"?',
+					],
+					[
+						'Your config file sets "DataBase", which isn\'t a setting. Did you mean "database"?',
+					],
+					[
+						'Your config file sets "x", which isn\'t a setting. Did you mean "web"?',
+					],
+				]);
+
+				expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
+	it.each([
+		{
+			config: { database: "PostgreSQL", databaseProvider: "Turso" },
+			flags: { database: "PostgreSQL", "database-provider": "Turso" },
+			message:
+				"Turso doesn't host PostgreSQL, so pick PlanetScale, Neon, Nile, Supabase, or Prisma Postgres.",
+		},
+		{
+			config: { database: "SQLite", databaseProvider: "PlanetScale" },
+			flags: { database: "SQLite", "database-provider": "PlanetScale" },
+			message: "PlanetScale doesn't host SQLite, so pick Turso.",
+		},
+		{
+			config: { database: "MySQL", databaseProvider: "Neon" },
+			flags: { database: "MySQL", "database-provider": "Neon" },
+			message: "Neon doesn't host MySQL, so pick PlanetScale.",
+		},
+		{
+			config: { catalogs: "flat", packageManager: "npm" },
+			flags: { catalogs: "flat", "package-manager": "npm" },
+			message: "pnpm Catalogs need pnpm.",
+		},
+		{
+			config: { catalogs: "scoped", packageManager: "Yarn" },
+			flags: { catalogs: "scoped", "package-manager": "Yarn" },
+			message: "pnpm Catalogs need pnpm.",
+		},
+		{
+			config: { catalogs: "flat", packageManager: "Bun" },
+			flags: { catalogs: "flat", "package-manager": "Bun" },
+			message: "pnpm Catalogs need pnpm.",
+		},
+		{
+			config: { desktop: "electron" },
+			flags: { desktop: "electron" },
+			message: "We don't support Desktop yet.",
+		},
+	])("refuses dropped values: $message", async ({ config, flags, message }) => {
+		await withTempDir("create-dropped-values", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+			await writeFile(configPath, JSON.stringify(config));
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				await expect(runCreate({ config: configPath })).rejects.toThrow(
+					"exit:1",
+				);
+
+				await expect(runCreate(flags)).rejects.toThrow("exit:1");
+
+				expect(promptMocks.logError.mock.calls).toEqual([[message], [message]]);
+				expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
+	it.each([
+		{ orm: "prisma", databaseProvider: "nile" },
+		{ orm: "drizzle", databaseProvider: "prisma-postgres" },
+	])("keeps $orm with $databaseProvider", async ({ orm, databaseProvider }) => {
+		await withTempDir("create-valid-providers", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+			await writeFile(
+				configPath,
+				JSON.stringify({ database: "postgresql", orm, databaseProvider }),
+			);
+
+			await runCreate({ config: configPath });
+			await runCreate({
+				database: "postgresql",
+				orm,
+				"database-provider": databaseProvider,
+			});
+
+			expect(orchestratorMocks.orchestrate).toHaveBeenCalledTimes(2);
+
+			for (const [, invocation] of orchestratorMocks.orchestrate.mock.calls)
+				expect(invocation.initialConfig).toMatchObject({
+					database: "postgresql",
+					orm,
+					databaseProvider,
+				});
+
+			expect(promptMocks.logError).not.toHaveBeenCalled();
+		});
+	});
+
+	it("lets the database prompt follow a lone provider flag", async () => {
+		await runCreate({ "database-provider": "neon" });
+
+		expect(orchestratorMocks.orchestrate).toHaveBeenCalledWith(steps, {
+			initialConfig: { databaseProvider: "neon" },
+			interactive: true,
+		});
+
+		expect(promptMocks.logError).not.toHaveBeenCalled();
+	});
+
+	it("checks dropped values after merging presets and flag overrides", async () => {
+		await withTempDir("create-merged-validation", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+			await writeFile(
+				configPath,
+				JSON.stringify({
+					database: "sqlite",
+					databaseProvider: "neon",
+					packageManager: "npm",
+					catalogs: "flat",
+				}),
+			);
+
+			await runCreate({
+				config: configPath,
+				database: "postgresql",
+				"package-manager": "pnpm",
+			});
+
+			await runCreate({ preset: "default", "database-provider": "neon" });
+
+			expect(orchestratorMocks.orchestrate).toHaveBeenCalledTimes(2);
+			expect(promptMocks.logError).not.toHaveBeenCalled();
+		});
+	});
+
 	it("merges presets, config files, and flag overrides before orchestration", async () => {
 		await withTempDir("create-test", async (directory) => {
 			const configPath = join(directory, "forge.config.json");

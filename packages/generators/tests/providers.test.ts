@@ -1,12 +1,42 @@
 import { describe, expect, it } from "vitest";
 import { envFileLine } from "../src/data/providers";
 import {
+	databaseProviderIdsFor,
+	databaseProviders,
+	databases,
 	localMysql,
 	localPostgres,
 	localSqlite,
 	postgresProviderIdsFor,
 	resolveDatabaseProvider,
 } from "../src/index";
+
+describe("databaseProviderIdsFor", () => {
+	it("lists every supported provider in label order", () => {
+		expect(databaseProviderIdsFor("postgresql")).toEqual([
+			"planetscale",
+			"neon",
+			"nile",
+			"supabase",
+			"prisma-postgres",
+		]);
+
+		expect(databaseProviderIdsFor("mysql")).toEqual(["planetscale"]);
+		expect(databaseProviderIdsFor("sqlite")).toEqual(["turso"]);
+	});
+
+	it("matches the generator profile matrix for every pair", () => {
+		for (const database of databases.ids) {
+			const localProfile = resolveDatabaseProvider({ database });
+			for (const databaseProvider of databaseProviders.ids) {
+				const profile = resolveDatabaseProvider({ database, databaseProvider });
+				expect(
+					databaseProviderIdsFor(database).includes(databaseProvider),
+				).toBe(profile !== localProfile);
+			}
+		}
+	});
+});
 
 describe("envFileLine", () => {
 	it("wraps values in the first quote style they don't use", () => {
