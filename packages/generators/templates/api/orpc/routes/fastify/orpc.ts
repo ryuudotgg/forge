@@ -1,5 +1,5 @@
 import { appRouter, reportServerError } from "@__SLUG__/orpc";
-import { onError, ORPCError } from "@orpc/server";
+import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fastify";
 import { SimpleCsrfProtectionHandlerPlugin } from "@orpc/server/plugins";
 import type { FastifyInstance, FastifyRequest } from "fastify";

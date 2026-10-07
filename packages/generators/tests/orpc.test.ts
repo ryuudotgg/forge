@@ -1086,7 +1086,7 @@ describe("oRPC route bodies and errors", () => {
 			);
 
 			expect(content).toMatch(
-				/import \{ onError(, ORPCError)? \} from "@orpc\/server"/,
+				/import \{ (ORPCError, )?onError \} from "@orpc\/server"/,
 			);
 			expect(content).toMatch(
 				/interceptors: \[\s*onError\(\(error, \{ request \}\) =>\s*reportServerError\(error, request\.url\.pathname\),?\s*\),?\s*\]/,

@@ -1428,6 +1428,29 @@ async function expectOrpcRouteEdges(origin: string, output: () => string) {
 	});
 }
 
+// fetch fails when the server answers and closes before the upload finishes, so this reads the response as soon as it arrives, on its own socket.
+async function uploadStatus(
+	url: string,
+	headers: Readonly<Record<string, string>>,
+	slices: ReadonlyArray<Uint8Array>,
+) {
+	return await new Promise<number>((resolveStatus, rejectStatus) => {
+		const upload = httpRequest(
+			url,
+			{ method: "POST", headers, agent: false },
+			(response) => {
+				response.on("error", () => undefined);
+				response.resume();
+				resolveStatus(response.statusCode ?? 0);
+			},
+		);
+
+		upload.on("error", rejectStatus);
+		for (const slice of slices) upload.write(slice);
+		upload.end();
+	});
+}
+
 async function expectOrpcBodyLimit(origin: string, output: () => string) {
 	const url = `${origin}/api/orpc/health`;
 	const headers = {
@@ -1448,41 +1471,34 @@ async function expectOrpcBodyLimit(origin: string, output: () => string) {
 
 	const body = JSON.stringify({ json: "a".repeat(2 * 1024 * 1024) });
 	const encoded = new TextEncoder().encode(body);
-	const declared = await fetch(url, { method: "POST", headers, body });
+	const slices: Array<Uint8Array> = [];
+	for (let offset = 0; offset < encoded.length; offset += 64 * 1024)
+		slices.push(encoded.subarray(offset, offset + 64 * 1024));
 
-	expect(declared.status, output()).toBe(413);
-
-	const stream = new ReadableStream<Uint8Array>({
-		start(controller) {
-			for (let offset = 0; offset < encoded.length; offset += 64 * 1024)
-				controller.enqueue(encoded.slice(offset, offset + 64 * 1024));
-
-			controller.close();
+	const declared = await uploadStatus(
+		url,
+		{
+			...headers,
+			"Content-Length": String(encoded.length),
 		},
-	});
+		slices,
+	);
 
-	type StreamingRequestInit = RequestInit & { duplex: "half" };
-	const request: StreamingRequestInit = {
-		method: "POST",
+	expect(declared, output()).toBe(413);
+
+	const chunked = await uploadStatus(url, headers, slices);
+
+	expect(chunked, output()).toBe(413);
+
+	const unmatched = await uploadStatus(
+		`${origin}/api/orpc/missing`,
 		headers,
-		body: stream,
-		duplex: "half",
-	};
+		slices,
+	);
 
-	const chunked = await fetch(url, request);
+	expect(unmatched, output()).toBe(404);
 
-	expect(chunked.status, output()).toBe(413);
-
-	const unmatched = await fetch(`${origin}/api/orpc/missing`, {
-		method: "POST",
-		headers,
-		body,
-	});
-
-	expect(unmatched.status, output()).toBe(404);
-
-	// A rejected upload may leave a dropped keep alive socket in the pool; a crashed server refuses the retry too.
-	const alive = await fetch(url, health).catch(() => fetch(url, health));
+	const alive = await fetch(url, health);
 
 	expect(alive.status, output()).toBe(200);
 }
