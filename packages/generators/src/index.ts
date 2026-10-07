@@ -124,7 +124,11 @@ export {
 } from "./frameworks/tanstack-start";
 export { default as biome } from "./linters/biome";
 export { default as oxc } from "./linters/oxc";
-export { secondaryClientOrigins, standaloneBackendDevPort } from "./origins";
+export {
+	secondaryClientOrigins,
+	standaloneBackendDevPort,
+	webDevPort,
+} from "./origins";
 export { default as drizzle } from "./orm/drizzle";
 export { default as prisma } from "./orm/prisma";
 export {

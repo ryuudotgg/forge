@@ -227,6 +227,21 @@ describe("web app adoption", () => {
 
 	describe("ports", () => {
 		it.each([
+			[{ dev: "next dev -p3001" }, 3001],
+			[{ dev: "next dev --port=3002" }, 3002],
+			[{ dev: "PORT=3003 next dev" }, 3003],
+		])("reads %o as port %i", (scripts, port) => {
+			expect(scriptPort(scripts)).toEqual({ kind: "literal", port });
+		});
+
+		it.each(["next dev --profile 3001", "next dev pre-p3001"])(
+			"ignores embedded short flags in %s",
+			(dev) => {
+				expect(scriptPort({ dev })).toEqual({ kind: "absent" });
+			},
+		);
+
+		it.each([
 			["next dev --port 3002", 3002],
 			["pnpm with-env next dev --port=3003", 3003],
 			["next dev -p 3004", 3004],
@@ -271,6 +286,10 @@ describe("web app adoption", () => {
 		});
 
 		it.each([
+			[
+				{ dev: "next dev -p3001 && node proxy.js -p 9000" },
+				{ kind: "ambiguous", dev: [3001, 9000], start: [] },
+			],
 			[
 				{ dev: "next dev --port 3002 && node proxy.js --port 9000" },
 				{ kind: "ambiguous", dev: [3002, 9000], start: [] },
@@ -453,11 +472,19 @@ describe("web app adoption", () => {
 		});
 
 		it.each([
-			[3000, "self", "web and site both use port 3000."],
-			[3001, "hono", "site can't use port 3001, which the API server uses."],
+			[
+				3000,
+				"self",
+				"We couldn't adopt apps/site on port 3000 because Forge runs the primary web app on port 3000. Give apps/site another port in its dev script and run forge init again.",
+			],
+			[
+				3001,
+				"hono",
+				"We couldn't adopt these web apps: site can't use port 3001, which the API server uses. Give each app its own port in its dev script and run forge init again.",
+			],
 		])(
 			"refuses port %i beside a %s backend with a sentence",
-			async (port, backend, issue) => {
+			async (port, backend, message) => {
 				const result = await resolved([
 					observed("apps/web"),
 					observed("apps/site", { scriptPort: { kind: "literal", port } }),
@@ -465,11 +492,22 @@ describe("web app adoption", () => {
 
 				expect(
 					adoptionRefusal(result, { backend, slug: "acme" })?.message,
-				).toBe(
-					`We couldn't adopt these web apps: ${issue} Give each app its own port in its dev script and run forge init again.`,
-				);
+				).toBe(message);
 			},
 		);
+
+		it("refuses the Forge primary port regardless of its observed script", async () => {
+			const result = await resolved([
+				observed("apps/web", { scriptPort: { kind: "literal", port: 4000 } }),
+				observed("apps/site", { scriptPort: { kind: "literal", port: 3000 } }),
+			]);
+
+			const message = adoptionRefusal(result, { slug: "acme" })?.message;
+			expect(message).toBe(
+				"We couldn't adopt apps/site on port 3000 because Forge runs the primary web app on port 3000. Give apps/site another port in its dev script and run forge init again.",
+			);
+			expect(message).not.toContain("both use port");
+		});
 
 		it("lets a secondary use port 3001 when no API server runs", async () => {
 			const result = await resolved([

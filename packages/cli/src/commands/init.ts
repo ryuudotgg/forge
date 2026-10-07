@@ -46,6 +46,7 @@ import { createAuthMethodsStep } from "../steps/auth/methods";
 import { firstPartyAddonIds, webAppsSchema } from "../steps/platforms/web-apps";
 import { createPackageManagerStep } from "../steps/project/package-manager";
 import { createPathStep } from "../steps/project/path";
+import { SKIP } from "../steps/types";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
 import { slugify } from "../utils/slugify";
@@ -81,7 +82,7 @@ const moduleKinds: ReadonlyArray<ModuleKind> = [
 	"ui",
 ];
 
-function initSteps(commandPins: CommandPins) {
+export function initSteps(commandPins: CommandPins) {
 	return steps
 		.filter(
 			(step) =>
@@ -102,7 +103,9 @@ function initSteps(commandPins: CommandPins) {
 					? createPackageManagerStep(commandPins.packageManager)
 					: step.id === "path"
 						? createPathStep("existing")
-						: step,
+						: step.id === "webApps"
+							? { ...step, execute: async () => SKIP }
+							: step,
 		);
 }
 

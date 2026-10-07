@@ -510,6 +510,44 @@ describe("init", () => {
 		);
 	}, 120_000);
 
+	it("refuses a secondary on the port Forge runs the primary on", async () => {
+		await withScenarioWorkspace("init-primary-port", async (workspace) => {
+			const { projectRoot } = workspace;
+			await writeJson(join(projectRoot, "package.json"), {
+				name: "acme",
+				private: true,
+			});
+
+			await writeFile(
+				join(projectRoot, "pnpm-workspace.yaml"),
+				"packages:\n  - 'apps/*'\n",
+				"utf-8",
+			);
+
+			for (const [app, dev] of [
+				["web", "next dev -p 4000"],
+				["site", "next dev --port 3000"],
+			])
+				await writeJson(join(projectRoot, `apps/${app}/package.json`), {
+					dependencies: { next: "^16.0.0" },
+					name: `@acme/${app}`,
+					scripts: { dev },
+				});
+
+			const before = await treeContents(projectRoot);
+			const refused = await tryRunForge(projectRoot, ["init", "--yes"], {
+				workspaceRoot: workspace.workspaceRoot,
+			});
+
+			expect(refused.exitCode).toBe(1);
+			expect(refused.stdout + refused.stderr).toContain(
+				"We couldn't adopt apps/site on port 3000 because Forge runs the primary web app on port 3000. Give apps/site another port in its dev script and run forge init again.",
+			);
+
+			expect(await treeContents(projectRoot)).toEqual(before);
+		});
+	}, 120_000);
+
 	it("requires explicit consent to remove an adopted addon artifact", async () => {
 		await withScenarioWorkspace("init-adopted-remove", async (workspace) => {
 			await fixture(workspace.projectRoot);
