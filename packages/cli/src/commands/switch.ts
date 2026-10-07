@@ -56,9 +56,9 @@ async function operationFailure(
 
 function pathChunks(paths: ReadonlyArray<string>) {
 	const chunks: string[][] = [];
+
 	let chunk: string[] = [];
 	let bytes = 0;
-
 	for (const path of paths) {
 		const argument = `./${path}`;
 		const size = Buffer.byteLength(argument) + 1;
@@ -91,6 +91,7 @@ export async function runSwitch(
 		log.error(
 			"We couldn't check this project's Git status. Nothing was changed.",
 		);
+
 		process.exit(1);
 	}
 
@@ -100,8 +101,23 @@ export async function runSwitch(
 				? `We can't switch from ${holder.name} to ${addon.name} while you have uncommitted changes. Commit or stash them first.`
 				: `We can't switch from ${holder.name} to ${addon.name} until Git tracks this project. Commit your project first.`,
 		);
+
 		process.exit(1);
 	}
+
+	const committed = await runCliEffect(trackedFiles(project.projectRoot));
+	if (Exit.isFailure(committed)) {
+		log.error(
+			"We couldn't read the files Git tracks in this project. Nothing was changed.",
+		);
+
+		process.exit(1);
+	}
+
+	const departing = {
+		definitionIds: [holder.id],
+		committedPaths: committed.value,
+	};
 
 	log.info(
 		`This project uses ${holder.name}, so we're switching it to ${addon.name}.`,
@@ -118,19 +134,30 @@ export async function runSwitch(
 
 	const remaining = `Run "${shellCommand(install)}", then "${shellCommand(reformat(["."]))}", then "forge update --keep-user" inside the project to finish the switch.`;
 
-	await applyInstalledPlan(
+	const applied = await applyInstalledPlan(
 		project.projectRoot,
 		config,
 		installs,
 		undefined,
 		registryIds,
-		...request.resolution,
+		{ ...request.resolution[0], departing },
 	);
+
+	for (const { path, lines } of applied.dropped) {
+		const removed = `${holder.name} is gone, so we removed ${path} and the changes you made to it.`;
+		const kept = lines.trim();
+		log.warn(
+			kept === ""
+				? `${removed} They're still in your last commit.`
+				: `${removed} They're still in your last commit:\n${kept}`,
+		);
+	}
 
 	if (request.noInstall) {
 		log.warn(
 			`We switched the addon configuration from ${holder.name} to ${addon.name}, but haven't installed its dependencies or reformatted your files yet. ${remaining}`,
 		);
+
 		return;
 	}
 
@@ -142,6 +169,7 @@ export async function runSwitch(
 		log.error(
 			`The configuration was switched, but the install failed. ${remaining}`,
 		);
+
 		log.message(installFailure);
 		process.exit(1);
 	}
@@ -158,6 +186,7 @@ export async function runSwitch(
 		log.error(
 			`The configuration was switched and dependencies installed, but reformatting couldn't start. ${remaining}`,
 		);
+
 		process.exit(1);
 	}
 
@@ -172,6 +201,7 @@ export async function runSwitch(
 			log.error(
 				`The configuration was switched and dependencies installed, but reformatting failed. ${remaining}`,
 			);
+
 			log.message(reformatFailure);
 			process.exit(1);
 		}
@@ -185,7 +215,7 @@ export async function runSwitch(
 		installs,
 		undefined,
 		registryIds,
-		{ resolutionPolicy: "keep-user" },
+		{ resolutionPolicy: "keep-user", departing },
 	);
 
 	log.success(

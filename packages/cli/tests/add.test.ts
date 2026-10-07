@@ -600,8 +600,10 @@ describe("add command", () => {
 		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
 			dependenciesChanged: false,
 			declined: [],
+			dropped: [],
 			retained: [],
 		});
+
 		lifecycleMocks.configuredPackageManager.mockReset();
 		lifecycleMocks.hasProjectDevDependency.mockReset();
 

@@ -22,7 +22,8 @@ const promptMocks = vi.hoisted(() => ({
 }));
 
 const boundaryMocks = vi.hoisted(() => ({
-	applyInstalledPlan: vi.fn(),
+	applyInstalledPlan:
+		vi.fn<typeof import("../src/commands/lifecycle").applyInstalledPlan>(),
 	workingTreeStatus: vi.fn<typeof import("@ryuugg/core").workingTreeStatus>(),
 	trackedFiles: vi.fn<typeof import("@ryuugg/core").trackedFiles>(),
 }));
@@ -81,6 +82,13 @@ describe("exclusive addon switch", () => {
 		);
 
 		boundaryMocks.trackedFiles.mockReturnValue(Effect.succeed(["a.ts"]));
+		boundaryMocks.applyInstalledPlan.mockResolvedValue({
+			dependenciesChanged: false,
+			retained: [],
+			declined: [],
+			dropped: [],
+		});
+
 		vi.spyOn(Subprocess, "run").mockReturnValue(
 			Effect.succeed({ exitCode: 0, output: "" }),
 		);
@@ -159,11 +167,14 @@ describe("exclusive addon switch", () => {
 			installs,
 			undefined,
 			request.registryIds,
-			{ resolutionPolicy: "accept-forge" },
+			{
+				resolutionPolicy: "accept-forge",
+				departing: { definitionIds: ["biome"], committedPaths: ["a.ts"] },
+			},
 		);
 
 		expect(Subprocess.run).not.toHaveBeenCalled();
-		expect(boundaryMocks.trackedFiles).not.toHaveBeenCalled();
+		expect(boundaryMocks.trackedFiles).toHaveBeenCalledOnce();
 		expect(promptMocks.success).not.toHaveBeenCalled();
 	});
 
@@ -199,13 +210,30 @@ describe("exclusive addon switch", () => {
 		);
 
 		expect(boundaryMocks.applyInstalledPlan).toHaveBeenCalledTimes(1);
-		expect(boundaryMocks.trackedFiles).not.toHaveBeenCalled();
+		expect(boundaryMocks.trackedFiles).toHaveBeenCalledOnce();
 	});
 
-	it("refuses to reformat when tracked files cannot be read", async () => {
+	it("refuses before applying when Git's tracked files cannot be read", async () => {
 		boundaryMocks.trackedFiles.mockReturnValue(
 			Effect.fail(new GitError({ root: ".", detail: "files unavailable" })),
 		);
+
+		await expect(runSwitch(project, request)).rejects.toThrow("exit:1");
+
+		expect(promptMocks.error).toHaveBeenCalledWith(
+			"We couldn't read the files Git tracks in this project. Nothing was changed.",
+		);
+
+		expect(boundaryMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		expect(Subprocess.run).not.toHaveBeenCalled();
+	});
+
+	it("refuses to reformat when tracked files cannot be read", async () => {
+		boundaryMocks.trackedFiles
+			.mockReturnValueOnce(Effect.succeed(["a.ts"]))
+			.mockReturnValueOnce(
+				Effect.fail(new GitError({ root: ".", detail: "files unavailable" })),
+			);
 
 		await expect(runSwitch(project, request)).rejects.toThrow("exit:1");
 
@@ -296,7 +324,10 @@ describe("exclusive addon switch", () => {
 			installs,
 			undefined,
 			request.registryIds,
-			{ resolutionPolicy: "accept-forge" },
+			{
+				resolutionPolicy: "accept-forge",
+				departing: { definitionIds: ["biome"], committedPaths: ["a.ts"] },
+			},
 		);
 
 		expect(boundaryMocks.applyInstalledPlan).toHaveBeenNthCalledWith(
@@ -306,7 +337,10 @@ describe("exclusive addon switch", () => {
 			installs,
 			undefined,
 			request.registryIds,
-			{ resolutionPolicy: "keep-user" },
+			{
+				resolutionPolicy: "keep-user",
+				departing: { definitionIds: ["biome"], committedPaths: ["a.ts"] },
+			},
 		);
 
 		expect(boundaryMocks.applyInstalledPlan).toHaveBeenCalledTimes(2);
@@ -389,8 +423,51 @@ describe("exclusive addon switch", () => {
 			installs,
 			undefined,
 			request.registryIds,
+			{ departing: { definitionIds: ["biome"], committedPaths: [] } },
 		);
 
 		expect(boundaryMocks.applyInstalledPlan).toHaveBeenCalledTimes(2);
+	});
+
+	it.each([false, true])(
+		"reports dropped edits with noInstall=%s",
+		async (noInstall) => {
+			boundaryMocks.applyInstalledPlan.mockResolvedValueOnce({
+				dependenciesChanged: false,
+				retained: [],
+				declined: [],
+				dropped: [{ path: "biome.json", lines: "!**/legacy\n\n  " }],
+			});
+
+			await runSwitch(project, { ...request, noInstall });
+
+			expect(promptMocks.warn).toHaveBeenCalledWith(
+				"Biome is gone, so we removed biome.json and the changes you made to it. They're still in your last commit:\n!**/legacy",
+			);
+
+			expect(promptMocks.warn.mock.invocationCallOrder[0]).toBeGreaterThan(
+				boundaryMocks.applyInstalledPlan.mock.invocationCallOrder[0] ?? 0,
+			);
+
+			if (noInstall) {
+				expect(boundaryMocks.applyInstalledPlan).toHaveBeenCalledTimes(1);
+				expect(Subprocess.run).not.toHaveBeenCalled();
+			}
+		},
+	);
+
+	it("reports a dropped empty file without a trailing listing", async () => {
+		boundaryMocks.applyInstalledPlan.mockResolvedValueOnce({
+			dependenciesChanged: false,
+			retained: [],
+			declined: [],
+			dropped: [{ path: "biome.json", lines: "\n" }],
+		});
+
+		await runSwitch(project, { ...request, noInstall: true });
+
+		expect(promptMocks.warn).toHaveBeenCalledWith(
+			"Biome is gone, so we removed biome.json and the changes you made to it. They're still in your last commit.",
+		);
 	});
 });

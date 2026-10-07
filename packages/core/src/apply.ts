@@ -61,6 +61,12 @@ export interface ApplyPlan {
 export interface ApplyResult {
 	readonly retained: ReadonlyArray<string>;
 	readonly declined: ReadonlyArray<DeclinedChange>;
+	readonly dropped: ReadonlyArray<DroppedEdit>;
+}
+
+export interface DroppedEdit {
+	readonly path: string;
+	readonly lines: string;
 }
 
 export interface DeclinedChange {
@@ -85,8 +91,14 @@ export type ApplyResolution =
 			readonly resolution: ConflictResolution;
 	  };
 
+export interface DepartingAddons {
+	readonly definitionIds: ReadonlyArray<string>;
+	readonly committedPaths: ReadonlyArray<string>;
+}
+
 export interface ApplyOptions {
 	readonly conflictResolutions?: Readonly<Record<string, ApplyResolution>>;
+	readonly departing?: DepartingAddons;
 	readonly resolutionPolicy?: ResolutionPolicy;
 }
 
@@ -824,6 +836,18 @@ const makeApply = Effect.gen(function* () {
 		options: ApplyOptions = {},
 	) {
 		const requestedPolicy = options.resolutionPolicy ?? "refuse";
+		const installed = new Set(
+			plan.manifest.installs.map((install) => install.definitionId),
+		);
+
+		const departing = new Set(
+			(options.departing?.definitionIds ?? []).filter(
+				(id) => !installed.has(id),
+			),
+		);
+
+		const committedPaths = new Set(options.departing?.committedPaths ?? []);
+
 		const removedRoots = plan.removedRoots ?? [];
 		const isInRemovedRoot = (path: string) =>
 			removedRoots.some((root) => path === root || path.startsWith(`${root}/`));
@@ -907,6 +931,7 @@ const makeApply = Effect.gen(function* () {
 		const removalsToApply: PreflightPhaseContract["result"]["removals"] = [];
 		const retained: Array<string> = [];
 		const declined: DeclinedChange[] = [];
+		const dropped: DroppedEdit[] = [];
 		const recordDeclined = (path: string, before: string, after: string) => {
 			const diff = unifiedDiff(path, before, after);
 			if (diff === "") return;
@@ -964,6 +989,62 @@ const makeApply = Effect.gen(function* () {
 					resolvedBy: resolvedByFor(relativePath, true),
 				});
 
+				continue;
+			}
+
+			if (
+				departing.size > 0 &&
+				committedPaths.has(relativePath) &&
+				previousArtifact.definitionIds.length > 0 &&
+				previousArtifact.definitionIds.every((id) => departing.has(id))
+			) {
+				const currentContent = yield* readFile(fullPath, relativePath);
+				const currentHash = yield* hashContent(currentContent);
+				const baseDescriptor = previousArtifact.base;
+				const rendered =
+					baseDescriptor === undefined
+						? previousArtifact.hash
+						: baseDescriptor.origin === "adopted"
+							? undefined
+							: baseDescriptor.hash;
+
+				const unedited = currentHash === rendered;
+
+				resolutionFor(relativePath);
+				removalsToApply.push(relativePath);
+				if (unedited) continue;
+
+				let lines = currentContent;
+				if (
+					baseDescriptor !== undefined &&
+					baseDescriptor.origin !== "adopted" &&
+					descriptorMatchesArtifact(previousArtifact) &&
+					(baseDescriptor.mergeKind === "json" ||
+						baseDescriptor.mergeKind === "env" ||
+						baseDescriptor.mergeKind === "lines")
+				) {
+					const base = yield* readBase(
+						projectRoot,
+						previousArtifact,
+						baseDescriptor,
+					);
+
+					if (base !== undefined) {
+						const residue = yield* Effect.result(
+							surfaceResidue(
+								baseDescriptor.mergeKind,
+								relativePath,
+								base,
+								currentContent,
+							),
+						);
+
+						if (Result.isSuccess(residue) && residue.success !== "")
+							lines = residue.success;
+					}
+				}
+
+				dropped.push({ path: relativePath, lines });
 				continue;
 			}
 
@@ -1218,6 +1299,14 @@ const makeApply = Effect.gen(function* () {
 				return true;
 			};
 
+			const preserveUnchangedRender = (base: ArtifactBase) =>
+				previousArtifact !== undefined &&
+				(previousBase === undefined
+					? managedArtifact?.hash === nextHash
+					: previousBase.origin !== "adopted" &&
+						previousBase.hash === nextHash) &&
+				rebaseCurrentContent(base);
+
 			if (adoptMatchingContent(nextHash)) continue;
 			if (managedArtifact === undefined) {
 				if (filePolicy === "accept-forge") {
@@ -1358,6 +1447,8 @@ const makeApply = Effect.gen(function* () {
 					semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
 				} satisfies ArtifactBase;
 
+				if (preserveUnchangedRender(declinedBase)) continue;
+
 				if (fileResolution === "user" && rebaseCurrentContent(declinedBase)) {
 					const base = yield* readBase(
 						projectRoot,
@@ -1395,6 +1486,8 @@ const makeApply = Effect.gen(function* () {
 						mergeKind: "opaque",
 						semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
 					} satisfies ArtifactBase);
+
+				if (preserveUnchangedRender(declinedBase)) continue;
 
 				if (fileResolution === "user" && rebaseCurrentContent(declinedBase)) {
 					if (managedArtifact.hash !== nextHash)
@@ -1708,6 +1801,7 @@ const makeApply = Effect.gen(function* () {
 			const existing = yield* Effect.result(
 				readFile(destination, baseRelative),
 			);
+
 			if (Result.isFailure(existing)) return true;
 
 			return (yield* hashContent(existing.success)) !== hash;
@@ -2069,6 +2163,9 @@ const makeApply = Effect.gen(function* () {
 
 		return {
 			retained: retained.sort(),
+			dropped: dropped.sort((left, right) =>
+				left.path.localeCompare(right.path),
+			),
 			declined: declined
 				.map((change) =>
 					reportsSaved ? change : { ...change, diffPath: undefined },

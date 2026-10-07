@@ -78,6 +78,7 @@ beforeEach(() => {
 
 	lifecycleMocks.applyInstalledPlan.mockResolvedValue({
 		dependenciesChanged: false,
+		dropped: [],
 		retained: [],
 	});
 });
@@ -272,6 +273,7 @@ describe("auth choice lifecycle", () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
 		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
 			dependenciesChanged: true,
+			dropped: [],
 			retained: ["packages/email/src/templates/verification-code.tsx"],
 		});
 
@@ -525,6 +527,7 @@ describe("auth choice lifecycle", () => {
 			expect(promptMocks.intro).toHaveBeenCalledWith(
 				'We\'re adding "Admin"...',
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
