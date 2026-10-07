@@ -280,6 +280,11 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			"app/providers.tsx",
 			providers,
 		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"app/icon.svg",
+			readTemplate("frameworks/favicon.svg"),
+		),
 		...selfHostedCorsContributions(config, instance),
 		...(instance.primary &&
 		(config.backend === undefined || config.backend === "self") &&
