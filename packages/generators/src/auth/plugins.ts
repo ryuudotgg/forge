@@ -89,6 +89,7 @@ const authPluginDefinitions = {
 		],
 		fields: { session: [{ name: "activeOrganizationId", type: "string" }] },
 		tables: organizationTables,
+		emitsNamelessTypes: true,
 	},
 	"email-otp": {
 		server: [
