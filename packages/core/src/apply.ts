@@ -14,16 +14,18 @@ import { ApplyError, type ApplyRefusalReason, type StateError } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
 import { envResidue, threeWayMergeEnv } from "./merge/env";
-import { jsonResidue, threeWayMergeJson } from "./merge/json";
+import { formatJsonPath, jsonResidue, threeWayMergeJson } from "./merge/json";
 import {
 	appendMissingLines,
 	sectionResidue,
 	threeWayMergeSections,
 } from "./merge/lines";
 import type { MergeConflictResolution } from "./merge/types";
+import { threeWayMergeYaml } from "./merge/yaml";
 import { sortPackageJson } from "./sort/package-json";
 import type {
 	ArtifactBase,
+	FileMergeKind,
 	Lockfile,
 	LockfileArtifact,
 	LockfileInput,
@@ -243,7 +245,10 @@ function descriptorMatchesArtifact(artifact: LockfileArtifact): boolean {
 	if (artifact.base.semanticsVersion !== SURFACE_MERGE_SEMANTICS_VERSION)
 		return false;
 
-	return artifact.kind === "surface" || artifact.base.mergeKind === "opaque";
+	return artifact.kind === "surface"
+		? artifact.base.mergeKind !== "yaml"
+		: artifact.base.mergeKind === "opaque" ||
+				artifact.base.mergeKind === "yaml";
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -285,11 +290,16 @@ function descriptorsCompatible(
 	if (previousBase === undefined)
 		return (
 			nextBase === undefined ||
+			(previous.kind === "file" && nextBase.mergeKind === "yaml") ||
 			(previous.kind === "surface" && nextBase.mergeKind !== "opaque")
 		);
 
 	if (previousBase.mergeKind === "opaque")
-		return nextBase === undefined || nextBase.mergeKind === "opaque";
+		return (
+			nextBase === undefined ||
+			nextBase.mergeKind === "opaque" ||
+			(previous.kind === "file" && nextBase.mergeKind === "yaml")
+		);
 
 	return (
 		nextBase !== undefined &&
@@ -354,18 +364,6 @@ function valueAtPath(
 	}
 
 	return current;
-}
-
-function formatJsonPath(path: ReadonlyArray<string>): string {
-	return path
-		.map((segment, index) =>
-			/^[A-Za-z_$][\w$]*$/.test(segment)
-				? index === 0
-					? segment
-					: `.${segment}`
-				: `[${JSON.stringify(segment)}]`,
-		)
-		.join("");
 }
 
 export function describeConflictValue(value: unknown): string {
@@ -721,14 +719,42 @@ const makeApply = Effect.gen(function* () {
 	});
 
 	const mergeSurface = Effect.fn("Apply.mergeSurface")(function* (
-		kind: SurfaceMergeKind,
+		kind: SurfaceMergeKind | FileMergeKind,
 		path: string,
 		base: string,
 		current: string,
 		incoming: string,
 		resolution?: MergeConflictResolution,
 		resolveConflict?: (label: string) => MergeConflictResolution | undefined,
+		syntheticBase = false,
 	) {
+		if (kind === "yaml") {
+			for (const { document, content } of [
+				{ document: "base", content: base },
+				{ document: "incoming", content: incoming },
+			])
+				if (threeWayMergeYaml(content, content, content) === undefined)
+					return yield* new ApplyError({
+						path,
+						reason: "preflight-failed",
+						detail: `Managed YAML Parse Failed: ${path} (${document})`,
+					});
+
+			const merged = threeWayMergeYaml(
+				base,
+				current,
+				incoming,
+				resolution,
+				resolveConflict,
+				syntheticBase,
+			);
+
+			if (merged === undefined)
+				return yield* new ApplyError({ path, reason: "managed-file-modified" });
+
+			return merged;
+		}
+
 		if (kind === "env")
 			return threeWayMergeEnv(
 				base,
@@ -1009,7 +1035,8 @@ const makeApply = Effect.gen(function* () {
 			const baseDescriptor = previousArtifact.base;
 			if (
 				baseDescriptor === undefined ||
-				baseDescriptor.mergeKind === "opaque"
+				baseDescriptor.mergeKind === "opaque" ||
+				baseDescriptor.mergeKind === "yaml"
 			) {
 				refusals.push({
 					path: relativePath,
@@ -1316,7 +1343,10 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (previousBase?.mergeKind === "opaque") {
+			if (
+				nextBase?.mergeKind !== "yaml" &&
+				previousBase?.mergeKind === "opaque"
+			) {
 				if (fileResolution === "forge") {
 					writesToApply.push(file);
 					continue;
@@ -1349,7 +1379,10 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (previousBase === undefined || nextBase === undefined) {
+			const kind =
+				nextBase?.mergeKind === "yaml" ? "yaml" : previousBase?.mergeKind;
+
+			if (nextBase === undefined || kind === undefined || kind === "opaque") {
 				if (fileResolution === "forge") {
 					writesToApply.push(file);
 					continue;
@@ -1380,12 +1413,14 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			const mergeBase =
-				previousBase.origin === "adopted"
-					? previousBase.mergeKind === "json"
-						? "{}\n"
-						: ""
-					: yield* readBase(projectRoot, managedArtifact, previousBase);
+			const syntheticBase =
+				previousBase === undefined || previousBase.origin === "adopted";
+
+			const mergeBase = syntheticBase
+				? kind === "json"
+					? "{}\n"
+					: ""
+				: yield* readBase(projectRoot, managedArtifact, previousBase);
 
 			if (mergeBase === undefined) {
 				if (fileResolution === "forge") {
@@ -1408,13 +1443,14 @@ const makeApply = Effect.gen(function* () {
 
 			const mergedResult = yield* Effect.result(
 				mergeSurface(
-					previousBase.mergeKind,
+					kind,
 					file.path,
 					mergeBase,
 					currentContent,
 					file.content,
 					mergeResolutionFor(file.path),
 					(label) => resolutionFor(file.path, `${file.path} -> ${label}`),
+					syntheticBase,
 				),
 			);
 

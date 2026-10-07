@@ -1305,6 +1305,7 @@ const makePlanner = Effect.gen(function* () {
 				readonly definitionIds: ReadonlyArray<string>;
 				readonly preserveExisting: boolean;
 				readonly generated: boolean;
+				readonly mergeKind?: "yaml";
 			}
 		>();
 
@@ -1378,6 +1379,7 @@ const makePlanner = Effect.gen(function* () {
 						if (
 							sameTarget &&
 							existing.content === contribution.content &&
+							existing.mergeKind === contribution.mergeKind &&
 							existing.definitionIds.includes(entry.definitionId)
 						)
 							continue;
@@ -1394,6 +1396,9 @@ const makePlanner = Effect.gen(function* () {
 						definitionIds: [entry.definitionId],
 						preserveExisting: contribution.preserveExisting === true,
 						generated: contribution.generated === true,
+						...(contribution.mergeKind === undefined
+							? {}
+							: { mergeKind: contribution.mergeKind }),
 					});
 				}
 			}
@@ -1406,6 +1411,7 @@ const makePlanner = Effect.gen(function* () {
 				path: filePath(path),
 				...(file.preserveExisting ? { preserveExisting: true } : {}),
 				...(file.generated ? { generated: true } : {}),
+				...(file.mergeKind === undefined ? {} : { mergeKind: file.mergeKind }),
 			}),
 		);
 	});
@@ -1507,6 +1513,15 @@ const makePlanner = Effect.gen(function* () {
 					: `module:${file.bucket.moduleId}`;
 
 			artifacts[`${targetKey}:file:${path}`] = {
+				...(file.mergeKind === undefined
+					? {}
+					: {
+							base: {
+								hash,
+								mergeKind: file.mergeKind,
+								semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
+							},
+						}),
 				...(file.generated === true ? { generated: true } : {}),
 				definitionIds: [...file.generators],
 				hash,

@@ -269,6 +269,7 @@ describe("json", () => {
 				'artifacts.a.base.mergeKind: Expected "json", actual "toml"',
 				'artifacts.a.base.mergeKind: Expected "lines", actual "toml"',
 				'artifacts.a.base.mergeKind: Expected "env", actual "toml"',
+				'artifacts.a.base.mergeKind: Expected "yaml", actual "toml"',
 				'artifacts.a.base.mergeKind: Expected "opaque", actual "toml"',
 				'artifacts.a.base: Expected undefined, actual {"hash":"b","mergeKind":"toml","semanticsVersion":1}',
 				'artifacts: Expected undefined, actual {"a":{"kind":"file","definitionIds":[],"hash":"h","path":"p","base":{"hash":"b","mergeKind":"toml","semanticsVersion":1}}}',

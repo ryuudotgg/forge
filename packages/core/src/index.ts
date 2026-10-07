@@ -198,6 +198,7 @@ export { envResidue, threeWayMergeEnv } from "./merge/env";
 export type { JsonMergeResult } from "./merge/json";
 export {
 	deepMerge,
+	formatJsonPath,
 	jsonResidue,
 	mergeJson,
 	threeWayMergeJson,
@@ -210,6 +211,7 @@ export {
 	threeWayMergeLines,
 	threeWayMergeSections,
 } from "./merge/lines";
+export { threeWayMergeYaml } from "./merge/yaml";
 export type {
 	Dependency,
 	DependencyFormat,
@@ -238,6 +240,7 @@ export type {
 	ArtifactBase,
 	ArtifactIndex,
 	ArtifactMergeKind,
+	FileMergeKind,
 	InstallRecord,
 	InstallTarget,
 	Lockfile,

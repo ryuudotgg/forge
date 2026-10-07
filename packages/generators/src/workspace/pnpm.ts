@@ -19,6 +19,7 @@ const pnpm = defineAddon<ForgeConfig, "pnpm">({
 			projectTarget(),
 			"pnpm-workspace.yaml",
 			buildWorkspaceYaml(config),
+			{ mergeKind: "yaml" },
 		),
 	],
 });

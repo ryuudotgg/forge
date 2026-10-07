@@ -71,8 +71,12 @@ export type LockfileArtifactKind = typeof LockfileArtifactKindSchema.Type;
 const SurfaceMergeKindSchema = Schema.Literals(["json", "lines", "env"]);
 export type SurfaceMergeKind = typeof SurfaceMergeKindSchema.Type;
 
+const FileMergeKindSchema = Schema.Literal("yaml");
+export type FileMergeKind = typeof FileMergeKindSchema.Type;
+
 const ArtifactMergeKindSchema = Schema.Union([
 	SurfaceMergeKindSchema,
+	FileMergeKindSchema,
 	Schema.Literal("opaque"),
 ]);
 
