@@ -6,6 +6,7 @@ import {
 	type WebAppConfig,
 	type WebFramework,
 	webAppPortIssue,
+	webDevPort,
 	webFrameworks,
 } from "@ryuugg/generators";
 import { Effect, Result, Schema } from "effect";
@@ -82,7 +83,7 @@ export const primaryWebAppRefusal =
 
 const portPatterns = [
 	/--port[=\s]+(\d+)/g,
-	/(?:^|\s)-p\s+(\d+)/g,
+	/(?:^|\s)-p\s*(\d+)/g,
 	/\bPORT=(\d+)/g,
 ];
 
@@ -494,16 +495,23 @@ export function adoptionRefusal(
 ) {
 	if (resolved.web === undefined) return undefined;
 
+	const unbound = unboundRefusal(resolved.secondaries, context);
+	if (unbound !== undefined) return unbound;
+
+	const port = webDevPort(resolved.web);
+	const secondary = resolved.secondaries.find(({ app }) => app.port === port);
+	if (secondary !== undefined)
+		return refuse(
+			`We couldn't adopt ${secondary.root} on port ${port} because Forge runs the primary web app on port ${port}. Give ${secondary.root} another port in its dev script and run forge init again.`,
+		);
+
 	const backend = backends.normalize(context.backend);
-	return (
-		unboundRefusal(resolved.secondaries, context) ??
-		portRefusal(
-			webAppPortIssue({
-				web: resolved.web,
-				webApps: resolved.webApps,
-				...(backend === undefined ? {} : { backend }),
-			}),
-		)
+	return portRefusal(
+		webAppPortIssue({
+			web: resolved.web,
+			webApps: resolved.webApps,
+			...(backend === undefined ? {} : { backend }),
+		}),
 	);
 }
 

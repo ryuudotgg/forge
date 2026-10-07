@@ -9,8 +9,11 @@ import {
 	choosePrimaryWebRoot,
 	confirmDetection,
 	confirmMappings,
+	initSteps,
 	runInit,
 } from "../src/commands/init";
+import { assembleSchema } from "../src/config";
+import { SKIP } from "../src/steps/types";
 import { withTempDir, writeJson, writeText } from "./lifecycle-fixtures";
 
 async function webFixture(directory: string) {
@@ -62,6 +65,20 @@ describe("init wizard", () => {
 		promptMocks.multiselect.mockReset();
 		promptMocks.note.mockReset();
 		promptMocks.select.mockReset();
+	});
+
+	it("keeps adopted web apps without offering new ones", async () => {
+		const initStepList = initSteps({});
+		const webAppsStep = initStepList.find((step) => step.id === "webApps");
+
+		expect(
+			await webAppsStep?.execute({ platforms: ["web"], web: "nextjs" }, true),
+		).toBe(SKIP);
+
+		expect(promptMocks.confirm).not.toHaveBeenCalled();
+		expect(Object.keys(assembleSchema(initStepList).fields)).toContain(
+			"webApps",
+		);
 	});
 
 	it("refuses pre-existing Forge directories without deleting their contents", async () => {
