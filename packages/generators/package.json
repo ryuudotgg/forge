@@ -32,6 +32,7 @@
 		"@orpc/server": "catalog:scaffold",
 		"@polar-sh/better-auth": "catalog:scaffold",
 		"@polar-sh/sdk": "catalog:scaffold",
+		"@ryuugg/stanza": "catalog:lint",
 		"@ryuugg/temper": "workspace:*",
 		"@ryuugg/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",

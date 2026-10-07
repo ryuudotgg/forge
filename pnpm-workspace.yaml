@@ -45,6 +45,9 @@ catalogs:
     "@commitlint/types": ^21.2.3
     sherif: ^1.13.0
 
+    # Blank Line Layout
+    "@ryuugg/stanza": 0.3.3
+
   # ===== MONOREPO =====
   monorepo:
     turbo: ^2.11.7
