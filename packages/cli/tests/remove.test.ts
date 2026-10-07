@@ -3,6 +3,7 @@ import {
 	defineAdapter,
 	defineAddon,
 } from "@ryuugg/core";
+import * as generators from "@ryuugg/generators";
 import {
 	type AuthMethod,
 	type ForgeConfig,
@@ -15,7 +16,9 @@ import { runRemove } from "../src/commands/remove";
 import {
 	adminModule,
 	appModule,
+	failingAddonRegistry,
 	managedProject,
+	planningFailures,
 	reactRouterModule,
 } from "./lifecycle-fixtures";
 
@@ -122,6 +125,53 @@ vi.mock("../src/commands/lifecycle", () => ({
 }));
 
 describe("remove command", () => {
+	it.each(planningFailures)(
+		"prints planning failure: $message",
+		async ({ failure, message }) => {
+			const loaded = failingAddonRegistry(failure);
+			const registry = vi
+				.spyOn(generators, "loadDefinitionRegistry")
+				.mockReturnValue(loaded);
+
+			const lifecycle = await vi.importActual<
+				typeof import("../src/commands/lifecycle")
+			>("../src/commands/lifecycle");
+
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					config: { slug: "acme", addons: ["vitest"] },
+					modules: [],
+					installs: [
+						{ definitionId: "test-refusal", targets: [{ kind: "project" }] },
+						{ definitionId: "vitest", targets: [{ kind: "project" }] },
+					],
+				}),
+			);
+
+			lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
+			lifecycleMocks.applyInstalledPlan.mockImplementation(
+				(...args: Parameters<typeof lifecycle.applyInstalledPlan>) =>
+					lifecycle.applyInstalledPlan(args[0], args[1], args[2], {
+						node: "22.11.0",
+						pnpm: "10.12.1",
+					}),
+			);
+
+			try {
+				await expect(runRemove("vitest", {})).rejects.toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(message);
+				expect(exit).toHaveBeenCalledWith(1);
+			} finally {
+				registry.mockRestore();
+				exit.mockRestore();
+			}
+		},
+	);
+
 	it("reports a removed secondary name clearly on rerun", async () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
 			throw new Error(`exit:${code ?? 0}`);

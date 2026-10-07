@@ -48,6 +48,7 @@ import { createPackageManagerStep } from "../steps/project/package-manager";
 import { createPathStep } from "../steps/project/path";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
+import { refusalMessage } from "../utils/refusal";
 import { slugify } from "../utils/slugify";
 import {
 	type AdoptedModuleVersions,
@@ -701,7 +702,8 @@ function executeAdoptionPlanning(
 			Effect.catch((failure) =>
 				Effect.sync(() =>
 					reportFailure(
-						`We couldn't plan this adoption. ${failure instanceof Error ? failure.message : String(failure)}`,
+						refusalMessage(failure) ??
+							`We couldn't plan this adoption. ${failure instanceof Error ? failure.message : String(failure)}`,
 					),
 				),
 			),

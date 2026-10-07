@@ -1,6 +1,8 @@
+import { Refusal } from "@ryuugg/core";
 import {
 	type AuthMethod,
 	type AuthPlugin,
+	authMethods,
 	authPlugins,
 	type ForgeConfig,
 } from "../config";
@@ -13,6 +15,9 @@ import {
 	passkeyTable,
 	twoFactorTable,
 } from "./tables";
+
+const listAnd = new Intl.ListFormat("en", { type: "conjunction" });
+const listOr = new Intl.ListFormat("en", { type: "disjunction" });
 
 export interface AuthField {
 	readonly name: string;
@@ -296,17 +301,44 @@ export function twoFactorSkippingMethods(
 		: [];
 }
 
+export function authPluginRequirementMessage(
+	plugins: ReadonlyArray<AuthPlugin>,
+) {
+	const labels = listAnd.format(
+		plugins.map((plugin) => authPlugins.label(plugin)),
+	);
+
+	const methods = new Set(
+		plugins.flatMap((plugin) => {
+			const required = authPluginRequirement(plugin);
+			return required === undefined ? [] : [authMethods.label(required)];
+		}),
+	);
+
+	return `${labels} ${plugins.length === 1 ? "needs" : "need"} ${methods.size === 1 ? "this sign-in method" : "these sign-in methods"}: ${listAnd.format(methods)}.`;
+}
+
+export function twoFactorSkippedMessage(methods: ReadonlyArray<AuthMethod>) {
+	const labels = listOr.format(
+		methods.map((method) => authMethods.label(method)),
+	);
+
+	return methods.length === 1
+		? `Two-factor doesn't work with ${labels}, because that sign-in skips the second factor.`
+		: `Two-factor doesn't work with ${labels}, because those sign-ins skip the second factor.`;
+}
+
 export function resolveAuthPlugins(
 	config: ForgeConfig,
 ): ReadonlyArray<AuthPlugin> {
 	const plugins = selectedAuthPlugins(config);
-	const missing = unmetAuthPluginRequirements(config)[0];
-	if (missing !== undefined)
-		throw new Error(`Auth Plugin Requirement: ${missing}`);
+	const missing = unmetAuthPluginRequirements(config);
+	if (missing.length > 0)
+		throw new Refusal({ message: authPluginRequirementMessage(missing) });
 
 	const skipping = twoFactorSkippingMethods(config);
 	if (skipping.length > 0)
-		throw new Error(`Two Factor Conflict: ${skipping.join(", ")}`);
+		throw new Refusal({ message: twoFactorSkippedMessage(skipping) });
 
 	return plugins;
 }

@@ -38,6 +38,7 @@ import {
 	runCliEffect,
 	runCliEffectValue,
 } from "../runtime";
+import { refusalMessage } from "../utils/refusal";
 import {
 	canResolveInteractively,
 	isInteractiveLifecycleSession,
@@ -100,6 +101,12 @@ function reportLifecycleFailure(
 	failure: { readonly message: string },
 	failureMessage: string,
 ): never {
+	const refusal = refusalMessage(failure);
+	if (refusal !== undefined) {
+		log.error(refusal);
+		process.exit(1);
+	}
+
 	if (
 		failure instanceof StateError &&
 		(failure.reason === "schema-version-unknown" ||

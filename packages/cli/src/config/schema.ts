@@ -1,14 +1,12 @@
 import {
 	authPasskeyIssue,
+	authPluginRequirementMessage,
+	twoFactorSkippedMessage,
 	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
 	webAppPortIssue,
 } from "@ryuugg/generators";
 import { Effect, Schema } from "effect";
-import {
-	authPluginRequirementMessage,
-	twoFactorSkippedMessage,
-} from "../steps/auth/plugins";
 import * as schemas from "../steps/schemas";
 import type { Step } from "../steps/types";
 

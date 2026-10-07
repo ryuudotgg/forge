@@ -1,17 +1,15 @@
 import { isCancel, log, multiselect } from "@clack/prompts";
 import {
-	type AuthMethod,
 	type AuthPlugin,
-	authMethods,
-	authPluginRequirement,
+	authPluginRequirementMessage,
 	authPlugins,
+	twoFactorSkippedMessage,
 	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
 } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { choiceOptions, unsupportedMessage } from "../../utils/choices";
-import { listAnd, listOr } from "../../utils/list";
 import { defineStep, SKIP } from "../types";
 
 export const authPluginsSchema = Schema.Array(
@@ -29,33 +27,6 @@ export const authPluginsSchema = Schema.Array(
 		}),
 	),
 );
-
-export function authPluginRequirementMessage(
-	plugins: ReadonlyArray<AuthPlugin>,
-) {
-	const labels = listAnd.format(
-		plugins.map((plugin) => authPlugins.label(plugin)),
-	);
-
-	const methods = new Set(
-		plugins.flatMap((plugin) => {
-			const required = authPluginRequirement(plugin);
-			return required === undefined ? [] : [authMethods.label(required)];
-		}),
-	);
-
-	return `${labels} ${plugins.length === 1 ? "needs" : "need"} ${methods.size === 1 ? "this sign-in method" : "these sign-in methods"}: ${listAnd.format(methods)}.`;
-}
-
-export function twoFactorSkippedMessage(methods: ReadonlyArray<AuthMethod>) {
-	const labels = listOr.format(
-		methods.map((method) => authMethods.label(method)),
-	);
-
-	return methods.length === 1
-		? `Two-factor doesn't work with ${labels}, because that sign-in skips the second factor.`
-		: `Two-factor doesn't work with ${labels}, because those sign-ins skip the second factor.`;
-}
 
 const authPluginsStep = defineStep<typeof authPluginsSchema.Type>({
 	id: "authPlugins",

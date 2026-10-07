@@ -13,6 +13,7 @@ import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import generateStep from "../src/steps/generate";
 import { SKIP } from "../src/steps/types";
+import { failingAddonRegistry, planningFailures } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
@@ -39,6 +40,31 @@ async function readJson(path: string): Promise<unknown> {
 }
 
 describe("generate step", () => {
+	it.each(planningFailures)(
+		"preserves definition failure: $message",
+		async ({ failure }) => {
+			const loaded = failingAddonRegistry(failure);
+			const registry = vi
+				.spyOn(generators, "loadDefinitionRegistry")
+				.mockReturnValue(loaded);
+
+			const expected =
+				"_tag" in failure && failure._tag === "Refusal"
+					? failure.message
+					: "Generation Failed: Definition Failed: boom";
+
+			try {
+				await withTempDir("generate-refusal", async (directory) => {
+					await expect(
+						generateStep.execute({ path: directory, slug: "acme" }, false),
+					).rejects.toHaveProperty("message", expected);
+				});
+			} finally {
+				registry.mockRestore();
+			}
+		},
+	);
+
 	beforeEach(() => {
 		promptMocks.logError.mockReset();
 		vi.spyOn(generators, "probeWorkspaceCommandVersions").mockReturnValue(

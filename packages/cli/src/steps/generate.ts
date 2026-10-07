@@ -9,6 +9,7 @@ import {
 } from "@ryuugg/generators";
 import { Effect } from "effect";
 import { runCliEffectValue } from "../runtime";
+import { refusalMessage } from "../utils/refusal";
 import type { PartialConfig } from "./types";
 import { defineStep, SKIP } from "./types";
 
@@ -66,6 +67,9 @@ const generateStep = defineStep({
 				}),
 			);
 		} catch (error) {
+			const refusal = refusalMessage(error);
+			if (refusal !== undefined) throw new Error(refusal);
+
 			const message =
 				error instanceof ApplyError
 					? formatApplyError(error)

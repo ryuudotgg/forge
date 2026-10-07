@@ -129,6 +129,34 @@ export function definitionKey<ConfigValue>(
 	return `${definition._tag}:${definition.id}`;
 }
 
+function isRefusal(cause: unknown): cause is { readonly message: string } {
+	return (
+		typeof cause === "object" &&
+		cause !== null &&
+		"_tag" in cause &&
+		cause._tag === "Refusal" &&
+		"message" in cause &&
+		typeof cause.message === "string"
+	);
+}
+
+function contributionFailure(generatorId: string, cause: unknown) {
+	if (isRefusal(cause))
+		return new GeneratorError({
+			generatorId,
+			reason: "refused",
+			detail: cause.message,
+			cause,
+		});
+
+	return new GeneratorError({
+		generatorId,
+		reason: "definition-failed",
+		detail: cause instanceof Error ? cause.message : String(cause),
+		cause,
+	});
+}
+
 function normalizeContributionResult(
 	generatorId: string,
 	contribute: () =>
@@ -141,27 +169,14 @@ function normalizeContributionResult(
 		try {
 			result = contribute();
 		} catch (error) {
-			return Effect.fail(
-				new GeneratorError({
-					generatorId,
-					reason: "definition-failed",
-					detail: error instanceof Error ? error.message : String(error),
-					cause: error,
-				}),
-			);
+			return Effect.fail(contributionFailure(generatorId, error));
 		}
 
 		if (Effect.isEffect(result)) return result;
 		if (result instanceof Promise)
 			return Effect.tryPromise({
 				try: () => result,
-				catch: (cause) =>
-					new GeneratorError({
-						generatorId,
-						reason: "definition-failed",
-						detail: cause instanceof Error ? cause.message : String(cause),
-						cause,
-					}),
+				catch: (cause) => contributionFailure(generatorId, cause),
 			});
 
 		return Effect.succeed(result);

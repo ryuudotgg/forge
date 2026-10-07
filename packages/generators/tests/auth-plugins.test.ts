@@ -1,3 +1,4 @@
+import { Refusal } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import {
 	type AuthPlugin,
@@ -666,11 +667,14 @@ describe("auth plugins", () => {
 		};
 
 		expect(() => resolveAuthPlugins(config)).toThrow(
-			"Auth Plugin Requirement: username",
+			new Refusal({
+				message: "Username needs this sign-in method: Email and password.",
+			}),
 		);
+		expect(() => resolveAuthPlugins(config)).toThrow(Refusal);
 
 		await expect(plannedProject(config)).rejects.toThrow(
-			"Auth Plugin Requirement: username",
+			"Username needs this sign-in method: Email and password.",
 		);
 
 		expect(resolveAuthPlugins({ ...config, authPlugins: ["admin"] })).toEqual([
@@ -683,7 +687,11 @@ describe("auth plugins", () => {
 				backend: "self",
 				authMethods: undefined,
 			}),
-		).toThrow("Auth Plugin Requirement: username");
+		).toThrow(
+			new Refusal({
+				message: "Username needs this sign-in method: Email and password.",
+			}),
+		);
 
 		expect(resolveAuthPlugins({ ...config, authMethods: undefined })).toEqual([
 			"username",

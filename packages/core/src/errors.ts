@@ -8,7 +8,12 @@ function formatCause(cause: unknown) {
 
 const optionalCause = Schema.optional(Schema.Defect());
 
+export class Refusal extends Schema.TaggedError<Refusal>()("Refusal", {
+	message: Schema.String,
+}) {}
+
 const GeneratorErrorReason = Schema.Literals([
+	"refused",
 	"definition-failed",
 	"api-host-required",
 	"framework-template-required",
@@ -34,6 +39,7 @@ const GeneratorErrorFields = Schema.Struct({
 type GeneratorErrorPayload = typeof GeneratorErrorFields.Type;
 
 const generatorRequiredFields = {
+	refused: ["detail"],
 	"definition-failed": ["detail"],
 	"api-host-required": ["generatorName", "frameworkName"],
 	"framework-template-required": ["generatorName"],
@@ -68,6 +74,7 @@ export class GeneratorError extends Schema.TaggedError<GeneratorError>()(
 }
 
 const generatorMessages = {
+	refused: (error: GeneratorError) => error.detail ?? "",
 	"definition-failed": (error: GeneratorError) =>
 		`Definition Failed: ${error.detail ?? ""}`,
 	"api-host-required": (error: GeneratorError) =>

@@ -34,6 +34,7 @@ import {
 	PlannerError,
 	type ProjectPlan,
 	projectTarget,
+	Refusal,
 	type RegistryDescriptor,
 	type RenderBucket,
 	Renderer,
@@ -1149,7 +1150,7 @@ describe("planner", () => {
 				targetMode: "single",
 				when: () => true,
 				contribute: () => {
-					throw new Error("definition exploded");
+					throw new Error("boom");
 				},
 			});
 
@@ -1168,12 +1169,56 @@ describe("planner", () => {
 
 			expect(error).toBeDefined();
 			expect(error?.generatorId).toBe("throwing-addon");
-			expect(error?.message).toBe("Definition Failed: definition exploded");
+			expect(error?.message).toBe("Definition Failed: boom");
 			expect(
 				Exit.isFailure(exit) && Result.isFailure(Cause.findDefect(exit.cause)),
 			).toBe(true);
 		});
 	});
+
+	it.each(["sync", "async", "bundled"])(
+		"preserves a %s definition refusal without a prefix",
+		async (mode) => {
+			await withTempDir("planner-refusal", async (directory) => {
+				const message = "The test addon refuses this project.";
+				const refusal =
+					mode === "bundled"
+						? { _tag: "Refusal", message }
+						: new Refusal({ message });
+
+				const addon = defineAddon<TestConfig>({
+					id: "refusing-addon",
+					name: "Refusing Addon",
+					version: "0.1.0",
+					category: "addon",
+					exclusive: false,
+					targetMode: "single",
+					when: () => true,
+					contribute: () => {
+						if (mode === "async") return Promise.reject(refusal);
+						throw refusal;
+					},
+				});
+
+				const registry = defineRegistry({
+					addons: [addon],
+					adapters: [],
+					frameworks: [],
+					templates: [],
+				});
+
+				const exit = await Effect.runPromiseExit(
+					planCreateEffect(directory, {}, registry),
+				);
+
+				const error = generatorFailure(exit);
+
+				expect(error?.reason).toBe("refused");
+				expect(error?.message).toBe(message);
+				expect(error?.cause).toBe(refusal);
+			});
+		},
+	);
 
 	it("accepts resolved Promise definition contributions", async () => {
 		await withTempDir("planner-definition-promise", async (directory) => {
