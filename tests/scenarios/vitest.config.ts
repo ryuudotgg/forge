@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { SmokeSequencer } from "./src/utils/smoke-sequencer";
 
 const DEFAULT_SCENARIO_TIMEOUT = 30_000;
 
@@ -8,6 +9,7 @@ export default defineConfig({
 		globalSetup: ["./src/utils/global-setup.ts"],
 		hookTimeout: DEFAULT_SCENARIO_TIMEOUT,
 		include: ["src/scenarios/**/*.test.ts", "src/scenarios/**/*.smoke.test.ts"],
+		sequence: { sequencer: SmokeSequencer },
 		testTimeout: DEFAULT_SCENARIO_TIMEOUT,
 	},
 });

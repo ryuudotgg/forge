@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
 	access,
+	appendFile,
 	mkdir,
 	mkdtemp,
 	readFile,
@@ -12,6 +13,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { Schema } from "effect";
 import { expect, inject } from "vitest";
 
 const turboCacheSummaryPattern = /^\s*Cached:\s+(\d+ cached, \d+ total)/m;
@@ -79,7 +81,9 @@ export async function withScenarioWorkspace<T>(
 		await mkdir(projectRoot, { recursive: true });
 		return await run({ projectRoot, workspaceRoot });
 	} finally {
+		const startedAt = Date.now();
 		await rm(workspaceRoot, { force: true, recursive: true });
+		await recordCommandTiming("teardown", [], startedAt);
 	}
 }
 
@@ -110,38 +114,66 @@ export async function runCommand(
 		readonly input?: string;
 	},
 ): Promise<ForgeCommandResult> {
-	return await new Promise((resolvePromise, rejectPromise) => {
-		const child = spawn(command, args, {
-			cwd: options.cwd,
-			env: { ...process.env, ...options.env },
-		});
+	const startedAt = Date.now();
 
-		let stdout = "";
-		let stderr = "";
-
-		child.stdout.on("data", (chunk: Buffer | string) => {
-			stdout += chunk.toString();
-		});
-
-		child.stderr.on("data", (chunk: Buffer | string) => {
-			stderr += chunk.toString();
-		});
-
-		child.on("error", (error) => {
-			rejectPromise(error);
-		});
-
-		child.on("close", (code) => {
-			resolvePromise({
-				exitCode: code ?? 1,
-				stderr,
-				stdout,
+	const result = await new Promise<ForgeCommandResult>(
+		(resolvePromise, rejectPromise) => {
+			const child = spawn(command, args, {
+				cwd: options.cwd,
+				env: { ...process.env, ...options.env },
 			});
-		});
 
-		if (options.input) child.stdin.write(options.input);
-		child.stdin.end();
-	});
+			let stdout = "";
+			let stderr = "";
+
+			child.stdout.on("data", (chunk: Buffer | string) => {
+				stdout += chunk.toString();
+			});
+
+			child.stderr.on("data", (chunk: Buffer | string) => {
+				stderr += chunk.toString();
+			});
+
+			child.on("error", (error) => {
+				rejectPromise(error);
+			});
+
+			child.on("close", (code) => {
+				resolvePromise({
+					exitCode: code ?? 1,
+					stderr,
+					stdout,
+				});
+			});
+
+			if (options.input) child.stdin.write(options.input);
+			child.stdin.end();
+		},
+	);
+
+	await recordCommandTiming(command, args, startedAt);
+
+	return result;
+}
+
+async function recordCommandTiming(
+	command: string,
+	args: ReadonlyArray<string>,
+	startedAt: number,
+) {
+	const path = process.env.FORGE_SMOKE_TIMINGS;
+	if (!path) return;
+
+	const timing = {
+		args,
+		case: expect.getState().currentTestName ?? "",
+		command: basename(command),
+		durationMs: Date.now() - startedAt,
+		startedAt,
+	};
+
+	await mkdir(dirname(path), { recursive: true });
+	await appendFile(path, `${JSON.stringify(timing)}\n`);
 }
 
 export async function tryRunForge(
@@ -322,6 +354,81 @@ export async function commitFixture(workspace: ScenarioProject) {
 	]);
 }
 
+const randomSecretPattern = /^(?:AUTH_SECRET|WORKER_SECRET)=.*$/gm;
+
+const installConfigFiles = [
+	"package.json",
+	"pnpm-workspace.yaml",
+	".npmrc",
+	".yarnrc.yml",
+	"bunfig.toml",
+];
+
+const TurboTaskSchema = Schema.StructWithRest(
+	Schema.Struct({
+		cache: Schema.optional(Schema.Boolean),
+		inputs: Schema.optional(Schema.Array(Schema.String)),
+	}),
+	[Schema.Record(Schema.String, Schema.Unknown)],
+);
+
+const TurboConfigSchema = Schema.StructWithRest(
+	Schema.Struct({
+		globalDependencies: Schema.optional(Schema.Array(Schema.String)),
+		globalEnv: Schema.optional(Schema.Array(Schema.String)),
+		tasks: Schema.optional(Schema.Record(Schema.String, TurboTaskSchema)),
+	}),
+	[Schema.Record(Schema.String, Schema.Unknown)],
+);
+
+const decodeTurboConfig = Schema.decodeUnknownSync(TurboConfigSchema);
+
+// Turbo hashes the random forge.json ids but never the root .env that dotenv feeds builds.
+async function replayableTurboEnvironment(
+	workspace: ScenarioProject,
+): Promise<NodeJS.ProcessEnv> {
+	const config = decodeTurboConfig(
+		JSON.parse(
+			await readFile(join(workspace.projectRoot, "turbo.json"), "utf-8"),
+		),
+	);
+
+	const tasks = Object.fromEntries(
+		Object.entries(config.tasks ?? {}).map(([name, task]) => [
+			name,
+			task.cache === false
+				? task
+				: {
+						...task,
+						inputs: [...(task.inputs ?? ["$TURBO_DEFAULT$"]), "!forge.json"],
+					},
+		]),
+	);
+
+	const configPath = join(workspace.workspaceRoot, "turbo.json");
+	await writeJson(configPath, {
+		...config,
+		globalDependencies: [
+			...(config.globalDependencies ?? []),
+			...installConfigFiles,
+		],
+		globalEnv: [...(config.globalEnv ?? []), "FORGE_SMOKE_ENV_DIGEST"],
+		tasks,
+	});
+
+	const env = await readFile(
+		join(workspace.projectRoot, ".env"),
+		"utf-8",
+	).catch(() => "");
+
+	return {
+		FORGE_SMOKE_ENV_DIGEST: createHash("sha256")
+			.update(env.replace(randomSecretPattern, ""))
+			.digest("hex"),
+		TURBO_ROOT_TURBO_JSON: configPath,
+	};
+}
+
 const installArgsFor: Record<
 	"pnpm" | "npm" | "yarn" | "bun",
 	ReadonlyArray<string>
@@ -422,7 +529,10 @@ export async function expectInstallAndTypecheck(
 
 	const result = await runCommand(pm, typecheckArgsFor[pm], {
 		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
+		env: {
+			...forgeEnvironment(workspace.workspaceRoot),
+			...(await replayableTurboEnvironment(workspace)),
+		},
 	});
 
 	reportTurboCache(workspace, "typecheck", result);
@@ -452,7 +562,10 @@ export async function expectInstallAndBuild(
 
 	const buildResult = await runCommand(pm, buildArgsFor[pm], {
 		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
+		env: {
+			...forgeEnvironment(workspace.workspaceRoot),
+			...(await replayableTurboEnvironment(workspace)),
+		},
 	});
 
 	reportTurboCache(workspace, "build", buildResult);
@@ -500,7 +613,10 @@ export async function expectInstallBuildAndTypecheck(
 
 	const typecheckResult = await runCommand(pm, typecheckArgsFor[pm], {
 		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
+		env: {
+			...forgeEnvironment(workspace.workspaceRoot),
+			...(await replayableTurboEnvironment(workspace)),
+		},
 	});
 
 	reportTurboCache(workspace, "typecheck", typecheckResult);
