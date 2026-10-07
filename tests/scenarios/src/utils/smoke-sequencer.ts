@@ -1,25 +1,25 @@
 import { basename } from "node:path";
 import { BaseSequencer, type TestSpecification } from "vitest/node";
 
-// Vitest's file size proxy misjudges smoke files, so these come from a cold Install Smoke timing report.
-const coldSmokeSeconds: Readonly<Record<string, number>> = {
-	"install-api-hosts.smoke.test.ts": 324,
-	"install-auth.smoke.test.ts": 302,
-	"install-self-host.smoke.test.ts": 290,
-	"install-database.smoke.test.ts": 211,
-	"install-email.smoke.test.ts": 196,
-	"install-rpc-hosts.smoke.test.ts": 178,
-	"install-web.smoke.test.ts": 136,
-	"install-mobile.smoke.test.ts": 103,
-	"install-tooling.smoke.test.ts": 86,
-	"multi-pm.smoke.test.ts": 68,
-	"install-production.smoke.test.ts": 57,
+// Vitest's file size proxy misjudges smoke files, so these average a cold and a warm Install Smoke timing report.
+const smokeFileSeconds: Readonly<Record<string, number>> = {
+	"install-api-hosts.smoke.test.ts": 223,
+	"install-auth.smoke.test.ts": 209,
+	"install-self-host.smoke.test.ts": 198,
+	"install-email.smoke.test.ts": 151,
+	"install-database.smoke.test.ts": 144,
+	"install-rpc-hosts.smoke.test.ts": 126,
+	"install-mobile.smoke.test.ts": 108,
+	"multi-pm.smoke.test.ts": 101,
+	"install-web.smoke.test.ts": 87,
+	"install-tooling.smoke.test.ts": 53,
+	"install-production.smoke.test.ts": 36,
 };
 
-const unknownFileSeconds = 150;
+const unknownFileSeconds = 120;
 
 function secondsOf(file: TestSpecification) {
-	return coldSmokeSeconds[basename(file.moduleId)] ?? unknownFileSeconds;
+	return smokeFileSeconds[basename(file.moduleId)] ?? unknownFileSeconds;
 }
 
 function longestFirst(files: ReadonlyArray<TestSpecification>) {
