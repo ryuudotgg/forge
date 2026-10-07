@@ -5,6 +5,7 @@ import {
 	ensurePackageModule,
 	leafTextFile,
 	projectTarget,
+	Refusal,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,
@@ -78,13 +79,15 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 		const slug = config.slug ?? "my-app";
 
 		if (config.orm === undefined)
-			throw new Error("You need to add an ORM before you can use Better Auth.");
+			throw new Refusal({
+				message: "You need to add an ORM before you can use Better Auth.",
+			});
 
 		const emailMethods = authEmailMethods(config);
 		if (emailMethods.length > 0 && config.emailProvider === undefined)
-			throw new Error(
-				`${listAnd.format(emailMethods.map((method) => authMethods.label(method)))} ${emailMethods.length === 1 ? "needs" : "need"} an email provider.`,
-			);
+			throw new Refusal({
+				message: `${listAnd.format(emailMethods.map((method) => authMethods.label(method)))} ${emailMethods.length === 1 ? "needs" : "need"} an email provider.`,
+			});
 
 		const failure = apiHostError(config, betterAuthConsumer, frameworks);
 		if (failure !== undefined) return Effect.fail(failure);

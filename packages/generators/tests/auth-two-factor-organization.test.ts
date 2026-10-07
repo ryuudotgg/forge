@@ -1,3 +1,4 @@
+import { Refusal } from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import { authUsesEmail } from "../src/auth/methods";
 import {
@@ -69,6 +70,43 @@ function writeContent(
 }
 
 describe("two-factor and organization", () => {
+	it.each([
+		{
+			authMethods: ["google"],
+			authPlugins: ["two-factor"],
+			message: "Two-factor needs this sign-in method: Email and password.",
+		},
+		{
+			authMethods: ["google"],
+			authPlugins: ["two-factor", "username"],
+			message:
+				"Two-factor and Username need this sign-in method: Email and password.",
+		},
+		{
+			authMethods: ["email-password", "magic-link"],
+			authPlugins: ["two-factor"],
+			message:
+				"Two-factor doesn't work with Magic link, because that sign-in skips the second factor.",
+		},
+		{
+			authMethods: ["email-password", "email-otp", "magic-link"],
+			authPlugins: ["two-factor"],
+			message:
+				"Two-factor doesn't work with Email OTP or Magic link, because those sign-ins skip the second factor.",
+		},
+	] satisfies ReadonlyArray<
+		Pick<ForgeConfig, "authMethods" | "authPlugins"> & { message: string }
+	>)(
+		"throws a Refusal carrying $message",
+		({ authMethods, authPlugins, message }) => {
+			const resolve = () =>
+				resolveAuthPlugins({ ...baseConfig, authMethods, authPlugins });
+
+			expect(resolve).toThrow(Refusal);
+			expect(resolve).toThrow(new Refusal({ message }));
+		},
+	);
+
 	it("requires passwords only for two-factor", () => {
 		expect(authPluginRequirement("two-factor")).toBe("email-password");
 		expect(authPluginRequirement("organization")).toBeUndefined();
@@ -78,7 +116,11 @@ describe("two-factor and organization", () => {
 				authMethods: ["google"],
 				authPlugins: ["two-factor"],
 			}),
-		).toThrow("Auth Plugin Requirement: two-factor");
+		).toThrow(
+			new Refusal({
+				message: "Two-factor needs this sign-in method: Email and password.",
+			}),
+		);
 
 		expect(
 			resolveAuthPlugins({
@@ -122,7 +164,12 @@ describe("two-factor and organization", () => {
 				authMethods: ["email-password", "email-otp", "magic-link"],
 				authPlugins: ["two-factor"],
 			}),
-		).toThrow("Two Factor Conflict: email-otp, magic-link");
+		).toThrow(
+			new Refusal({
+				message:
+					"Two-factor doesn't work with Email OTP or Magic link, because those sign-ins skip the second factor.",
+			}),
+		);
 
 		expect(
 			resolveAuthPlugins({

@@ -1,17 +1,24 @@
+import { log } from "@clack/prompts";
 import { expect, it, vi } from "@effect/vitest";
+import * as generators from "@ryuugg/generators";
 import { Effect, Layer } from "effect";
 import type {
 	applyInstalledPlan as ApplyInstalledPlan,
 	loadManagedProject as LoadManagedProject,
 	loadProjectRegistry as LoadProjectRegistry,
 } from "../src/commands/lifecycle";
+import { applyInstalledPlan } from "../src/commands/lifecycle";
 import {
 	runUpdate,
 	runUpdateEffect,
 	UpdateCommand,
 	type UpdateCommandService,
 } from "../src/commands/update";
-import { managedProject } from "./lifecycle-fixtures";
+import {
+	failingAddonRegistry,
+	managedProject,
+	planningFailures,
+} from "./lifecycle-fixtures";
 
 type ApplyInstalledPlanFunction = typeof ApplyInstalledPlan;
 type LoadManagedProjectFunction = typeof LoadManagedProject;
@@ -67,6 +74,50 @@ function updateFixture(options: UpdateFixtureOptions) {
 		logInfo,
 	};
 }
+
+it.each(planningFailures)(
+	"prints planning failure: $message",
+	async ({ failure, message }) => {
+		const loaded = failingAddonRegistry(failure);
+		const registry = vi
+			.spyOn(generators, "loadDefinitionRegistry")
+			.mockReturnValue(loaded);
+
+		const fixture = updateFixture({
+			registry: loaded,
+			project: managedProject({
+				config: { slug: "acme" },
+				modules: [],
+				installs: [
+					{ definitionId: "test-refusal", targets: [{ kind: "project" }] },
+				],
+			}),
+		});
+
+		const logError = vi.spyOn(log, "error").mockImplementation(() => {});
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		fixture.applyInstalledPlan.mockImplementation(
+			(projectRoot, config, installs) =>
+				applyInstalledPlan(projectRoot, config, installs, {
+					node: "22.11.0",
+					pnpm: "10.12.1",
+				}),
+		);
+
+		try {
+			await expect(runUpdate({}, fixture.layer)).rejects.toThrow("exit:1");
+			expect(logError).toHaveBeenCalledExactlyOnceWith(message);
+			expect(exit).toHaveBeenCalledWith(1);
+		} finally {
+			registry.mockRestore();
+			logError.mockRestore();
+			exit.mockRestore();
+		}
+	},
+);
 
 it.effect("re-applies the plan with the manifest installs", () => {
 	const project = managedProject({

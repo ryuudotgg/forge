@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { log } from "@clack/prompts";
 import { NodeServices } from "@effect/platform-node";
 import { Apply, CliVersion, CommandProbe, CoreLive, State } from "@ryuugg/core";
+import * as generators from "@ryuugg/generators";
 import { type ForgeConfig, loadDefinitionRegistry } from "@ryuugg/generators";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -30,7 +31,13 @@ import {
 } from "../src/commands/init";
 import { cliLayer, withCliRuntime } from "../src/runtime";
 import { firstPartyAddonIds } from "../src/steps/platforms/web-apps";
-import { withTempDir, writeJson, writeText } from "./lifecycle-fixtures";
+import {
+	failingAddonRegistry,
+	planningFailures,
+	withTempDir,
+	writeJson,
+	writeText,
+} from "./lifecycle-fixtures";
 
 const coreLayer = CoreLive.pipe(
 	Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
@@ -153,6 +160,48 @@ async function exists(path: string) {
 }
 
 describe("init command", () => {
+	it.each(planningFailures)(
+		"prints planning failure: $message",
+		async ({ failure }) => {
+			const loaded = failingAddonRegistry(failure);
+			const registry = vi
+				.spyOn(generators, "loadDefinitionRegistry")
+				.mockReturnValue(loaded);
+
+			const logError = vi.spyOn(log, "error").mockImplementation(() => {});
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			const expected =
+				"_tag" in failure && failure._tag === "Refusal"
+					? failure.message
+					: "We couldn't plan this adoption. Definition Failed: boom";
+
+			try {
+				await withTempDir("init-refusal", async (directory) => {
+					await fixture(directory);
+					const configPath = join(directory, "forge.init.json");
+					await writeJson(configPath, {
+						...config,
+						modules: [{ kind: "web-app", root: "apps/web" }],
+					});
+
+					await expect(
+						runInit({ config: configPath }, directory),
+					).rejects.toThrow("exit:1");
+				});
+
+				expect(logError).toHaveBeenNthCalledWith(1, expected);
+				expect(exit).toHaveBeenCalledWith(1);
+			} finally {
+				registry.mockRestore();
+				logError.mockRestore();
+				exit.mockRestore();
+			}
+		},
+	);
+
 	it("rejects unexpected command probes", async () => {
 		await withTempDir("init-unexpected-probe", async (directory) => {
 			await fixture(directory);

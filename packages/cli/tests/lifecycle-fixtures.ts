@@ -6,9 +6,63 @@ import {
 	defineAddon,
 	type InstallRecord,
 	type Manifest,
+	Refusal,
 } from "@ryuugg/core";
-import type { ForgeConfig } from "@ryuugg/generators";
+import { type ForgeConfig, loadDefinitionRegistry } from "@ryuugg/generators";
 import type { ManagedProject } from "../src/commands/lifecycle";
+
+export const planningFailures = [
+	{
+		failure: new Refusal({ message: "The test addon refuses this project." }),
+		message: "The test addon refuses this project.",
+	},
+	{
+		failure: new Error("boom"),
+		message: "We couldn't plan this change. Definition Failed: boom.",
+	},
+];
+
+export function failingAddonRegistry(failure: Error) {
+	const loaded = loadDefinitionRegistry();
+	const addon = defineAddon<ForgeConfig>({
+		id: "test-refusal",
+		name: "Test Refusal",
+		version: "0.1.0",
+		category: "tooling",
+		exclusive: false,
+		targetMode: "single",
+		when: () => true,
+		contribute: () => {
+			throw failure;
+		},
+	});
+
+	return {
+		...loaded,
+		catalog: [
+			...loaded.catalog,
+			{
+				available: true,
+				category: addon.category,
+				description: "Test refusal.",
+				experimental: false,
+				frameworkSources: {},
+				hidden: false,
+				id: addon.id,
+				keywords: [],
+				kind: "addon",
+				name: addon.name,
+				source: "@ryuugg/generators",
+				summary: "Test refusal.",
+				targetMode: addon.targetMode,
+			} satisfies (typeof loaded.catalog)[number],
+		],
+		registry: {
+			...loaded.registry,
+			addons: [...loaded.registry.addons, addon],
+		},
+	};
+}
 
 export async function withTempDir<T>(
 	name: string,

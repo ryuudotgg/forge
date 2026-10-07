@@ -171,6 +171,7 @@ export {
 	ModuleIdGenerationError,
 	PlannerError,
 	PlannerErrors,
+	Refusal,
 	RegistryError,
 	RegistryErrors,
 	RendererError,

@@ -14,7 +14,12 @@ import {
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "../src/commands/lifecycle";
-import { withTempDir, writeJson } from "./lifecycle-fixtures";
+import {
+	failingAddonRegistry,
+	planningFailures,
+	withTempDir,
+	writeJson,
+} from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
@@ -78,6 +83,44 @@ async function scaffoldWebModule(directory: string) {
 }
 
 describe("lifecycle", () => {
+	it.each(planningFailures)(
+		"renders planning failure: $message",
+		async ({ failure, message }) => {
+			const loaded = failingAddonRegistry(failure);
+			const registry = vi
+				.spyOn(generators, "loadDefinitionRegistry")
+				.mockReturnValue(loaded);
+
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				await withTempDir("lifecycle-refusal", async (directory) => {
+					await expect(
+						applyInstalledPlan(
+							directory,
+							{ slug: "acme" },
+							[
+								{
+									definitionId: "test-refusal",
+									targets: [{ kind: "project" }],
+								},
+							],
+							commandVersions,
+						),
+					).rejects.toThrow("exit:1");
+				});
+
+				expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(message);
+				expect(exit).toHaveBeenCalledWith(1);
+			} finally {
+				registry.mockRestore();
+				exit.mockRestore();
+			}
+		},
+	);
+
 	beforeEach(() => {
 		promptMocks.logError.mockReset();
 		promptMocks.logWarn.mockReset();

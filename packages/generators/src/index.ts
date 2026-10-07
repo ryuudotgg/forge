@@ -17,7 +17,9 @@ export {
 } from "./auth/methods";
 export {
 	authPluginRequirement,
+	authPluginRequirementMessage,
 	resolveAuthPlugins,
+	twoFactorSkippedMessage,
 	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
 } from "./auth/plugins";
