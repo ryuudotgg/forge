@@ -66,13 +66,18 @@ jobs:
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
 
   smoke:
-    name: Install Smoke
+    name: Install Smoke (${{ matrix.shard }}/2)
     needs: [changes]
     if: ${{ always() && (github.event_name != 'pull_request' || needs.changes.result == 'failure' || needs.changes.outputs.relevant == 'true') }}
     runs-on: depot-ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
 
     services:
       postgres:
@@ -109,40 +114,38 @@ jobs:
         run: pnpm build --filter=@ryuugg/forge
 
       - name: Smoke Test
-        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install- --maxWorkers=3 --reporter=default --reporter=github-actions --reporter=json --outputFile.json=.cache/install-smoke.json
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install- ${{ github.event_name != 'merge_group' && 'src/scenarios/multi-pm.smoke.test.ts' || '' }} --shard=${{ matrix.shard }}/2 --maxWorkers=3 --reporter=default --reporter=github-actions --reporter=json --outputFile.json=.cache/install-smoke.json
         env:
           FORGE_SMOKE: "1"
           FORGE_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
           FORGE_SMOKE_MYSQL_URL: mysql://root:mysql@127.0.0.1:3306
+          FORGE_SMOKE_TIMINGS: .cache/install-smoke-timings.jsonl
           TURBO_FORCE: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
       - name: Smoke Timing Report
         if: ${{ !cancelled() }}
-        run: node tests/scenarios/scripts/smoke-report.mts tests/scenarios/.cache/install-smoke.json
+        run: node tests/scenarios/scripts/smoke-report.mts tests/scenarios/.cache/install-smoke.json tests/scenarios/.cache/install-smoke-timings.jsonl
 
       - name: Upload Smoke Report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: install-smoke-report
-          path: tests/scenarios/.cache/install-smoke.json
+          name: install-smoke-report-${{ matrix.shard }}
+          path: |
+            tests/scenarios/.cache/install-smoke.json
+            tests/scenarios/.cache/install-smoke-timings.jsonl
 
       - name: Tarball Smoke
+        if: ${{ matrix.shard == 1 }}
         run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/tarball.smoke.test.ts
         env:
           FORGE_SMOKE: "1"
 
       - name: Registry Smoke
+        if: ${{ matrix.shard == 1 }}
         run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/registry.smoke.test.ts
         env:
           FORGE_SMOKE: "1"
-
-      - name: Multi-PM Smoke
-        if: ${{ github.event_name != 'merge_group' }}
-        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/multi-pm.smoke.test.ts
-        env:
-          FORGE_SMOKE: "1"
-          TURBO_FORCE: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
   gate:
     name: Install Smoke Gate
