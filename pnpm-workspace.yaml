@@ -44,6 +44,7 @@ catalogs:
     "@commitlint/config-conventional": ^21.2.3
     "@commitlint/types": ^21.2.3
     sherif: ^1.13.0
+    "@ryuugg/stanza": 0.3.3
 
   # ===== MONOREPO =====
   monorepo:

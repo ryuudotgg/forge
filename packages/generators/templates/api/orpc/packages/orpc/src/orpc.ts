@@ -7,7 +7,6 @@ type Session = __SESSION_TYPE__;
 __SESSION_RESOLVE__
 
 const reportedErrors = new WeakSet<ORPCError<string, unknown>>();
-
 function reported(error: unknown) {
   const wrapper =
     error instanceof ORPCError
@@ -28,10 +27,8 @@ function reported(error: unknown) {
 }
 
 export function reportServerError(error: unknown, path: string) {
-  if (error instanceof ORPCError) {
-    if (error.status < 500 || reportedErrors.has(error)) return;
-  }
-
+  if (error instanceof ORPCError && error.status < 500) return;
+  if (error instanceof ORPCError && reportedErrors.has(error)) return;
   console.error(`❌ oRPC failed on ${path}:`, error);
 }
 
@@ -43,7 +40,6 @@ export const publicProcedure = os
       return await next({ context: { __DB_CTX_VALUE__, session } });
     } catch (error) {
       if (error instanceof ORPCError && error.status < 500) throw error;
-
       reportServerError(error, path.join("."));
       throw reported(error);
     }

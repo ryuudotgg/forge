@@ -69,15 +69,13 @@ function isTrustedProxy(entry: string) {
 
   const ipv4 = z.ipv4().safeParse(address).success;
   if (!ipv4 && !isPlainIPv6(address)) return false;
-
   if (prefix === undefined) return true;
   return /^\d+$/.test(prefix) && Number(prefix) <= (ipv4 ? 32 : 128);
 }
 
 function isPlainIPv6(address: string) {
-  if (!z.ipv6().safeParse(address).success || address.includes(".")) {
+  if (!z.ipv6().safeParse(address).success || address.includes("."))
     return false;
-  }
 
   const [left = "", right] = address.toLowerCase().split("::");
   const leading = left.split(":").filter(Boolean);
