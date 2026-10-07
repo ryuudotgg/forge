@@ -347,7 +347,7 @@ describe("generate step", () => {
 				),
 			).rejects.toHaveProperty(
 				"message",
-				"Generation Failed: Forge cannot safely update these files:\n.gitignore already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
+				"Generation Failed: Forge cannot safely update these files:\n.gitignore already exists and is not managed by Forge.",
 			);
 		});
 	}, 120_000);

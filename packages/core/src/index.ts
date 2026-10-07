@@ -8,6 +8,7 @@ export type {
 	ConflictResolution,
 	FormatApplyErrorOptions,
 	PlannedWrite,
+	ResolutionFlag,
 	ResolutionPolicy,
 } from "./apply";
 export {

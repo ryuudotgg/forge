@@ -400,6 +400,7 @@ const StateErrorReason = Schema.Literals([
 	"manifest-directory-failed",
 	"manifest-write-failed",
 	"lockfile-read-failed",
+	"lockfile-missing",
 	"lockfile-directory-failed",
 	"lockfile-write-failed",
 	"base-hash-invalid",
@@ -439,6 +440,7 @@ const stateRequiredFields = {
 	"manifest-directory-failed": [],
 	"manifest-write-failed": [],
 	"lockfile-read-failed": [],
+	"lockfile-missing": [],
 	"lockfile-directory-failed": [],
 	"lockfile-write-failed": [],
 	"base-hash-invalid": [],
@@ -504,6 +506,8 @@ const stateMessages = {
 	"manifest-directory-failed": () => "Manifest Directory Failed",
 	"manifest-write-failed": () => "Manifest Write Failed",
 	"lockfile-read-failed": () => "Lockfile Read Failed",
+	"lockfile-missing": () =>
+		"This project's .forge/lock.json is missing, so Forge can't tell which files it manages. Restore it from version control, or delete the .forge directory and run forge init to adopt the project again.",
 	"lockfile-directory-failed": () => "Lockfile Directory Failed",
 	"lockfile-write-failed": () => "Lockfile Write Failed",
 	"base-hash-invalid": () => "Invalid Base Hash",
@@ -698,6 +702,9 @@ const ApplyPreflightSchema = Schema.Struct({
 				base: Schema.Unknown,
 				forge: Schema.Unknown,
 				label: Schema.String,
+				resolvedBy: Schema.Array(
+					Schema.Literals(["keep-user", "accept-forge"]),
+				),
 				user: Schema.Unknown,
 			}),
 		),
@@ -707,11 +714,13 @@ const ApplyPreflightSchema = Schema.Struct({
 	hasManagedRefusals: Schema.Boolean,
 	hasUnmanagedRefusals: Schema.Boolean,
 	hasUnmanagedRemovals: Schema.Boolean,
-	removalScoped: Schema.optional(Schema.Boolean),
+	outsideRemoval: Schema.optional(Schema.Array(Schema.String)),
 	refusals: Schema.optional(
 		Schema.Array(
 			Schema.Struct({
-				resolvable: Schema.Boolean,
+				resolvedBy: Schema.Array(
+					Schema.Literals(["keep-user", "accept-forge"]),
+				),
 				reason: ApplyRefusalReason,
 				operation: Schema.Literals(["removal", "write"]),
 				path: Schema.String,

@@ -60,6 +60,7 @@ export interface ApplyResult {
 }
 
 export type ResolutionPolicy = "accept-forge" | "keep-user" | "refuse";
+export type ResolutionFlag = Exclude<ResolutionPolicy, "refuse">;
 export type ConflictResolution = "forge" | "user";
 
 export type ApplyResolution =
@@ -85,6 +86,7 @@ export interface ApplyConflict {
 	readonly base: unknown;
 	readonly forge: unknown;
 	readonly label: string;
+	readonly resolvedBy: ReadonlyArray<ResolutionFlag>;
 	readonly user: unknown;
 }
 
@@ -92,7 +94,7 @@ export interface ApplyRefusal {
 	readonly reason: ApplyRefusalReason;
 	readonly operation: "removal" | "write";
 	readonly path: string;
-	readonly resolvable: boolean;
+	readonly resolvedBy: ReadonlyArray<ResolutionFlag>;
 }
 
 interface PreflightClassification {
@@ -103,7 +105,7 @@ interface PreflightClassification {
 	readonly hasUnmanagedRefusals: boolean;
 	readonly hasUnmanagedRemovals: boolean;
 	readonly refusals: ReadonlyArray<ApplyRefusal>;
-	readonly removalScoped?: boolean;
+	readonly outsideRemoval?: ReadonlyArray<string>;
 }
 
 type ApplyReasons<Reason extends ApplyError["reason"]> = ReadonlyArray<Reason>;
@@ -397,52 +399,11 @@ function preflightMessage(
 }
 
 const listAnd = new Intl.ListFormat("en", { type: "conjunction" });
-function removalScopeGuidance(
-	refusals: ReadonlyArray<ApplyRefusal>,
-	conflicts: ReadonlyArray<Pick<ApplyConflict, "label">>,
-): string {
-	const rewritten = [
-		...new Set([
-			...refusals
-				.filter(
-					(refusal) =>
-						refusal.operation === "write" &&
-						refusal.reason === "managed-file-modified",
-				)
-				.map((refusal) => refusal.path),
-			...conflicts.map((conflict) => conflict.label.split(" -> ")[0] ?? ""),
-		]),
-	];
-
-	const unresolvable = [
-		...new Set(
-			refusals
-				.filter(
-					(refusal) =>
-						refusal.operation === "removal" ||
-						refusal.reason === "unmanaged-file-exists",
-				)
-				.map((refusal) => refusal.path),
-		),
-	];
-
-	const outside = [...new Set([...rewritten, ...unresolvable])];
-	const sentences = [
-		`${listAnd.format(outside)} ${outside.length === 1 ? "sits" : "sit"} outside the app you're removing, so --accept-forge leaves ${outside.length === 1 ? "it" : "them"} alone.`,
-	];
-
-	if (rewritten.length > 0)
-		sentences.push(
-			`Run again with --keep-user to keep your edits to ${listAnd.format(rewritten)}.`,
-		);
-
-	if (unresolvable.length > 0)
-		sentences.push(
-			`Revert your changes to ${listAnd.format(unresolvable)} first, since neither flag resolves ${unresolvable.length === 1 ? "it" : "them"}.`,
-		);
-
-	return sentences.join("\n");
-}
+const listOr = new Intl.ListFormat("en", { type: "disjunction" });
+const resolutionFlags: ReadonlyArray<ResolutionFlag> = [
+	"keep-user",
+	"accept-forge",
+];
 
 export function formatApplyError(
 	error: ApplyError,
@@ -454,18 +415,24 @@ export function formatApplyError(
 		error.reason === "managed-file-modified" ||
 		error.reason === "unmanaged-file-exists"
 	) {
+		const operation =
+			classification?.hasManagedRemovals === true ||
+			classification?.hasUnmanagedRemovals === true
+				? "removal"
+				: "write";
+
 		const refusal: ApplyRefusal = {
 			reason: error.reason,
-			operation:
-				classification?.hasManagedRemovals === true ||
-				classification?.hasUnmanagedRemovals === true
-					? "removal"
-					: "write",
+			operation,
 			path: error.path,
-			resolvable: false,
+			resolvedBy: operation === "removal" ? ["accept-forge"] : resolutionFlags,
 		};
 
-		classification ??= classifyPreflight([refusal], []);
+		classification =
+			classification === undefined
+				? classifyPreflight([refusal], [])
+				: { ...classification, refusals: classification.refusals ?? [refusal] };
+
 		report = preflightMessage([refusal], []);
 	} else report = error.message;
 
@@ -479,31 +446,90 @@ export function formatApplyError(
 
 	if (options.includeResolutionGuidance === false) return report;
 
-	if (classification.removalScoped === true)
-		return `${report}\n${removalScopeGuidance(
-			classification.refusals ?? [],
-			classification.conflicts ?? [],
-		)}`;
+	const refusals = classification.refusals ?? [];
+	const items = [...refusals, ...(classification.conflicts ?? [])];
+	const overall = resolutionFlags.filter((flag) =>
+		items.every((item) => item.resolvedBy.includes(flag)),
+	);
 
+	const stuck = [
+		...new Set(
+			refusals
+				.filter((refusal) => refusal.resolvedBy.length === 0)
+				.map((refusal) => refusal.path),
+		),
+	];
+
+	const remaining = items.filter((item) => item.resolvedBy.length > 0);
+	const rest = resolutionFlags.filter((flag) =>
+		remaining.every((item) => item.resolvedBy.includes(flag)),
+	);
+
+	const suggested =
+		stuck.length > 0 ? (remaining.length > 0 ? rest : []) : overall;
+
+	const onlyRemovals =
+		(classification.conflicts ?? []).length === 0 &&
+		refusals.length > 0 &&
+		refusals.every((refusal) => refusal.operation === "removal");
+
+	const removed =
+		new Set(refusals.map((refusal) => refusal.path)).size === 1 ? "it" : "them";
+	const keepClause = onlyRemovals
+		? `--keep-user to keep ${removed}`
+		: "--keep-user to keep your version wherever you and Forge disagree";
+
+	const acceptClause = onlyRemovals
+		? `--accept-forge to let Forge delete ${removed}`
+		: "--accept-forge to take Forge's version and overwrite yours";
+
+	const outside = classification.outsideRemoval ?? [];
 	const guidance: string[] = [];
+	if (outside.length > 0)
+		guidance.push(
+			`${listAnd.format(outside)} ${outside.length === 1 ? "sits" : "sit"} outside the app you're removing, so --accept-forge leaves ${outside.length === 1 ? "it" : "them"} alone.`,
+		);
+
+	if (stuck.length > 0 || overall.length === 0) {
+		const paths =
+			stuck.length > 0
+				? stuck
+				: [...new Set(refusals.map((refusal) => refusal.path))];
+
+		const rerun =
+			suggested.length > 0
+				? `, then run again with ${listOr.format(suggested.map((flag) => `--${flag}`))}.`
+				: ".";
+
+		guidance.push(
+			`Neither flag resolves ${listAnd.format(paths)}, so move ${paths.length === 1 ? "it" : "them"} out of the way first${rerun}`,
+		);
+	} else if (overall.length === 2)
+		guidance.push(`Run again with ${keepClause}, or ${acceptClause}.`);
+	else if (overall.includes("keep-user"))
+		guidance.push(`Run again with ${keepClause}.`);
+	else guidance.push(`Run again with ${acceptClause}.`);
+
 	if (
-		(classification.hasConflicts || classification.hasManagedRefusals) &&
-		!classification.hasManagedRemovals
+		suggested.includes("keep-user") &&
+		refusals.some(
+			(refusal) =>
+				refusal.reason === "unmanaged-file-exists" &&
+				refusal.operation === "write" &&
+				refusal.resolvedBy.includes("keep-user"),
+		)
 	)
 		guidance.push(
-			"Run again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
+			"With --keep-user, Forge keeps the files you already had and manages them from then on.",
 		);
 
-	if (classification.hasManagedRemovals)
+	if (
+		suggested.includes("accept-forge") &&
+		!onlyRemovals &&
+		refusals.some((refusal) => refusal.operation === "removal")
+	)
 		guidance.push(
-			"Run again with --accept-forge to remove modified managed files that Forge no longer plans.",
-		);
-
-	if (classification.hasUnmanagedRefusals)
-		guidance.push(
-			classification.hasUnmanagedRemovals
-				? "--keep-user cannot resolve unmanaged files; use --accept-forge to remove files Forge no longer plans."
-				: "--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
+			"With --accept-forge, Forge also deletes files it no longer needs, including ones you edited or made yourself.",
 		);
 
 	return `${report}\n${guidance.join("\n")}`;
@@ -732,12 +758,23 @@ const makeApply = Effect.gen(function* () {
 		const isInRemovedRoot = (path: string) =>
 			removedRoots.some((root) => path === root || path.startsWith(`${root}/`));
 
-		const policyFor = (path: string): ResolutionPolicy =>
-			requestedPolicy === "accept-forge" &&
+		const policyFor = (
+			path: string,
+			policy = requestedPolicy,
+		): ResolutionPolicy =>
+			policy === "accept-forge" &&
 			plan.removedRoots !== undefined &&
 			!isInRemovedRoot(path)
 				? "refuse"
-				: requestedPolicy;
+				: policy;
+
+		const resolvedByFor = (
+			path: string,
+			keepUser: boolean,
+		): ReadonlyArray<ResolutionFlag> =>
+			resolutionFlags.filter((flag) =>
+				flag === "keep-user" ? keepUser : policyFor(path, flag) === flag,
+			);
 
 		const mergeResolutionFor = (path: string) => {
 			const policy = policyFor(path);
@@ -825,11 +862,16 @@ const makeApply = Effect.gen(function* () {
 					continue;
 				}
 
+				if (policyFor(relativePath) === "keep-user") {
+					retained.push(relativePath);
+					continue;
+				}
+
 				refusals.push({
 					path: relativePath,
 					reason: "unmanaged-file-exists",
 					operation: "removal",
-					resolvable: false,
+					resolvedBy: resolvedByFor(relativePath, true),
 				});
 
 				continue;
@@ -849,7 +891,7 @@ const makeApply = Effect.gen(function* () {
 					path: relativePath,
 					reason: "managed-file-modified",
 					operation: "removal",
-					resolvable: false,
+					resolvedBy: [],
 				});
 
 				continue;
@@ -875,7 +917,7 @@ const makeApply = Effect.gen(function* () {
 						path: relativePath,
 						reason: "managed-file-modified",
 						operation: "removal",
-						resolvable: false,
+						resolvedBy: resolvedByFor(relativePath, false),
 					});
 
 				continue;
@@ -900,17 +942,6 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (policyFor(relativePath) === "keep-user") {
-				refusals.push({
-					path: relativePath,
-					reason: "managed-file-modified",
-					operation: "removal",
-					resolvable: false,
-				});
-
-				continue;
-			}
-
 			const baseDescriptor = previousArtifact.base;
 			if (
 				baseDescriptor === undefined ||
@@ -920,7 +951,7 @@ const makeApply = Effect.gen(function* () {
 					path: relativePath,
 					reason: "managed-file-modified",
 					operation: "removal",
-					resolvable: false,
+					resolvedBy: resolvedByFor(relativePath, false),
 				});
 
 				continue;
@@ -949,7 +980,7 @@ const makeApply = Effect.gen(function* () {
 					path: relativePath,
 					reason: "managed-file-modified",
 					operation: "removal",
-					resolvable: false,
+					resolvedBy: resolvedByFor(relativePath, false),
 				});
 
 				continue;
@@ -1113,11 +1144,41 @@ const makeApply = Effect.gen(function* () {
 					continue;
 				}
 
+				if (
+					filePolicy === "keep-user" &&
+					!isModuleMarker &&
+					descriptorsAreCompatible
+				) {
+					if (file.artifactId === undefined) continue;
+
+					if (nextArtifact !== undefined) {
+						committedArtifacts[file.artifactId] = {
+							...nextArtifact,
+							hash: currentHash,
+							base: {
+								hash: currentHash,
+								mergeKind: nextArtifact.base?.mergeKind ?? "opaque",
+								origin: "adopted",
+								semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
+							},
+						};
+
+						preservedBaseContents.set(file.artifactId, currentContent);
+						policyReadHashes.set(file.path, currentHash);
+						continue;
+					}
+				}
+
 				refusals.push({
 					path: file.path,
 					reason: "unmanaged-file-exists",
 					operation: "write",
-					resolvable: false,
+					resolvedBy: resolvedByFor(
+						file.path,
+						!isModuleMarker &&
+							descriptorsAreCompatible &&
+							(file.artifactId === undefined || nextArtifact !== undefined),
+					),
 				});
 
 				continue;
@@ -1133,7 +1194,7 @@ const makeApply = Effect.gen(function* () {
 					path: file.path,
 					reason: "managed-file-modified",
 					operation: "write",
-					resolvable: false,
+					resolvedBy: [],
 				});
 
 				continue;
@@ -1195,7 +1256,7 @@ const makeApply = Effect.gen(function* () {
 					path: file.path,
 					reason: "managed-file-modified",
 					operation: "write",
-					resolvable: canRebaseCurrentContent,
+					resolvedBy: resolvedByFor(file.path, canRebaseCurrentContent),
 				});
 
 				continue;
@@ -1222,7 +1283,7 @@ const makeApply = Effect.gen(function* () {
 					path: file.path,
 					reason: "managed-file-modified",
 					operation: "write",
-					resolvable: canRebaseCurrentContent,
+					resolvedBy: resolvedByFor(file.path, canRebaseCurrentContent),
 				});
 
 				continue;
@@ -1264,7 +1325,7 @@ const makeApply = Effect.gen(function* () {
 					path: file.path,
 					reason: "managed-file-modified",
 					operation: "write",
-					resolvable: canRebaseCurrentContent,
+					resolvedBy: resolvedByFor(file.path, canRebaseCurrentContent),
 				});
 
 				continue;
@@ -1278,6 +1339,7 @@ const makeApply = Effect.gen(function* () {
 						base: valueAtPath(merged.json.base, conflict),
 						forge: valueAtPath(merged.json.incoming, conflict),
 						label: `${file.path} -> ${formatJsonPath(conflict)}`,
+						resolvedBy: resolvedByFor(file.path, true),
 						user: valueAtPath(merged.json.current, conflict),
 					});
 			else
@@ -1287,6 +1349,7 @@ const makeApply = Effect.gen(function* () {
 						base: values?.base,
 						forge: values?.forge,
 						label: `${file.path} -> ${conflict}`,
+						resolvedBy: resolvedByFor(file.path, true),
 						user: values?.user,
 					});
 				}
@@ -1327,7 +1390,23 @@ const makeApply = Effect.gen(function* () {
 
 		const preflight = {
 			...classifyPreflight(refusals, conflicts),
-			...(plan.removedRoots === undefined ? {} : { removalScoped: true }),
+			...(plan.removedRoots === undefined
+				? {}
+				: {
+						outsideRemoval: [
+							...new Set(
+								[
+									...refusals.map((refusal) => refusal.path),
+									...conflicts.map(
+										(conflict) =>
+											conflict.label.split(" -> ")[0] ?? conflict.label,
+									),
+								].filter(
+									(path) => policyFor(path, "accept-forge") !== "accept-forge",
+								),
+							),
+						].sort(),
+					}),
 		};
 
 		const refusal = refusals.length === 1 ? refusals[0] : undefined;
@@ -1437,6 +1516,17 @@ const makeApply = Effect.gen(function* () {
 						path: relativePath,
 						reason: "managed-file-modified",
 						preflight: {
+							refusals: [
+								{
+									path: relativePath,
+									reason: "managed-file-modified",
+									operation: "write",
+									resolvedBy:
+										requestedPolicy === "refuse"
+											? resolutionFlags
+											: [requestedPolicy],
+								},
+							],
 							hasConflicts: false,
 							hasManagedRemovals: false,
 							hasManagedRefusals: true,
