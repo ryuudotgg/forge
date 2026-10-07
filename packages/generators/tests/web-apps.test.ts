@@ -1178,12 +1178,74 @@ describe("secondary web app planning", () => {
 					? "next dev"
 					: web === "react-router"
 						? "react-router dev"
-						: "vite dev --port 3000";
+						: "vite dev --port 3000 --strictPort";
 
 			expect(primary.scripts.dev).toBe(`pnpm with-env ${command}`);
 			expect(contentAt(original, "apps/web/forge.json")).not.toContain(
 				'"role"',
 			);
+		},
+	);
+});
+
+describe("Vite app ports", () => {
+	const scriptsSchema = Schema.fromJsonString(
+		Schema.Struct({
+			scripts: Schema.Struct({
+				dev: Schema.String,
+				preview: Schema.optional(Schema.String),
+			}),
+		}),
+	);
+
+	it.each(["tanstack-router", "tanstack-start"] as const)(
+		"binds the %s primary strictly to its recorded port",
+		async (web) => {
+			const plan = await plannedProject({ slug: "acme", web });
+			const { scripts } = Schema.decodeSync(scriptsSchema)(
+				contentAt(plan, "apps/web/package.json"),
+			);
+
+			expect(scripts.dev).toBe(
+				"pnpm with-env vite dev --port 3000 --strictPort",
+			);
+			expect(scripts.preview).toBe(
+				"pnpm with-env vite preview --port 3000 --strictPort",
+			);
+		},
+	);
+
+	it.each([
+		{
+			framework: "tanstack-router",
+			dev: "vite dev --port 3001 --strictPort",
+			preview: "pnpm with-env vite preview --port 3001 --strictPort",
+		},
+		{
+			framework: "tanstack-start",
+			dev: "vite dev --port 3001 --strictPort",
+			preview: "pnpm with-env vite preview --port 3001 --strictPort",
+		},
+		{
+			framework: "react-router",
+			dev: "react-router dev --port 3001 --strictPort",
+			preview: undefined,
+		},
+	] as const)(
+		"binds a $framework secondary strictly to its own port",
+		async ({ framework, dev, preview }) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework, port: 3001 }],
+			});
+
+			const { scripts } = Schema.decodeSync(scriptsSchema)(
+				contentAt(plan, "apps/admin/package.json"),
+			);
+
+			expect(scripts.dev).toBe(`pnpm with-env ${dev}`);
+			expect(scripts.preview).toBe(preview);
 		},
 	);
 });

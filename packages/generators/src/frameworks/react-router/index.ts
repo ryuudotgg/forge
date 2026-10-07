@@ -307,7 +307,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 				"with-env",
 				instance.primary
 					? "react-router dev"
-					: `react-router dev --port ${instance.port}`,
+					: `react-router dev --port ${instance.port} --strictPort`,
 			),
 			postinstall: installHook("@react-router/dev", pmRun(pm, "typegen")),
 			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
