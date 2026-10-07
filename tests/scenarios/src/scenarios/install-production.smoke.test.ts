@@ -85,8 +85,20 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 
 				for (const app of apps)
 					await withWebApp(workspace.projectRoot, app, async (output) => {
-						const response = await fetch(`http://localhost:${app.port}/`);
+						const origin = `http://localhost:${app.port}`;
+						const response = await fetch(`${origin}/`);
 						expect(response.status, output()).toBe(200);
+
+						const html = await response.text();
+						const link = /<link[^>]*rel="icon"[^>]*>/.exec(html)?.[0];
+						const href = link && /href="([^"]+)"/.exec(link)?.[1];
+						if (!href) throw new Error(`Missing Icon Link: ${app.root}`);
+
+						const icon = await fetch(new URL(href, origin));
+						expect(icon.status, output()).toBe(200);
+						expect(icon.headers.get("content-type"), output()).toMatch(
+							/^image\//,
+						);
 					});
 			},
 		);

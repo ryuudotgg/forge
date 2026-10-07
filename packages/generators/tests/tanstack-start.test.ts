@@ -130,6 +130,14 @@ describe("tanstack-start/base template", () => {
 			'{ title: "Acme App" }',
 		);
 
+		expect(textSurface(contributions, "layout").content).toContain(
+			'{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" }',
+		);
+
+		expect(leafFile(contributions, "public/favicon.svg").content).toContain(
+			"<title>App icon</title>",
+		);
+
 		expect(textSurface(contributions, "page").content).toContain(
 			">Acme App</h1>",
 		);

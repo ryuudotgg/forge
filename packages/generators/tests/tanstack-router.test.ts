@@ -161,6 +161,14 @@ describe("tanstack-router/base template", () => {
 			'<script type="module" src="/src/main.tsx"></script>',
 		);
 
+		expect(leafFile(contributions, "index.html").content).toContain(
+			'<link rel="icon" href="/favicon.svg" type="image/svg+xml" />',
+		);
+
+		expect(leafFile(contributions, "public/favicon.svg").content).toContain(
+			"<title>App icon</title>",
+		);
+
 		expect(leafFile(contributions, "env.ts").content).toContain(
 			'clientPrefix: "VITE_"',
 		);

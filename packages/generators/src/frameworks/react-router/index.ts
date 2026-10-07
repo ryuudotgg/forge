@@ -350,7 +350,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		leafTextFile(
 			ensuredModuleTarget(instance.key),
 			"public/favicon.svg",
-			readTemplate("frameworks/react-router/public/favicon.svg"),
+			readTemplate("frameworks/favicon.svg"),
 		),
 		...selfHostedCorsContributions(config, instance),
 	];

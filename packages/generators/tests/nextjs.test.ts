@@ -188,6 +188,10 @@ describe("nextjs/base template", () => {
 		expect(page.priority).toBe(0);
 		expect(page.content).toContain(">Acme App</h1>");
 
+		expect(leafFile(contributions, "app/icon.svg").content).toContain(
+			"<title>App icon</title>",
+		);
+
 		const ensure = must(
 			contributions.find(byTag("EnsureModuleContribution")),
 			"web module",

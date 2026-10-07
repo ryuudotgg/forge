@@ -313,6 +313,11 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			readTemplate("frameworks/tanstack-start/src/routeTree.gen.ts"),
 			{ preserveExisting: true },
 		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"public/favicon.svg",
+			readTemplate("frameworks/favicon.svg"),
+		),
 		...selfHostedCorsContributions(config, instance),
 	];
 }

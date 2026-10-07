@@ -160,6 +160,10 @@ export default {
 			'return lifecycleEvent === "check" || lifecycleEvent === "typegen";',
 		);
 
+		expect(textSurface(contributions, "layout").content).toContain(
+			'{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" }',
+		);
+
 		expect(leafFile(contributions, "public/favicon.svg").content).toContain(
 			"<title>App icon</title>",
 		);
