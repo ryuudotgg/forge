@@ -1,13 +1,22 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { type InstallRecord, ManifestSchema } from "@ryuugg/core";
+import { NodeServices } from "@effect/platform-node";
+import {
+	Apply,
+	CliVersion,
+	CoreLive,
+	type InstallRecord,
+	ManifestSchema,
+	Planner,
+} from "@ryuugg/core";
 import * as generators from "@ryuugg/generators";
-import { Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { version as cliVersion } from "../package.json" with { type: "json" };
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
+	generatedRemovalPaths,
 	hasProjectDevDependency,
 	loadDiscoveryRegistry,
 	loadManagedProject,
@@ -125,6 +134,71 @@ describe("lifecycle", () => {
 		promptMocks.logError.mockReset();
 		promptMocks.logWarn.mockReset();
 	});
+
+	it("finds only generated artifacts within complete removal root segments", async () => {
+		await withTempDir("lifecycle-generated-removals", async (directory) => {
+			const config = generators.withWebAppPorts({
+				slug: "acme",
+				web: "tanstack-router",
+				webApps: [{ name: "site", framework: "tanstack-router" }],
+				packageManager: "pnpm",
+			});
+
+			const layer = CoreLive.pipe(
+				Layer.provide(Layer.succeed(CliVersion, { version: cliVersion })),
+				Layer.provideMerge(NodeServices.layer),
+			);
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const planner = yield* Planner;
+					const created = yield* planner.planCreate(
+						directory,
+						config,
+						generators.builtins,
+						commandVersions,
+					);
+
+					yield* Apply.applyPlan(directory, {
+						lockfile: created.lockfile,
+						manifest: created.manifest,
+						removals: created.removals,
+						writes: created.writes.map((write) => ({
+							artifactId: write.artifactId,
+							content: write.content,
+							path: write.path,
+						})),
+					});
+				}).pipe(Effect.provide(layer)),
+			);
+
+			const project = await loadManagedProject(directory, "remove");
+
+			const pathsForRoots = (roots: ReadonlyArray<string>) =>
+				generatedRemovalPaths(
+					directory,
+					project.config,
+					project.manifest.installs,
+					project.manifest.registries,
+					project.modules,
+					project.manifest.modules,
+					roots,
+				);
+
+			await expect(pathsForRoots(["apps/site"])).resolves.toEqual([
+				"apps/site/src/routeTree.gen.ts",
+			]);
+
+			await expect(pathsForRoots(["apps/si"])).resolves.toEqual([]);
+
+			await expect(pathsForRoots(["apps/site", "apps/web"])).resolves.toEqual(
+				expect.arrayContaining([
+					"apps/site/src/routeTree.gen.ts",
+					"apps/web/src/routeTree.gen.ts",
+				]),
+			);
+		});
+	}, 120_000);
 
 	it("applies an installed plan and records the install in the manifest", async () => {
 		await withTempDir("lifecycle-apply", async (directory) => {

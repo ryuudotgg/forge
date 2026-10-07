@@ -94,7 +94,7 @@ const promptMocks = vi.hoisted(() => ({
 const lifecycleMocks = vi.hoisted(() => ({
 	applyInstalledPlan: vi.fn(),
 	configuredPackageManager: vi.fn(),
-	generatedRemovalPaths: vi.fn(async () => []),
+	generatedRemovalPaths: vi.fn(async (): Promise<string[]> => []),
 	hasProjectDevDependency: vi.fn(),
 	loadManagedProject: vi.fn(),
 	loadProjectRegistry: vi.fn(),
@@ -303,6 +303,75 @@ describe("remove command", () => {
 					modules: [appModule],
 					records: project.manifest.modules,
 					...(recordedRoot === undefined || recordedRoot === root
+						? {}
+						: { removalRootRelocations: { [recordedRoot]: root } }),
+					removedRoots: [root],
+				},
+			);
+		},
+	);
+
+	it.each([
+		{ root: "sites/dashboard", recordedRoot: "apps/admin" },
+		{ root: "sites/admin", recordedRoot: "sites/admin" },
+	])(
+		"removes generated paths at $root using recorded root $recordedRoot",
+		async ({ root, recordedRoot }) => {
+			const adoptedModule = {
+				...adminModule,
+				packageName: "@company/control-panel",
+				root,
+			};
+			const baseProject = managedProject({
+				config: {
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				},
+				modules: [appModule, adoptedModule],
+			});
+			const project = {
+				...baseProject,
+				manifest: {
+					...baseProject.manifest,
+					modules: {
+						[adoptedModule.id]: { root: recordedRoot, definitionIds: [] },
+					},
+				},
+			};
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+			lifecycleMocks.generatedRemovalPaths.mockResolvedValueOnce([
+				`${root}/src/routeTree.gen.ts`,
+				"apps/web/src/routeTree.gen.ts",
+			]);
+
+			await runRemove("admin", { yes: true });
+
+			expect(lifecycleMocks.generatedRemovalPaths).toHaveBeenLastCalledWith(
+				project.projectRoot,
+				project.config,
+				project.manifest.installs,
+				project.manifest.registries,
+				project.modules,
+				project.manifest.modules,
+				[root],
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{ web: "nextjs", webApps: [] },
+				[],
+				undefined,
+				undefined,
+				{},
+				{
+					generatedRemovals: [
+						`${recordedRoot}/src/routeTree.gen.ts`,
+						"apps/web/src/routeTree.gen.ts",
+					],
+					modules: [appModule],
+					records: project.manifest.modules,
+					...(recordedRoot === root
 						? {}
 						: { removalRootRelocations: { [recordedRoot]: root } }),
 					removedRoots: [root],
