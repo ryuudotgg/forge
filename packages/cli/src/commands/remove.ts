@@ -40,6 +40,7 @@ import {
 	runPackageManagerOperation,
 } from "./lifecycle";
 import { type ResolutionArguments, resolutionArguments } from "./resolution";
+import { secondaryAppModules } from "./secondary-apps";
 
 function moduleLabel(
 	moduleId: string,
@@ -307,31 +308,6 @@ async function promptForInstalledAddonId(
 
 	if (isCancel(selectedAddon)) cancel();
 	return String(selectedAddon);
-}
-
-function secondaryAppModules(
-	project: Awaited<ReturnType<typeof loadManagedProject>>,
-	app: NonNullable<ForgeConfig["webApps"]>[number],
-) {
-	const root = `apps/${app.name}`;
-	const compatibleModules = project.modules.filter(
-		(module) => module.type === "app" && module.framework === app.framework,
-	);
-
-	const identifiedModules = compatibleModules.filter(
-		(module) =>
-			module.root === root ||
-			module.packageName === `@${project.config.slug}/${app.name}` ||
-			project.manifest.modules[module.id]?.root === root,
-	);
-
-	if (identifiedModules.length > 0) return identifiedModules;
-
-	return compatibleModules.filter(
-		(module) =>
-			basename(project.manifest.modules[module.id]?.root ?? module.root) ===
-				app.name || module.packageName?.split("/").at(-1) === app.name,
-	);
 }
 
 function resolveAppRemoval(

@@ -258,6 +258,49 @@ describe("update", () => {
 		});
 	}, 120_000);
 
+	it("keeps a deleted secondary web app absent and points at forge remove", async () => {
+		await withScenarioWorkspace(
+			"update-deleted-secondary",
+			async (workspace) => {
+				await createProject(workspace, {
+					packageManager: "pnpm",
+					web: "nextjs",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				});
+
+				const adminRoot = join(workspace.projectRoot, "apps/admin");
+				await rm(adminRoot, { force: true, recursive: true });
+
+				const update = await tryRunForge(workspace.projectRoot, ["update"], {
+					workspaceRoot: workspace.workspaceRoot,
+				});
+
+				expect(update.exitCode, update.stdout + update.stderr).toBe(0);
+				expect(update.stdout).toContain(
+					"We skipped the admin web app because its folder is missing. Run forge remove admin to drop it from your config.",
+				);
+
+				expect(await pathExists(adminRoot)).toBe(false);
+
+				const remove = await tryRunForge(
+					workspace.projectRoot,
+					["remove", "admin"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(remove.exitCode, remove.stdout + remove.stderr).toBe(0);
+				expect(await pathExists(adminRoot)).toBe(false);
+				expect(
+					(
+						await readJson<{
+							readonly config: { readonly webApps?: ReadonlyArray<unknown> };
+						}>(join(workspace.projectRoot, ".forge/manifest.json"))
+					).config.webApps ?? [],
+				).toEqual([]);
+			},
+		);
+	}, 120_000);
+
 	it("surfaces planner failures as a friendly error with exit 1", async () => {
 		await withScenarioWorkspace("update-planner-error", async (workspace) => {
 			await createProject(workspace, {

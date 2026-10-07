@@ -1,4 +1,5 @@
 import { intro, log } from "@clack/prompts";
+import type { ForgeConfig } from "@ryuugg/generators";
 import { Context, Effect, Layer } from "effect";
 import {
 	applyInstalledPlan,
@@ -7,6 +8,7 @@ import {
 	type ManagedProject,
 } from "./lifecycle";
 import { resolutionArguments } from "./resolution";
+import { secondaryAppModules } from "./secondary-apps";
 
 export interface UpdateCommandService {
 	readonly applyInstalledPlan: typeof applyInstalledPlan;
@@ -14,6 +16,7 @@ export interface UpdateCommandService {
 	readonly loadManagedProject: typeof loadManagedProject;
 	readonly loadProjectRegistry: typeof loadProjectRegistry;
 	readonly logInfo: typeof log.info;
+	readonly logWarn: typeof log.warn;
 }
 
 export class UpdateCommand extends Context.Service<
@@ -28,6 +31,7 @@ export class UpdateCommand extends Context.Service<
 			loadManagedProject,
 			loadProjectRegistry,
 			logInfo: log.info,
+			logWarn: log.warn,
 		}),
 	);
 }
@@ -61,6 +65,13 @@ export function runUpdateEffect(
 				...resolution,
 			),
 		);
+
+		const config: ForgeConfig = project.config;
+		for (const app of config.webApps ?? [])
+			if (secondaryAppModules(project, app).length === 0)
+				command.logWarn(
+					`We skipped the ${app.name} web app because its folder is missing. Run forge remove ${app.name} to drop it from your config.`,
+				);
 
 		for (const descriptor of loadedRegistry.descriptors) {
 			const previous = project.manifest.registryDescriptors?.find(

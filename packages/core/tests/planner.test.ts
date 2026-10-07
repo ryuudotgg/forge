@@ -4067,9 +4067,9 @@ describe("planner", () => {
 		});
 	});
 
-	it("rejects a missing app install target for an adapter addon", async () => {
+	it("skips a deleted module install target for an adapter addon", async () => {
 		await withTempDir("planner-adapter-app-missing", async (directory) => {
-			const exit = await Effect.runPromiseExit(
+			const plan = await Effect.runPromise(
 				planInstalledEffect(
 					directory,
 					{},
@@ -4083,10 +4083,14 @@ describe("planner", () => {
 				),
 			);
 
-			const error = plannerFailure(exit);
+			expect(plan.manifest.installs).toEqual([
+				{
+					definitionId: "integration",
+					targets: [{ kind: "module", moduleId: "abcde" }],
+				},
+			]);
 
-			expect(error?.message).toBe("Adapter Target App Missing");
-			expect(error?.path).toBe("integration");
+			expect(plan.writes).toEqual([]);
 		});
 	});
 
