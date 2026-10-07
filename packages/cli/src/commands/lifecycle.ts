@@ -7,6 +7,7 @@ import {
 	type ApplyPlan,
 	type ApplyResult,
 	ConfigStore,
+	type DeclinedChange,
 	type DiscoveredModule,
 	formatApplyError,
 	type InstalledPlanningSeed,
@@ -161,16 +162,24 @@ function reportLifecycleFailure(
 	process.exit(1);
 }
 
+function shellPath(path: string): string {
+	return /^[\w./-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+}
+
+function declinedLine(change: DeclinedChange): string {
+	const counts = `${change.path}: ${change.added} ${change.added === 1 ? "line" : "lines"} added and ${change.removed} removed.`;
+
+	return change.diffPath === undefined
+		? `${counts} We couldn't save the full diff.`
+		: `${counts} Run "cat ${shellPath(change.diffPath)}" to see them.`;
+}
+
 function reportDeclinedChanges(result: ApplyResult): ApplyResult {
 	if (result.declined.length === 0) return result;
 
 	const count = result.declined.length;
-	const lines = result.declined.map(
-		(change) =>
-			`${change.path}: ${change.added} ${change.added === 1 ? "line" : "lines"} added and ${change.removed} removed. Run "cat ${change.diffPath}" to see them.`,
-	);
 	log.warn(
-		`We kept your version of ${count} ${count === 1 ? "file" : "files"} and skipped Forge's changes to ${count === 1 ? "it" : "them"}:\n${lines.join("\n")}`,
+		`We kept your version of ${count} ${count === 1 ? "file" : "files"} and skipped Forge's changes to ${count === 1 ? "it" : "them"}:\n${result.declined.map(declinedLine).join("\n")}`,
 	);
 
 	return result;

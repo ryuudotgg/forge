@@ -856,6 +856,32 @@ describe("applyLifecyclePlan", () => {
 			message:
 				'We kept your version of 2 files and skipped Forge\'s changes to them:\napps/web/src/auth.ts: 12 lines added and 3 removed. Run "cat .forge/declined/apps/web/src/auth.ts.diff" to see them.\nbiome.json: 1 line added and 1 removed. Run "cat .forge/declined/biome.json.diff" to see them.',
 		},
+		{
+			declined: [
+				{
+					path: "docs/My Guide.md",
+					diff: "not printed",
+					added: 2,
+					removed: 0,
+					diffPath: ".forge/declined/docs/My Guide.md.diff",
+				},
+			],
+			message:
+				"We kept your version of 1 file and skipped Forge's changes to it:\ndocs/My Guide.md: 2 lines added and 0 removed. Run \"cat '.forge/declined/docs/My Guide.md.diff'\" to see them.",
+		},
+		{
+			declined: [
+				{
+					path: "biome.json",
+					diff: "not printed",
+					added: 1,
+					removed: 1,
+					diffPath: undefined,
+				},
+			],
+			message:
+				"We kept your version of 1 file and skipped Forge's changes to it:\nbiome.json: 1 line added and 1 removed. We couldn't save the full diff.",
+		},
 	] satisfies ReadonlyArray<{
 		declined: DeclinedChange[];
 		message: string | undefined;

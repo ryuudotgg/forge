@@ -66,7 +66,7 @@ export interface DeclinedChange {
 	readonly diff: string;
 	readonly added: number;
 	readonly removed: number;
-	readonly diffPath: string;
+	readonly diffPath: string | undefined;
 }
 
 export type ResolutionPolicy = "accept-forge" | "keep-user" | "refuse";
@@ -203,7 +203,7 @@ interface PublicationPhaseContract {
 		| "atomic-lockfile-write-failed"
 		| "atomic-state-publish-failed"
 	>;
-	readonly result: ReturnType<() => void>;
+	readonly result: { readonly reportsSaved: boolean };
 }
 
 type PublicationPhaseError = ApplyError;
@@ -1278,7 +1278,7 @@ const makeApply = Effect.gen(function* () {
 						projectRoot,
 						managedArtifact,
 						previousBase,
-					);
+					).pipe(Effect.orElseSucceed(() => currentContent));
 
 					recordDeclined(file.path, base, file.content);
 					continue;
@@ -1309,13 +1309,7 @@ const makeApply = Effect.gen(function* () {
 					} satisfies ArtifactBase);
 
 				if (fileResolution === "user" && rebaseCurrentContent(declinedBase)) {
-					if (previousBase !== undefined)
-						recordDeclined(
-							file.path,
-							yield* readBase(projectRoot, managedArtifact, previousBase),
-							file.content,
-						);
-					else if (managedArtifact.hash !== nextHash)
+					if (managedArtifact.hash !== nextHash)
 						recordDeclined(file.path, currentContent, file.content);
 
 					continue;
@@ -1707,6 +1701,11 @@ const makeApply = Effect.gen(function* () {
 					? undefined
 					: yield* ensureContained(projectRoot, `${stagingRelative}/declined`);
 
+			const declinedDirectory = yield* ensureContained(
+				projectRoot,
+				".forge/declined",
+			);
+
 			const stagedManifest: StagingPhaseContract["result"]["manifestPath"] =
 				yield* stageWrite(
 					"state/manifest.json",
@@ -1865,12 +1864,7 @@ const makeApply = Effect.gen(function* () {
 				Effect.catchTag("StateError", () => Effect.void),
 			);
 
-			const declinedDirectory = yield* ensureContained(
-				projectRoot,
-				".forge/declined",
-			);
-
-			yield* fs
+			const reportsSaved = yield* fs
 				.remove(declinedDirectory, { recursive: true, force: true })
 				.pipe(
 					Effect.andThen(
@@ -1878,8 +1872,11 @@ const makeApply = Effect.gen(function* () {
 							? Effect.void
 							: fs.rename(stagedDeclined, declinedDirectory),
 					),
-					Effect.orElseSucceed(() => undefined),
+					Effect.as(true),
+					Effect.orElseSucceed(() => false),
 				);
+
+			return { reportsSaved };
 		}).pipe(
 			Effect.ensuring(
 				fs
@@ -1888,7 +1885,7 @@ const makeApply = Effect.gen(function* () {
 			),
 		);
 
-		yield* commit;
+		const { reportsSaved } = yield* commit;
 
 		const rootPath = resolve(projectRoot);
 		const realRoot = yield* fs
@@ -1924,9 +1921,11 @@ const makeApply = Effect.gen(function* () {
 
 		return {
 			retained: retained.sort(),
-			declined: declined.sort((left, right) =>
-				left.path.localeCompare(right.path),
-			),
+			declined: declined
+				.map((change) =>
+					reportsSaved ? change : { ...change, diffPath: undefined },
+				)
+				.sort((left, right) => left.path.localeCompare(right.path)),
 		} satisfies ApplyResult;
 	});
 

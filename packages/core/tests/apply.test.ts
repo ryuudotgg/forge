@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, symlink } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, FileSystem, Layer, PlatformError } from "effect";
@@ -120,6 +120,144 @@ describe("apply", () => {
 
 			expect(result.declined).toEqual([]);
 			expect(await pathExists(join(directory, ".forge/declined"))).toBe(false);
+		});
+	});
+
+	it("reports an unmanaged write without an artifact that keep-user declines", async () => {
+		await withTempDir("apply-declined-unowned", async (directory) => {
+			await writeText(join(directory, "notes.txt"), "user\n");
+
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [],
+						writes: [{ path: "notes.txt", content: "forge\n" }],
+					},
+					{ resolutionPolicy: "keep-user" },
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, "notes.txt"), "utf-8")).toBe(
+				"user\n",
+			);
+
+			expect(result.declined.map((change) => change.diff)).toEqual([
+				unifiedDiff("notes.txt", "user\n", "forge\n"),
+			]);
+		});
+	});
+
+	it("keeps the user's file when its stored base is missing", async () => {
+		await withTempDir("apply-declined-base-missing", async (directory) => {
+			const path = "config.txt";
+			const original = "original\n";
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, original, "opaque"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await rm(join(directory, ".forge/bases", await hashContent(original)));
+			await writeText(join(directory, path), "user\n");
+
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, "forge\n", "opaque"),
+					{
+						resolutionPolicy: "keep-user",
+					},
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+			expect(result.declined.map((change) => change.diff)).toEqual([
+				unifiedDiff(path, "user\n", "forge\n"),
+			]);
+		});
+	});
+
+	it("refuses before publishing when the declined reports escape the project", async () => {
+		await withTempDir("apply-declined-escape", async (directory) => {
+			const path = "config.txt";
+			const project = join(directory, "project");
+			const outside = join(directory, "outside");
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					project,
+					await declinedPlan(path, "original\n", "opaque"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await mkdir(outside);
+			await symlink(outside, join(project, ".forge/declined"));
+
+			const lockfile = await readFile(
+				join(project, ".forge/lock.json"),
+				"utf-8",
+			);
+			const result = await Effect.runPromise(
+				Effect.result(
+					Apply.applyPlan(
+						project,
+						await declinedPlan(path, "forge\n", "opaque"),
+					),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(result).toMatchObject({
+				_tag: "Failure",
+				failure: { reason: "path-escapes-project-root" },
+			});
+
+			expect(await readFile(join(project, path), "utf-8")).toBe("original\n");
+			expect(await readFile(join(project, ".forge/lock.json"), "utf-8")).toBe(
+				lockfile,
+			);
+		});
+	});
+
+	it("still applies when a stale declined report cannot be cleared", async () => {
+		await withTempDir("apply-declined-stuck", async (directory) => {
+			const path = "config.txt";
+			const locked = join(directory, ".forge/declined/locked");
+
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, "original\n", "opaque"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(locked, "stale.diff"), "stale\n");
+			await chmod(locked, 0o500);
+			await writeText(join(directory, path), "user\n");
+
+			try {
+				const result = await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						await declinedPlan(path, "forge\n", "opaque"),
+						{
+							resolutionPolicy: "keep-user",
+						},
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(
+					result.declined.map(({ path, diffPath }) => ({ path, diffPath })),
+				).toEqual([{ path, diffPath: undefined }]);
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+			} finally {
+				await chmod(locked, 0o700);
+			}
 		});
 	});
 
