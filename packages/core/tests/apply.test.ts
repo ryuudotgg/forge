@@ -5124,10 +5124,13 @@ describe("apply", () => {
 		const stub = "export const routeTree = stub;\n";
 		const generated = "export const routeTree = generated;\n";
 
-		const preservedPlan = async (): Promise<ApplyPlan> => ({
+		const preservedPlan = async (
+			generatedFlag = false,
+		): Promise<ApplyPlan> => ({
 			lockfile: {
 				artifacts: {
 					"module:web:file:src/routeTree.gen.ts": {
+						...(generatedFlag ? { generated: true } : {}),
 						definitionIds: ["tanstack-router/base"],
 						hash: await hashContent(stub),
 						kind: "file",
@@ -5158,6 +5161,149 @@ describe("apply", () => {
 				expect(await readFile(join(directory, routeTree), "utf-8")).toBe(stub);
 			});
 		});
+
+		it("commits the next generated flag when preserving existing bytes", async () => {
+			await withTempDir("apply-preserve-generated", async (directory) => {
+				const plan = await preservedPlan();
+				const nextPlan = await preservedPlan(true);
+
+				await Effect.runPromise(
+					State.writeLockfile(directory, {
+						schemaVersion: 1,
+						artifacts: plan.lockfile.artifacts,
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				await writeText(join(directory, routeTree), generated);
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, nextPlan).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(await readFile(join(directory, routeTree), "utf-8")).toBe(
+					generated,
+				);
+				expect(await readJson(join(directory, ".forge/lock.json"))).toEqual({
+					schemaVersion: 1,
+					artifacts: nextPlan.lockfile.artifacts,
+				});
+			});
+		});
+
+		it.each([
+			{ generatedRemovals: false, removedRoot: true, relocated: false },
+			{ generatedRemovals: true, removedRoot: true, relocated: false },
+			{ generatedRemovals: true, removedRoot: true, relocated: true },
+			{ generatedRemovals: true, removedRoot: false, relocated: false },
+		])(
+			"handles older generated artifacts with %j",
+			async ({ generatedRemovals, removedRoot, relocated }) => {
+				await withTempDir("apply-remove-old-generated", async (directory) => {
+					const previous = await preservedPlan();
+					const currentRoot = relocated ? "apps/site" : "apps/web";
+					const currentPath = `${currentRoot}/src/routeTree.gen.ts`;
+
+					await Effect.runPromise(
+						State.writeLockfile(directory, {
+							schemaVersion: 1,
+							artifacts: previous.lockfile.artifacts,
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					await writeText(join(directory, currentPath), generated);
+
+					const applyRemoval = Effect.runPromise(
+						Apply.applyPlan(directory, {
+							...(generatedRemovals ? { generatedRemovals: [routeTree] } : {}),
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							...(relocated
+								? { removalRootRelocations: { "apps/web": currentRoot } }
+								: {}),
+							removals: [routeTree],
+							removedRoots: removedRoot ? [currentRoot] : [],
+							writes: [],
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					if (!removedRoot) {
+						await expect(applyRemoval).rejects.toMatchObject({
+							reason: "managed-file-modified",
+						});
+
+						expect(await readFile(join(directory, currentPath), "utf-8")).toBe(
+							generated,
+						);
+						return;
+					}
+
+					const result = await applyRemoval;
+					const removed = generatedRemovals && removedRoot;
+					expect(result.retained).toEqual(removed ? [] : [currentPath]);
+					expect(await pathExists(join(directory, currentPath))).toBe(!removed);
+				});
+			},
+		);
+
+		it.each([false, true])(
+			"removes regenerated files but retains user edits with adopted=%s",
+			async (adopted) => {
+				await withTempDir("apply-remove-generated", async (directory) => {
+					const userFile = "apps/web/src/custom.ts";
+					const hash = await hashContent(stub);
+
+					await Effect.runPromise(
+						State.writeLockfile(directory, {
+							schemaVersion: 1,
+							artifacts: {
+								routeTree: {
+									definitionIds: ["tanstack-router/base"],
+									generated: true,
+									hash,
+									kind: "file",
+									path: routeTree,
+									...(adopted
+										? {
+												base: {
+													hash,
+													mergeKind: "opaque",
+													origin: "adopted",
+													semanticsVersion: 1,
+												},
+											}
+										: {}),
+								},
+								custom: {
+									definitionIds: ["email/base"],
+									hash,
+									kind: "file",
+									path: userFile,
+								},
+							},
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					await writeText(join(directory, routeTree), generated);
+					await writeText(join(directory, userFile), "user edits\n");
+
+					const result = await Effect.runPromise(
+						Apply.applyPlan(directory, {
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [routeTree, userFile],
+							removedRoots: ["apps/web"],
+							writes: [],
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					expect(result.retained).toEqual([userFile]);
+					expect(await pathExists(join(directory, routeTree))).toBe(false);
+					expect(await readFile(join(directory, userFile), "utf-8")).toBe(
+						"user edits\n",
+					);
+				});
+			},
+		);
 
 		it.each(["refuse", "keep-user", "accept-forge"] as const)(
 			"keeps an existing preserved file under %s",

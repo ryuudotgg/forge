@@ -90,6 +90,7 @@ export type ArtifactBase = typeof ArtifactBaseSchema.Type;
 
 const LockfileArtifactSchema = Schema.Struct({
 	base: Schema.optional(ArtifactBaseSchema),
+	generated: Schema.optional(Schema.Literal(true)),
 	kind: LockfileArtifactKindSchema,
 	definitionIds: Schema.Array(Schema.String),
 	hash: Schema.String,

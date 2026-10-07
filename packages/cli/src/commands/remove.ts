@@ -33,6 +33,7 @@ import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
+	generatedRemovalPaths,
 	hasProjectDevDependency,
 	loadManagedProject,
 	loadProjectRegistry,
@@ -474,7 +475,7 @@ async function removeWebApp(
 			},
 		);
 
-		reportWebAppRemoval(selectedApp, config, nextConfig, retained);
+		reportWebAppRemoval(selectedApp, config, nextConfig, retained, []);
 		return true;
 	}
 
@@ -495,6 +496,34 @@ async function removeWebApp(
 		.map((install) => removeTargets(install, removal.ids))
 		.filter((install): install is InstallRecord => install !== undefined);
 
+	const currentGeneratedPaths =
+		removal.modules.length === 0
+			? []
+			: await generatedRemovalPaths(
+					project.projectRoot,
+					config,
+					project.manifest.installs,
+					project.manifest.registries,
+					project.modules,
+					project.manifest.modules,
+					removal.roots,
+				);
+
+	const relocations = Object.entries(removalRootRelocations).sort(
+		([, leftRoot], [, rightRoot]) => rightRoot.length - leftRoot.length,
+	);
+
+	const generatedRemovals = currentGeneratedPaths.map((path) => {
+		const relocation = relocations.find(
+			([, currentRoot]) =>
+				path === currentRoot || path.startsWith(`${currentRoot}/`),
+		);
+
+		return relocation === undefined
+			? path
+			: `${relocation[0]}${path.slice(relocation[1].length)}`;
+	});
+
 	const { retained } = await applyInstalledPlan(
 		project.projectRoot,
 		nextConfig,
@@ -503,6 +532,7 @@ async function removeWebApp(
 		project.manifest.registries,
 		options,
 		{
+			...(generatedRemovals.length === 0 ? {} : { generatedRemovals }),
 			modules: project.modules.filter(
 				(module) => !removedModuleRoots.has(module.root),
 			),
@@ -514,7 +544,7 @@ async function removeWebApp(
 		},
 	);
 
-	reportWebAppRemoval(selectedApp, config, nextConfig, retained);
+	reportWebAppRemoval(selectedApp, config, nextConfig, retained, removal.roots);
 	return true;
 }
 
@@ -523,6 +553,7 @@ function reportWebAppRemoval(
 	previousConfig: ForgeConfig,
 	nextConfig: ForgeConfig,
 	retained: ReadonlyArray<string>,
+	removedRoots: ReadonlyArray<string>,
 ) {
 	log.success(`We removed the ${app.name} web app.`);
 
@@ -532,6 +563,17 @@ function reportWebAppRemoval(
 	if (retained.length > 0)
 		log.info(
 			`We kept your edited ${retained.length === 1 ? "file" : "files"} at ${listAnd.format(retained)}.`,
+		);
+
+	const retainedRoots = removedRoots.filter((root) =>
+		retained.includes(`${root}/package.json`),
+	);
+
+	if (retainedRoots.length > 0)
+		log.info(
+			retainedRoots.length === 1
+				? `${retainedRoots[0]} is still a workspace package, so delete the folder to finish the removal.`
+				: `${listAnd.format(retainedRoots)} are still workspace packages, so delete those folders to finish the removal.`,
 		);
 }
 

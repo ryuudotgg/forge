@@ -88,6 +88,7 @@ export interface TargetedLeafFile {
 	readonly generators: ReadonlyArray<string>;
 	readonly path: ReturnType<typeof filePath>;
 	readonly preserveExisting?: boolean;
+	readonly generated?: boolean;
 }
 
 interface TargetingPhaseResult {

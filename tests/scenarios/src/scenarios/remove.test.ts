@@ -382,6 +382,10 @@ describe("remove", () => {
 					"We kept your edited file at sites/admin/package.json.",
 				);
 
+				expect(removed.stdout + removed.stderr).toContain(
+					"sites/admin is still a workspace package, so delete the folder to finish the removal.",
+				);
+
 				expect(await pathExists(join(adoptedRoot, "forge.json"))).toBe(false);
 				expect(await readJson<{ name: string }>(packagePath)).toMatchObject({
 					name: "legacy-console",
@@ -631,7 +635,7 @@ describe("remove", () => {
 		});
 	}, 120_000);
 
-	it("keeps generated TanStack route trees through update and remove", async () => {
+	it("removes a regenerated route tree with its app", async () => {
 		await withScenarioWorkspace("remove-route-tree", async (workspace) => {
 			await createProject(workspace, {
 				packageManager: "pnpm",
@@ -669,15 +673,83 @@ describe("remove", () => {
 			);
 
 			expect(removed.exitCode, removed.stdout + removed.stderr).toBe(0);
-			expect(removed.stdout + removed.stderr).toContain(
-				"We kept your edited file at apps/site/src/routeTree.gen.ts.",
+			expect(removed.stdout + removed.stderr).not.toContain(
+				"We kept your edited",
 			);
 
 			expect(await readFile(webTree, "utf-8")).toBe(generated);
-			expect(await readFile(siteTree, "utf-8")).toBe(generated);
-			expect(
-				await pathExists(join(workspace.projectRoot, "apps/site/forge.json")),
-			).toBe(false);
+			expect(await pathExists(join(workspace.projectRoot, "apps/site"))).toBe(
+				false,
+			);
+		});
+	}, 120_000);
+
+	it("removes a regenerated route tree from an older lockfile", async () => {
+		await withScenarioWorkspace("remove-old-route-tree", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "tanstack-router",
+				webApps: [{ name: "site", framework: "tanstack-router" }],
+			});
+
+			const lockfilePath = join(workspace.projectRoot, ".forge/lock.json");
+			const lockfile = await readJson<{
+				artifacts: Record<string, { generated?: boolean }>;
+			}>(lockfilePath);
+
+			for (const artifact of Object.values(lockfile.artifacts)) {
+				delete artifact.generated;
+			}
+
+			await writeJson(lockfilePath, lockfile);
+			await writeFile(
+				join(workspace.projectRoot, "apps/site/src/routeTree.gen.ts"),
+				"export const routeTree = regenerated;\n",
+			);
+
+			const removed = await tryRunForge(
+				workspace.projectRoot,
+				["remove", "site"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(removed.exitCode, removed.stdout + removed.stderr).toBe(0);
+			expect(removed.stdout + removed.stderr).not.toContain(
+				"We kept your edited",
+			);
+
+			expect(await pathExists(join(workspace.projectRoot, "apps/site"))).toBe(
+				false,
+			);
+		});
+	}, 120_000);
+
+	it("reports an edited secondary package still in the workspace", async () => {
+		await withScenarioWorkspace("remove-edited-package", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			});
+
+			const packagePath = join(
+				workspace.projectRoot,
+				"apps/admin/package.json",
+			);
+			const packageJson = await readJson<Record<string, unknown>>(packagePath);
+
+			await writeJson(packagePath, { ...packageJson, custom: true });
+
+			const removed = await tryRunForge(
+				workspace.projectRoot,
+				["remove", "admin"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(removed.exitCode, removed.stdout + removed.stderr).toBe(0);
+			expect(removed.stdout + removed.stderr).toContain(
+				"apps/admin is still a workspace package, so delete the folder to finish the removal.",
+			);
 		});
 	}, 120_000);
 

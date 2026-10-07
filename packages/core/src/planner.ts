@@ -459,6 +459,7 @@ export interface PlannedFile {
 }
 
 export interface ProjectPlan {
+	readonly generatedRemovals?: ReadonlyArray<string>;
 	readonly dependencyNames: Readonly<Record<string, ReadonlyArray<string>>>;
 	readonly lockfile: Lockfile;
 	readonly manifest: Manifest;
@@ -545,6 +546,7 @@ interface TemplateAddition {
 }
 
 export interface InstalledPlanningSeed {
+	readonly generatedRemovals?: ProjectPlan["generatedRemovals"];
 	readonly additions?: ReadonlyArray<TemplateAddition>;
 	readonly modules: ReadonlyArray<DiscoveredModule>;
 	readonly records: Manifest["modules"];
@@ -1302,6 +1304,7 @@ const makePlanner = Effect.gen(function* () {
 				readonly content: string;
 				readonly definitionIds: ReadonlyArray<string>;
 				readonly preserveExisting: boolean;
+				readonly generated: boolean;
 			}
 		>();
 
@@ -1390,6 +1393,7 @@ const makePlanner = Effect.gen(function* () {
 						content: contribution.content,
 						definitionIds: [entry.definitionId],
 						preserveExisting: contribution.preserveExisting === true,
+						generated: contribution.generated === true,
 					});
 				}
 			}
@@ -1401,6 +1405,7 @@ const makePlanner = Effect.gen(function* () {
 				generators: file.definitionIds,
 				path: filePath(path),
 				...(file.preserveExisting ? { preserveExisting: true } : {}),
+				...(file.generated ? { generated: true } : {}),
 			}),
 		);
 	});
@@ -1502,6 +1507,7 @@ const makePlanner = Effect.gen(function* () {
 					: `module:${file.bucket.moduleId}`;
 
 			artifacts[`${targetKey}:file:${path}`] = {
+				...(file.generated === true ? { generated: true } : {}),
 				definitionIds: [...file.generators],
 				hash,
 				kind: "file",
@@ -1961,6 +1967,9 @@ const makePlanner = Effect.gen(function* () {
 			dependencyNames,
 			lockfile,
 			manifest,
+			...(seed?.generatedRemovals === undefined
+				? {}
+				: { generatedRemovals: seed.generatedRemovals }),
 			...(seed?.removalRootRelocations === undefined
 				? {}
 				: { removalRootRelocations: seed.removalRootRelocations }),
