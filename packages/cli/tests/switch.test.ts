@@ -167,11 +167,14 @@ describe("exclusive addon switch", () => {
 			installs,
 			undefined,
 			request.registryIds,
-			{ resolutionPolicy: "accept-forge", departing: ["biome"] },
+			{
+				resolutionPolicy: "accept-forge",
+				departing: { definitionIds: ["biome"], committedPaths: ["a.ts"] },
+			},
 		);
 
 		expect(Subprocess.run).not.toHaveBeenCalled();
-		expect(boundaryMocks.trackedFiles).not.toHaveBeenCalled();
+		expect(boundaryMocks.trackedFiles).toHaveBeenCalledOnce();
 		expect(promptMocks.success).not.toHaveBeenCalled();
 	});
 
@@ -207,13 +210,30 @@ describe("exclusive addon switch", () => {
 		);
 
 		expect(boundaryMocks.applyInstalledPlan).toHaveBeenCalledTimes(1);
-		expect(boundaryMocks.trackedFiles).not.toHaveBeenCalled();
+		expect(boundaryMocks.trackedFiles).toHaveBeenCalledOnce();
 	});
 
-	it("refuses to reformat when tracked files cannot be read", async () => {
+	it("refuses before applying when Git's tracked files cannot be read", async () => {
 		boundaryMocks.trackedFiles.mockReturnValue(
 			Effect.fail(new GitError({ root: ".", detail: "files unavailable" })),
 		);
+
+		await expect(runSwitch(project, request)).rejects.toThrow("exit:1");
+
+		expect(promptMocks.error).toHaveBeenCalledWith(
+			"We couldn't read the files Git tracks in this project. Nothing was changed.",
+		);
+
+		expect(boundaryMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		expect(Subprocess.run).not.toHaveBeenCalled();
+	});
+
+	it("refuses to reformat when tracked files cannot be read", async () => {
+		boundaryMocks.trackedFiles
+			.mockReturnValueOnce(Effect.succeed(["a.ts"]))
+			.mockReturnValueOnce(
+				Effect.fail(new GitError({ root: ".", detail: "files unavailable" })),
+			);
 
 		await expect(runSwitch(project, request)).rejects.toThrow("exit:1");
 
@@ -304,7 +324,10 @@ describe("exclusive addon switch", () => {
 			installs,
 			undefined,
 			request.registryIds,
-			{ resolutionPolicy: "accept-forge", departing: ["biome"] },
+			{
+				resolutionPolicy: "accept-forge",
+				departing: { definitionIds: ["biome"], committedPaths: ["a.ts"] },
+			},
 		);
 
 		expect(boundaryMocks.applyInstalledPlan).toHaveBeenNthCalledWith(
@@ -314,7 +337,10 @@ describe("exclusive addon switch", () => {
 			installs,
 			undefined,
 			request.registryIds,
-			{ resolutionPolicy: "keep-user", departing: ["biome"] },
+			{
+				resolutionPolicy: "keep-user",
+				departing: { definitionIds: ["biome"], committedPaths: ["a.ts"] },
+			},
 		);
 
 		expect(boundaryMocks.applyInstalledPlan).toHaveBeenCalledTimes(2);
@@ -397,7 +423,7 @@ describe("exclusive addon switch", () => {
 			installs,
 			undefined,
 			request.registryIds,
-			{ departing: ["biome"] },
+			{ departing: { definitionIds: ["biome"], committedPaths: [] } },
 		);
 
 		expect(boundaryMocks.applyInstalledPlan).toHaveBeenCalledTimes(2);

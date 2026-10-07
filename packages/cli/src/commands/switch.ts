@@ -105,6 +105,20 @@ export async function runSwitch(
 		process.exit(1);
 	}
 
+	const committed = await runCliEffect(trackedFiles(project.projectRoot));
+	if (Exit.isFailure(committed)) {
+		log.error(
+			"We couldn't read the files Git tracks in this project. Nothing was changed.",
+		);
+
+		process.exit(1);
+	}
+
+	const departing = {
+		definitionIds: [holder.id],
+		committedPaths: committed.value,
+	};
+
 	log.info(
 		`This project uses ${holder.name}, so we're switching it to ${addon.name}.`,
 	);
@@ -126,7 +140,7 @@ export async function runSwitch(
 		installs,
 		undefined,
 		registryIds,
-		{ ...request.resolution[0], departing: [holder.id] },
+		{ ...request.resolution[0], departing },
 	);
 
 	for (const { path, lines } of applied.dropped) {
@@ -201,7 +215,7 @@ export async function runSwitch(
 		installs,
 		undefined,
 		registryIds,
-		{ resolutionPolicy: "keep-user", departing: [holder.id] },
+		{ resolutionPolicy: "keep-user", departing },
 	);
 
 	log.success(

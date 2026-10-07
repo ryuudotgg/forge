@@ -443,7 +443,10 @@ describe("apply", () => {
 							removals: [path],
 							writes: [],
 						},
-						{ departing: ["test"], resolutionPolicy },
+						{
+							departing: { definitionIds: ["test"], committedPaths: [path] },
+							resolutionPolicy,
+						},
 					).pipe(Effect.provide(coreLayer)),
 				);
 
@@ -481,7 +484,7 @@ describe("apply", () => {
 						removals: [path],
 						writes: [],
 					},
-					{ departing: ["test"] },
+					{ departing: { definitionIds: ["test"], committedPaths: [path] } },
 				).pipe(Effect.provide(coreLayer)),
 			);
 
@@ -542,7 +545,7 @@ describe("apply", () => {
 							removals: [path],
 							writes: [],
 						},
-						{ departing: ["test"] },
+						{ departing: { definitionIds: ["test"], committedPaths: [path] } },
 					).pipe(Effect.provide(coreLayer)),
 				);
 
@@ -608,7 +611,7 @@ describe("apply", () => {
 							removals: [path],
 							writes: [],
 						},
-						{ departing: ["test"] },
+						{ departing: { definitionIds: ["test"], committedPaths: [path] } },
 					).pipe(Effect.provide(coreLayer)),
 				);
 
@@ -688,7 +691,7 @@ describe("apply", () => {
 						removals: [path],
 						writes: [],
 					},
-					{ departing: ["test"] },
+					{ departing: { definitionIds: ["test"], committedPaths: [path] } },
 				).pipe(Effect.provide(coreLayer)),
 			);
 
@@ -697,7 +700,53 @@ describe("apply", () => {
 		});
 	});
 
-	it.each(["shared owner", "still installed", "no owner"])(
+	it("reports every departing file in path order", async () => {
+		await withTempDir("apply-departing-order", async (directory) => {
+			const paths = [".oxlintrc.json", ".oxfmtrc.json"];
+			const plans = await Promise.all(
+				paths.map((path) => declinedPlan(path, '{"enabled":true}\n', "json")),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					baseContents: Object.fromEntries(
+						plans.flatMap((plan) => Object.entries(plan.baseContents ?? {})),
+					),
+					lockfile: {
+						artifacts: Object.fromEntries(
+							plans.flatMap((plan) => Object.entries(plan.lockfile.artifacts)),
+						),
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: plans.flatMap((plan) => plan.writes),
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			for (const path of paths)
+				await writeText(join(directory, path), '{"enabled":false}\n');
+
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: paths,
+						writes: [],
+					},
+					{ departing: { definitionIds: ["test"], committedPaths: paths } },
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(result.dropped.map((edit) => edit.path)).toEqual([
+				".oxfmtrc.json",
+				".oxlintrc.json",
+			]);
+		});
+	});
+
+	it.each(["shared owner", "still installed", "no owner", "uncommitted"])(
 		"preserves residue for a departing addon with a %s",
 		async (guard) => {
 			await withTempDir("apply-departing-guard", async (directory) => {
@@ -748,7 +797,12 @@ describe("apply", () => {
 							removals: [path],
 							writes: [],
 						},
-						{ departing: ["test"] },
+						{
+							departing: {
+								definitionIds: ["test"],
+								committedPaths: guard === "uncommitted" ? [] : [path],
+							},
+						},
 					).pipe(Effect.provide(coreLayer)),
 				);
 

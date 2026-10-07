@@ -91,9 +91,14 @@ export type ApplyResolution =
 			readonly resolution: ConflictResolution;
 	  };
 
+export interface DepartingAddons {
+	readonly definitionIds: ReadonlyArray<string>;
+	readonly committedPaths: ReadonlyArray<string>;
+}
+
 export interface ApplyOptions {
 	readonly conflictResolutions?: Readonly<Record<string, ApplyResolution>>;
-	readonly departing?: ReadonlyArray<string>;
+	readonly departing?: DepartingAddons;
 	readonly resolutionPolicy?: ResolutionPolicy;
 }
 
@@ -836,8 +841,12 @@ const makeApply = Effect.gen(function* () {
 		);
 
 		const departing = new Set(
-			(options.departing ?? []).filter((id) => !installed.has(id)),
+			(options.departing?.definitionIds ?? []).filter(
+				(id) => !installed.has(id),
+			),
 		);
+
+		const committedPaths = new Set(options.departing?.committedPaths ?? []);
 
 		const removedRoots = plan.removedRoots ?? [];
 		const isInRemovedRoot = (path: string) =>
@@ -985,6 +994,7 @@ const makeApply = Effect.gen(function* () {
 
 			if (
 				departing.size > 0 &&
+				committedPaths.has(relativePath) &&
 				previousArtifact.definitionIds.length > 0 &&
 				previousArtifact.definitionIds.every((id) => departing.has(id))
 			) {
@@ -1017,7 +1027,7 @@ const makeApply = Effect.gen(function* () {
 						projectRoot,
 						previousArtifact,
 						baseDescriptor,
-					).pipe(Effect.orElseSucceed(() => undefined));
+					);
 
 					if (base !== undefined) {
 						const residue = yield* Effect.result(

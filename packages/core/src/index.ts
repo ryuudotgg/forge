@@ -7,6 +7,7 @@ export type {
 	ApplyResult,
 	ConflictResolution,
 	DeclinedChange,
+	DepartingAddons,
 	DroppedEdit,
 	FormatApplyErrorOptions,
 	PlannedWrite,
