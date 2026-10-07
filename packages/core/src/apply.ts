@@ -974,13 +974,7 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (isUserOwnedEnv(file.path)) {
-				for (const [artifactId, artifact] of Object.entries(committedArtifacts))
-					if (artifact.path === file.path)
-						delete committedArtifacts[artifactId];
-
-				continue;
-			}
+			if (isUserOwnedEnv(file.path)) continue;
 
 			const currentContent = yield* readFile(fullPath, file.path);
 
@@ -1352,6 +1346,17 @@ const makeApply = Effect.gen(function* () {
 			cliVersion: cliVersion.version,
 		} satisfies PreflightPhaseContract["result"]["committedManifest"];
 
+		for (const [artifactId, artifact] of Object.entries(committedArtifacts)) {
+			if (!isUserOwnedEnv(artifact.path)) continue;
+			if (artifact.base !== undefined)
+				return yield* new ApplyError({
+					path: artifact.path,
+					reason: "managed-base-forbidden",
+				});
+
+			delete committedArtifacts[artifactId];
+		}
+
 		const committedLockfile = {
 			...plan.lockfile,
 			artifacts: committedArtifacts,
@@ -1382,7 +1387,7 @@ const makeApply = Effect.gen(function* () {
 			committedLockfile.artifacts,
 		)) {
 			if (artifact.base === undefined) continue;
-			if (!descriptorMatchesArtifact(artifact) || isUserOwnedEnv(artifact.path))
+			if (!descriptorMatchesArtifact(artifact))
 				return yield* new ApplyError({
 					path: artifact.path,
 					reason: "managed-base-forbidden",

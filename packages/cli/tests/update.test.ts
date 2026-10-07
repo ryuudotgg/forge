@@ -60,6 +60,7 @@ function updateFixture(options: UpdateFixtureOptions) {
 
 	const logInfo = vi.fn();
 	const logWarn = vi.fn();
+	const logError = vi.fn();
 	const service: UpdateCommandService = {
 		applyInstalledPlan,
 		intro,
@@ -67,6 +68,7 @@ function updateFixture(options: UpdateFixtureOptions) {
 		loadProjectRegistry,
 		logInfo,
 		logWarn,
+		logError,
 	};
 
 	return {
@@ -77,6 +79,7 @@ function updateFixture(options: UpdateFixtureOptions) {
 		loadProjectRegistry,
 		logInfo,
 		logWarn,
+		logError,
 	};
 }
 
@@ -123,6 +126,32 @@ it.each(planningFailures)(
 		}
 	},
 );
+
+it("refuses invalid config before registry loading or applying", async () => {
+	const fixture = updateFixture({
+		project: managedProject({ config: { authMethods: ["email-password"] } }),
+	});
+
+	const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+		throw new Error("Update refused");
+	});
+
+	try {
+		await expect(runUpdate({}, fixture.layer)).rejects.toThrow(
+			"Update refused",
+		);
+
+		expect(fixture.logError.mock.calls).toEqual([
+			["Authentication methods need Better Auth."],
+		]);
+
+		expect(exit).toHaveBeenCalledWith(1);
+		expect(fixture.loadProjectRegistry).not.toHaveBeenCalled();
+		expect(fixture.applyInstalledPlan).not.toHaveBeenCalled();
+	} finally {
+		exit.mockRestore();
+	}
+});
 
 it.effect("re-applies the plan with the manifest installs", () => {
 	const project = managedProject({

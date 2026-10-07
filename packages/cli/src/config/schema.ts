@@ -1,6 +1,8 @@
 import {
+	authenticationProviders,
 	authPasskeyIssue,
 	authPluginRequirementMessage,
+	orms,
 	twoFactorSkippedMessage,
 	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
@@ -24,6 +26,62 @@ const webAppsConfigSchema = Schema.Struct({
 	webApps: schemas.webApps,
 });
 
+export function configIssue(data: Record<string, unknown>): string | undefined {
+	if (Schema.is(webAppsConfigSchema)(data)) {
+		if (data.web === undefined && data.webApps.length !== 0)
+			return "Secondary web apps need a web framework.";
+
+		const portIssue = webAppPortIssue(data);
+		if (portIssue !== undefined) return portIssue;
+	}
+
+	if (data.authMethods !== undefined && data.authentication !== "better-auth")
+		return "Authentication methods need Better Auth.";
+
+	if (data.authPlugins !== undefined && data.authentication !== "better-auth")
+		return "Authentication plugins need Better Auth.";
+
+	if (
+		Array.isArray(data.authMethods) &&
+		(data.authMethods.includes("email-otp") ||
+			data.authMethods.includes("magic-link")) &&
+		data.emailProvider === undefined
+	)
+		return "Email OTP and magic link need an email provider.";
+
+	if (Schema.is(authPluginConfigSchema)(data)) {
+		const missing = unmetAuthPluginRequirements(data);
+		if (missing.length !== 0) return authPluginRequirementMessage(missing);
+
+		const skipping = twoFactorSkippingMethods(data);
+		if (skipping.length !== 0) return twoFactorSkippedMessage(skipping);
+	}
+
+	const platforms = Array.isArray(data.platforms) ? data.platforms : undefined;
+	if (platforms?.includes("web") && !data.web)
+		return "A web framework wasn't selected.";
+
+	if (platforms?.includes("desktop") && !data.desktop)
+		return "A desktop framework wasn't selected.";
+
+	if (platforms?.includes("mobile") && !data.mobile)
+		return "A mobile framework wasn't selected.";
+
+	if (Schema.is(authPluginConfigSchema)(data)) {
+		const passkeyIssue = authPasskeyIssue(data);
+		if (passkeyIssue !== undefined) return passkeyIssue;
+	}
+}
+
+export function ormIssue(config: Record<string, unknown>): string | undefined {
+	if (
+		authenticationProviders.normalize(config.authentication) ===
+			"better-auth" &&
+		!orms.normalize(config.orm)
+	)
+		return "You need to add an ORM before you can use Better Auth.";
+}
+
 export function assembleSchema(steps: Step[]) {
 	const fields: Record<
 		string,
@@ -45,64 +103,7 @@ export function assembleSchema(steps: Step[]) {
 		}
 
 	return Schema.Struct(fields).pipe(
-		Schema.check(
-			Schema.makeFilter((data) => {
-				if (Schema.is(webAppsConfigSchema)(data)) {
-					if (data.web === undefined && data.webApps.length !== 0)
-						return "Secondary web apps need a web framework.";
-
-					const portIssue = webAppPortIssue(data);
-					if (portIssue !== undefined) return portIssue;
-				}
-
-				if (
-					data.authMethods !== undefined &&
-					data.authentication !== "better-auth"
-				)
-					return "Authentication methods need Better Auth.";
-
-				if (
-					data.authPlugins !== undefined &&
-					data.authentication !== "better-auth"
-				)
-					return "Authentication plugins need Better Auth.";
-
-				if (
-					Array.isArray(data.authMethods) &&
-					(data.authMethods.includes("email-otp") ||
-						data.authMethods.includes("magic-link")) &&
-					data.emailProvider === undefined
-				)
-					return "Email OTP and magic link need an email provider.";
-
-				if (Schema.is(authPluginConfigSchema)(data)) {
-					const missing = unmetAuthPluginRequirements(data);
-					if (missing.length !== 0)
-						return authPluginRequirementMessage(missing);
-
-					const skipping = twoFactorSkippingMethods(data);
-					if (skipping.length !== 0) return twoFactorSkippedMessage(skipping);
-				}
-
-				const platforms = Array.isArray(data.platforms)
-					? data.platforms
-					: undefined;
-
-				if (platforms?.includes("web") && !data.web)
-					return "A web framework wasn't selected.";
-
-				if (platforms?.includes("desktop") && !data.desktop)
-					return "A desktop framework wasn't selected.";
-
-				if (platforms?.includes("mobile") && !data.mobile)
-					return "A mobile framework wasn't selected.";
-
-				if (Schema.is(authPluginConfigSchema)(data)) {
-					const passkeyIssue = authPasskeyIssue(data);
-					if (passkeyIssue !== undefined) return passkeyIssue;
-				}
-			}),
-		),
+		Schema.check(Schema.makeFilter(configIssue)),
 	);
 }
 

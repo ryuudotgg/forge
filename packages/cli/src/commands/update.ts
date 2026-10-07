@@ -1,6 +1,7 @@
 import { intro, log } from "@clack/prompts";
 import type { ForgeConfig } from "@ryuugg/generators";
 import { Context, Effect, Layer } from "effect";
+import { configIssue, ormIssue } from "../config/schema";
 import {
 	applyInstalledPlan,
 	loadManagedProject,
@@ -17,6 +18,7 @@ export interface UpdateCommandService {
 	readonly loadProjectRegistry: typeof loadProjectRegistry;
 	readonly logInfo: typeof log.info;
 	readonly logWarn: typeof log.warn;
+	readonly logError: typeof log.error;
 }
 
 export class UpdateCommand extends Context.Service<
@@ -32,6 +34,7 @@ export class UpdateCommand extends Context.Service<
 			loadProjectRegistry,
 			logInfo: log.info,
 			logWarn: log.warn,
+			logError: log.error,
 		}),
 	);
 }
@@ -47,6 +50,12 @@ export function runUpdateEffect(
 		const project: ManagedProject = yield* Effect.promise(() =>
 			command.loadManagedProject(".", "update"),
 		);
+
+		const issue = configIssue(project.config) ?? ormIssue(project.config);
+		if (issue !== undefined) {
+			command.logError(issue);
+			process.exit(1);
+		}
 
 		const loadedRegistry = yield* Effect.promise(() =>
 			command.loadProjectRegistry(

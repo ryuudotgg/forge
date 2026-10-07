@@ -415,7 +415,7 @@ describe("apply", () => {
 		});
 	});
 
-	it("creates a missing .env", async () => {
+	it("creates a missing .env without recording it in the lockfile", async () => {
 		await withTempDir("apply-create-env", async (directory) => {
 			const content = 'AUTH_SECRET="generated"\n';
 			const hash = await hashContent(content);
@@ -448,7 +448,7 @@ describe("apply", () => {
 				State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
 			);
 
-			expect(lockfile.artifacts["project:surface:rootEnv"]).toEqual(artifact);
+			expect(lockfile.artifacts).toEqual({});
 		});
 	});
 
