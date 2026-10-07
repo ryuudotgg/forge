@@ -1519,13 +1519,14 @@ const makeApply = Effect.gen(function* () {
 					)
 				) {
 					const forgeMerged = yield* mergeSurface(
-						previousBase.mergeKind,
+						kind,
 						file.path,
 						mergeBase,
 						currentContent,
 						file.content,
 						"forge",
 						() => "forge",
+						syntheticBase,
 					);
 
 					recordDeclined(file.path, merged.merged, forgeMerged.merged);
