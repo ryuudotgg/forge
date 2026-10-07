@@ -101,7 +101,7 @@ describe("CLI argument parsing", () => {
 	});
 
 	const frameworkChoices =
-		"nextjs, react-router, tanstack-router, or tanstack-start";
+		"Next.js, React Router, TanStack Router, or TanStack Start";
 
 	it.each([
 		["web=nextjs", "web is reserved. Pick another name for this web app."],
@@ -113,10 +113,7 @@ describe("CLI argument parsing", () => {
 			"Admin=nextjs",
 			"Admin isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
 		],
-		[
-			"admin=unknown",
-			`unknown isn't a web framework. Use ${frameworkChoices}.`,
-		],
+		["admin=unknown", `--web takes ${frameworkChoices}, not "unknown".`],
 		[
 			"admin=",
 			"--web admin= needs a framework after the equals sign, like admin=nextjs.",
@@ -127,9 +124,9 @@ describe("CLI argument parsing", () => {
 		],
 		[
 			"admin=nextjs=other",
-			`nextjs=other isn't a web framework. Use ${frameworkChoices}.`,
+			`--web takes ${frameworkChoices}, not "nextjs=other".`,
 		],
-		["unknown", `unknown isn't a web framework. Use ${frameworkChoices}.`],
+		["unknown", `--web takes ${frameworkChoices}, not "unknown".`],
 		["", "--web needs a framework, like --web nextjs."],
 		[
 			"nextjs+client",

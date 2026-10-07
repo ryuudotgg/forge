@@ -28,13 +28,13 @@ import {
 	webAppsSchema,
 } from "./steps/platforms/web-apps";
 import type { PartialConfig } from "./steps/types";
-import { unsupportedMessage } from "./utils/choices";
+import type { Choices } from "./utils/choices";
 import { listAnd, listOr } from "./utils/list";
 
 interface CLIOption {
 	type: "string" | "boolean";
 	description?: string;
-	choices?: ReadonlyArray<CLIChoice>;
+	choices?: Choices<string>;
 
 	short?: string;
 	configKey?: string;
@@ -42,29 +42,54 @@ interface CLIOption {
 	multiple?: boolean;
 }
 
-interface CLIChoice {
-	readonly available: boolean;
-	readonly label: string;
+function environmentChoices(
+	values: Readonly<Record<string, { readonly displayName: string }>>,
+): Choices<string> {
+	const fold = (value: string) => value.normalize("NFKC").toLowerCase();
+	const byValue = new Map<string, string>();
+	for (const [key, { displayName }] of Object.entries(values)) {
+		byValue.set(fold(key), displayName);
+		byValue.set(fold(displayName), displayName);
+	}
+
+	return {
+		ids: Object.values(values).map(({ displayName }) => displayName),
+		available: () => true,
+		label: (id) => id,
+		normalize: (value) =>
+			typeof value === "string" ? byValue.get(fold(value)) : undefined,
+	};
 }
 
-function choiceHint<Id extends string>(choices: {
-	readonly ids: ReadonlyArray<Id>;
-	available(id: Id): boolean;
-	label(id: Id): string;
-}): ReadonlyArray<CLIChoice> {
-	return choices.ids.map((id) => ({
-		available: choices.available(id),
-		label: choices.label(id),
-	}));
-}
+export function decodeChoice<Id extends string>(
+	table: Choices<Id>,
+	value: unknown,
+	source: { flag: string } | { configKey: string },
+): Id {
+	const id = table.normalize(value);
+	const choices = listOr.format(
+		table.ids
+			.filter((choice) => table.available(choice))
+			.map((choice) => table.label(choice)),
+	);
+	if (id === undefined)
+		throw new Error(
+			"flag" in source
+				? `${source.flag} takes ${choices}, not ${JSON.stringify(value)}.`
+				: `Your config file sets ${JSON.stringify(source.configKey)} to ${JSON.stringify(value)}, but it takes ${choices}.`,
+		);
 
-function environmentHint(
-	values: ReadonlyArray<{ readonly displayName: string }>,
-): ReadonlyArray<CLIChoice> {
-	return values.map(({ displayName }) => ({
-		available: true,
-		label: displayName,
-	}));
+	if (!table.available(id)) {
+		const name =
+			"flag" in source
+				? source.flag
+				: `${JSON.stringify(source.configKey)} in your config file`;
+		throw new Error(
+			`We don't support ${table.label(id)} for ${name} yet, so pick ${choices}.`,
+		);
+	}
+
+	return id;
 }
 
 export type OptionKey = keyof typeof options;
@@ -129,25 +154,25 @@ export const options = {
 
 	runtime: {
 		type: "string",
-		choices: environmentHint(Object.values(runtimes)),
+		choices: environmentChoices(runtimes),
 		configKey: "runtime",
 	},
 
 	"package-manager": {
 		type: "string",
-		choices: environmentHint(Object.values(packageManagers)),
+		choices: environmentChoices(packageManagers),
 		configKey: "packageManager",
 	},
 
 	catalogs: {
 		type: "string",
-		choices: choiceHint(catalogs),
+		choices: catalogs,
 		configKey: "catalogs",
 	},
 
 	linter: {
 		type: "string",
-		choices: choiceHint(linters),
+		choices: linters,
 		configKey: "linter",
 	},
 
@@ -156,74 +181,74 @@ export const options = {
 		multiple: true,
 		description:
 			"Repeat per app: framework, name=framework, or name=framework+client.",
-		choices: choiceHint(webFrameworks),
+		choices: webFrameworks,
 		configKey: "web",
 	},
 
 	desktop: {
 		type: "string",
-		choices: choiceHint(desktopFrameworks),
+		choices: desktopFrameworks,
 		configKey: "desktop",
 		platform: "desktop",
 	},
 
 	mobile: {
 		type: "string",
-		choices: choiceHint(mobileFrameworks),
+		choices: mobileFrameworks,
 		configKey: "mobile",
 		platform: "mobile",
 	},
 
 	backend: {
 		type: "string",
-		choices: choiceHint(backends),
+		choices: backends,
 		configKey: "backend",
 	},
 
 	rpc: {
 		type: "string",
-		choices: choiceHint(rpcProviders),
+		choices: rpcProviders,
 		configKey: "rpc",
 	},
 
 	database: {
 		type: "string",
-		choices: choiceHint(databases),
+		choices: databases,
 		configKey: "database",
 	},
 
 	orm: {
 		type: "string",
-		choices: choiceHint(orms),
+		choices: orms,
 		configKey: "orm",
 	},
 
 	auth: {
 		type: "string",
-		choices: choiceHint(authenticationProviders),
+		choices: authenticationProviders,
 		configKey: "authentication",
 	},
 	email: {
 		type: "string",
-		choices: choiceHint(emailProviders),
+		choices: emailProviders,
 		configKey: "emailProvider",
 	},
 
 	"database-provider": {
 		type: "string",
-		choices: choiceHint(databaseProviders),
+		choices: databaseProviders,
 		configKey: "databaseProvider",
 	},
 
 	style: {
 		type: "string",
-		choices: choiceHint(styleFrameworks),
+		choices: styleFrameworks,
 		configKey: "style",
 	},
 
 	"native-style": {
 		type: "string",
-		choices: choiceHint(nativeStyleFrameworks),
+		choices: nativeStyleFrameworks,
 		configKey: "nativeStyleFramework",
 		platform: "mobile",
 	},
@@ -403,16 +428,7 @@ export function isUnknownCommand(
 const clientSuffix = "+client";
 
 function webFlagFramework(framework: string): WebFramework {
-	const id = webFrameworks.normalize(framework);
-	if (id === undefined)
-		throw new Error(
-			`${framework} isn't a web framework. Use ${listOr.format(webFrameworks.ids)}.`,
-		);
-
-	if (!webFrameworks.available(id))
-		throw new Error(unsupportedMessage(webFrameworks, [id]));
-
-	return id;
+	return decodeChoice(webFrameworks, framework, { flag: "--web" });
 }
 
 function webFlagOverrides(entries: ReadonlyArray<string>): PartialConfig {
@@ -496,7 +512,10 @@ export function buildFlagOverrides(values: ParsedValues): PartialConfig {
 			continue;
 		}
 
-		if (value !== undefined) overrides[configKey] = value;
+		if (value !== undefined)
+			overrides[configKey] = opt.choices
+				? decodeChoice(opt.choices, value, { flag: `--${key}` })
+				: value;
 	}
 
 	return overrides;
