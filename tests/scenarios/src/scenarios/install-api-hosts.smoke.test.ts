@@ -11,6 +11,7 @@ import {
 import {
 	expectClientIpRateLimit,
 	expectCredentialedGeneratedServer,
+	expectOrpcBodyLimitOnServer,
 	expectProductionOriginsRequired,
 	expectStandaloneOrpcRoute,
 	injectOrpcContextProbe,
@@ -130,6 +131,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			}
 		});
 	}, 600_000);
+
 	it.each([
 		{ backend: "hono", databaseProvider: undefined },
 		{ backend: "express", databaseProvider: "turso" },
@@ -214,6 +216,8 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 								? "http://localhost:5173"
 								: "http://localhost:3000",
 					});
+
+					await expectOrpcBodyLimitOnServer(workspace.projectRoot);
 				},
 			);
 		},

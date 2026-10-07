@@ -1,6 +1,6 @@
 import { appRouter, reportServerError } from "@__SLUG__/orpc";
 import { onError } from "@orpc/server";
-import { RPCHandler } from "@orpc/server/fetch";
+import { BodyLimitPlugin, RPCHandler } from "@orpc/server/fetch";
 import { SimpleCsrfProtectionHandlerPlugin } from "@orpc/server/plugins";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -21,7 +21,10 @@ orpcRoutes.use(
 );
 
 const handler = new RPCHandler(appRouter, {
-  plugins: [new SimpleCsrfProtectionHandlerPlugin()],
+  plugins: [
+    new SimpleCsrfProtectionHandlerPlugin(),
+    new BodyLimitPlugin({ maxBodySize: 1024 * 1024 }),
+  ],
   interceptors: [
     onError((error, { request }) =>
       reportServerError(error, request.url.pathname),

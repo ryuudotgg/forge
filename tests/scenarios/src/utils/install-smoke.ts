@@ -369,6 +369,7 @@ export async function webAppsOf(projectRoot: string): Promise<WebApp[]> {
 			stringField(metadata, "role") === "primary" || root === "apps/web";
 
 		const primaryOrigin = generatedEnv.WEB_URL ?? generatedEnv.APP_ORIGIN;
+
 		let port: unknown;
 		if (primary && primaryOrigin !== undefined) {
 			const originPort = new URL(primaryOrigin).port;
@@ -1427,6 +1428,81 @@ async function expectOrpcRouteEdges(origin: string, output: () => string) {
 	});
 }
 
+async function expectOrpcBodyLimit(origin: string, output: () => string) {
+	const url = `${origin}/api/orpc/health`;
+	const headers = {
+		"Content-Type": "application/json",
+		"x-csrf-token": "orpc",
+	};
+
+	const health = {
+		method: "POST",
+		headers,
+		body: JSON.stringify({ json: null }),
+	};
+
+	const accepted = await fetch(url, health);
+
+	expect(accepted.status, output()).toBe(200);
+	expect(await accepted.json()).toEqual({ json: { status: "ok" } });
+
+	const body = JSON.stringify({ json: "a".repeat(2 * 1024 * 1024) });
+	const encoded = new TextEncoder().encode(body);
+	const declared = await fetch(url, { method: "POST", headers, body });
+
+	expect(declared.status, output()).toBe(413);
+
+	const stream = new ReadableStream<Uint8Array>({
+		start(controller) {
+			for (let offset = 0; offset < encoded.length; offset += 64 * 1024)
+				controller.enqueue(encoded.slice(offset, offset + 64 * 1024));
+
+			controller.close();
+		},
+	});
+
+	type StreamingRequestInit = RequestInit & { duplex: "half" };
+	const request: StreamingRequestInit = {
+		method: "POST",
+		headers,
+		body: stream,
+		duplex: "half",
+	};
+
+	const chunked = await fetch(url, request);
+
+	expect(chunked.status, output()).toBe(413);
+
+	const unmatched = await fetch(`${origin}/api/orpc/missing`, {
+		method: "POST",
+		headers,
+		body,
+	});
+
+	expect(unmatched.status, output()).toBe(404);
+
+	// A rejected upload may leave a dropped keep alive socket in the pool; a crashed server refuses the retry too.
+	const alive = await fetch(url, health).catch(() => fetch(url, health));
+
+	expect(alive.status, output()).toBe(200);
+}
+
+export async function expectOrpcBodyLimitOnServer(projectRoot: string) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const serverOrigin = generatedEnv.APP_ORIGIN;
+	if (serverOrigin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	await withGeneratedServer(
+		projectRoot,
+		generatedEnv,
+		serverOrigin,
+		async (output) => {
+			await expectOrpcBodyLimit(serverOrigin, output);
+		},
+	);
+}
+
 export async function expectStandaloneOrpcRoute(
 	projectRoot: string,
 	contextProbe: boolean,
@@ -1449,6 +1525,8 @@ export async function expectStandaloneOrpcRoute(
 
 			await expectOrpcRouteEdges(serverOrigin, output);
 			if (contextProbe) await expectOrpcContextFailure(serverOrigin, output);
+
+			await expectOrpcBodyLimit(serverOrigin, output);
 		},
 	);
 }
@@ -1969,7 +2047,6 @@ async function startSelfHostedServer(
 	return launchedServer(child, origin, async () => {
 		const pid = child.pid;
 		if (pid === undefined) return;
-
 		await stopDetached(pid);
 	});
 }
@@ -2006,7 +2083,6 @@ export async function withWebApp(
 			async () => {
 				const pid = child.pid;
 				if (pid === undefined) return;
-
 				await stopDetached(pid);
 			},
 		);
