@@ -369,6 +369,7 @@ export async function webAppsOf(projectRoot: string): Promise<WebApp[]> {
 			stringField(metadata, "role") === "primary" || root === "apps/web";
 
 		const primaryOrigin = generatedEnv.WEB_URL ?? generatedEnv.APP_ORIGIN;
+
 		let port: unknown;
 		if (primary && primaryOrigin !== undefined) {
 			const originPort = new URL(primaryOrigin).port;
@@ -1427,6 +1428,97 @@ async function expectOrpcRouteEdges(origin: string, output: () => string) {
 	});
 }
 
+// fetch fails when the server answers and closes before the upload finishes, so this reads the response as soon as it arrives, on its own socket.
+async function uploadStatus(
+	url: string,
+	headers: Readonly<Record<string, string>>,
+	slices: ReadonlyArray<Uint8Array>,
+) {
+	return await new Promise<number>((resolveStatus, rejectStatus) => {
+		const upload = httpRequest(
+			url,
+			{ method: "POST", headers, agent: false },
+			(response) => {
+				response.on("error", () => undefined);
+				response.resume();
+				resolveStatus(response.statusCode ?? 0);
+			},
+		);
+
+		upload.on("error", rejectStatus);
+		for (const slice of slices) upload.write(slice);
+		upload.end();
+	});
+}
+
+async function expectOrpcBodyLimit(origin: string, output: () => string) {
+	const url = `${origin}/api/orpc/health`;
+	const headers = {
+		"Content-Type": "application/json",
+		"x-csrf-token": "orpc",
+	};
+
+	const health = {
+		method: "POST",
+		headers,
+		body: JSON.stringify({ json: null }),
+	};
+
+	const accepted = await fetch(url, health);
+
+	expect(accepted.status, output()).toBe(200);
+	expect(await accepted.json()).toEqual({ json: { status: "ok" } });
+
+	const body = JSON.stringify({ json: "a".repeat(2 * 1024 * 1024) });
+	const encoded = new TextEncoder().encode(body);
+	const slices: Array<Uint8Array> = [];
+	for (let offset = 0; offset < encoded.length; offset += 64 * 1024)
+		slices.push(encoded.subarray(offset, offset + 64 * 1024));
+
+	const declared = await uploadStatus(
+		url,
+		{
+			...headers,
+			"Content-Length": String(encoded.length),
+		},
+		slices,
+	);
+
+	expect(declared, output()).toBe(413);
+
+	const chunked = await uploadStatus(url, headers, slices);
+
+	expect(chunked, output()).toBe(413);
+
+	const unmatched = await uploadStatus(
+		`${origin}/api/orpc/missing`,
+		headers,
+		slices,
+	);
+
+	expect(unmatched, output()).toBe(404);
+
+	const alive = await fetch(url, health);
+
+	expect(alive.status, output()).toBe(200);
+}
+
+export async function expectOrpcBodyLimitOnServer(projectRoot: string) {
+	const generatedEnv = await readGeneratedEnv(projectRoot);
+	const serverOrigin = generatedEnv.APP_ORIGIN;
+	if (serverOrigin === undefined)
+		throw new Error(`Missing Generated Origin: ${projectRoot}`);
+
+	await withGeneratedServer(
+		projectRoot,
+		generatedEnv,
+		serverOrigin,
+		async (output) => {
+			await expectOrpcBodyLimit(serverOrigin, output);
+		},
+	);
+}
+
 export async function expectStandaloneOrpcRoute(
 	projectRoot: string,
 	contextProbe: boolean,
@@ -1449,6 +1541,8 @@ export async function expectStandaloneOrpcRoute(
 
 			await expectOrpcRouteEdges(serverOrigin, output);
 			if (contextProbe) await expectOrpcContextFailure(serverOrigin, output);
+
+			await expectOrpcBodyLimit(serverOrigin, output);
 		},
 	);
 }
@@ -1969,7 +2063,6 @@ async function startSelfHostedServer(
 	return launchedServer(child, origin, async () => {
 		const pid = child.pid;
 		if (pid === undefined) return;
-
 		await stopDetached(pid);
 	});
 }
@@ -2006,7 +2099,6 @@ export async function withWebApp(
 			async () => {
 				const pid = child.pid;
 				if (pid === undefined) return;
-
 				await stopDetached(pid);
 			},
 		);

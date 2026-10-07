@@ -128,6 +128,14 @@ describe("oRPC on Hono with TanStack Router", () => {
 			);
 
 			const route = writeContent(plan, "apps/server/src/routes/orpc.ts");
+			expect(route).toContain(
+				'import { BodyLimitPlugin, RPCHandler } from "@orpc/server/fetch"',
+			);
+
+			expect(route).toContain(
+				"new BodyLimitPlugin({ maxBodySize: 1024 * 1024 })",
+			);
+
 			expect(route).toContain("SimpleCsrfProtectionHandlerPlugin");
 			expect(route).toContain('prefix: "/api/orpc"');
 			expect(route).toContain("c.newResponse(response.body, response)");
@@ -216,7 +224,7 @@ describe("oRPC on Express and Fastify", () => {
 
 				const route = writeContent(plan, "apps/server/src/routes/orpc.ts");
 				expect(route).toContain(
-					`import { RPCHandler } from "@orpc/server/${entrypoint}"`,
+					`import { ${backend === "express" ? "BodyLimitPlugin, " : ""}RPCHandler } from "@orpc/server/${entrypoint}"`,
 				);
 
 				expect(route).toContain("new RPCHandler(appRouter");
@@ -234,10 +242,21 @@ describe("oRPC on Express and Fastify", () => {
 				expect(route).toContain("return result;");
 
 				if (backend === "express") {
+					expect(route).toContain(
+						"new BodyLimitPlugin({ maxBodySize: 1024 * 1024 })",
+					);
+
 					expect(route).toContain("app.use(async (request, response, next)");
 					expect(route).toContain("handler.handle(request, response");
 					expect(route).toContain("if (!matched) next()");
 				} else {
+					expect(route).toContain("const maxBodySize = 1024 * 1024;");
+					expect(route).toContain('throw new ORPCError("PAYLOAD_TOO_LARGE")');
+					expect(route).toContain("received > maxBodySize");
+					expect(route).toContain("adapterInterceptors: [");
+					expect(route).toContain("return await options.next();");
+					expect(route).toContain("raw.emit = emit;");
+
 					expect(route).toContain("scope.removeAllContentTypeParsers()");
 					expect(route).toContain('method: ["GET", "POST"]');
 					expect(route).toContain('url: "/api/orpc/*"');
@@ -560,6 +579,7 @@ describe("oRPC Next.js self host", () => {
 				expect(page).not.toMatch(/data\.status|\.health\.call\(/);
 				expect(health).toContain("useQuery(orpc.health.queryOptions())");
 				expect(health).toContain('data-testid="orpc-health"');
+
 				const provider = writeContent(plan, "apps/web/orpc/react.tsx");
 				expect(provider).toMatch(/^"use client";/);
 				expect(provider).toContain("staleTime: 30 * 1000");
@@ -1065,7 +1085,9 @@ describe("oRPC route bodies and errors", () => {
 				'import { appRouter, reportServerError } from "@acme/orpc"',
 			);
 
-			expect(content).toContain('import { onError } from "@orpc/server"');
+			expect(content).toMatch(
+				/import \{ (ORPCError, )?onError \} from "@orpc\/server"/,
+			);
 			expect(content).toMatch(
 				/interceptors: \[\s*onError\(\(error, \{ request \}\) =>\s*reportServerError\(error, request\.url\.pathname\),?\s*\),?\s*\]/,
 			);
