@@ -357,6 +357,21 @@ describe("auth choice lifecycle", () => {
 				'"npm run push --prefix packages/db" and then "npm run generate --prefix packages/db" to update your database and client.',
 		},
 		{
+			orm: "prisma",
+			packageManager: "pnpm",
+			database: "sqlite",
+			databaseProvider: "turso",
+			command:
+				'"pnpm --filter @acme/db run migrate" to create a migration, apply it to Turso with "turso db shell <database-name> < packages/db/prisma/migrations/<migration>/migration.sql", and then run "pnpm --filter @acme/db run generate".',
+		},
+		{
+			orm: "drizzle",
+			packageManager: "pnpm",
+			database: "sqlite",
+			databaseProvider: "turso",
+			command: '"pnpm --filter @acme/db run push" to update your database.',
+		},
+		{
 			orm: "drizzle",
 			packageManager: "Yarn",
 			command: '"yarn workspace @acme/db push" to update your database.',
@@ -369,19 +384,22 @@ describe("auth choice lifecycle", () => {
 	] satisfies ReadonlyArray<{
 		readonly orm: ForgeConfig["orm"];
 		readonly packageManager: ForgeConfig["packageManager"];
+		readonly database?: ForgeConfig["database"];
+		readonly databaseProvider?: ForgeConfig["databaseProvider"];
 		readonly command: string;
 	}>)(
-		"names the schema scripts for $orm and $packageManager",
-		async ({ orm, packageManager, command }) => {
+		"names the schema scripts for $orm $databaseProvider and $packageManager",
+		async ({ command, ...choices }) => {
+			const config: ForgeConfig = { ...base, ...choices };
 			lifecycleMocks.loadManagedProject.mockResolvedValue(
-				managedProject({ config: { ...base, orm, packageManager } }),
+				managedProject({ config }),
 			);
 
 			await runAdd("two-factor", {});
 
 			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 				".",
-				{ ...base, orm, packageManager, authPlugins: ["two-factor"] },
+				{ ...config, authPlugins: ["two-factor"] },
 				[],
 				undefined,
 				undefined,

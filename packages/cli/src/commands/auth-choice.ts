@@ -104,10 +104,15 @@ export async function runAuthChoiceChange(
 				? `${label} changes your auth schema`
 				: `Removing ${label} changes your auth schema`;
 
-		log.info(
-			nextConfig.orm === "prisma"
-				? `${change}, so run "${push}" and then "${pmRunIn(pm, database, "generate")}" to update your database and client.`
-				: `${change}, so run "${push}" to update your database.`,
-		);
+		const generate = pmRunIn(pm, database, "generate");
+		const migrate = pmRunIn(pm, database, "migrate");
+		const steps =
+			nextConfig.orm !== "prisma"
+				? `run "${push}" to update your database.`
+				: nextConfig.databaseProvider === "turso"
+					? `run "${migrate}" to create a migration, apply it to Turso with "turso db shell <database-name> < packages/db/prisma/migrations/<migration>/migration.sql", and then run "${generate}".`
+					: `run "${push}" and then "${generate}" to update your database and client.`;
+
+		log.info(`${change}, so ${steps}`);
 	}
 }
