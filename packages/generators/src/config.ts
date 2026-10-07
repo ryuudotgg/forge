@@ -1,7 +1,7 @@
 import type { AddonDefinition, PackageManager, Runtime } from "@ryuugg/core";
 import type { WebAppConfig } from "./web-apps";
 
-function defineChoices<const T extends Record<string, string>>(
+export function defineChoices<const T extends Record<string, string>>(
 	definitions: T,
 	options?: {
 		aliases?: Readonly<Record<string, keyof T & string>>;
@@ -10,27 +10,39 @@ function defineChoices<const T extends Record<string, string>>(
 ) {
 	type ChoiceId = keyof T & string;
 
-	const ids = Object.keys(definitions) as ReadonlyArray<ChoiceId>;
+	const ids: ReadonlyArray<ChoiceId> = Object.keys(definitions).filter(
+		(id): id is ChoiceId => Object.hasOwn(definitions, id),
+	);
+
 	const read = (id: ChoiceId) => {
 		const value = definitions[id];
 		if (value === undefined) throw new Error(`Missing Choice: ${id}`);
 		return value;
 	};
 
-	const byDisplayName = new Map(ids.map((id) => [read(id).toLowerCase(), id]));
+	const fold = (value: string) => value.normalize("NFKC").toLowerCase();
+	const byValue = new Map<string, ChoiceId>();
+	function register(value: string, id: ChoiceId) {
+		const key = fold(value);
+		const existing = byValue.get(key);
+		if (existing !== undefined && existing !== id)
+			throw new Error(`Choice Collision: ${key}`);
+
+		byValue.set(key, id);
+	}
+
+	for (const id of ids) {
+		register(id, id);
+		register(read(id), id);
+	}
+
+	for (const [alias, id] of Object.entries(options?.aliases ?? {}))
+		register(alias, id);
+
 	const unavailable = new Set(options?.unavailable ?? []);
-	const aliases = new Map(Object.entries(options?.aliases ?? {}));
 	function normalize(value: unknown): ChoiceId | undefined {
 		if (typeof value !== "string") return undefined;
-
-		const normalizedValue = value.toLowerCase();
-		const alias = aliases.get(normalizedValue);
-		if (alias !== undefined) return alias;
-
-		const id = ids.find((candidate) => candidate === value);
-		if (id !== undefined) return id;
-
-		return byDisplayName.get(normalizedValue);
+		return byValue.get(fold(value));
 	}
 
 	function label(id: ChoiceId): T[ChoiceId] {

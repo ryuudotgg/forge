@@ -3,6 +3,7 @@ import { platforms } from "@ryuugg/generators";
 import color from "picocolors";
 import { type OptionKey, options, sections } from "../cli";
 import { type SubcommandDef, subcommands } from "../commands/registry";
+import type { Choices } from "./choices";
 
 interface HelpEntry {
 	label: string;
@@ -70,14 +71,16 @@ function flagLength(key: OptionKey): number {
 
 function formatChoices(key: OptionKey, unavailable: boolean): string {
 	const opt = options[key];
-	const choices = "choices" in opt ? opt.choices : [];
-	return choices
-		.map((choice) =>
+	if (!("choices" in opt)) return "";
+
+	const choices: Choices<string> = opt.choices;
+	return choices.ids
+		.map((id) =>
 			unavailable
-				? choice.label
-				: choice.available
-					? color.white(choice.label)
-					: color.dim(`${choice.label} (soon)`),
+				? choices.label(id)
+				: choices.available(id)
+					? color.white(choices.label(id))
+					: color.dim(`${choices.label(id)} (soon)`),
 		)
 		.join(unavailable ? " \u00b7 " : color.dim(" \u00b7 "));
 }

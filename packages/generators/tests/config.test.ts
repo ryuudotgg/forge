@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { backends, defineChoices } from "../src/config";
 import {
 	addonConfigBindings,
 	authenticationProviders,
@@ -24,6 +25,34 @@ import {
 } from "../src/index";
 
 describe("generator config choices", () => {
+	it("folds compatibility characters and uppercase ids", () => {
+		expect(backends.normalize("ΜWEBSOCKETS")).toBe("uwebsockets");
+		expect(backends.normalize("µwebsockets")).toBe("uwebsockets");
+		expect(webFrameworks.normalize("NEXTJS")).toBe("nextjs");
+	});
+
+	it("rejects collisions between different ids, labels and aliases", () => {
+		expect(() => defineChoices({ web: "Web" })).not.toThrow();
+		expect(() => defineChoices({ web: "Web", WEB: "Other" })).toThrow(
+			"Choice Collision: web",
+		);
+		expect(() => defineChoices({ first: "Ｆoo", second: "foo" })).toThrow(
+			"Choice Collision: foo",
+		);
+		expect(() =>
+			defineChoices(
+				{ first: "First", second: "Second" },
+				{ aliases: { FIRST: "second" } },
+			),
+		).toThrow("Choice Collision: first");
+		expect(
+			defineChoices(
+				{ first: "First" },
+				{ aliases: { ALIAS: "first" } },
+			).normalize("alias"),
+		).toBe("first");
+	});
+
 	it("keeps user-facing labels correctly cased", () => {
 		expect(webFrameworks.label("nextjs")).toBe("Next.js");
 		expect(styleFrameworks.label("tailwind")).toBe("Tailwind CSS");

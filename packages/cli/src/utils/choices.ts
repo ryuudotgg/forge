@@ -1,9 +1,10 @@
 import { listAnd } from "./list";
 
 export interface Choices<Id extends string> {
-	readonly available: (id: Id) => boolean;
+	available(id: Id): boolean;
 	readonly ids: ReadonlyArray<Id>;
-	readonly label: (id: Id) => string;
+	label(id: Id): string;
+	normalize(value: unknown): Id | undefined;
 }
 
 export function unsupportedMessage<Id extends string>(

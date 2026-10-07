@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
 import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
-import { buildFlagOverrides } from "../cli";
+import { buildFlagOverrides, decodeChoice, options } from "../cli";
 import { orchestrate } from "../orchestrator";
 import { presets } from "../presets";
 import { steps } from "../steps";
@@ -17,6 +17,8 @@ import { listOr } from "../utils/list";
 export async function runCreate(
 	values: Record<string, string | boolean | string[] | undefined>,
 ) {
+	const overrides = buildFlagOverrides(values);
+
 	let initialConfig: PartialConfig = {};
 	if (values.preset) {
 		const presetName = values.preset;
@@ -60,10 +62,37 @@ export async function runCreate(
 			process.exit(1);
 		}
 
-		initialConfig = { ...initialConfig, ...configResult.success };
+		const config = { ...configResult.success };
+		for (const option of Object.values(options)) {
+			if (!("choices" in option)) continue;
+
+			const key = option.configKey;
+			if (config[key] !== undefined && overrides[key] === undefined)
+				config[key] = decodeChoice(option.choices, config[key], {
+					configKey: key,
+				});
+		}
+
+		const configuredWebApps = Schema.decodeUnknownResult(
+			Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
+		)(config.webApps);
+
+		if (Result.isSuccess(configuredWebApps) && overrides.webApps === undefined)
+			config.webApps = configuredWebApps.success.map((app, index) =>
+				app.framework === undefined
+					? app
+					: {
+							...app,
+							framework: decodeChoice(options.web.choices, app.framework, {
+								configKey: `webApps[${index}].framework`,
+							}),
+						},
+			);
+
+		initialConfig = { ...initialConfig, ...config };
 	}
 
-	initialConfig = { ...initialConfig, ...buildFlagOverrides(values) };
+	initialConfig = { ...initialConfig, ...overrides };
 
 	const configuredApps = Schema.decodeUnknownResult(webAppsSchema)(
 		initialConfig.webApps ?? [],
