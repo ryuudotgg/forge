@@ -1567,8 +1567,26 @@ const makeApply = Effect.gen(function* () {
 				for (const hash of bases.keys()) {
 					const baseRelative = `.forge/bases/${hash}`;
 					const destination = yield* ensureContained(projectRoot, baseRelative);
-					if (previousBaseHashes.has(hash)) continue;
 					if (!(yield* pathExists(destination, baseRelative))) continue;
+					if (previousBaseHashes.has(hash)) {
+						const info = yield* fs.stat(destination).pipe(
+							Effect.mapError(
+								(cause) =>
+									new ApplyError({
+										path: baseRelative,
+										reason: "file-read-failed",
+										cause,
+									}),
+							),
+						);
+
+						if (info.type === "File") continue;
+
+						return yield* new ApplyError({
+							path: baseRelative,
+							reason: "managed-base-hash-mismatch",
+						});
+					}
 
 					const existing = yield* readFile(destination, baseRelative);
 					if ((yield* hashContent(existing)) !== hash)

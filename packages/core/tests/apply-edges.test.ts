@@ -729,6 +729,59 @@ describe("apply edge coverage", () => {
 		},
 	);
 
+	it.each(recoveryPolicies)(
+		"refuses a reused base path that is a directory before writing with %s",
+		async (policy) => {
+			await withTempDir("apply-directory-base", async (directory) => {
+				const path = ".gitignore";
+				const base = "node_modules\n";
+				const current = "node_modules\nuser-cache\n";
+				const removedPath = "stale.txt";
+				const baseHash = await hashContent(base);
+				const plan: ApplyPlan = {
+					...emptyPlan([{ artifactId: "surface", content: base, path }]),
+					lockfile: {
+						artifacts: { surface: surfaceArtifact(path, baseHash, "lines") },
+					},
+				};
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				await writeText(join(directory, path), current);
+				await writeText(join(directory, removedPath), "stale\n");
+				const basePath = join(directory, ".forge/bases", baseHash);
+				await rm(basePath);
+				await mkdir(basePath);
+
+				const lockPath = join(directory, ".forge/lock.json");
+				const lockBefore = await readFile(lockPath, "utf-8");
+				const error = await Effect.runPromise(
+					Effect.flip(
+						Apply.applyPlan(
+							directory,
+							{ ...plan, removals: [removedPath] },
+							{ resolutionPolicy: policy },
+						).pipe(Effect.provide(coreLayer)),
+					),
+				);
+
+				expect(error).toMatchObject({
+					reason: "managed-base-hash-mismatch",
+					path: `.forge/bases/${baseHash}`,
+				});
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe(current);
+				expect(await readFile(join(directory, removedPath), "utf-8")).toBe(
+					"stale\n",
+				);
+
+				expect(await readFile(lockPath, "utf-8")).toBe(lockBefore);
+			});
+		},
+	);
+
 	it.each(surfaces)(
 		"does not read the stored adopted base for $path",
 		async ({ path, mergeKind, base, current, incoming }) => {
