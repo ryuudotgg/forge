@@ -36,13 +36,28 @@ describe("append missing lines", () => {
 		).toBe(current);
 	});
 
-	it("appends again when a later user rule follows the Forge lines", () => {
-		const current = "# Forge state\n.forge/** -text\n\n# User\n* text=auto\n";
-		const incoming = "# Forge state\n.forge/** -text\n";
+	it("moves an overridden Forge stanza last without duplicating its header", () => {
+		const current =
+			"*.png binary\r\n\r\n# Forge state\r\n.forge/** -text\r\n\r\n# User\r\n* text=auto\r\n";
 
-		expect(appendMissingLines(current, incoming)).toBe(
-			`${current}\n${incoming}`,
+		const incoming = "# Forge state\n.forge/** -text\n";
+		const adopted = appendMissingLines(current, incoming);
+
+		expect(adopted).toBe(
+			`*.png binary\r\n\r\n# User\r\n* text=auto\r\n\n${incoming}`,
 		);
+
+		expect(
+			threeWayMergeSections(
+				incoming,
+				adopted,
+				"# Forge state\n.forge/** -text\n*.lock -text\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged:
+				"*.png binary\n\n# User\n* text=auto\n\n# Forge state\n.forge/** -text\n*.lock -text\n",
+		});
 	});
 
 	it.each(["", " \r\n\t\n"])("replaces blank current content %j", (current) => {

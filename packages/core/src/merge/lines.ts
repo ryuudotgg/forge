@@ -1,24 +1,46 @@
 import type { MergeConflictResolution, MergeConflictResolver } from "./types";
 
 export function appendMissingLines(current: string, incoming: string): string {
-	if (current.trim() === "") return incoming;
+	const withoutCarriageReturn = (line: string) => line.replace(/\r$/, "");
+	const isBlank = (line: string) => line.trim() === "";
 
-	const nonBlankLines = (content: string) =>
-		content
-			.split("\n")
-			.map((line) => line.replace(/\r$/, ""))
-			.filter((line) => line.trim() !== "");
+	const incomingLines = incoming
+		.split("\n")
+		.map(withoutCarriageReturn)
+		.filter((line) => !isBlank(line));
 
-	const currentLines = nonBlankLines(current);
-	const incomingLines = nonBlankLines(incoming);
+	const currentLines = current
+		.split("\n")
+		.map(withoutCarriageReturn)
+		.filter((line) => !isBlank(line));
+
 	const tail = currentLines.slice(currentLines.length - incomingLines.length);
 	if (
 		currentLines.length >= incomingLines.length &&
 		tail.every((line, index) => line === incomingLines[index])
 	)
-		return current;
+		return current.trim() === "" ? incoming : current;
 
-	return `${current}${current.endsWith("\n") ? "" : "\n"}\n${incoming}`;
+	const incomingSet = new Set(incomingLines);
+	const keptLines: string[] = [];
+
+	let afterRemoval = false;
+	for (const line of current.split("\n")) {
+		if (incomingSet.has(withoutCarriageReturn(line))) {
+			afterRemoval = true;
+			continue;
+		}
+
+		if (afterRemoval && isBlank(line)) continue;
+
+		afterRemoval = false;
+		keptLines.push(line);
+	}
+
+	const kept = keptLines.join("\n");
+	if (kept.trim() === "") return incoming;
+
+	return `${kept}${kept.endsWith("\n") ? "" : "\n"}\n${incoming}`;
 }
 
 export interface Section {
