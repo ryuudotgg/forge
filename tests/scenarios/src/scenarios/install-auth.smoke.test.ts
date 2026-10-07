@@ -134,6 +134,30 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		600_000,
 	);
 
+	it("passes its own check for a workspace scope that sorts after @hono", async () => {
+		await withScenarioWorkspace("smoke-scope-order", async (workspace) => {
+			await createProject(workspace, {
+				authentication: "better-auth",
+				authMethods: ["passkey", "email-otp"],
+				authPlugins: ["polar"],
+				backend: "hono",
+				database: "sqlite",
+				emailProvider: "resend",
+				linter: "biome",
+				name: "meisai",
+				orm: "drizzle",
+				packageManager: "pnpm",
+				rpc: "trpc",
+				slug: "meisai",
+				style: "tailwind",
+				web: "nextjs",
+				webApps: [{ name: "site", framework: "nextjs" }],
+			});
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+		});
+	}, 600_000);
+
 	it.each(["trpc", "orpc"] as const)(
 		"installs secondary %s clients and accepts their credentialed requests",
 		async (rpc) => {

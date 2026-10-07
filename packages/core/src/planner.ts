@@ -54,6 +54,7 @@ import {
 	Renderer,
 	type SurfaceRenderContribution,
 } from "./renderer";
+import { sortScopedImports } from "./sort/imports";
 import {
 	type InstallRecord,
 	type InstallTarget,
@@ -1934,20 +1935,46 @@ const makePlanner = Effect.gen(function* () {
 		const dependencyNames: RenderPlanningPhaseContract["result"]["dependencyNames"] =
 			collectDependencyNames(managedInputs, definitions);
 
+		const importOrder = registry.addons.find(
+			(addon) =>
+				addon.importOrder !== undefined &&
+				allEvaluated.some((entry) => entry.definitionId === addon.id),
+		)?.importOrder;
+
+		const ordered = <
+			Artifact extends { readonly path: string; readonly content: string },
+		>(
+			artifacts: ReadonlyArray<Artifact>,
+		): ReadonlyArray<Artifact> =>
+			importOrder === undefined
+				? artifacts
+				: artifacts.map((artifact) => ({
+						...artifact,
+						content: sortScopedImports(
+							artifact.path,
+							artifact.content,
+							importOrder,
+						),
+					}));
+
 		const renderedSurfaces: RenderPlanningPhaseContract["result"]["renderedSurfaces"] =
-			yield* renderer.render(
-				managedInputs,
-				modules.map((module) => ({ ...module.config, root: module.root })),
-				dependencyFormatFor(intent.config.packageManager),
-				registry.frameworks,
+			ordered(
+				yield* renderer.render(
+					managedInputs,
+					modules.map((module) => ({ ...module.config, root: module.root })),
+					dependencyFormatFor(intent.config.packageManager),
+					registry.frameworks,
+				),
 			);
 
 		const leafFiles: RenderPlanningPhaseContract["result"]["leafFiles"] =
-			yield* collectLeafFiles(
-				allEvaluated,
-				modules,
-				allModuleIdsByKey,
-				selectedTargets,
+			ordered(
+				yield* collectLeafFiles(
+					allEvaluated,
+					modules,
+					allModuleIdsByKey,
+					selectedTargets,
+				),
 			);
 
 		const writes: RenderPlanningPhaseContract["result"]["writes"] =

@@ -35,6 +35,7 @@ const oxc = defineAddon<ForgeConfig, "oxc">({
 	version: "0.1.0",
 	category: "linter",
 	exclusive: true,
+	importOrder: "text",
 	switching: {
 		reformat: { bin: "oxfmt", args: ["--no-error-on-unmatched-pattern"] },
 	},

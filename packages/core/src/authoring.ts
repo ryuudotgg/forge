@@ -4,6 +4,7 @@ import type { CommandProbe } from "./command";
 import type { AppConfig, ModuleId, PackageConfig, Slots } from "./config";
 import { GeneratorError, RegistryError } from "./errors";
 import type { Dependency } from "./operations";
+import type { ImportOrder } from "./sort/imports";
 
 const coreMajorVersion = Number.parseInt(
 	packageJson.version.split(".")[0] ?? "",
@@ -1072,6 +1073,7 @@ export interface AddonDefinition<
 	readonly category: GeneratorCategory;
 	readonly exclusive: boolean;
 	readonly switching?: AddonSwitching;
+	readonly importOrder?: ImportOrder;
 	readonly dependencies: ReadonlyArray<DependencyRef>;
 	readonly targetMode: TargetMode;
 	readonly target?: (
@@ -1165,6 +1167,7 @@ export function defineAddon<
 	readonly category: GeneratorCategory;
 	readonly exclusive: boolean;
 	readonly switching?: AddonSwitching;
+	readonly importOrder?: ImportOrder;
 	readonly dependencies?: ReadonlyArray<DependencyRef>;
 	readonly targetMode: TargetMode;
 	readonly target?: (
