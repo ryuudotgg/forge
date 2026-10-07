@@ -26,6 +26,7 @@ import {
 	webFrameworks,
 } from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
+import { completionLine } from "../utils/completion";
 import { listAnd } from "../utils/list";
 import { removedClientEnvMessage } from "../utils/web-apps";
 import { isInteractiveLifecycleSession } from "./interactive-resolution";
@@ -804,14 +805,39 @@ export async function runRemove(
 		}
 	}
 
-	if (deregistered) return;
+	const remainingTargets = new Set(
+		nextInstalls
+			.find((entry) => entry.definitionId === resolvedAddonId)
+			?.targets.flatMap((target) =>
+				target.kind === "module" ? [target.moduleId] : [],
+			),
+	);
 
-	await applyInstalledPlan(
+	const removedLabels = install.targets.flatMap((target) =>
+		target.kind === "module" && !remainingTargets.has(target.moduleId)
+			? [moduleLabel(target.moduleId, project.modules)]
+			: [],
+	);
+
+	const removed = removedEverywhere
+		? `We removed ${addon.name}.`
+		: `We removed ${addon.name} from ${listAnd.format(removedLabels)}.`;
+
+	if (deregistered) {
+		log.success(removed);
+		return;
+	}
+
+	const applied = await applyInstalledPlan(
 		project.projectRoot,
 		nextConfig,
 		nextInstalls,
 		undefined,
 		registryIds,
 		...resolution,
+	);
+
+	log.success(
+		completionLine(removed, applied, configuredPackageManager(nextConfig)),
 	);
 }

@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { log } from "@clack/prompts";
 import {
 	Apply,
@@ -51,6 +51,40 @@ const ProjectPackageJsonSchema = Schema.fromJsonString(
 		),
 	}),
 );
+
+const DependencySectionsSchema = Schema.fromJsonString(
+	Schema.Struct({
+		dependencies: Schema.optional(Schema.Unknown),
+		devDependencies: Schema.optional(Schema.Unknown),
+		optionalDependencies: Schema.optional(Schema.Unknown),
+		peerDependencies: Schema.optional(Schema.Unknown),
+	}),
+);
+
+function dependencySnapshot(projectRoot: string, paths: ReadonlyArray<string>) {
+	return Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		return yield* Effect.forEach(paths, (path) =>
+			fs.readFileString(resolve(projectRoot, path)).pipe(
+				Effect.map((raw) => {
+					const sections = Schema.decodeUnknownResult(DependencySectionsSchema)(
+						raw,
+					);
+
+					return Result.isSuccess(sections)
+						? JSON.stringify([
+								sections.success.dependencies,
+								sections.success.devDependencies,
+								sections.success.optionalDependencies,
+								sections.success.peerDependencies,
+							])
+						: raw;
+				}),
+				Effect.orElseSucceed(() => undefined),
+			),
+		);
+	});
+}
 
 function readWorkspaceCommandVersions(
 	projectRoot: string,
@@ -370,7 +404,16 @@ export async function applyInstalledPlan(
 		"We couldn't plan this change.",
 	);
 
-	return await applyLifecyclePlan(
+	const packageJsonPaths = [
+		...plan.writes.map((write) => write.path),
+		...plan.removals,
+	].filter((path) => basename(path) === "package.json");
+
+	const before = await runCliEffectValue(
+		dependencySnapshot(projectRoot, packageJsonPaths),
+	);
+
+	const result = await applyLifecyclePlan(
 		projectRoot,
 		{
 			lockfile: plan.lockfile,
@@ -391,4 +434,13 @@ export async function applyInstalledPlan(
 		},
 		options,
 	);
+
+	const after = await runCliEffectValue(
+		dependencySnapshot(projectRoot, packageJsonPaths),
+	);
+
+	return {
+		...result,
+		dependenciesChanged: before.some((entry, index) => entry !== after[index]),
+	};
 }

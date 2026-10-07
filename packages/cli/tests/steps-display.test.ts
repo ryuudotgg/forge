@@ -8,12 +8,14 @@ import { SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
 	intro: vi.fn<(message: string) => void>(),
+	logSuccess: vi.fn<(message: string) => void>(),
 	note: vi.fn<(message?: string, title?: string) => void>(),
 	outro: vi.fn<(message?: string) => void>(),
 }));
 
 vi.mock("@clack/prompts", () => ({
 	intro: promptMocks.intro,
+	log: { success: promptMocks.logSuccess },
 	note: promptMocks.note,
 	outro: promptMocks.outro,
 }));
@@ -25,6 +27,7 @@ function stripAnsi(text: string): string {
 
 beforeEach(() => {
 	promptMocks.intro.mockReset();
+	promptMocks.logSuccess.mockReset();
 	promptMocks.note.mockReset();
 	promptMocks.outro.mockReset();
 });
@@ -215,8 +218,30 @@ describe("outro step", () => {
 		);
 	});
 
-	it("skips when non-interactive", async () => {
-		await expect(outroStep.execute({}, false)).resolves.toBe(SKIP);
+	it("names the project path when non-interactive", async () => {
+		await expect(
+			outroStep.execute({ name: "acme", path: "./acme" }, false),
+		).resolves.toBe(SKIP);
+
 		expect(promptMocks.outro).not.toHaveBeenCalled();
+		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
+			"We created acme in ./acme.",
+		);
+	});
+
+	it("names the next commands when dependencies were not installed", async () => {
+		await outroStep.execute(
+			{
+				installDeps: false,
+				name: "acme",
+				packageManager: "Bun",
+				path: "./my acme",
+			},
+			false,
+		);
+
+		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
+			`We created acme in ./my acme. Run "cd './my acme'", then "bun install" to install its dependencies.`,
+		);
 	});
 });

@@ -209,7 +209,7 @@ export async function createProject(
 
 	await writeJson(configPath, createConfig);
 
-	await runForge(
+	const result = await runForge(
 		workspace.workspaceRoot,
 		[
 			"create",
@@ -234,6 +234,8 @@ export async function createProject(
 			),
 			createConfig,
 		);
+
+	return result;
 }
 
 export async function addAddon(
@@ -244,7 +246,7 @@ export async function addAddon(
 		readonly env?: NodeJS.ProcessEnv;
 	},
 ) {
-	await runForge(projectRoot, ["add", addonId], {
+	return await runForge(projectRoot, ["add", addonId], {
 		cliPath: options?.cliPath,
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
@@ -259,7 +261,7 @@ export async function removeAddon(
 		readonly env?: NodeJS.ProcessEnv;
 	},
 ) {
-	await runForge(projectRoot, ["remove", addonId], {
+	return await runForge(projectRoot, ["remove", addonId], {
 		cliPath: options?.cliPath,
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
