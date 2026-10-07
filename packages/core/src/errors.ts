@@ -663,6 +663,7 @@ export class RendererError extends Schema.TaggedError<RendererError>()(
 
 export const ApplyRefusalReason = Schema.Literals([
 	"managed-file-modified",
+	"managed-base-damaged",
 	"unmanaged-file-exists",
 ]);
 
@@ -674,6 +675,7 @@ const ApplyErrorReason = Schema.Literals([
 	"file-read-failed",
 	"json-parse-failed",
 	"managed-file-modified",
+	"managed-base-damaged",
 	"managed-base-read-failed",
 	"resolution-label-unknown",
 	"unmanaged-file-exists",
@@ -745,6 +747,7 @@ const applyRequiredFields = {
 	"file-read-failed": [],
 	"json-parse-failed": [],
 	"managed-file-modified": [],
+	"managed-base-damaged": [],
 	"managed-base-read-failed": [],
 	"resolution-label-unknown": ["detail"],
 	"unmanaged-file-exists": [],
@@ -794,7 +797,9 @@ const applyMessages = {
 	"file-read-failed": () => "File Read Failed",
 	"json-parse-failed": () => "Managed JSON Parse Failed",
 	"managed-file-modified": () => "Managed File Modified",
-	"managed-base-read-failed": () => "Managed Base Read Failed",
+	"managed-base-damaged": () => "Managed Base Damaged",
+	"managed-base-read-failed": (error: ApplyError) =>
+		`Managed Base Read Failed: ${error.path}`,
 	"resolution-label-unknown": (error: ApplyError) => error.detail ?? "",
 	"unmanaged-file-exists": () => "Unmanaged File Exists",
 	"preflight-failed": (error: ApplyError) => error.detail ?? "",

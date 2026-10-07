@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, FileSystem, Layer, PlatformError, Schema } from "effect";
@@ -12,6 +12,7 @@ import {
 	CliVersion,
 	formatApplyError,
 	type LockfileArtifact,
+	type ResolutionPolicy,
 	State,
 } from "../src/index";
 import { hashContent, withTempDir, writeText } from "./harness";
@@ -392,56 +393,401 @@ describe("apply edge coverage", () => {
 		});
 	});
 
-	it("maps managed base read and content-integrity failures", async () => {
-		const modes: ReadonlyArray<"mismatch" | "missing"> = [
-			"missing",
-			"mismatch",
-		];
+	const surfaces: ReadonlyArray<{
+		readonly path: string;
+		readonly mergeKind: "json" | "lines" | "env";
+		readonly base: string;
+		readonly current: string;
+		readonly incoming: string;
+	}> = [
+		{
+			path: "package.json",
+			mergeKind: "json",
+			base: '{\n\t"scripts": {"build": "tsc"}\n}\n',
+			current:
+				'{\r\n  "scripts": {"build": "tsc", "user": "echo user"}\r\n}\r\n',
+			incoming: '{\n\t"scripts": {"build": "tsc -b"}\n}\n',
+		},
+		{
+			path: ".gitignore",
+			mergeKind: "lines",
+			base: "node_modules\n",
+			current: "node_modules\r\nuser-cache\r\n",
+			incoming: "node_modules\ndist\n",
+		},
+		{
+			path: ".env.example",
+			mergeKind: "env",
+			base: "MANAGED=base\n",
+			current: "MANAGED=base\r\nUSER=kept\r\n",
+			incoming: "MANAGED=forge\n",
+		},
+	];
 
-		for (const mode of modes)
-			await withTempDir(`apply-base-${mode}`, async (directory) => {
-				const path = "surface.json";
-				const base = '{"managed":"base"}\n';
-				const current = '{"managed":"user"}\n';
-				const incoming = '{"managed":"forge"}\n';
+	const damageKinds: ReadonlyArray<"crlf" | "missing"> = ["crlf", "missing"];
+	const policies: ReadonlyArray<ResolutionPolicy> = [
+		"refuse",
+		"keep-user",
+		"accept-forge",
+	];
 
+	const operations: ReadonlyArray<"write" | "removal"> = ["write", "removal"];
+	const damagedBaseCases = surfaces.flatMap((surface) =>
+		damageKinds.flatMap((damage) =>
+			policies.flatMap((policy) =>
+				operations.map((operation) => ({
+					...surface,
+					damage,
+					policy,
+					operation,
+				})),
+			),
+		),
+	);
+
+	it.each(damagedBaseCases)(
+		"handles $damage base for $path $operation with $policy",
+		async ({
+			path,
+			mergeKind,
+			base,
+			current,
+			incoming,
+			damage,
+			policy,
+			operation,
+		}) => {
+			await withTempDir("apply-damaged-base", async (directory) => {
 				const baseHash = await hashContent(base);
 				const incomingHash = await hashContent(incoming);
-
-				await writeText(join(directory, path), current);
 				await Effect.runPromise(
-					State.writeLockfile(directory, {
-						artifacts: { surface: surfaceArtifact(path, baseHash, "json") },
+					Apply.applyPlan(directory, {
+						...emptyPlan([{ artifactId: "surface", content: base, path }]),
+						lockfile: {
+							artifacts: {
+								surface: surfaceArtifact(path, baseHash, mergeKind),
+							},
+						},
 					}).pipe(Effect.provide(coreLayer)),
 				);
 
-				if (mode === "mismatch")
-					await writeText(
-						join(directory, ".forge/bases", baseHash),
-						"corrupt\n",
+				await writeText(join(directory, path), current);
+				const basePath = join(directory, ".forge/bases", baseHash);
+				if (damage === "missing") await rm(basePath);
+				else await writeText(basePath, base.replaceAll("\n", "\r\n"));
+
+				const lockPath = join(directory, ".forge/lock.json");
+				const lockBefore = await readFile(lockPath, "utf-8");
+				const plan: ApplyPlan =
+					operation === "removal"
+						? { ...emptyPlan(), removals: [path] }
+						: {
+								...emptyPlan([
+									{ artifactId: "surface", content: incoming, path },
+								]),
+								lockfile: {
+									artifacts: {
+										surface: surfaceArtifact(path, incomingHash, mergeKind),
+									},
+								},
+							};
+
+				const applied = Apply.applyPlan(
+					directory,
+					plan,
+					policy === "refuse" ? {} : { resolutionPolicy: policy },
+				).pipe(Effect.provide(coreLayer));
+
+				if (policy === "refuse") {
+					const error = await Effect.runPromise(Effect.flip(applied));
+					if (!(error instanceof ApplyError))
+						throw new Error("Expected ApplyError");
+
+					expect(error).toMatchObject({
+						reason: "managed-base-damaged",
+						path,
+						preflight: {
+							hasManagedRefusals: true,
+							hasManagedRemovals: operation === "removal",
+							refusals: [
+								{
+									reason: "managed-base-damaged",
+									path,
+									operation,
+									resolvedBy: ["keep-user", "accept-forge"],
+								},
+							],
+						},
+					});
+
+					expect(formatApplyError(error)).toBe(
+						`Forge cannot safely update these files:\n${path}'s stored base under .forge/bases is missing or no longer matches its hash.\n${
+							operation === "removal"
+								? "Run again with --keep-user to keep it, or --accept-forge to let Forge delete it."
+								: "Run again with --keep-user to keep your version wherever you and Forge disagree, or --accept-forge to take Forge's version and overwrite yours."
+						}`,
 					);
+
+					expect(await readFile(join(directory, path), "utf-8")).toBe(current);
+					expect(await readFile(lockPath, "utf-8")).toBe(lockBefore);
+
+					return;
+				}
+
+				const result = await Effect.runPromise(applied);
+				if (operation === "removal") {
+					expect(result.retained).toEqual(policy === "keep-user" ? [path] : []);
+
+					if (policy === "keep-user")
+						expect(await readFile(join(directory, path), "utf-8")).toBe(
+							current,
+						);
+					else await expect(readFile(join(directory, path))).rejects.toThrow();
+
+					return;
+				}
+
+				const fileContent = await readFile(join(directory, path), "utf-8");
+				expect(fileContent).toBe(policy === "keep-user" ? current : incoming);
+
+				const lockfile = await Effect.runPromise(
+					State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
+				);
+
+				const artifact = lockfile?.artifacts.surface;
+				expect(artifact?.hash).toBe(await hashContent(fileContent));
+				expect(artifact?.base?.hash).toBe(incomingHash);
+
+				const rebuiltBase = await readFile(
+					join(directory, ".forge/bases", incomingHash),
+					"utf-8",
+				);
+
+				expect(rebuiltBase).toBe(incoming);
+				expect(await hashContent(rebuiltBase)).toBe(artifact?.base?.hash);
+			});
+		},
+	);
+
+	it.each(damageKinds)(
+		"keeps preserved base $damage failures strict and names the file",
+		async (damage) => {
+			await withTempDir("apply-preserved-base", async (directory) => {
+				const path = "package.json";
+				const base = '{"managed":"base"}\n';
+				const baseHash = await hashContent(base);
+				const plan: ApplyPlan = {
+					...emptyPlan([{ artifactId: "surface", content: base, path }]),
+					lockfile: {
+						artifacts: { surface: surfaceArtifact(path, baseHash, "json") },
+					},
+				};
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				const basePath = join(directory, ".forge/bases", baseHash);
+				if (damage === "missing") await rm(basePath);
+				else await writeText(basePath, base.replaceAll("\n", "\r\n"));
 
 				const error = await Effect.runPromise(
 					Effect.flip(
-						Apply.applyPlan(directory, {
-							lockfile: {
-								artifacts: {
-									surface: surfaceArtifact(path, incomingHash, "json"),
-								},
+						Apply.applyPlan(
+							directory,
+							{
+								...plan,
+								writes: [
+									{
+										artifactId: "surface",
+										content: base,
+										path,
+										preserveExisting: true,
+									},
+								],
 							},
-							manifest: { config: {}, installs: [], modules: {} },
-							removals: [],
-							writes: [{ artifactId: "surface", content: incoming, path }],
-						}).pipe(Effect.provide(coreLayer)),
+							{ resolutionPolicy: "accept-forge" },
+						).pipe(Effect.provide(coreLayer)),
 					),
 				);
 
 				expect(error).toMatchObject({
-					message: "Managed Base Read Failed",
+					reason: "managed-base-read-failed",
 					path,
+					message: `Managed Base Read Failed: ${path}`,
 				});
 			});
+		},
+	);
+
+	it("does not recover an invalid base hash", async () => {
+		await withTempDir("apply-invalid-base-hash", async (directory) => {
+			const path = "package.json";
+			const current = '{"managed":"user"}\n';
+			const incoming = '{"managed":"forge"}\n';
+			const incomingHash = await hashContent(incoming);
+			await writeText(join(directory, path), current);
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					artifacts: { surface: surfaceArtifact(path, "invalid", "json") },
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(directory, {
+						...emptyPlan([{ artifactId: "surface", content: incoming, path }]),
+						lockfile: {
+							artifacts: {
+								surface: surfaceArtifact(path, incomingHash, "json"),
+							},
+						},
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				reason: "managed-base-read-failed",
+				path,
+				cause: { reason: "base-hash-invalid" },
+			});
+		});
 	});
+
+	it.each(damageKinds)(
+		"rebuilds an unchanged render with a $damage base",
+		async (damage) => {
+			await withTempDir("apply-unchanged-damaged-base", async (directory) => {
+				const path = ".gitignore";
+				const base = "node_modules\n";
+				const baseHash = await hashContent(base);
+				const plan: ApplyPlan = {
+					...emptyPlan([{ artifactId: "surface", content: base, path }]),
+					lockfile: {
+						artifacts: { surface: surfaceArtifact(path, baseHash, "lines") },
+					},
+				};
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				const basePath = join(directory, ".forge/bases", baseHash);
+				if (damage === "missing") await rm(basePath);
+				else await writeText(basePath, base.replaceAll("\n", "\r\n"));
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe(base);
+				expect(await readFile(basePath, "utf-8")).toBe(base);
+			});
+		},
+	);
+
+	const recoveryPolicies: ReadonlyArray<ResolutionPolicy> = [
+		"keep-user",
+		"accept-forge",
+	];
+
+	it.skipIf(process.getuid?.() === 0).each(recoveryPolicies)(
+		"recovers an unreadable base reused by the next render with %s",
+		async (policy) => {
+			await withTempDir("apply-unreadable-base", async (directory) => {
+				const path = ".gitignore";
+				const base = "node_modules\n";
+				const current = "node_modules\nuser-cache\n";
+				const baseHash = await hashContent(base);
+				const plan: ApplyPlan = {
+					...emptyPlan([{ artifactId: "surface", content: base, path }]),
+					lockfile: {
+						artifacts: { surface: surfaceArtifact(path, baseHash, "lines") },
+					},
+				};
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				await writeText(join(directory, path), current);
+				const basePath = join(directory, ".forge/bases", baseHash);
+				await chmod(basePath, 0o000);
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan, { resolutionPolicy: policy }).pipe(
+						Effect.provide(coreLayer),
+					),
+				);
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe(
+					policy === "keep-user" ? current : base,
+				);
+
+				expect(await readFile(basePath, "utf-8")).toBe(base);
+			});
+		},
+	);
+
+	it.each(surfaces)(
+		"does not read the stored adopted base for $path",
+		async ({ path, mergeKind, base, current, incoming }) => {
+			await withTempDir("apply-adopted-damaged-base", async (directory) => {
+				const baseHash = await hashContent(base);
+				const incomingHash = await hashContent(incoming);
+				const previousArtifact = surfaceArtifact(path, baseHash, mergeKind);
+				await writeText(join(directory, path), current);
+				await Effect.runPromise(
+					State.writeLockfile(directory, {
+						artifacts: {
+							surface: {
+								...previousArtifact,
+								base: {
+									hash: baseHash,
+									mergeKind,
+									semanticsVersion: 1,
+									origin: "adopted",
+								},
+							},
+						},
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				const rejectingLayer = applyLayerWithFileSystem((fileSystem) => ({
+					...fileSystem,
+					readFileString: (target, options) =>
+						target.endsWith(`/bases/${baseHash}`)
+							? Effect.die(new Error("Adopted Base Read Forbidden"))
+							: fileSystem.readFileString(target, options),
+				}));
+
+				await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						{
+							...emptyPlan([
+								{ artifactId: "surface", content: incoming, path },
+							]),
+							lockfile: {
+								artifacts: {
+									surface: surfaceArtifact(path, incomingHash, mergeKind),
+								},
+							},
+						},
+						{ resolutionPolicy: "keep-user" },
+					).pipe(Effect.provide(rejectingLayer)),
+				);
+
+				expect(await readFile(join(directory, path), "utf-8")).toContain(
+					mergeKind === "json"
+						? "echo user"
+						: mergeKind === "lines"
+							? "user-cache"
+							: "USER=kept",
+				);
+			});
+		},
+	);
 
 	it("validates that every declared base has matching pure content", async () => {
 		await withTempDir("apply-base-preflight", async (directory) => {

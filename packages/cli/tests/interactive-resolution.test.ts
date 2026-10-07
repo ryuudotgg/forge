@@ -309,6 +309,51 @@ describe("interactive resolution", () => {
 		});
 	});
 
+	it.each(["user", "forge"])(
+		"offers %s for a damaged managed base",
+		async (choice) => {
+			const error = new ApplyError({
+				reason: "managed-base-damaged",
+				path: "package.json",
+				preflight: {
+					hasConflicts: false,
+					hasManagedRemovals: false,
+					hasManagedRefusals: true,
+					hasUnmanagedRefusals: false,
+					hasUnmanagedRemovals: false,
+					refusals: [
+						{
+							reason: "managed-base-damaged",
+							operation: "write",
+							path: "package.json",
+							resolvedBy: ["keep-user", "accept-forge"],
+						},
+					],
+				},
+			});
+
+			promptMocks.select.mockResolvedValueOnce(choice);
+
+			expect(canResolveInteractively(error, {})).toBe(true);
+			const resolution = await promptForConflictResolutions(error);
+
+			expect(promptMocks.logInfo.mock.calls).toEqual([["package.json"]]);
+			expect(promptMocks.select.mock.calls).toEqual([
+				[
+					{
+						message:
+							"package.json's stored base under .forge/bases is missing or no longer matches its hash.",
+						options: perCellOptions,
+					},
+				],
+			]);
+
+			expect(resolution.options.conflictResolutions).toEqual({
+				"package.json": { resolution: choice },
+			});
+		},
+	);
+
 	it("applies a bulk choice to every remaining cell", async () => {
 		promptMocks.select
 			.mockResolvedValueOnce("user")

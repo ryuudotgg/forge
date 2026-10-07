@@ -124,7 +124,8 @@ export function canResolveInteractively(
 
 	const managedWrites = (preflight.refusals ?? []).filter(
 		(refusal) =>
-			refusal.reason === "managed-file-modified" &&
+			(refusal.reason === "managed-file-modified" ||
+				refusal.reason === "managed-base-damaged") &&
 			refusal.operation === "write" &&
 			refusal.resolvedBy.includes("keep-user"),
 	);
@@ -144,14 +145,19 @@ export async function promptForConflictResolutions(
 	const cells: ConflictCell[] = (preflight.refusals ?? [])
 		.filter(
 			(refusal) =>
-				refusal.reason === "managed-file-modified" &&
+				(refusal.reason === "managed-file-modified" ||
+					refusal.reason === "managed-base-damaged") &&
 				refusal.operation === "write" &&
 				refusal.resolvedBy.includes("keep-user"),
 		)
 		.map((refusal) => ({
 			header: refusal.path,
 			label: refusal.path,
-			message: color.dim("This managed file was modified."),
+			message: color.dim(
+				refusal.reason === "managed-base-damaged"
+					? `${refusal.path}'s stored base under .forge/bases is missing or no longer matches its hash.`
+					: "This managed file was modified.",
+			),
 		}));
 
 	const grouped = new Map<string, ReadonlyArray<ApplyConflict>>();

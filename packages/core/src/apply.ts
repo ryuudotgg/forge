@@ -208,11 +208,14 @@ function classifyPreflight(
 		hasConflicts: conflicts.length > 0,
 		hasManagedRemovals: refusals.some(
 			(refusal) =>
-				refusal.reason === "managed-file-modified" &&
+				(refusal.reason === "managed-file-modified" ||
+					refusal.reason === "managed-base-damaged") &&
 				refusal.operation === "removal",
 		),
 		hasManagedRefusals: refusals.some(
-			(refusal) => refusal.reason === "managed-file-modified",
+			(refusal) =>
+				refusal.reason === "managed-file-modified" ||
+				refusal.reason === "managed-base-damaged",
 		),
 		hasUnmanagedRefusals: refusals.some(
 			(refusal) => refusal.reason === "unmanaged-file-exists",
@@ -376,6 +379,9 @@ function conflictMessage(conflicts: ReadonlyArray<ApplyConflict>): string {
 }
 
 function refusalSentence(refusal: ApplyRefusal): string {
+	if (refusal.reason === "managed-base-damaged")
+		return `${refusal.path}'s stored base under .forge/bases is missing or no longer matches its hash.`;
+
 	return refusal.reason === "managed-file-modified"
 		? `${refusal.path} was modified after Forge last managed it.`
 		: `${refusal.path} already exists and is not managed by Forge.`;
@@ -413,6 +419,7 @@ export function formatApplyError(
 	let classification = error.preflight;
 	if (
 		error.reason === "managed-file-modified" ||
+		error.reason === "managed-base-damaged" ||
 		error.reason === "unmanaged-file-exists"
 	) {
 		const operation =
@@ -421,7 +428,10 @@ export function formatApplyError(
 				? "removal"
 				: "write";
 
-		const refusal: ApplyRefusal = {
+		const refusal: ApplyRefusal = classification?.refusals?.find(
+			(candidate) =>
+				candidate.reason === error.reason && candidate.path === error.path,
+		) ?? {
 			reason: error.reason,
 			operation,
 			path: error.path,
@@ -475,6 +485,7 @@ export function formatApplyError(
 
 	const removed =
 		new Set(refusals.map((refusal) => refusal.path)).size === 1 ? "it" : "them";
+
 	const keepClause = onlyRemovals
 		? `--keep-user to keep ${removed}`
 		: "--keep-user to keep your version wherever you and Forge disagree";
@@ -659,12 +670,35 @@ const makeApply = Effect.gen(function* () {
 		});
 	});
 
+	const readStoredBase = Effect.fn("Apply.readStoredBase")(function* (
+		projectRoot: string,
+		artifact: LockfileArtifact,
+		base: ArtifactBase,
+	) {
+		return yield* State.readBase(projectRoot, base.hash).pipe(
+			Effect.mapError(
+				(cause) =>
+					new ApplyError({
+						path: artifact.path,
+						reason: "managed-base-read-failed",
+						cause,
+					}),
+			),
+		);
+	});
+
 	const readBase = Effect.fn("Apply.readBase")(function* (
 		projectRoot: string,
 		artifact: LockfileArtifact,
 		base: ArtifactBase,
 	) {
 		return yield* State.readBase(projectRoot, base.hash).pipe(
+			Effect.catchIf(
+				(cause) =>
+					cause.reason === "base-read-failed" ||
+					cause.reason === "base-hash-mismatch",
+				() => Effect.void,
+			),
 			Effect.mapError(
 				(cause) =>
 					new ApplyError({
@@ -816,6 +850,11 @@ const makeApply = Effect.gen(function* () {
 		yield* State.refuseOlderCli(projectRoot, previousManifest);
 
 		const previousArtifactIndex = buildArtifactIndex(previousLockfile);
+		const previousBaseHashes = new Set(
+			Object.values(previousLockfile.artifacts).flatMap((artifact) =>
+				artifact.base === undefined ? [] : [artifact.base.hash],
+			),
+		);
 
 		const previousArtifacts = previousArtifactIndex.byPath;
 		const previousArtifactsById = previousArtifactIndex.byId;
@@ -963,6 +1002,19 @@ const makeApply = Effect.gen(function* () {
 				baseDescriptor,
 			);
 
+			if (base === undefined) {
+				if (fileResolution === "user") retained.push(relativePath);
+				else
+					refusals.push({
+						reason: "managed-base-damaged",
+						operation: "removal",
+						path: relativePath,
+						resolvedBy: resolvedByFor(relativePath, true),
+					});
+
+				continue;
+			}
+
 			const residueResult = yield* Effect.result(
 				surfaceResidue(
 					baseDescriptor.mergeKind,
@@ -1058,7 +1110,11 @@ const makeApply = Effect.gen(function* () {
 				if (managedArtifact.base !== undefined)
 					preservedBaseContents.set(
 						file.artifactId,
-						yield* readBase(projectRoot, managedArtifact, managedArtifact.base),
+						yield* readStoredBase(
+							projectRoot,
+							managedArtifact,
+							managedArtifact.base,
+						),
 					);
 
 				continue;
@@ -1283,13 +1339,31 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			const base = yield* readBase(projectRoot, managedArtifact, previousBase);
 			const mergeBase =
 				previousBase.origin === "adopted"
 					? previousBase.mergeKind === "json"
 						? "{}\n"
 						: ""
-					: base;
+					: yield* readBase(projectRoot, managedArtifact, previousBase);
+
+			if (mergeBase === undefined) {
+				if (fileResolution === "forge") {
+					writesToApply.push(file);
+					continue;
+				}
+
+				if (fileResolution === "user" && rebaseCurrentContent(nextBase))
+					continue;
+
+				refusals.push({
+					reason: "managed-base-damaged",
+					operation: "write",
+					path: file.path,
+					resolvedBy: resolvedByFor(file.path, canRebaseCurrentContent),
+				});
+
+				continue;
+			}
 
 			const mergedResult = yield* Effect.result(
 				mergeSurface(
@@ -1493,6 +1567,7 @@ const makeApply = Effect.gen(function* () {
 				for (const hash of bases.keys()) {
 					const baseRelative = `.forge/bases/${hash}`;
 					const destination = yield* ensureContained(projectRoot, baseRelative);
+					if (previousBaseHashes.has(hash)) continue;
 					if (!(yield* pathExists(destination, baseRelative))) continue;
 
 					const existing = yield* readFile(destination, baseRelative);
@@ -1504,6 +1579,21 @@ const makeApply = Effect.gen(function* () {
 				}
 			},
 		);
+
+		const storedBaseDamaged = Effect.fn("Apply.storedBaseDamaged")(function* (
+			hash: string,
+			destination: string,
+			baseRelative: string,
+		) {
+			if (!previousBaseHashes.has(hash)) return false;
+
+			const existing = yield* Effect.result(
+				readFile(destination, baseRelative),
+			);
+			if (Result.isFailure(existing)) return true;
+
+			return (yield* hashContent(existing.success)) !== hash;
+		});
 
 		const revalidatePolicyInputs = Effect.fn("Apply.revalidatePolicyInputs")(
 			function* () {
@@ -1726,7 +1816,11 @@ const makeApply = Effect.gen(function* () {
 			for (const staged of stagedBases) {
 				const baseRelative = `.forge/bases/${staged.hash}`;
 				const destination = yield* ensureContained(projectRoot, baseRelative);
-				if (yield* pathExists(destination, baseRelative)) continue;
+				if (
+					(yield* pathExists(destination, baseRelative)) &&
+					!(yield* storedBaseDamaged(staged.hash, destination, baseRelative))
+				)
+					continue;
 
 				yield* fs.rename(staged.stagedPath, destination).pipe(
 					Effect.mapError(
