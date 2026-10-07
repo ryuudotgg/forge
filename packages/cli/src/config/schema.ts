@@ -1,3 +1,4 @@
+import { formatSchemaError } from "@ryuugg/core";
 import {
 	authenticationProviders,
 	authPasskeyIssue,
@@ -8,7 +9,7 @@ import {
 	unmetAuthPluginRequirements,
 	webAppPortIssue,
 } from "@ryuugg/generators";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import * as schemas from "../steps/schemas";
 import type { Step } from "../steps/types";
 
@@ -25,6 +26,42 @@ const webAppsConfigSchema = Schema.Struct({
 	web: Schema.optional(schemas.web),
 	webApps: schemas.webApps,
 });
+
+const checkedConfigSchema = Schema.Struct({
+	authentication: Schema.optional(schemas.authentication),
+	authMethods: Schema.optional(schemas.authMethods),
+	authPlugins: Schema.optional(schemas.authPlugins),
+	backend: Schema.optional(schemas.backend),
+	desktop: Schema.optional(schemas.desktop),
+	emailProvider: Schema.optional(schemas.emailProvider),
+	mobile: Schema.optional(schemas.mobile),
+	platforms: Schema.optional(schemas.platforms),
+	web: Schema.optional(schemas.web),
+	webApps: Schema.optional(schemas.webApps),
+});
+
+export function invalidConfigMessage(
+	error: Schema.SchemaError,
+	config: Record<string, unknown>,
+) {
+	const issues = formatSchemaError(error, config)
+		.map((issue) =>
+			issue.path.length > 0
+				? `  ${issue.path.join(".")}: ${issue.message}`
+				: `  ${issue.message}`,
+		)
+		.join("\n");
+
+	return `Invalid Configuration:\n${issues}`;
+}
+
+export function malformedConfigIssue(
+	config: Record<string, unknown>,
+): string | undefined {
+	const result = Schema.decodeUnknownResult(checkedConfigSchema)(config);
+	if (Result.isFailure(result))
+		return invalidConfigMessage(result.failure, config);
+}
 
 export function configIssue(data: Record<string, unknown>): string | undefined {
 	if (Schema.is(webAppsConfigSchema)(data)) {

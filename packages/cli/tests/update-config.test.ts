@@ -91,6 +91,16 @@ const refusalCases: RefusalCase[] = [
 		sentence: "Passkeys need another sign-in method to create accounts.",
 	},
 	{
+		name: "passkey alone beside a malformed field",
+		config: { authMethods: ["passkey"], mobile: null },
+		sentence: [
+			"Invalid Configuration:",
+			'  mobile: Expected "expo", actual null',
+			'  mobile: Expected "react-native", actual null',
+			"  mobile: Expected undefined, actual null",
+		].join("\n"),
+	},
+	{
 		name: "passkey without a web app",
 		config: { authMethods: ["email-password", "passkey"], web: undefined },
 		sentence: "Passkeys need a web app.",

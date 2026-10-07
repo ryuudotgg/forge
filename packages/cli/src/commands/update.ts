@@ -1,7 +1,7 @@
 import { intro, log } from "@clack/prompts";
 import type { ForgeConfig } from "@ryuugg/generators";
 import { Context, Effect, Layer } from "effect";
-import { configIssue, ormIssue } from "../config/schema";
+import { configIssue, malformedConfigIssue, ormIssue } from "../config/schema";
 import {
 	applyInstalledPlan,
 	loadManagedProject,
@@ -51,7 +51,11 @@ export function runUpdateEffect(
 			command.loadManagedProject(".", "update"),
 		);
 
-		const issue = configIssue(project.config) ?? ormIssue(project.config);
+		const issue =
+			malformedConfigIssue(project.config) ??
+			configIssue(project.config) ??
+			ormIssue(project.config);
+
 		if (issue !== undefined) {
 			command.logError(issue);
 			process.exit(1);
