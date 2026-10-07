@@ -59,7 +59,6 @@ export interface EvaluationPhaseContract {
 	readonly plannerReasons: PlannerReasons<
 		| "definition-cycle-detected"
 		| "adapter-target-must-be-module"
-		| "adapter-target-app-missing"
 		| "adapter-framework-missing"
 	>;
 }
@@ -295,12 +294,7 @@ export const evaluateAdapters = Effect.fn("Planner.evaluateAdapters")(
 					});
 
 				const module = modulesById.get(target.moduleId);
-				if (!module)
-					return yield* new PlannerError({
-						path: addon.id,
-						reason: "adapter-target-app-missing",
-					});
-
+				if (!module) continue;
 				if (module.config.type !== "app") continue;
 
 				const framework = frameworksById.get(module.config.framework);

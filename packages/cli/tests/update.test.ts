@@ -15,6 +15,7 @@ import {
 	type UpdateCommandService,
 } from "../src/commands/update";
 import {
+	adminModule,
 	failingAddonRegistry,
 	managedProject,
 	planningFailures,
@@ -57,12 +58,14 @@ function updateFixture(options: UpdateFixtureOptions) {
 	);
 
 	const logInfo = vi.fn();
+	const logWarn = vi.fn();
 	const service: UpdateCommandService = {
 		applyInstalledPlan,
 		intro,
 		loadManagedProject,
 		loadProjectRegistry,
 		logInfo,
+		logWarn,
 	};
 
 	return {
@@ -72,6 +75,7 @@ function updateFixture(options: UpdateFixtureOptions) {
 		loadManagedProject,
 		loadProjectRegistry,
 		logInfo,
+		logWarn,
 	};
 }
 
@@ -145,6 +149,45 @@ it.effect("re-applies the plan with the manifest installs", () => {
 		const [, config, installs] = fixture.applyInstalledPlan.mock.calls[0] ?? [];
 		expect(config).toBe(project.config);
 		expect(installs).toBe(project.manifest.installs);
+	}).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect("warns when a configured secondary web app is missing", () => {
+	const fixture = updateFixture({
+		project: managedProject({
+			config: {
+				slug: "acme",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			},
+		}),
+	});
+
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({});
+
+		expect(fixture.logWarn).toHaveBeenCalledOnce();
+		expect(fixture.logWarn).toHaveBeenCalledWith(
+			"We skipped the admin web app because its folder is missing. Run forge remove admin to drop it from your config.",
+		);
+	}).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect("does not warn when a configured secondary web app exists", () => {
+	const fixture = updateFixture({
+		project: managedProject({
+			config: {
+				slug: "acme",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			},
+			modules: [adminModule],
+		}),
+	});
+
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({});
+		expect(fixture.logWarn).not.toHaveBeenCalled();
 	}).pipe(Effect.provide(fixture.layer));
 });
 
