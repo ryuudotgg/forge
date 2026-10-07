@@ -383,8 +383,7 @@ const TurboConfigSchema = Schema.StructWithRest(
 
 const decodeTurboConfig = Schema.decodeUnknownSync(TurboConfigSchema);
 
-// Random forge.json module ids and .env secrets defeat turbo replay, and turbo
-// never hashes the root .env that dotenv feeds builds, so hash it here.
+// Turbo hashes the random forge.json ids but never the root .env that dotenv feeds builds.
 async function replayableTurboEnvironment(
 	workspace: ScenarioProject,
 ): Promise<NodeJS.ProcessEnv> {
