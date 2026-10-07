@@ -31,6 +31,102 @@ const coreLayer = CoreLive.pipe(
 );
 
 describe("apply", () => {
+	it.each([".gitattributes", "nested/.gitattributes"])(
+		"adopts unmanaged %s and preserves it on a second apply",
+		async (path) => {
+			await withTempDir("apply-adopt-attributes", async (directory) => {
+				const current = "# User attributes\r\n\r\n*.png binary\r\n";
+				const incoming = "# Forge state\n.forge/** -text\n";
+				const incomingHash = await hashContent(incoming);
+				const artifactId = "project:surface:gitattributes";
+				const plan: ApplyPlan = {
+					baseContents: { [artifactId]: incoming },
+					lockfile: {
+						artifacts: {
+							[artifactId]: {
+								base: {
+									hash: incomingHash,
+									mergeKind: "lines",
+									semanticsVersion: 1,
+								},
+								definitionIds: ["root"],
+								hash: incomingHash,
+								kind: "surface",
+								path,
+							},
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, content: incoming, path }],
+				};
+
+				await writeText(join(directory, path), current);
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				const adopted = `${current}\n${incoming}`;
+				expect(await readFile(join(directory, path), "utf-8")).toBe(adopted);
+				const lockfile = await readJson<Lockfile>(
+					join(directory, ".forge/lock.json"),
+				);
+
+				expect(lockfile.artifacts[artifactId]).toMatchObject({
+					hash: await hashContent(adopted),
+					base: { hash: incomingHash },
+				});
+
+				expect(
+					await readFile(
+						join(directory, ".forge/bases", incomingHash),
+						"utf-8",
+					),
+				).toBe(incoming);
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe(adopted);
+			});
+		},
+	);
+
+	it("still refuses an unmanaged gitignore lines surface", async () => {
+		await withTempDir("apply-unmanaged-gitignore", async (directory) => {
+			const incoming = "# Build\ndist/\n";
+			const hash = await hashContent(incoming);
+			const artifactId = "project:surface:gitignore";
+			await writeText(join(directory, ".gitignore"), "# User\n\nlocal/\n");
+
+			const error = await Effect.runPromise(
+				Apply.applyPlan(directory, {
+					baseContents: { [artifactId]: incoming },
+					lockfile: {
+						artifacts: {
+							[artifactId]: {
+								base: { hash, mergeKind: "lines", semanticsVersion: 1 },
+								definitionIds: ["gitignore"],
+								hash,
+								kind: "surface",
+								path: ".gitignore",
+							},
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, content: incoming, path: ".gitignore" }],
+				}).pipe(Effect.flip, Effect.provide(coreLayer)),
+			);
+
+			expect(error).toMatchObject({ reason: "unmanaged-file-exists" });
+			expect(await readFile(join(directory, ".gitignore"), "utf-8")).toBe(
+				"# User\n\nlocal/\n",
+			);
+		});
+	});
+
 	it("stages adopted base content without writing the managed artifact", async () => {
 		await withTempDir("apply-adopted-base", async (directory) => {
 			const content = '{\n\t"name": "user-project"\n}\n';

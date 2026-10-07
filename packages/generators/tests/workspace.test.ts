@@ -252,6 +252,16 @@ describe("package overrides", () => {
 });
 
 describe("root workspace", () => {
+	it("protects Forge state with a gitattributes lines surface", async () => {
+		const attributes = linesSurface(
+			await rootContributions({}),
+			"gitattributes",
+		);
+
+		expect(attributes.section).toBe("Forge state");
+		expect(attributes.lines).toEqual([".forge/** -text"]);
+	});
+
 	it("probes create plans but reuses persisted versions for installed plans", async () => {
 		const config = { slug: "acme", web: "nextjs" } satisfies ForgeConfig;
 		const firstVersions = {

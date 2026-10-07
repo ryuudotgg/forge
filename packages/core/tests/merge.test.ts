@@ -12,6 +12,63 @@ import {
 	threeWayMergeLines,
 	threeWayMergeSections,
 } from "../src/index";
+import { appendMissingLines } from "../src/merge/lines";
+
+describe("append missing lines", () => {
+	it("appends a blank line without rewriting user CRLF or blank lines", () => {
+		const current = "# User\r\n\r\n*.png binary\r\n\r\n";
+		const incoming = "# Forge state\n.forge/** -text\n";
+
+		expect(appendMissingLines(current, incoming)).toBe(
+			`${current}\n${incoming}`,
+		);
+
+		expect(appendMissingLines("*.png binary", incoming)).toBe(
+			`*.png binary\n\n${incoming}`,
+		);
+	});
+
+	it("returns current bytes when incoming nonblank lines already exist", () => {
+		const current = "# User\r\n# Forge state\r\n\r\n.forge/** -text\r\n";
+
+		expect(
+			appendMissingLines(current, "# Forge state\n.forge/** -text\n"),
+		).toBe(current);
+	});
+
+	it("appends again when a later user rule follows the Forge lines", () => {
+		const current = "# Forge state\n.forge/** -text\n\n# User\n* text=auto\n";
+		const incoming = "# Forge state\n.forge/** -text\n";
+
+		expect(appendMissingLines(current, incoming)).toBe(
+			`${current}\n${incoming}`,
+		);
+	});
+
+	it.each(["", " \r\n\t\n"])("replaces blank current content %j", (current) => {
+		const incoming = "# Forge state\n.forge/** -text\n";
+		expect(appendMissingLines(current, incoming)).toBe(incoming);
+	});
+});
+
+describe("section merge order", () => {
+	it("keeps the current file's section order so the Forge rule stays last", () => {
+		const base = "# Forge state\n.forge/** -text\n";
+		const current =
+			"# User\n* text=auto\n*.png binary\n\n# Forge state\n.forge/** -text\n";
+
+		expect(threeWayMergeSections(base, current, base).merged).toBe(current);
+		expect(
+			threeWayMergeSections(
+				base,
+				current,
+				"# Forge state\n.forge/** -text\n*.lock -text\n",
+			).merged,
+		).toBe(
+			"# User\n* text=auto\n*.png binary\n\n# Forge state\n.forge/** -text\n*.lock -text\n",
+		);
+	});
+});
 
 describe("merge helpers", () => {
 	it("deep merges objects and de-duplicates arrays", () => {

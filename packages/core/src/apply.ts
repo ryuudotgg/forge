@@ -14,7 +14,11 @@ import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
 import { envResidue, threeWayMergeEnv } from "./merge/env";
 import { jsonResidue, threeWayMergeJson } from "./merge/json";
-import { sectionResidue, threeWayMergeSections } from "./merge/lines";
+import {
+	appendMissingLines,
+	sectionResidue,
+	threeWayMergeSections,
+} from "./merge/lines";
 import type { MergeConflictResolution } from "./merge/types";
 import { sortPackageJson } from "./sort/package-json";
 import type {
@@ -315,6 +319,10 @@ function movedModuleArtifactId(
 
 export function isUserOwnedEnv(relativePath: string): boolean {
 	return basename(relativePath) === ".env";
+}
+
+export function appendsToUnmanagedFile(relativePath: string): boolean {
+	return basename(relativePath) === ".gitattributes";
 }
 
 function valueAtPath(
@@ -1069,6 +1077,27 @@ const makeApply = Effect.gen(function* () {
 			if (managedArtifact === undefined) {
 				if (filePolicy === "accept-forge") {
 					writesToApply.push(file);
+					continue;
+				}
+
+				if (
+					appendsToUnmanagedFile(file.path) &&
+					nextArtifact?.base?.mergeKind === "lines"
+				) {
+					const adopted = appendMissingLines(currentContent, file.content);
+					const adoptedHash = yield* hashContent(adopted);
+
+					policyReadHashes.set(file.path, currentHash);
+
+					if (adoptedHash !== currentHash)
+						writesToApply.push({ ...file, content: adopted });
+
+					if (file.artifactId !== undefined && nextArtifact !== undefined)
+						committedArtifacts[file.artifactId] = {
+							...nextArtifact,
+							hash: adoptedHash,
+						};
+
 					continue;
 				}
 

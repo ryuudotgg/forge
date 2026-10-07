@@ -72,6 +72,9 @@ function resolveSurfaceMergeKind(
 	if (tags.has("ManagedTextSurfaceContribution")) return undefined;
 	if (tags.has("ManagedLinesSurfaceContribution")) {
 		if (value.endsWith("/.gitignore") || value === ".gitignore") return "lines";
+		if (value.endsWith("/.gitattributes") || value === ".gitattributes")
+			return "lines";
+
 		if (value.endsWith("/.env.example") || value === ".env.example")
 			return "env";
 
@@ -147,6 +150,9 @@ function resolveProjectSurfacePath(surface: ProjectSurfaceName) {
 
 		case "gitignore":
 			return filePath(".gitignore");
+
+		case "gitattributes":
+			return filePath(".gitattributes");
 
 		case "rootEnv":
 			return filePath(".env");

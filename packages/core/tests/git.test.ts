@@ -1,4 +1,4 @@
-import { mkdir, rm, symlink } from "node:fs/promises";
+import { mkdir, readFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
@@ -62,6 +62,54 @@ async function repository(root: string) {
 }
 
 describe("project Git boundary", () => {
+	it("keeps Forge bases byte identical when cloning with autocrlf", async () => {
+		await withTempDir("git-base-autocrlf", async (directory) => {
+			const root = join(directory, "repo");
+			const destination = join(directory, "clone");
+			await mkdir(root);
+			await git(root, ["init", "-q"]);
+			await writeText(
+				join(root, ".gitattributes"),
+				"# Forge state\n.forge/** -text\n",
+			);
+
+			await writeText(join(root, ".forge/bases/abc"), "a\nb\n");
+			await writeText(join(root, "notes.txt"), "a\nb\n");
+			await git(root, ["-c", "core.autocrlf=false", "add", "."]);
+			await git(root, [
+				"-c",
+				"user.name=t",
+				"-c",
+				"user.email=t@t",
+				"-c",
+				"core.autocrlf=false",
+				"-c",
+				"commit.gpgsign=false",
+				"-c",
+				"core.hooksPath=/dev/null",
+				"commit",
+				"-qm",
+				"fixture",
+			]);
+
+			await git(directory, [
+				"-c",
+				"core.autocrlf=true",
+				"clone",
+				root,
+				destination,
+			]);
+
+			expect(
+				await readFile(join(destination, ".forge/bases/abc"), "utf-8"),
+			).toBe("a\nb\n");
+
+			expect(await readFile(join(destination, "notes.txt"), "utf-8")).toBe(
+				"a\r\nb\r\n",
+			);
+		});
+	});
+
 	it("formats the Git failure message exactly", () => {
 		expect(
 			new GitError({ root: "/project", detail: "permission denied" }).message,
@@ -123,7 +171,6 @@ describe("project Git boundary", () => {
 	it("lists committed files in a clean repository", async () => {
 		await withTempDir("git-clean", async (root) => {
 			await repository(root);
-
 			expect(await status(root)).toEqual({ _tag: "Clean" });
 			expect(await files(root)).toEqual(["file.ts"]);
 		});
@@ -143,7 +190,6 @@ describe("project Git boundary", () => {
 		await withTempDir("git-modified", async (root) => {
 			await repository(root);
 			await writeText(join(root, "file.ts"), "export const changed = true;\n");
-
 			expect(await status(root)).toEqual({ _tag: "Dirty" });
 		});
 	});
@@ -152,7 +198,6 @@ describe("project Git boundary", () => {
 		await withTempDir("git-deleted", async (root) => {
 			await repository(root);
 			await rm(join(root, "file.ts"));
-
 			expect(await files(root)).toEqual([]);
 		});
 	});
@@ -187,6 +232,7 @@ describe("project Git boundary", () => {
 			await mkdir(project);
 			await writeText(join(project, "inside.ts"), "export {};\n");
 			await commit(root);
+
 			await writeText(join(root, "file.ts"), "changed\n");
 			await writeText(join(root, "outside.ts"), "export {};\n");
 

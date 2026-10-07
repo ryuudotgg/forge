@@ -1,5 +1,26 @@
 import type { MergeConflictResolution, MergeConflictResolver } from "./types";
 
+export function appendMissingLines(current: string, incoming: string): string {
+	if (current.trim() === "") return incoming;
+
+	const nonBlankLines = (content: string) =>
+		content
+			.split("\n")
+			.map((line) => line.replace(/\r$/, ""))
+			.filter((line) => line.trim() !== "");
+
+	const currentLines = nonBlankLines(current);
+	const incomingLines = nonBlankLines(incoming);
+	const tail = currentLines.slice(currentLines.length - incomingLines.length);
+	if (
+		currentLines.length >= incomingLines.length &&
+		tail.every((line, index) => line === incomingLines[index])
+	)
+		return current;
+
+	return `${current}${current.endsWith("\n") ? "" : "\n"}\n${incoming}`;
+}
+
 export interface Section {
 	readonly header: string;
 	readonly lines: string[];
@@ -168,9 +189,9 @@ export function threeWayMergeSections(
 	const incomingByHeader = byHeader(incomingSections);
 
 	const headers = new Set([
-		...baseSections.map((section) => section.header),
 		...currentSections.map((section) => section.header),
 		...incomingSections.map((section) => section.header),
+		...baseSections.map((section) => section.header),
 	]);
 
 	const sections: Section[] = [];
