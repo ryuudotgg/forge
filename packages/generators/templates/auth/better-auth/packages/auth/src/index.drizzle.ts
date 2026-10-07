@@ -1,3 +1,4 @@
+import { runInBackground } from "@__SLUG__/auth/background";
 import { clientIpHeader, trustedProxies } from "@__SLUG__/auth/client-address";
 import { __AUTH_ENV_NAMES__ } from "@__SLUG__/auth/env";
 __DB_HELPER_IMPORT__
@@ -54,6 +55,7 @@ __ADAPTER_MODELS__
   account: { accountLinking: { enabled: true } },
 
   advanced: {
+    backgroundTasks: { handler: runInBackground },
     ipAddress: {
       ipAddressHeaders: [clientIpHeader],
       trustedProxies,

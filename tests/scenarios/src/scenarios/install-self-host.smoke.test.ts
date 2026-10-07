@@ -7,6 +7,7 @@ import {
 	withScenarioWorkspace,
 } from "../utils/harness";
 import {
+	expectOtpSendTiming,
 	expectSelfHostedRpc,
 	expectServerOnlyCodeOutOfClientBundle,
 	injectOrpcContextProbe,
@@ -18,9 +19,10 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 		await withScenarioWorkspace("smoke-orpc-self-nextjs", async (workspace) => {
 			await createProject(workspace, {
 				authentication: "better-auth",
-				authMethods: ["email-password"],
+				authMethods: ["email-password", "email-otp"],
 				backend: "self",
 				database: "sqlite",
+				emailProvider: "smtp",
 				linter: "biome",
 				orm: "drizzle",
 				packageManager: "pnpm",
@@ -97,6 +99,7 @@ export async function GET() {
 				web: "nextjs",
 				rpc: "orpc",
 			});
+			await expectOtpSendTiming(workspace.projectRoot, "nextjs");
 		});
 	}, 600_000);
 
@@ -124,14 +127,19 @@ export async function GET() {
 		"installs, builds, and starts $web as a $rpc self host on $orm (secondary: $secondary)",
 		async (cell) => {
 			const { web, rpc, orm, secondary } = cell;
+			const otpTiming =
+				web === "tanstack-start" && rpc === "orpc" && !secondary;
 			await withScenarioWorkspace(
 				`smoke-${rpc}-self-${web}-${orm}`,
 				async (workspace) => {
 					await createProject(workspace, {
 						authentication: "better-auth",
-						authMethods: ["email-password"],
+						authMethods: otpTiming
+							? ["email-password", "email-otp"]
+							: ["email-password"],
 						backend: "self",
 						database: "sqlite",
+						...(otpTiming ? { emailProvider: "smtp" } : {}),
 						linter: "biome",
 						orm,
 						packageManager: "pnpm",
@@ -166,6 +174,8 @@ export async function GET() {
 								}
 							: {}),
 					});
+					if (otpTiming)
+						await expectOtpSendTiming(workspace.projectRoot, "tanstack-start");
 				},
 			);
 		},

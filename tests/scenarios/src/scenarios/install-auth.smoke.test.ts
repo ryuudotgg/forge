@@ -17,6 +17,7 @@ import {
 	expectCredentialedGeneratedServer,
 	expectEmailPreview,
 	expectInvitationFlow,
+	expectOtpSendTiming,
 	expectProductionEmailSecrets,
 	expectProductionOrigins,
 	expectRelocatedPasskeyCeremony,
@@ -125,6 +126,8 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					});
 
 					await expectProductionEmailSecrets(workspace.projectRoot);
+					if (backend === "express")
+						await expectOtpSendTiming(workspace.projectRoot, "server");
 				},
 			);
 		},
