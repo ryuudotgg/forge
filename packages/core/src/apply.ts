@@ -1342,10 +1342,10 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (
-				nextBase === undefined ||
-				(previousBase === undefined && nextBase.mergeKind !== "yaml")
-			) {
+			const kind =
+				nextBase?.mergeKind === "yaml" ? "yaml" : previousBase?.mergeKind;
+
+			if (nextBase === undefined || kind === undefined || kind === "opaque") {
 				if (fileResolution === "forge") {
 					writesToApply.push(file);
 					continue;
@@ -1371,15 +1371,6 @@ const makeApply = Effect.gen(function* () {
 
 				continue;
 			}
-
-			const kind =
-				nextBase.mergeKind === "yaml" ? "yaml" : previousBase?.mergeKind;
-
-			if (kind === undefined || kind === "opaque")
-				return yield* new ApplyError({
-					path: file.path,
-					reason: "managed-base-forbidden",
-				});
 
 			const syntheticBase =
 				previousBase === undefined || previousBase.origin === "adopted";

@@ -244,6 +244,66 @@ describe("three way yaml merge", () => {
 		);
 	});
 
+	it("adds a Forge top level comment only with the block it introduces", () => {
+		const base = "packages:\n  - apps/*\n";
+
+		expect(
+			threeWayMergeYaml(
+				base,
+				"packages:\n  - apps/*\n  - docs/*\n",
+				"packages:\n  - apps/*\n\n# Pinned transitive versions\noverrides:\n  vite: 7.1.0\n\n# Trailing note\n",
+			)?.merged,
+		).toBe(
+			"packages:\n  - apps/*\n  - docs/*\n\n# Pinned transitive versions\noverrides:\n  vite: 7.1.0\n",
+		);
+	});
+
+	it("skips a standalone Forge comment that heads no new entry", () => {
+		const base = "catalog:\n  vite: 7.0.0\n";
+		const current = "catalog:\n  vite: 7.0.0\n  left-pad: 1.3.0\n";
+
+		expect(
+			threeWayMergeYaml(
+				base,
+				current,
+				"catalog:\n  # Bundler\n\n  vite: 7.0.0\n",
+			)?.merged,
+		).toBe(current);
+	});
+
+	it("leaves one blank line where a removed Forge group sat", () => {
+		const base = "catalog:\n  # A\n  a: 1\n\n  # B\n  b: 1\n\n  # C\n  c: 1\n";
+
+		expect(
+			threeWayMergeYaml(
+				base,
+				`${base}  mine: 1\n`,
+				"catalog:\n  # A\n  a: 1\n\n  # C\n  c: 1\n",
+			)?.merged,
+		).toBe("catalog:\n  # A\n  a: 1\n\n  # C\n  c: 1\n  mine: 1\n");
+	});
+
+	it("drops a block Forge stopped rendering when the user left its entries alone", () => {
+		const base = "packages:\n  - apps/*\noverrides:\n  vite: 7.0.0\nfoo:\n";
+
+		expect(
+			threeWayMergeYaml(base, base, "packages:\n  - apps/*\n")?.merged,
+		).toBe("packages:\n  - apps/*\n");
+	});
+
+	it("asks about an empty block only the user has when no base was stored", () => {
+		expect(
+			threeWayMergeYaml(
+				"",
+				"packages:\n  - apps/*\nfoo:\n",
+				"packages:\n  - apps/*\n",
+				undefined,
+				undefined,
+				true,
+			)?.conflictValues,
+		).toEqual([{ label: "foo", user: "foo:" }]);
+	});
+
 	it("accepts sequence items at column zero under their key", () => {
 		const base = 'packages:\n  - "apps/*"\n';
 

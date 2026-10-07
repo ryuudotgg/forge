@@ -344,4 +344,38 @@ describe("pnpm-workspace.yaml key merge", () => {
 			expect(await readFile(join(directory, path), "utf-8")).toBe(merged);
 		});
 	});
+
+	it("refuses the whole file when the user's edit cannot be split into keys", async () => {
+		await withTempDir("apply-workspace-yaml-unparseable", async (directory) => {
+			await scaffold(directory, base);
+			await writeText(join(directory, path), "- apps/*\n");
+
+			const error = await Effect.runPromise(
+				Effect.flip(apply(directory, incoming, await yamlArtifact(incoming))),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				path,
+				reason: "managed-file-modified",
+			});
+		});
+	});
+
+	it("fails loudly when Forge's own render cannot be split into keys", async () => {
+		await withTempDir("apply-workspace-yaml-bad-render", async (directory) => {
+			await scaffold(directory, base);
+			await writeText(join(directory, path), user);
+
+			const broken = "- apps/*\n";
+			const error = await Effect.runPromise(
+				Effect.flip(apply(directory, broken, await yamlArtifact(broken))),
+			);
+
+			expect(error).toMatchObject({
+				_tag: "ApplyError",
+				detail: `Managed YAML Parse Failed: ${path} (incoming)`,
+			});
+		});
+	});
 });
