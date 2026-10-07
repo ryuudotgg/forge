@@ -1,7 +1,8 @@
 import { type PackageManager, packageManagerCommand } from "@ryuugg/core";
 
 export function shellArgument(value: string) {
-	if (/^[\w@%+=:,./-]+$/.test(value)) return value;
+	if (/^[\w@+=:,./-]+$/.test(value)) return value;
+	if (!/["$`\\!%]/.test(value)) return `"${value}"`;
 	return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 

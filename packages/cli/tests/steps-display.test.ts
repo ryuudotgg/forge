@@ -241,7 +241,7 @@ describe("outro step", () => {
 		);
 
 		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
-			`We created acme in ./my acme. Run "cd './my acme'", then "bun install" to install its dependencies.`,
+			`We created acme in ./my acme. Run "cd "./my acme"", then "bun install" to install its dependencies.`,
 		);
 	});
 });

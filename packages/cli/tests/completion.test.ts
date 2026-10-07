@@ -12,9 +12,10 @@ describe("completion lines", () => {
 		).toBe("We added Biome.");
 	});
 
-	it("quotes paths a shell would split", () => {
+	it("quotes paths so every shell reads them whole", () => {
 		expect(shellArgument("./acme")).toBe("./acme");
-		expect(shellArgument("./my acme")).toBe("'./my acme'");
-		expect(shellArgument("./it's")).toBe(`'./it'\\''s'`);
+		expect(shellArgument("./my acme")).toBe(`"./my acme"`);
+		expect(shellArgument("./it's")).toBe(`"./it's"`);
+		expect(shellArgument("./$it's")).toBe(`'./$it'\\''s'`);
 	});
 });
