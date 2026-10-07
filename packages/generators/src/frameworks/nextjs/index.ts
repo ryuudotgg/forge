@@ -130,14 +130,17 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 	if (instance.primary && renderConfig.authentication === "better-auth")
 		transpilePackages.push(`@${slug}/auth`);
 
-	const transpileList = transpilePackages
-		.sort()
-		.map((name) => `"${name}"`)
-		.join(", ");
+	const transpileNames = transpilePackages.sort().map((name) => `"${name}"`);
+	const transpileInline = `[${transpileNames.join(", ")}]`;
 
 	const nextConfig = interpolate(
 		readTemplate("frameworks/nextjs/next.config.ts"),
-		{ TRANSPILE_PACKAGES: `[${transpileList}]` },
+		{
+			TRANSPILE_PACKAGES:
+				`  transpilePackages: ${transpileInline},`.length <= 80
+					? transpileInline
+					: `[\n${transpileNames.map((name) => `    ${name},`).join("\n")}\n  ]`,
+		},
 	);
 
 	const webEnv = interpolate(

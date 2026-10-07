@@ -1365,7 +1365,7 @@ const makeApply = Effect.gen(function* () {
 						previousBase,
 					).pipe(Effect.orElseSucceed(() => currentContent));
 
-					recordDeclined(file.path, base, file.content);
+					recordDeclined(file.path, base ?? currentContent, file.content);
 					continue;
 				}
 
@@ -1464,7 +1464,7 @@ const makeApply = Effect.gen(function* () {
 				}
 
 				if (fileResolution === "user" && rebaseCurrentContent(nextBase)) {
-					recordDeclined(file.path, base, file.content);
+					recordDeclined(file.path, mergeBase, file.content);
 					continue;
 				}
 
@@ -1519,13 +1519,14 @@ const makeApply = Effect.gen(function* () {
 					)
 				) {
 					const forgeMerged = yield* mergeSurface(
-						previousBase.mergeKind,
+						kind,
 						file.path,
 						mergeBase,
 						currentContent,
 						file.content,
 						"forge",
 						() => "forge",
+						syntheticBase,
 					);
 
 					recordDeclined(file.path, merged.merged, forgeMerged.merged);

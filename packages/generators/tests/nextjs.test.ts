@@ -108,6 +108,27 @@ describe("nextjs/base template", () => {
 		);
 	});
 
+	it("wraps a transpile list that passes the line width", () => {
+		const full = contributionsFor({
+			authentication: "better-auth",
+			orm: "drizzle",
+			rpc: "trpc",
+			slug: "meisai",
+			web: "nextjs",
+		});
+
+		expect(textSurface(full, "frameworkConfig").content).toContain(
+			[
+				"  transpilePackages: [",
+				'    "@meisai/auth",',
+				'    "@meisai/db",',
+				'    "@meisai/trpc",',
+				'    "@meisai/ui",',
+				"  ],",
+			].join("\n"),
+		);
+	});
+
 	it("renders providers with the trpc wrapper only when trpc is selected", () => {
 		const bare = leafFile(
 			contributionsFor({ slug: "acme", web: "nextjs" }),

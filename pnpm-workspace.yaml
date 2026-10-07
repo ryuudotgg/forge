@@ -9,11 +9,14 @@ overrides:
 catalogs:
   scaffold:
     "@better-auth/passkey": 1.7.7
+    "@biomejs/biome": 2.5.14
     "@orpc/server": 1.15.4
     "@polar-sh/better-auth": ^2.0.1
     "@polar-sh/sdk": ^1.0.2
     better-auth: 1.7.7
     expo: 57.0.26
+    oxfmt: 0.71.0
+    oxlint: 1.86.0
     react: ^19.2.5
     react-dom: ^19.2.5
     react-email: 6.11.0

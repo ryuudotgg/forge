@@ -236,6 +236,7 @@ export type {
 	SurfaceRenderContribution,
 } from "./renderer";
 export { Renderer } from "./renderer";
+export type { ImportOrder } from "./sort/imports";
 export type {
 	ArtifactBase,
 	ArtifactIndex,

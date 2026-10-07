@@ -35,6 +35,7 @@ const biome = defineAddon<ForgeConfig, "biome", "nextjs">({
 	version: "0.1.0",
 	category: "linter",
 	exclusive: true,
+	importOrder: "scope",
 	switching: {
 		reformat: {
 			bin: "biome",

@@ -27,6 +27,7 @@
 	},
 	"devDependencies": {
 		"@better-auth/passkey": "catalog:scaffold",
+		"@biomejs/biome": "catalog:scaffold",
 		"@effect/platform-node": "catalog:effect",
 		"@effect/tsgo": "catalog:effect",
 		"@orpc/server": "catalog:scaffold",
@@ -39,6 +40,8 @@
 		"@vitest/coverage-v8": "catalog:dev",
 		"better-auth": "catalog:scaffold",
 		"expo": "catalog:scaffold",
+		"oxfmt": "catalog:scaffold",
+		"oxlint": "catalog:scaffold",
 		"react": "catalog:scaffold",
 		"react-dom": "catalog:scaffold",
 		"react-email": "catalog:scaffold",

@@ -4682,3 +4682,71 @@ describe("planner", () => {
 		});
 	});
 });
+
+describe("planner import order", () => {
+	const unsorted = [
+		'import { auth } from "@zeta/auth";',
+		'import { getConnInfo } from "@hono/node-server/conninfo";',
+		"",
+	].join("\n");
+
+	const sorted = [
+		'import { getConnInfo } from "@hono/node-server/conninfo";',
+		'import { auth } from "@zeta/auth";',
+		"",
+	].join("\n");
+
+	function importOrderRegistry() {
+		const routes = defineAddon<TestConfig>({
+			id: "routes",
+			name: "Routes",
+			version: "0.1.0",
+			category: "addon",
+			exclusive: false,
+			targetMode: "single",
+			when: () => true,
+			contribute: () => [
+				leafTextFile(projectTarget(), "src/route.ts", unsorted),
+				leafTextFile(projectTarget(), "notes.md", unsorted),
+			],
+		});
+
+		const linter = defineAddon<TestConfig>({
+			id: "linter",
+			name: "Linter",
+			version: "0.1.0",
+			category: "linter",
+			exclusive: true,
+			importOrder: "scope",
+			targetMode: "single",
+			when: (config) => config.kit === true,
+			contribute: () => [],
+		});
+
+		return defineRegistry({
+			frameworks: [],
+			templates: [],
+			addons: [routes, linter],
+		});
+	}
+
+	it.each([
+		{ kit: true, route: sorted },
+		{ kit: false, route: unsorted },
+	])(
+		"sorts generated scripts only under a linter's order (linter: $kit)",
+		async ({ kit, route }) => {
+			await withTempDir("import-order", async (directory) => {
+				const plan = await Effect.runPromise(
+					planCreateEffect(directory, { kit }, importOrderRegistry()),
+				);
+
+				const content = (path: string) =>
+					plan.writes.find((write) => write.path === path)?.content;
+
+				expect(content("src/route.ts")).toBe(route);
+				expect(content("notes.md")).toBe(unsorted);
+			});
+		},
+	);
+});
