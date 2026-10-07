@@ -88,6 +88,7 @@ export interface TargetedLeafFile {
 	readonly path: ReturnType<typeof filePath>;
 	readonly preserveExisting?: boolean;
 	readonly generated?: boolean;
+	readonly mergeKind?: "yaml";
 }
 
 interface TargetingPhaseResult {

@@ -224,6 +224,18 @@ export function mergeJson(
 	return deepMerge(existing, patch);
 }
 
+export function formatJsonPath(path: ReadonlyArray<string>): string {
+	return path
+		.map((segment, index) =>
+			/^[A-Za-z_$][\w$]*$/.test(segment)
+				? index === 0
+					? segment
+					: `.${segment}`
+				: `[${JSON.stringify(segment)}]`,
+		)
+		.join("");
+}
+
 export function threeWayMergeJson(
 	base: Record<string, unknown>,
 	current: Record<string, unknown>,

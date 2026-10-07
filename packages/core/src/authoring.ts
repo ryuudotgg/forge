@@ -263,6 +263,7 @@ export interface LeafTextFileContribution {
 	readonly content: string;
 	readonly preserveExisting?: boolean;
 	readonly generated?: boolean;
+	readonly mergeKind?: "yaml";
 }
 
 export type Contribution<Capability extends CapabilityId = CapabilityId> =
@@ -404,6 +405,7 @@ export function leafTextFile(
 	options: {
 		readonly preserveExisting?: boolean;
 		readonly generated?: boolean;
+		readonly mergeKind?: "yaml";
 	} = {},
 ): LeafTextFileContribution {
 	return {
@@ -413,6 +415,9 @@ export function leafTextFile(
 		content,
 		...(options.preserveExisting === true ? { preserveExisting: true } : {}),
 		...(options.generated === true ? { generated: true } : {}),
+		...(options.mergeKind === undefined
+			? {}
+			: { mergeKind: options.mergeKind }),
 	};
 }
 
