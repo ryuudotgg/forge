@@ -11,6 +11,14 @@ export {
 } from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
 export {
+	type AuthChoice,
+	authChoice,
+	authChoiceChangesSchema,
+	authChoiceLabel,
+	configWithAuthChoice,
+	hasAuthChoice,
+} from "./auth/choices";
+export {
 	authEmailMethods,
 	authPasskeyIssue,
 	resolveAuthMethods,
@@ -134,6 +142,7 @@ export {
 } from "./origins";
 export { default as drizzle } from "./orm/drizzle";
 export { default as prisma } from "./orm/prisma";
+export { pmRunIn } from "./pm";
 export {
 	builtins,
 	decodeRegistryPackageManifest,

@@ -54,7 +54,7 @@ interface AuthPluginImport {
 	readonly call?: string;
 }
 
-interface AuthPluginDefinition {
+export interface AuthPluginDefinition {
 	readonly server:
 		| ReadonlyArray<AuthPluginImport>
 		| ((config: ForgeConfig) => ReadonlyArray<AuthPluginImport>);
@@ -71,7 +71,7 @@ interface AuthPluginDefinition {
 	>;
 }
 
-const authPluginDefinitions = {
+export const authPluginDefinitions = {
 	"two-factor": {
 		server: [{ module: "better-auth/plugins", name: "twoFactor" }],
 		client: [{ module: "better-auth/client/plugins", name: "twoFactorClient" }],
