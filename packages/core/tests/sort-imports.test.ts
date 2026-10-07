@@ -148,6 +148,38 @@ describe("sort scoped imports", () => {
 		expect(sortScopedImports("index.ts", source, "scope")).toBe(source);
 	});
 
+	it.each(["scope", "text"] as const)(
+		"steps past equal digit runs to the next character by the %s rule",
+		(order) => {
+			const source = lines(
+				'import { b } from "@a1y/x";',
+				'import { a } from "@a1x/x";',
+			);
+
+			expect(sortScopedImports("index.ts", source, order)).toBe(
+				lines('import { a } from "@a1x/x";', 'import { b } from "@a1y/x";'),
+			);
+		},
+	);
+
+	it("leaves an unclosed import at the end of the file in place", () => {
+		const source = [
+			'import { b } from "@zeta/b";',
+			'import { a } from "@hono/a";',
+			"import {",
+			"  c,",
+		].join("\n");
+
+		expect(sortScopedImports("index.ts", source, "scope")).toBe(
+			[
+				'import { a } from "@hono/a";',
+				'import { b } from "@zeta/b";',
+				"import {",
+				"  c,",
+			].join("\n"),
+		);
+	});
+
 	it("leaves files that are not scripts alone", () => {
 		const source = lines(
 			'import { a } from "@zeta/a";',
