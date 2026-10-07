@@ -599,29 +599,6 @@ describe("remove", () => {
 				"apps/admin",
 			);
 
-			const refused = await tryRunForge(
-				workspace.projectRoot,
-				["remove", "admin", "--accept-forge"],
-				{ workspaceRoot: workspace.workspaceRoot },
-			);
-
-			expect(refused.exitCode).toBe(1);
-			expect(refused.stdout + refused.stderr).toContain(
-				"apps/web/app/page.tsx was modified after Forge last managed it.",
-			);
-
-			expect(await treeHashes(workspace.projectRoot, "apps/admin")).toEqual(
-				survivorsBefore,
-			);
-
-			expect(await readFile(adminPage, "utf-8")).toContain("// admin edit");
-
-			await writeFile(webPage, webOriginal);
-			const survivorsClean = await treeHashes(
-				workspace.projectRoot,
-				"apps/admin",
-			);
-
 			await runForge(
 				workspace.projectRoot,
 				["remove", "admin", "--accept-forge"],
@@ -629,8 +606,12 @@ describe("remove", () => {
 			);
 
 			expect(await pathExists(adminPage)).toBe(false);
+			expect(await readFile(webPage, "utf-8")).toBe(
+				`${webOriginal}// web edit\n`,
+			);
+
 			expect(await treeHashes(workspace.projectRoot, "apps/admin")).toEqual(
-				survivorsClean,
+				survivorsBefore,
 			);
 		});
 	}, 120_000);

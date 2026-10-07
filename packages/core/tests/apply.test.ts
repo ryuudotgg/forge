@@ -22,10 +22,12 @@ import { hashContent, readJson, withTempDir, writeText } from "./harness";
 async function declinedPlan(
 	path: string,
 	content: string,
-	mergeKind: "opaque" | "json",
+	mergeKind: "opaque" | "json" | "env" | "lines" | "yaml",
 ): Promise<ApplyPlan> {
 	const hash = await hashContent(content);
-	const kind = mergeKind === "json" ? "surface" : "file";
+	const kind =
+		mergeKind === "opaque" || mergeKind === "yaml" ? "file" : "surface";
+
 	const artifactId = `project:${kind}:${path}`;
 	return {
 		baseContents: { [artifactId]: content },
@@ -202,6 +204,7 @@ describe("apply", () => {
 				join(project, ".forge/lock.json"),
 				"utf-8",
 			);
+
 			const result = await Effect.runPromise(
 				Effect.result(
 					Apply.applyPlan(
@@ -286,25 +289,76 @@ describe("apply", () => {
 		});
 	});
 
-	it("reports nothing for an edited file without a base when Forge's render is unchanged", async () => {
-		await withTempDir("apply-declined-baseless", async (directory) => {
-			const path = "apps/web/app/page.tsx";
-			const content = "render\n";
+	it.each<ResolutionPolicy>(["refuse", "keep-user"])(
+		"reports nothing for an edited file without a base when Forge's render is unchanged under %s",
+		async (resolutionPolicy) => {
+			await withTempDir("apply-declined-baseless", async (directory) => {
+				const path = "apps/web/app/page.tsx";
+				const content = "render\n";
+				const artifactId = `project:file:${path}`;
+				const plan: ApplyPlan = {
+					lockfile: {
+						artifacts: {
+							[artifactId]: {
+								definitionIds: ["test"],
+								hash: await hashContent(content),
+								kind: "file",
+								path,
+							},
+						},
+					},
+					manifest: { config: {}, installs: [], modules: {} },
+					removals: [],
+					writes: [{ artifactId, path, content }],
+				};
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				await writeText(join(directory, path), "user\n");
+
+				const result = await Effect.runPromise(
+					Apply.applyPlan(directory, plan, { resolutionPolicy }).pipe(
+						Effect.provide(coreLayer),
+					),
+				);
+
+				expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+				expect(result.declined).toEqual([]);
+
+				const repeated = await Effect.runPromise(
+					Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(repeated.declined).toEqual([]);
+				expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+			});
+		},
+	);
+
+	it("refuses an edited file without a base when Forge's render changes", async () => {
+		await withTempDir("apply-baseless-render-changed", async (directory) => {
+			const path = "config.txt";
 			const artifactId = `project:file:${path}`;
+			const original = await declinedPlan(path, "original\n", "opaque");
+			const artifact = original.lockfile.artifacts[artifactId];
+			if (artifact === undefined)
+				throw new Error("Artifact Missing: config.txt");
+
 			const plan: ApplyPlan = {
+				...original,
+				baseContents: {},
 				lockfile: {
 					artifacts: {
 						[artifactId]: {
-							definitionIds: ["test"],
-							hash: await hashContent(content),
-							kind: "file",
+							definitionIds: artifact.definitionIds,
+							hash: artifact.hash,
+							kind: artifact.kind,
 							path,
 						},
 					},
 				},
-				manifest: { config: {}, installs: [], modules: {} },
-				removals: [],
-				writes: [{ artifactId, path, content }],
 			};
 
 			await Effect.runPromise(
@@ -313,16 +367,396 @@ describe("apply", () => {
 
 			await writeText(join(directory, path), "user\n");
 
-			const result = await Effect.runPromise(
+			await expect(
+				Effect.runPromise(
+					Apply.applyPlan(directory, {
+						...plan,
+						lockfile: {
+							artifacts: {
+								[artifactId]: {
+									...artifact,
+									base: undefined,
+									hash: await hashContent("forge\n"),
+								},
+							},
+						},
+						writes: [{ artifactId, path, content: "forge\n" }],
+					}).pipe(Effect.provide(coreLayer)),
+				),
+			).rejects.toMatchObject({ reason: "managed-file-modified" });
+
+			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+		});
+	});
+
+	it("preserves another user edit after an opaque keep-user rebase", async () => {
+		await withTempDir("apply-opaque-rebase-edited", async (directory) => {
+			const path = "config.txt";
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, "original\n", "opaque"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, path), "user\n");
+			const plan = await declinedPlan(path, "forge\n", "opaque");
+			await Effect.runPromise(
 				Apply.applyPlan(directory, plan, {
 					resolutionPolicy: "keep-user",
 				}).pipe(Effect.provide(coreLayer)),
 			);
 
-			expect(await readFile(join(directory, path), "utf-8")).toBe("user\n");
+			await writeText(join(directory, path), "user again\n");
+			const result = await Effect.runPromise(
+				Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+			);
+
 			expect(result.declined).toEqual([]);
+			expect(await readFile(join(directory, path), "utf-8")).toBe(
+				"user again\n",
+			);
 		});
 	});
+
+	it.each<ResolutionPolicy>(["refuse", "accept-forge", "keep-user"])(
+		"drops departing JSON edits under %s",
+		async (resolutionPolicy) => {
+			await withTempDir("apply-departing-json", async (directory) => {
+				const path = "biome.json";
+				const base = '{"files":{"includes":["**"]}}\n';
+				const current = '{"files":{"includes":["**","!**/legacy"]}}\n';
+				await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						await declinedPlan(path, base, "json"),
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				await writeText(join(directory, path), current);
+				const result = await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [path],
+							writes: [],
+						},
+						{ departing: ["test"], resolutionPolicy },
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(await pathExists(join(directory, path))).toBe(false);
+				expect(result.dropped).toEqual([
+					{ path, lines: '{ "files": { "includes": ["!**/legacy"] } }\n' },
+				]);
+
+				expect(result.declined).toEqual([]);
+			});
+		},
+	);
+
+	it.each([
+		{ name: "unedited", current: '{"enabled":true}\n', dropped: false },
+		{ name: "unparseable", current: "{invalid JSON\n", dropped: true },
+		{ name: "deletion only", current: "{}\n", dropped: true },
+	])("removes a departing $name file", async ({ current, dropped }) => {
+		await withTempDir("apply-departing-content", async (directory) => {
+			const path = "biome.json";
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, '{"enabled":true}\n', "json"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, path), current);
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [path],
+						writes: [],
+					},
+					{ departing: ["test"] },
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await pathExists(join(directory, path))).toBe(false);
+			expect(result.dropped).toEqual(dropped ? [{ path, lines: current }] : []);
+		});
+	});
+
+	it.each<{
+		mergeKind: "opaque" | "yaml" | "json" | "env" | "lines";
+		base: string;
+		current: string;
+		residue: string;
+	}>([
+		{
+			mergeKind: "opaque",
+			base: "forge\n",
+			current: "forge\nuser\n",
+			residue: "forge\nuser\n",
+		},
+		{
+			mergeKind: "yaml",
+			base: "forge: true\n",
+			current: "forge: true\nuser: true\n",
+			residue: "forge: true\nuser: true\n",
+		},
+		{
+			mergeKind: "env",
+			base: "FORGE=true\n",
+			current: "FORGE=true\nUSER=true\n",
+			residue: "USER=true\n",
+		},
+		{
+			mergeKind: "lines",
+			base: "# Build\ndist/\n",
+			current: "# Build\ndist/\nlegacy/\n",
+			residue: "# Build\nlegacy/\n",
+		},
+	])(
+		"reports departing $mergeKind content",
+		async ({ mergeKind, base, current, residue }) => {
+			await withTempDir("apply-departing-kinds", async (directory) => {
+				const path = "config.txt";
+				await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						await declinedPlan(path, base, mergeKind),
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				await writeText(join(directory, path), current);
+				const result = await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [path],
+							writes: [],
+						},
+						{ departing: ["test"] },
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(await pathExists(join(directory, path))).toBe(false);
+				expect(result.dropped).toEqual([{ path, lines: residue }]);
+			});
+		},
+	);
+
+	it.each(["missing", "damaged", "adopted", "absent"])(
+		"reports full departing content with a %s base",
+		async (storage) => {
+			await withTempDir("apply-departing-base", async (directory) => {
+				const path = "biome.json";
+				const base = '{"enabled":true}\n';
+				const current = '{"enabled":true,"user":true}\n';
+				const initial = await declinedPlan(path, base, "json");
+				await Effect.runPromise(
+					Apply.applyPlan(directory, initial).pipe(Effect.provide(coreLayer)),
+				);
+
+				const basePath = join(
+					directory,
+					".forge/bases",
+					await hashContent(base),
+				);
+
+				if (storage === "missing") await rm(basePath);
+				else if (storage === "damaged") await writeText(basePath, "damaged\n");
+				else {
+					const lockfile = await Effect.runPromise(
+						State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
+					);
+
+					const artifactId = `project:surface:${path}`;
+					const artifact = lockfile.artifacts[artifactId];
+					if (artifact?.base === undefined)
+						throw new Error("Artifact Base Missing: biome.json");
+
+					await Effect.runPromise(
+						State.writeLockfile(directory, {
+							...lockfile,
+							artifacts: {
+								[artifactId]: {
+									...artifact,
+									base:
+										storage === "absent"
+											? undefined
+											: { ...artifact.base, origin: "adopted" },
+								},
+							},
+						}).pipe(Effect.provide(coreLayer)),
+					);
+				}
+
+				await writeText(join(directory, path), current);
+				const result = await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [path],
+							writes: [],
+						},
+						{ departing: ["test"] },
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(await pathExists(join(directory, path))).toBe(false);
+				expect(result.dropped).toEqual([{ path, lines: current }]);
+			});
+		},
+	);
+
+	it.each<{
+		readonly name: string;
+		readonly hash: "user" | "kept";
+		readonly origin: "adopted" | undefined;
+		readonly dropped: boolean;
+	}>([
+		{
+			name: "adopted untouched",
+			hash: "user",
+			origin: "adopted",
+			dropped: true,
+		},
+		{
+			name: "restored to Forge's render",
+			hash: "kept",
+			origin: undefined,
+			dropped: false,
+		},
+	])("classifies a departing $name file", async ({ hash, origin, dropped }) => {
+		await withTempDir("apply-departing-state", async (directory) => {
+			const path = "biome.json";
+			const artifactId = `project:surface:${path}`;
+			const render = '{"enabled":true}\n';
+			const user = '{"enabled":false}\n';
+			const current = origin === "adopted" ? user : render;
+			await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					await declinedPlan(path, render, "json"),
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			const lockfile = await Effect.runPromise(
+				State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
+			);
+
+			const artifact = lockfile.artifacts[artifactId];
+			if (artifact?.base === undefined)
+				throw new Error("Artifact Base Missing: biome.json");
+
+			await Effect.runPromise(
+				State.writeLockfile(directory, {
+					...lockfile,
+					artifacts: {
+						[artifactId]: {
+							...artifact,
+							hash: await hashContent(hash === "user" ? user : "kept\n"),
+							base:
+								origin === "adopted"
+									? {
+											...artifact.base,
+											hash: await hashContent(user),
+											origin,
+										}
+									: artifact.base,
+						},
+					},
+				}).pipe(Effect.provide(coreLayer)),
+			);
+
+			await writeText(join(directory, path), current);
+			const result = await Effect.runPromise(
+				Apply.applyPlan(
+					directory,
+					{
+						lockfile: { artifacts: {} },
+						manifest: { config: {}, installs: [], modules: {} },
+						removals: [path],
+						writes: [],
+					},
+					{ departing: ["test"] },
+				).pipe(Effect.provide(coreLayer)),
+			);
+
+			expect(await pathExists(join(directory, path))).toBe(false);
+			expect(result.dropped).toEqual(dropped ? [{ path, lines: current }] : []);
+		});
+	});
+
+	it.each(["shared owner", "still installed", "no owner"])(
+		"preserves residue for a departing addon with a %s",
+		async (guard) => {
+			await withTempDir("apply-departing-guard", async (directory) => {
+				const path = "biome.json";
+				const artifactId = `project:surface:${path}`;
+				const initial = await declinedPlan(path, '{"enabled":true}\n', "json");
+				const artifact = initial.lockfile.artifacts[artifactId];
+				if (artifact === undefined)
+					throw new Error("Artifact Missing: biome.json");
+
+				await Effect.runPromise(
+					Apply.applyPlan(directory, {
+						...initial,
+						lockfile: {
+							artifacts: {
+								[artifactId]: {
+									...artifact,
+									definitionIds:
+										guard === "shared owner"
+											? ["test", "root"]
+											: guard === "no owner"
+												? []
+												: ["test"],
+								},
+							},
+						},
+					}).pipe(Effect.provide(coreLayer)),
+				);
+
+				await writeText(
+					join(directory, path),
+					'{"enabled":true,"user":true}\n',
+				);
+
+				const result = await Effect.runPromise(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: { artifacts: {} },
+							manifest: {
+								config: {},
+								installs:
+									guard === "still installed"
+										? [{ definitionId: "test", targets: [{ kind: "project" }] }]
+										: [],
+								modules: {},
+							},
+							removals: [path],
+							writes: [],
+						},
+						{ departing: ["test"] },
+					).pipe(Effect.provide(coreLayer)),
+				);
+
+				expect(await readJson(join(directory, path))).toEqual({ user: true });
+				expect(result.dropped).toEqual([]);
+			});
+		},
+	);
 
 	it.each([false, true])(
 		"reports only conflicting package keys (conflict: %s)",
@@ -5582,19 +6016,20 @@ describe("apply", () => {
 
 		const removalPlan = async (
 			removedRoots?: ReadonlyArray<string>,
+			webContent = "export const web = 1;\n",
 		): Promise<ApplyPlan> => ({
 			lockfile: {
 				artifacts: {
 					"module:web:file:app/page.tsx": await opaque(
 						"apps/web/app/page.tsx",
-						"export const web = 1;\n",
+						webContent,
 					),
 				},
 			},
 			manifest: { config: {}, installs: [], modules: {} },
 			removals: removedAppPaths,
 			...(removedRoots === undefined ? {} : { removedRoots }),
-			writes: [webPage("export const web = 1;\n")],
+			writes: [webPage(webContent)],
 		});
 
 		it("keeps edited and adopted files inside a removed root and reports them", async () => {
@@ -5676,10 +6111,14 @@ describe("apply", () => {
 		it("limits accept-forge to the removed root", async () => {
 			await withTempDir("apply-removed-root-force", async (directory) => {
 				const { files } = await writeRemovedAppFixture(directory);
+				const plan = await removalPlan(
+					["apps/admin"],
+					"export const web = 2;\n",
+				);
 
 				const error = await Effect.runPromise(
 					Effect.flip(
-						Apply.applyPlan(directory, await removalPlan(["apps/admin"]), {
+						Apply.applyPlan(directory, plan, {
 							resolutionPolicy: "accept-forge",
 						}).pipe(Effect.provide(coreLayer)),
 					),
@@ -5695,7 +6134,7 @@ describe("apply", () => {
 					expect(await readFile(join(directory, path), "utf-8")).toBe(content);
 
 				const resolved = await Effect.runPromise(
-					Apply.applyPlan(directory, await removalPlan(["apps/admin"]), {
+					Apply.applyPlan(directory, plan, {
 						conflictResolutions: {
 							"apps/web/app/page.tsx": { resolution: "user" },
 						},
@@ -5717,10 +6156,14 @@ describe("apply", () => {
 		it("explains that accept-forge leaves rewritten files outside the removed root alone", async () => {
 			await withTempDir("apply-removed-root-guidance", async (directory) => {
 				await writeRemovedAppFixture(directory);
+				const plan = await removalPlan(
+					["apps/admin"],
+					"export const web = 2;\n",
+				);
 
 				const error = await Effect.runPromise(
 					Effect.flip(
-						Apply.applyPlan(directory, await removalPlan(["apps/admin"]), {
+						Apply.applyPlan(directory, plan, {
 							resolutionPolicy: "accept-forge",
 						}).pipe(Effect.provide(coreLayer)),
 					),
@@ -5795,7 +6238,7 @@ describe("apply", () => {
 		it("refuses accept-forge everywhere when the removal scope is empty", async () => {
 			await withTempDir("apply-removed-root-empty", async (directory) => {
 				const { files } = await writeRemovedAppFixture(directory);
-				const plan = await removalPlan([]);
+				const plan = await removalPlan([], "export const web = 2;\n");
 
 				const error = await Effect.runPromise(
 					Effect.flip(

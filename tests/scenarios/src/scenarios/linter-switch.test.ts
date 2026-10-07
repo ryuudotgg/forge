@@ -3,6 +3,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	commitFixture as commitEditedFixture,
 	createProject,
 	pathExists,
 	readJson,
@@ -11,6 +12,7 @@ import {
 	type ScenarioProject,
 	tryRunForge,
 	withScenarioWorkspace,
+	writeJson,
 } from "../utils/harness";
 
 async function treeHashes(projectRoot: string) {
@@ -68,6 +70,52 @@ function createFixture(workspace: ScenarioProject, linter: string) {
 }
 
 describe("exclusive addon switches", () => {
+	it.each([
+		{ from: "biome", to: "oxc", path: "biome.json", entry: "!**/legacy" },
+		{ from: "oxc", to: "biome", path: ".oxlintrc.json", entry: "legacy/**" },
+	])("switches edited $from to $to without a flag", async (direction) => {
+		await withScenarioWorkspace(
+			`switch-edited-${direction.to}`,
+			async (workspace) => {
+				await createFixture(workspace, direction.from);
+				await commitFixture(workspace);
+
+				const configPath = join(workspace.projectRoot, direction.path);
+				if (direction.from === "biome") {
+					const config = await readJson<{ files: { includes: string[] } }>(
+						configPath,
+					);
+
+					config.files.includes.push(direction.entry);
+					await writeJson(configPath, config);
+				} else {
+					const config = await readJson<{ ignorePatterns: string[] }>(
+						configPath,
+					);
+
+					config.ignorePatterns.push(direction.entry);
+					await writeJson(configPath, config);
+				}
+
+				const ciPath = join(workspace.projectRoot, ".github/workflows/ci.yml");
+				const ci = `${await readFile(ciPath, "utf-8")}\n  user-job:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo user\n`;
+				await writeFile(ciPath, ci);
+				await commitEditedFixture(workspace);
+
+				const result = await tryRunForge(
+					workspace.projectRoot,
+					["add", direction.to, "--no-install"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
+
+				expect(result.exitCode, result.stdout).toBe(0);
+				expect(await pathExists(configPath)).toBe(false);
+				expect(result.stdout).toContain(direction.entry);
+				expect(await readFile(ciPath, "utf-8")).toBe(ci);
+			},
+		);
+	});
+
 	it("refuses a project Git does not track without changing any bytes", async () => {
 		await withScenarioWorkspace("switch-no-git", async (workspace) => {
 			await createFixture(workspace, "biome");

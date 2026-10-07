@@ -7,6 +7,7 @@ export type {
 	ApplyResult,
 	ConflictResolution,
 	DeclinedChange,
+	DroppedEdit,
 	FormatApplyErrorOptions,
 	PlannedWrite,
 	ResolutionFlag,

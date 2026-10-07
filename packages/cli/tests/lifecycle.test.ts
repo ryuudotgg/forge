@@ -888,7 +888,8 @@ describe("applyLifecyclePlan", () => {
 	}>)("reports declined files: $message", async ({ declined, message }) => {
 		const apply = vi
 			.spyOn(Apply, "applyPlan")
-			.mockReturnValue(Effect.succeed({ retained: [], declined }));
+			.mockReturnValue(Effect.succeed({ retained: [], declined, dropped: [] }));
+
 		const warn = promptMocks.logWarn;
 		warn.mockClear();
 

@@ -821,11 +821,13 @@ describe("remove command", () => {
 	it.each([
 		{
 			declined: [],
+			dropped: [],
 			retained: ["apps/admin/app/page.tsx"],
 			sentence: "We kept your edited file at apps/admin/app/page.tsx.",
 		},
 		{
 			declined: [],
+			dropped: [],
 			retained: ["apps/admin/app/page.tsx", "apps/admin/package.json"],
 			sentence:
 				"We kept your edited files at apps/admin/app/page.tsx and apps/admin/package.json.",
@@ -926,6 +928,7 @@ describe("remove command", () => {
 			lifecycleMocks.applyInstalledPlan.mockResolvedValue({
 				dependenciesChanged: false,
 				declined: [],
+				dropped: [],
 				retained: [],
 			});
 
@@ -964,6 +967,7 @@ describe("remove command", () => {
 		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
 			dependenciesChanged: false,
 			declined: [],
+			dropped: [],
 			retained: [],
 		});
 
@@ -989,6 +993,7 @@ describe("remove command", () => {
 
 		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
 			declined: [],
+			dropped: [],
 			retained: ["apps/admin/app/page.tsx"],
 		});
 
@@ -1018,6 +1023,7 @@ describe("remove command", () => {
 		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
 			dependenciesChanged: false,
 			declined: [],
+			dropped: [],
 			retained: [],
 		});
 
@@ -1224,6 +1230,7 @@ describe("remove command", () => {
 		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
 			dependenciesChanged: false,
 			declined: [],
+			dropped: [],
 			retained: [],
 		});
 	});
