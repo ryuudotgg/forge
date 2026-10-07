@@ -5094,6 +5094,61 @@ describe("apply", () => {
 			});
 		});
 
+		it.each([
+			{ generatedRemovals: false, removedRoot: true, relocated: false },
+			{ generatedRemovals: true, removedRoot: true, relocated: false },
+			{ generatedRemovals: true, removedRoot: true, relocated: true },
+			{ generatedRemovals: true, removedRoot: false, relocated: false },
+		])(
+			"handles older generated artifacts with %j",
+			async ({ generatedRemovals, removedRoot, relocated }) => {
+				await withTempDir("apply-remove-old-generated", async (directory) => {
+					const previous = await preservedPlan();
+					const currentRoot = relocated ? "apps/site" : "apps/web";
+					const currentPath = `${currentRoot}/src/routeTree.gen.ts`;
+
+					await Effect.runPromise(
+						State.writeLockfile(directory, {
+							schemaVersion: 1,
+							artifacts: previous.lockfile.artifacts,
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					await writeText(join(directory, currentPath), generated);
+
+					const applyRemoval = Effect.runPromise(
+						Apply.applyPlan(directory, {
+							...(generatedRemovals ? { generatedRemovals: [routeTree] } : {}),
+							lockfile: { artifacts: {} },
+							manifest: { config: {}, installs: [], modules: {} },
+							...(relocated
+								? { removalRootRelocations: { "apps/web": currentRoot } }
+								: {}),
+							removals: [routeTree],
+							removedRoots: removedRoot ? [currentRoot] : [],
+							writes: [],
+						}).pipe(Effect.provide(coreLayer)),
+					);
+
+					if (!removedRoot) {
+						await expect(applyRemoval).rejects.toMatchObject({
+							reason: "managed-file-modified",
+						});
+
+						expect(await readFile(join(directory, currentPath), "utf-8")).toBe(
+							generated,
+						);
+						return;
+					}
+
+					const result = await applyRemoval;
+					const removed = generatedRemovals && removedRoot;
+					expect(result.retained).toEqual(removed ? [] : [currentPath]);
+					expect(await pathExists(join(directory, currentPath))).toBe(!removed);
+				});
+			},
+		);
+
 		it.each([false, true])(
 			"removes regenerated files but retains user edits with adopted=%s",
 			async (adopted) => {

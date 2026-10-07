@@ -42,6 +42,7 @@ export interface PlannedWrite {
 
 export interface ApplyPlan {
 	readonly baseContents?: Readonly<Record<string, string>>;
+	readonly generatedRemovals?: ReadonlyArray<string>;
 	readonly lockfile: LockfileInput;
 	readonly manifest: ManifestInput;
 	readonly removalRootRelocations?: Readonly<Record<string, string>>;
@@ -789,6 +790,7 @@ const makeApply = Effect.gen(function* () {
 
 		const conflicts: ApplyConflict[] = [];
 		const refusals: ApplyRefusal[] = [];
+		const generatedRemovals = new Set(plan.generatedRemovals ?? []);
 		const removalRootRelocations = Object.entries(
 			plan.removalRootRelocations ?? {},
 		).sort(([leftRoot], [rightRoot]) => rightRoot.length - leftRoot.length);
@@ -825,7 +827,11 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (inRemovedRoot && previousArtifact.generated === true) {
+			if (
+				inRemovedRoot &&
+				(previousArtifact.generated === true ||
+					generatedRemovals.has(plannedPath))
+			) {
 				removalsToApply.push(relativePath);
 				continue;
 			}

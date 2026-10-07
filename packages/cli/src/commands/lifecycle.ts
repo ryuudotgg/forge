@@ -332,13 +332,12 @@ export async function loadDiscoveryRegistry(projectRoot: string) {
 	}
 }
 
-export async function applyInstalledPlan(
+async function planInstalledProject(
 	projectRoot: string,
 	config: Manifest["config"],
 	installs: ReadonlyArray<InstallRecord>,
 	providedCommandVersions?: Readonly<Record<string, string>>,
 	registryIds?: ReadonlyArray<string>,
-	options: ApplyOptions = {},
 	seed?: InstalledPlanningSeed,
 ) {
 	const loadedRegistry = await loadProjectRegistry(
@@ -346,7 +345,7 @@ export async function applyInstalledPlan(
 		registryIds ?? [],
 	);
 
-	const plan = await runLifecycleEffect(
+	return runLifecycleEffect(
 		Effect.gen(function* () {
 			const commandVersions =
 				providedCommandVersions ??
@@ -369,10 +368,62 @@ export async function applyInstalledPlan(
 		}),
 		"We couldn't plan this change.",
 	);
+}
+
+export async function generatedRemovalPaths(
+	projectRoot: string,
+	config: Manifest["config"],
+	installs: ReadonlyArray<InstallRecord>,
+	registryIds: Manifest["registries"],
+	modules: ReadonlyArray<DiscoveredModule>,
+	records: Manifest["modules"],
+	roots: ReadonlyArray<string>,
+) {
+	const plan = await planInstalledProject(
+		projectRoot,
+		config,
+		installs,
+		undefined,
+		registryIds,
+		{ modules, records },
+	);
+
+	return Object.values(plan.lockfile.artifacts)
+		.filter(
+			(artifact) =>
+				artifact.generated === true &&
+				roots.some(
+					(root) =>
+						artifact.path === root || artifact.path.startsWith(`${root}/`),
+				),
+		)
+		.map((artifact) => artifact.path);
+}
+
+export async function applyInstalledPlan(
+	projectRoot: string,
+	config: Manifest["config"],
+	installs: ReadonlyArray<InstallRecord>,
+	providedCommandVersions?: Readonly<Record<string, string>>,
+	registryIds?: ReadonlyArray<string>,
+	options: ApplyOptions = {},
+	seed?: InstalledPlanningSeed,
+) {
+	const plan = await planInstalledProject(
+		projectRoot,
+		config,
+		installs,
+		providedCommandVersions,
+		registryIds,
+		seed,
+	);
 
 	return await applyLifecyclePlan(
 		projectRoot,
 		{
+			...(plan.generatedRemovals === undefined
+				? {}
+				: { generatedRemovals: plan.generatedRemovals }),
 			lockfile: plan.lockfile,
 			manifest: plan.manifest,
 			...(plan.removalRootRelocations === undefined

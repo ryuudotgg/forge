@@ -32,6 +32,7 @@ import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
+	generatedRemovalPaths,
 	hasProjectDevDependency,
 	loadManagedProject,
 	loadProjectRegistry,
@@ -494,6 +495,34 @@ async function removeWebApp(
 		.map((install) => removeTargets(install, removal.ids))
 		.filter((install): install is InstallRecord => install !== undefined);
 
+	const currentGeneratedPaths =
+		removal.modules.length === 0
+			? []
+			: await generatedRemovalPaths(
+					project.projectRoot,
+					config,
+					project.manifest.installs,
+					project.manifest.registries,
+					project.modules,
+					project.manifest.modules,
+					removal.roots,
+				);
+
+	const relocations = Object.entries(removalRootRelocations).sort(
+		([, leftRoot], [, rightRoot]) => rightRoot.length - leftRoot.length,
+	);
+
+	const generatedRemovals = currentGeneratedPaths.map((path) => {
+		const relocation = relocations.find(
+			([, currentRoot]) =>
+				path === currentRoot || path.startsWith(`${currentRoot}/`),
+		);
+
+		return relocation === undefined
+			? path
+			: `${relocation[0]}${path.slice(relocation[1].length)}`;
+	});
+
 	const { retained } = await applyInstalledPlan(
 		project.projectRoot,
 		nextConfig,
@@ -502,6 +531,7 @@ async function removeWebApp(
 		project.manifest.registries,
 		options,
 		{
+			...(generatedRemovals.length === 0 ? {} : { generatedRemovals }),
 			modules: project.modules.filter(
 				(module) => !removedModuleRoots.has(module.root),
 			),

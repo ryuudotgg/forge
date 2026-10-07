@@ -684,6 +684,46 @@ describe("remove", () => {
 		});
 	}, 120_000);
 
+	it("removes a regenerated route tree from an older lockfile", async () => {
+		await withScenarioWorkspace("remove-old-route-tree", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "tanstack-router",
+				webApps: [{ name: "site", framework: "tanstack-router" }],
+			});
+
+			const lockfilePath = join(workspace.projectRoot, ".forge/lock.json");
+			const lockfile = await readJson<{
+				artifacts: Record<string, { generated?: boolean }>;
+			}>(lockfilePath);
+
+			for (const artifact of Object.values(lockfile.artifacts)) {
+				delete artifact.generated;
+			}
+
+			await writeJson(lockfilePath, lockfile);
+			await writeFile(
+				join(workspace.projectRoot, "apps/site/src/routeTree.gen.ts"),
+				"export const routeTree = regenerated;\n",
+			);
+
+			const removed = await tryRunForge(
+				workspace.projectRoot,
+				["remove", "site"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(removed.exitCode, removed.stdout + removed.stderr).toBe(0);
+			expect(removed.stdout + removed.stderr).not.toContain(
+				"We kept your edited",
+			);
+
+			expect(await pathExists(join(workspace.projectRoot, "apps/site"))).toBe(
+				false,
+			);
+		});
+	}, 120_000);
+
 	it("reports an edited secondary package still in the workspace", async () => {
 		await withScenarioWorkspace("remove-edited-package", async (workspace) => {
 			await createProject(workspace, {

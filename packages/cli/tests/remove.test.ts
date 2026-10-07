@@ -91,6 +91,7 @@ const promptMocks = vi.hoisted(() => ({
 const lifecycleMocks = vi.hoisted(() => ({
 	applyInstalledPlan: vi.fn(),
 	configuredPackageManager: vi.fn(),
+	generatedRemovalPaths: vi.fn(async () => []),
 	hasProjectDevDependency: vi.fn(),
 	loadManagedProject: vi.fn(),
 	loadProjectRegistry: vi.fn(),
@@ -115,6 +116,7 @@ vi.mock("@clack/prompts", () => ({
 vi.mock("../src/commands/lifecycle", () => ({
 	applyInstalledPlan: lifecycleMocks.applyInstalledPlan,
 	configuredPackageManager: lifecycleMocks.configuredPackageManager,
+	generatedRemovalPaths: lifecycleMocks.generatedRemovalPaths,
 	hasProjectDevDependency: lifecycleMocks.hasProjectDevDependency,
 	loadManagedProject: lifecycleMocks.loadManagedProject,
 	loadProjectRegistry: lifecycleMocks.loadProjectRegistry,

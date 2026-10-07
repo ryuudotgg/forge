@@ -459,6 +459,7 @@ export interface PlannedFile {
 }
 
 export interface ProjectPlan {
+	readonly generatedRemovals?: ReadonlyArray<string>;
 	readonly dependencyNames: Readonly<Record<string, ReadonlyArray<string>>>;
 	readonly lockfile: Lockfile;
 	readonly manifest: Manifest;
@@ -545,6 +546,7 @@ interface TemplateAddition {
 }
 
 export interface InstalledPlanningSeed {
+	readonly generatedRemovals?: ProjectPlan["generatedRemovals"];
 	readonly additions?: ReadonlyArray<TemplateAddition>;
 	readonly modules: ReadonlyArray<DiscoveredModule>;
 	readonly records: Manifest["modules"];
@@ -1965,6 +1967,9 @@ const makePlanner = Effect.gen(function* () {
 			dependencyNames,
 			lockfile,
 			manifest,
+			...(seed?.generatedRemovals === undefined
+				? {}
+				: { generatedRemovals: seed.generatedRemovals }),
 			...(seed?.removalRootRelocations === undefined
 				? {}
 				: { removalRootRelocations: seed.removalRootRelocations }),
