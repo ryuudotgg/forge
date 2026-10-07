@@ -312,12 +312,12 @@ export default config;
 
 		expect(scripts.scripts).toEqual({
 			build: "pnpm with-env vite build",
-			dev: "pnpm with-env vite dev --port 3000",
+			dev: "pnpm with-env vite dev --port 3000 --strictPort",
 			"generate-routes": "tsr generate",
 			postinstall:
 				"node -e \"try{require.resolve('@tanstack/router-cli/package.json');process.exit(1)}catch{}\" || pnpm generate-routes",
 			pretypecheck: "pnpm generate-routes",
-			preview: "pnpm with-env vite preview",
+			preview: "pnpm with-env vite preview --port 3000 --strictPort",
 			typecheck: "tsc --noEmit",
 			"with-env": "dotenv -e ../../.env --",
 		});

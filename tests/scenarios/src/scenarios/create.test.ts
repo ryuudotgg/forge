@@ -255,8 +255,12 @@ describe("create", () => {
 
 				expect(await pathExists(adminRoot)).toBe(true);
 				expect(admin.name).toBe("@acme/admin");
-				expect(admin.scripts.dev).toBe("pnpm with-env vite dev --port 3002");
-				expect(web.scripts.dev).toBe("pnpm with-env vite dev --port 3000");
+				expect(admin.scripts.dev).toBe(
+					"pnpm with-env vite dev --port 3002 --strictPort",
+				);
+				expect(web.scripts.dev).toBe(
+					"pnpm with-env vite dev --port 3000 --strictPort",
+				);
 				expect(await readJson(join(webRoot, "forge.json"))).toHaveProperty(
 					"role",
 					"primary",

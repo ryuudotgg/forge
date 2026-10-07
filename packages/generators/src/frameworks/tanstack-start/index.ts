@@ -265,14 +265,22 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 		),
 		surfaceScripts(ensuredModuleTarget(instance.key), "packageJson", {
 			build: pmRun(pm, "with-env", "vite build"),
-			dev: pmRun(pm, "with-env", `vite dev --port ${instance.port}`),
+			dev: pmRun(
+				pm,
+				"with-env",
+				`vite dev --port ${instance.port} --strictPort`,
+			),
 			"generate-routes": "tsr generate",
 			postinstall: installHook(
 				"@tanstack/router-cli",
 				pmRun(pm, "generate-routes"),
 			),
 			pretypecheck: pmRun(pm, "generate-routes"),
-			preview: pmRun(pm, "with-env", "vite preview"),
+			preview: pmRun(
+				pm,
+				"with-env",
+				`vite preview --port ${instance.port} --strictPort`,
+			),
 			start:
 				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs",
 			typecheck: "tsc --noEmit",

@@ -1896,7 +1896,7 @@ export async function withWebApp(
 		const args =
 			stringField(scripts, "start") !== undefined
 				? ["run", "start"]
-				: ["run", "preview", "--port", String(app.port), "--strictPort"];
+				: ["run", "preview"];
 
 		await expectPortFree(app.port);
 
