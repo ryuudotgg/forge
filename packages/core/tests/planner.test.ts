@@ -1063,11 +1063,16 @@ describe("planner", () => {
 	it("omits empty registry metadata from an installed replan", async () => {
 		await withTempDir("planner-registryless-replan", async (directory) => {
 			await Effect.runPromise(
-				State.writeManifest(directory, {
-					config: {},
-					installs: [],
-					modules: {},
-				}).pipe(Effect.provide(coreLayer)),
+				State.writeLockfile(directory, { artifacts: {} }).pipe(
+					Effect.andThen(
+						State.writeManifest(directory, {
+							config: {},
+							installs: [],
+							modules: {},
+						}),
+					),
+					Effect.provide(coreLayer),
+				),
 			);
 
 			const plan = await Effect.runPromise(
@@ -1096,12 +1101,17 @@ describe("planner", () => {
 			];
 
 			await Effect.runPromise(
-				State.writeManifest(directory, {
-					config: {},
-					installs: [],
-					modules: {},
-					registries: ["@acme/forge-sentry"],
-				}).pipe(Effect.provide(coreLayer)),
+				State.writeLockfile(directory, { artifacts: {} }).pipe(
+					Effect.andThen(
+						State.writeManifest(directory, {
+							config: {},
+							installs: [],
+							modules: {},
+							registries: ["@acme/forge-sentry"],
+						}),
+					),
+					Effect.provide(coreLayer),
+				),
 			);
 
 			const plan = await Effect.runPromise(
@@ -1116,12 +1126,17 @@ describe("planner", () => {
 	it("persists an explicit registry selection on installed plans", async () => {
 		await withTempDir("planner-registry-selection", async (directory) => {
 			await Effect.runPromise(
-				State.writeManifest(directory, {
-					config: {},
-					installs: [],
-					modules: {},
-					registries: ["@acme/old-registry"],
-				}).pipe(Effect.provide(coreLayer)),
+				State.writeLockfile(directory, { artifacts: {} }).pipe(
+					Effect.andThen(
+						State.writeManifest(directory, {
+							config: {},
+							installs: [],
+							modules: {},
+							registries: ["@acme/old-registry"],
+						}),
+					),
+					Effect.provide(coreLayer),
+				),
 			);
 
 			const plan = await Effect.runPromise(

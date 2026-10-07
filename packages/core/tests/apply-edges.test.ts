@@ -8,6 +8,7 @@ import {
 	ApplyError,
 	ApplyErrors,
 	type ApplyPlan,
+	type ApplyRefusal,
 	CliVersion,
 	formatApplyError,
 	type LockfileArtifact,
@@ -695,7 +696,7 @@ describe("apply edge coverage", () => {
 				}),
 			),
 		).toBe(
-			"Forge cannot safely update these files:\nloose.txt already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
+			"Forge cannot safely update these files:\nloose.txt already exists and is not managed by Forge.\nRun again with --keep-user to keep your version wherever you and Forge disagree, or --accept-forge to take Forge's version and overwrite yours.\nWith --keep-user, Forge keeps the files you already had and manages them from then on.",
 		);
 
 		expect(
@@ -761,12 +762,159 @@ describe("apply edge coverage", () => {
 
 			const formatted = formatApplyError(error);
 			expect(formatted).toContain(
-				"Run again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
+				"Run again with --keep-user to keep your version wherever you and Forge disagree, or --accept-forge to take Forge's version and overwrite yours.",
 			);
 
 			expect(formatted).not.toContain(
 				"--keep-user cannot resolve unmanaged files",
 			);
+		});
+	});
+
+	it.each([
+		{
+			name: "stuck only",
+			refusals: [
+				{
+					path: "broken.txt",
+					reason: "managed-file-modified",
+					operation: "write",
+					resolvedBy: [],
+				},
+			],
+			guidance:
+				"Neither flag resolves broken.txt, so move it out of the way first.",
+		},
+		{
+			name: "stuck with a resolvable write",
+			refusals: [
+				{
+					path: "broken.txt",
+					reason: "managed-file-modified",
+					operation: "write",
+					resolvedBy: [],
+				},
+				{
+					path: "user.txt",
+					reason: "unmanaged-file-exists",
+					operation: "write",
+					resolvedBy: ["keep-user", "accept-forge"],
+				},
+			],
+			guidance:
+				"Neither flag resolves broken.txt, so move it out of the way first, then run again with --keep-user or --accept-forge.\nWith --keep-user, Forge keeps the files you already had and manages them from then on.",
+		},
+		{
+			name: "no shared flag",
+			refusals: [
+				{
+					path: "user.txt",
+					reason: "unmanaged-file-exists",
+					operation: "write",
+					resolvedBy: ["keep-user"],
+				},
+				{
+					path: "old.txt",
+					reason: "managed-file-modified",
+					operation: "removal",
+					resolvedBy: ["accept-forge"],
+				},
+			],
+			guidance:
+				"Neither flag resolves user.txt and old.txt, so move them out of the way first.",
+		},
+	] satisfies ReadonlyArray<{
+		name: string;
+		refusals: ReadonlyArray<ApplyRefusal>;
+		guidance: string;
+	}>)("formats $name from the resolution sets", ({ refusals, guidance }) => {
+		const error = new ApplyError({
+			reason: "preflight-failed",
+			path: "managed files",
+			detail: "Refused.",
+			preflight: {
+				refusals,
+				conflicts: [],
+				hasConflicts: false,
+				hasManagedRefusals: true,
+				hasManagedRemovals: false,
+				hasUnmanagedRefusals: false,
+				hasUnmanagedRemovals: false,
+			},
+		});
+
+		expect(formatApplyError(error)).toBe(`Refused.\n${guidance}`);
+		expect(formatApplyError(error, { includeResolutionGuidance: false })).toBe(
+			"Refused.",
+		);
+	});
+
+	it("aborts adoption when the unmanaged content changes before publication", async () => {
+		await withTempDir("apply-adoption-drift", async (directory) => {
+			const path = "user.txt";
+			const incoming = "forge\n";
+			await writeText(join(directory, path), "user\n");
+			let injected = false;
+			const racingLayer = applyLayerWithFileSystem((fileSystem) => ({
+				...fileSystem,
+				writeFileString: (target, content, options) =>
+					fileSystem.writeFileString(target, content, options).pipe(
+						Effect.tap(() => {
+							if (injected || !target.endsWith("/state/lock.json"))
+								return Effect.void;
+
+							injected = true;
+							return fileSystem.writeFileString(
+								join(directory, path),
+								"mid-run\n",
+							);
+						}),
+					),
+			}));
+
+			const error = await Effect.runPromise(
+				Effect.flip(
+					Apply.applyPlan(
+						directory,
+						{
+							lockfile: {
+								artifacts: {
+									user: {
+										definitionIds: ["fixture"],
+										hash: await hashContent(incoming),
+										kind: "file",
+										path,
+									},
+								},
+							},
+							manifest: { config: {}, installs: [], modules: {} },
+							removals: [],
+							writes: [{ artifactId: "user", content: incoming, path }],
+						},
+						{ resolutionPolicy: "keep-user" },
+					).pipe(Effect.provide(racingLayer)),
+				),
+			);
+
+			expect(error).toMatchObject({
+				reason: "managed-file-modified",
+				preflight: {
+					refusals: [{ path, operation: "write", resolvedBy: ["keep-user"] }],
+				},
+			});
+
+			if (!(error instanceof ApplyError))
+				throw new Error("Expected Apply Error");
+
+			expect(formatApplyError(error)).toContain(
+				"Run again with --keep-user to keep your version wherever you and Forge disagree.",
+			);
+
+			expect(formatApplyError(error)).not.toContain("--accept-forge");
+			expect(await readFile(join(directory, path), "utf-8")).toBe("mid-run\n");
+			await expect(
+				readFile(join(directory, ".forge/lock.json")),
+			).rejects.toMatchObject({ code: "ENOENT" });
 		});
 	});
 
@@ -842,7 +990,14 @@ describe("apply edge coverage", () => {
 				),
 			);
 
-			expect(error).toMatchObject({ message: "Managed File Modified", path });
+			expect(error).toMatchObject({
+				message: "Managed File Modified",
+				path,
+				preflight: {
+					refusals: [{ path, operation: "write", resolvedBy: ["keep-user"] }],
+				},
+			});
+
 			expect(await readFile(join(directory, path), "utf-8")).toBe(
 				'{"value":"mid-run"}\n',
 			);

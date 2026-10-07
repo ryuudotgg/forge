@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, unlink } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
@@ -55,6 +55,11 @@ async function seedManifest(directory: string, cliVersion?: string) {
 		modules: {},
 		schemaVersion: 1,
 	});
+
+	await writeJson(join(directory, ".forge/lock.json"), {
+		artifacts: {},
+		schemaVersion: 1,
+	});
 }
 
 describe("compareCliVersions", () => {
@@ -88,6 +93,38 @@ describe("compareCliVersions", () => {
 });
 
 describe("older CLI guard", () => {
+	it("reports the newer CLI version before a missing lockfile", async () => {
+		await withTempDir("cli-version-missing-lock", async (directory) => {
+			await seedManifest(directory, "1.5.0");
+			await unlink(join(directory, ".forge/lock.json"));
+			const before = await snapshotTree(directory);
+
+			for (const operation of [
+				() =>
+					Effect.runPromise(
+						Effect.flip(
+							State.readLockfile(directory).pipe(Effect.provide(coreLayer)),
+						),
+					),
+				() =>
+					Effect.runPromise(
+						Effect.flip(
+							Apply.applyPlan(directory, plan).pipe(Effect.provide(coreLayer)),
+						),
+					),
+			]) {
+				const error = await operation();
+				expect(error).toMatchObject({
+					reason: "cli-version-older",
+					projectCliVersion: "1.5.0",
+					runningCliVersion: RUNNING_VERSION,
+				});
+			}
+
+			expect(await snapshotTree(directory)).toEqual(before);
+		});
+	});
+
 	it("refuses to apply over a manifest written by a newer CLI and writes nothing", async () => {
 		await withTempDir("cli-version-newer", async (directory) => {
 			await seedManifest(directory, "1.5.0-beta.1");

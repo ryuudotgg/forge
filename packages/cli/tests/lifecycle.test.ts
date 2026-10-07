@@ -42,6 +42,7 @@ const promptMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@clack/prompts", () => ({
+	intro: vi.fn(),
 	log: { error: promptMocks.logError, warn: promptMocks.logWarn },
 }));
 
@@ -199,6 +200,66 @@ describe("lifecycle", () => {
 			);
 		});
 	}, 120_000);
+
+	it.each(["add", "remove", "update"])(
+		"refuses %s before planning when the lockfile is missing",
+		async (command) => {
+			await withTempDir("lifecycle-missing-lockfile", async (directory) => {
+				await writeJson(join(directory, ".forge/manifest.json"), {
+					config: { slug: "acme", web: "nextjs" },
+					installs: [],
+					modules: {},
+					schemaVersion: 1,
+				});
+
+				const manifestBefore = await readFile(
+					join(directory, ".forge/manifest.json"),
+					"utf-8",
+				);
+
+				const previousCwd = process.cwd();
+				const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+					throw new Error("exit:1");
+				});
+
+				try {
+					process.chdir(directory);
+					const run = async () => {
+						if (command === "add") {
+							const { runAdd } = await import("../src/commands/add");
+							await runAdd("biome", {});
+						} else if (command === "remove") {
+							const { runRemove } = await import("../src/commands/remove");
+							await runRemove("biome", {});
+						} else {
+							const { runUpdate, UpdateCommand } = await import(
+								"../src/commands/update"
+							);
+
+							await runUpdate({}, UpdateCommand.Default);
+						}
+					};
+
+					await expect(run()).rejects.toThrow("exit:1");
+					expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+					expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(
+						"This project's .forge/lock.json is missing, so Forge can't tell which files it manages. Restore it from version control, or delete the .forge directory and run forge init to adopt the project again.",
+					);
+
+					expect(
+						await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
+					).toBe(manifestBefore);
+
+					await expect(
+						readFile(join(directory, ".forge/lock.json")),
+					).rejects.toMatchObject({ code: "ENOENT" });
+				} finally {
+					process.chdir(previousCwd);
+					exit.mockRestore();
+				}
+			});
+		},
+	);
 
 	it("applies an installed plan and records the install in the manifest", async () => {
 		await withTempDir("lifecycle-apply", async (directory) => {
@@ -580,6 +641,11 @@ describe("lifecycle", () => {
 
 	it("normalizes a relative project root before loading the project", async () => {
 		await withTempDir("lifecycle-relative-root", async (directory) => {
+			await writeJson(join(directory, ".forge/lock.json"), {
+				artifacts: {},
+				schemaVersion: 1,
+			});
+
 			await writeJson(join(directory, ".forge/manifest.json"), {
 				config: { slug: "acme" },
 				installs: [],
@@ -609,6 +675,11 @@ describe("lifecycle", () => {
 
 		try {
 			await withTempDir("lifecycle-legacy", async (directory) => {
+				await writeJson(join(directory, ".forge/lock.json"), {
+					artifacts: {},
+					schemaVersion: 1,
+				});
+
 				await writeJson(join(directory, ".forge/manifest.json"), {
 					config: {},
 					installs: [

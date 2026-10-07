@@ -99,12 +99,14 @@ function conflictError() {
 					base: "tsc",
 					forge: "tsc -b",
 					label: "package.json -> scripts.build",
+					resolvedBy: ["keep-user", "accept-forge"],
 					user: "tsc --watch",
 				},
 				{
 					base: "vite",
 					forge: "vite --port 4000",
 					label: "package.json -> scripts.dev",
+					resolvedBy: ["keep-user", "accept-forge"],
 					user: "vite --host",
 				},
 			],
@@ -118,7 +120,7 @@ function conflictError() {
 					reason: "managed-file-modified",
 					operation: "write",
 					path: "README.md",
-					resolvable: true,
+					resolvedBy: ["keep-user", "accept-forge"],
 				},
 			],
 		},
@@ -515,7 +517,7 @@ describe("interactive resolution", () => {
 
 				expect(promptMocks.select).not.toHaveBeenCalled();
 				expect(promptMocks.logError).toHaveBeenCalledWith(
-					"We couldn't apply this change. Forge cannot safely update these files:\npackage.json was modified after Forge last managed it.\nRun again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
+					"We couldn't apply this change. Forge cannot safely update these files:\npackage.json was modified after Forge last managed it.\nNeither flag resolves package.json, so move it out of the way first.",
 				);
 			});
 		} finally {
@@ -763,7 +765,7 @@ describe("interactive resolution", () => {
 								reason: "unmanaged-file-exists",
 								operation: "write",
 								path: "README.md",
-								resolvable: true,
+								resolvedBy: ["keep-user", "accept-forge"],
 							},
 						],
 					},
@@ -793,7 +795,7 @@ describe("interactive resolution", () => {
 								reason: "managed-file-modified",
 								operation: "removal",
 								path: "README.md",
-								resolvable: false,
+								resolvedBy: ["accept-forge"],
 							},
 						],
 					},

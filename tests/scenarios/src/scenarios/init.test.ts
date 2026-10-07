@@ -536,7 +536,7 @@ describe("init", () => {
 
 			expect(refused.exitCode).toBe(1);
 			expect(refused.stdout + refused.stderr).toContain(
-				"Run again with --accept-forge to remove",
+				"With --accept-forge, Forge also deletes files it no longer needs, including ones you edited or made yourself.",
 			);
 
 			expect(await pathExists(adoptedPath)).toBe(true);

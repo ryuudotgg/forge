@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -56,8 +57,10 @@ interface LockfileSnapshot {
 			readonly base?: {
 				readonly hash: string;
 				readonly mergeKind: string;
+				readonly origin?: string;
 				readonly semanticsVersion: number;
 			};
+			readonly hash: string;
 			readonly path: string;
 		}
 	>;
@@ -195,6 +198,75 @@ async function expectMatchingProjects(
 }
 
 describe("add", () => {
+	it("keeps pre-existing files when adding biome and adopts its config", async () => {
+		await withScenarioWorkspace("add-biome-keep-user", async (workspace) => {
+			await createProject(workspace, { packageManager: "pnpm", web: "nextjs" });
+			const biomePath = join(workspace.projectRoot, "biome.json");
+			expect(
+				await pathExists(biomePath),
+				"Creation without a linter must not generate biome.json",
+			).toBe(false);
+
+			const manifest = await readJson<ManifestSnapshot>(
+				join(workspace.projectRoot, ".forge/manifest.json"),
+			);
+
+			expect(
+				manifest.config.linter,
+				"Creation without a linter must not select one",
+			).toBeUndefined();
+
+			const userBiome =
+				'{\n  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 3 },\n  "linter": { "enabled": false }\n}\n';
+
+			const tsconfigPath = join(workspace.projectRoot, "tsconfig.json");
+			const tsconfig = await readJson<{
+				readonly compilerOptions?: Record<string, unknown>;
+			}>(tsconfigPath);
+
+			const userTsconfig = `${JSON.stringify({ ...tsconfig, compilerOptions: { ...tsconfig.compilerOptions, noErrorTruncation: true } }, null, 3)}\n`;
+			await writeFile(biomePath, userBiome);
+			await writeFile(tsconfigPath, userTsconfig);
+
+			const refused = await tryRunForge(
+				workspace.projectRoot,
+				["add", "biome"],
+				{ workspaceRoot: workspace.workspaceRoot },
+			);
+
+			expect(refused.exitCode).toBe(1);
+			expect(refused.stdout + refused.stderr).toContain("biome.json");
+
+			await runForge(workspace.projectRoot, ["add", "biome", "--keep-user"], {
+				workspaceRoot: workspace.workspaceRoot,
+			});
+
+			expect(await readFile(biomePath, "utf-8")).toBe(userBiome);
+			expect(await readFile(tsconfigPath, "utf-8")).toBe(userTsconfig);
+			const lockfile = await readJson<LockfileSnapshot>(
+				join(workspace.projectRoot, ".forge/lock.json"),
+			);
+
+			const artifact = Object.values(lockfile.artifacts).find(
+				(entry) => entry.path === "biome.json",
+			);
+
+			const hash = createHash("sha256").update(userBiome).digest("hex");
+			expect(artifact).toMatchObject({
+				hash,
+				base: { hash, origin: "adopted" },
+			});
+
+			const updated = await tryRunForge(workspace.projectRoot, ["update"], {
+				workspaceRoot: workspace.workspaceRoot,
+			});
+
+			expect(updated.exitCode).toBe(1);
+			expect(updated.stdout + updated.stderr).toContain("biome.json");
+			expect(await readFile(biomePath, "utf-8")).toBe(userBiome);
+		});
+	}, 240_000);
+
 	it.each([
 		{ framework: "nextjs", client: false },
 		{ framework: "tanstack-router", client: false },

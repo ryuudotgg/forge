@@ -343,7 +343,7 @@ describe("remove", () => {
 				);
 
 				expect(forced.stdout + forced.stderr).toContain(
-					"Run again with --keep-user to keep your edits to pnpm-workspace.yaml.",
+					"Run again with --keep-user to keep your version wherever you and Forge disagree.",
 				);
 
 				expect(forced.stdout + forced.stderr).not.toContain("sites/admin/");

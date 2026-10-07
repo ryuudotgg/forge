@@ -4,6 +4,7 @@ import { NodeFileSystem, NodeServices } from "@effect/platform-node";
 import { Effect, FileSystem, Layer, PlatformError, Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	Apply,
 	buildArtifactIndex,
 	CliVersion,
 	ConfigStore,
@@ -61,6 +62,72 @@ function fillModuleId(letterIndex: number) {
 }
 
 describe("project state", () => {
+	it("refuses a manifest without a lockfile before applying files", async () => {
+		await withTempDir("state-missing-lockfile", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				config: {},
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			});
+
+			const manifestBefore = await readFile(
+				join(directory, ".forge/manifest.json"),
+				"utf-8",
+			);
+
+			for (const operation of [
+				() =>
+					Effect.runPromise(
+						Effect.flip(
+							State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
+						),
+					),
+				() =>
+					Effect.runPromise(
+						Effect.flip(
+							Apply.applyPlan(directory, {
+								lockfile: { artifacts: {} },
+								manifest: { config: {}, installs: [], modules: {} },
+								removals: [],
+								writes: [{ path: "user.txt", content: "forge\n" }],
+							}).pipe(Effect.provide(projectLayer)),
+						),
+					),
+			]) {
+				const error = await operation();
+				expect(error).toMatchObject({
+					reason: "lockfile-missing",
+					filePath: join(directory, ".forge/lock.json"),
+					message:
+						"This project's .forge/lock.json is missing, so Forge can't tell which files it manages. Restore it from version control, or delete the .forge directory and run forge init to adopt the project again.",
+				});
+			}
+
+			expect(
+				await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
+			).toBe(manifestBefore);
+
+			await expect(readFile(join(directory, "user.txt"))).rejects.toMatchObject(
+				{ code: "ENOENT" },
+			);
+
+			await expect(
+				readFile(join(directory, ".forge/lock.json")),
+			).rejects.toMatchObject({ code: "ENOENT" });
+		});
+	});
+
+	it("defaults the lockfile when neither state file exists", async () => {
+		await withTempDir("state-no-manifest-or-lockfile", async (directory) => {
+			const lockfile = await Effect.runPromise(
+				State.readLockfile(directory).pipe(Effect.provide(projectLayer)),
+			);
+
+			expect(lockfile).toEqual({ artifacts: {}, schemaVersion: 1 });
+		});
+	});
+
 	it("stamps every manifest write with the provided CLI version", async () => {
 		await withTempDir("state-cli-version", async (directory) => {
 			await Effect.runPromise(

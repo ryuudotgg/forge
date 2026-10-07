@@ -72,7 +72,7 @@ const generateStep = defineStep({
 
 			const message =
 				error instanceof ApplyError
-					? formatApplyError(error)
+					? formatApplyError(error, { includeResolutionGuidance: false })
 					: error instanceof Error
 						? error.message
 						: String(error);

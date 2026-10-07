@@ -144,7 +144,8 @@ function reportLifecycleFailure(
 	if (
 		failure instanceof StateError &&
 		(failure.reason === "schema-version-unknown" ||
-			failure.reason === "cli-version-older")
+			failure.reason === "cli-version-older" ||
+			failure.reason === "lockfile-missing")
 	) {
 		log.error(failure.message);
 		process.exit(1);

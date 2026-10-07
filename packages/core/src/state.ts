@@ -483,7 +483,30 @@ const makeState = Effect.gen(function* () {
 			),
 		);
 
-		if (!exists) return defaultLockfile();
+		if (!exists) {
+			const manifestExists = yield* fs.exists(manifestPath(projectRoot)).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: manifestPath(projectRoot),
+							reason: "manifest-read-failed",
+							cause,
+						}),
+				),
+			);
+
+			if (manifestExists) {
+				const manifest = yield* readManifest(projectRoot);
+				yield* refuseOlderCli(projectRoot, manifest);
+
+				return yield* new StateError({
+					filePath: path,
+					reason: "lockfile-missing",
+				});
+			}
+
+			return defaultLockfile();
+		}
 
 		const raw = yield* fs.readFileString(path).pipe(
 			Effect.mapError(

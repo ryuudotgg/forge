@@ -115,14 +115,18 @@ export function canResolveInteractively(
 
 	const conflicts = preflight.conflicts ?? [];
 
-	if ((preflight.refusals ?? []).some((refusal) => !refusal.resolvable))
+	if (
+		(preflight.refusals ?? []).some(
+			(refusal) => !refusal.resolvedBy.includes("keep-user"),
+		)
+	)
 		return false;
 
 	const managedWrites = (preflight.refusals ?? []).filter(
 		(refusal) =>
 			refusal.reason === "managed-file-modified" &&
 			refusal.operation === "write" &&
-			refusal.resolvable,
+			refusal.resolvedBy.includes("keep-user"),
 	);
 
 	return conflicts.length > 0 || managedWrites.length > 0;
@@ -142,7 +146,7 @@ export async function promptForConflictResolutions(
 			(refusal) =>
 				refusal.reason === "managed-file-modified" &&
 				refusal.operation === "write" &&
-				refusal.resolvable,
+				refusal.resolvedBy.includes("keep-user"),
 		)
 		.map((refusal) => ({
 			header: refusal.path,
