@@ -23,18 +23,26 @@ const MODULE_ID_LENGTH = 5;
 const MODULE_ID_ATTEMPTS = 32;
 const MODULE_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz";
 
-const MODULE_IGNORED_DIRS = new Set([
+export const GITIGNORED_MODULE_DIRS = [
 	".cache",
 	".expo",
-	".forge",
-	".git",
 	".next",
-	".nuxt",
+	".react-router",
+	".tanstack",
 	".turbo",
-	".yarn",
+	".vercel",
+	"build",
 	"coverage",
 	"dist",
 	"node_modules",
+	"out",
+] as const;
+
+const MODULE_IGNORED_DIRS = new Set<string>([
+	...GITIGNORED_MODULE_DIRS,
+	".forge",
+	".git",
+	".yarn",
 ]);
 
 export const ModuleIdSchema = Schema.String.check(
@@ -296,15 +304,16 @@ const makeConfigStore = Effect.gen(function* () {
 
 		const seen = new Map<string, string>();
 		for (const module of discovered) {
+			const configPath = join(module.root, MODULE_CONFIG_FILE);
 			const existing = seen.get(module.id);
 			if (existing)
 				return yield* new DuplicateModuleIdError({
 					moduleId: module.id,
 					firstPath: existing,
-					secondPath: module.root,
+					secondPath: configPath,
 				});
 
-			seen.set(module.id, module.root);
+			seen.set(module.id, configPath);
 		}
 
 		return discovered;

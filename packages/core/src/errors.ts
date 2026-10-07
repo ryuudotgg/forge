@@ -335,16 +335,20 @@ export class ModuleConfigError extends Schema.TaggedError<ModuleConfigError>()(
 }
 
 const moduleConfigMessages = {
-	"not-found": () => "Module Config Not Found",
-	"read-failed": () => "Module Config Read Failed",
+	"not-found": (error: ModuleConfigError) =>
+		`Module Config Not Found: ${error.filePath}`,
+	"read-failed": (error: ModuleConfigError) =>
+		`Module Config Read Failed: ${error.filePath}`,
 	"parse-failed": (error: ModuleConfigError) =>
-		`Module Config Parse Failed: ${error.detail ?? ""}`,
+		`Module Config Parse Failed: ${error.filePath}: ${error.detail ?? ""}`,
 	invalid: (error: ModuleConfigError) =>
-		`Invalid Module Config\n${(error.issues ?? [])
+		`Invalid Module Config: ${error.filePath}\n${(error.issues ?? [])
 			.map((issue) => `  ${issue}`)
 			.join("\n")}`,
-	"directory-failed": () => "Module Config Directory Failed",
-	"write-failed": () => "Module Config Write Failed",
+	"directory-failed": (error: ModuleConfigError) =>
+		`Module Config Directory Failed: ${error.filePath}`,
+	"write-failed": (error: ModuleConfigError) =>
+		`Module Config Write Failed: ${error.filePath}`,
 } satisfies Record<
 	typeof ModuleConfigErrorReason.Type,
 	(error: ModuleConfigError) => string
@@ -360,7 +364,7 @@ export class DuplicateModuleIdError extends Schema.TaggedError<DuplicateModuleId
 	},
 ) {
 	override get message() {
-		return "Duplicate Module Id";
+		return `${this.firstPath} and ${this.secondPath} both use module id "${this.moduleId}". Delete the copy, or give it its own five letter id.`;
 	}
 }
 
