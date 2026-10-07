@@ -693,6 +693,31 @@ describe("merge helpers", () => {
 		).toEqual({ conflicts: [], merged: "# B\nB=\n\n# A\nA=\n" });
 	});
 
+	it("keeps an edited env header with its variable when forge moves it", () => {
+		const merged = threeWayMergeEnv(
+			"# A\nA=\n# B\nB=\n",
+			"# A\nA=\n# B user\nB=\n",
+			"# B\nB=\n# A\nA=\nN=\n",
+		).merged;
+
+		expect(merged).toContain("# B user\nB=\n");
+		expect(merged.split("\n")).not.toContain("# B");
+		expect(merged.split("\n").filter((line) => line === "B=")).toHaveLength(1);
+	});
+
+	it("keeps unsectioned user lines above a new leading section", () => {
+		expect(
+			threeWayMergeSections(
+				"baseignore\n# Build\ndist/\n",
+				"baseignore\nlocalignore\n# Build\ndist/\n",
+				"# New\nnewignore\n# Build\ndist/\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "localignore\n\n# New\nnewignore\n\n# Build\ndist/\n",
+		});
+	});
+
 	it("keeps forge variables under a header both sides inserted", () => {
 		expect(
 			threeWayMergeEnv(

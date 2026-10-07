@@ -243,11 +243,28 @@ export function threeWayMergeEnv(
 	);
 
 	const matchedCurrent = new Set(baseToCurrent.values());
+	const baseRaw = new Set(baseLines.map((line) => line.raw));
+	const currentRaw = new Set(currentLines.map((line) => line.raw));
+	const isUserComment = (line: EnvLine | undefined) =>
+		line !== undefined &&
+		line.name === undefined &&
+		line.raw.trim() !== "" &&
+		!baseRaw.has(line.raw);
+
 	const userPlaced = new Set(
 		currentLines.flatMap((line, index) =>
-			line.name === undefined || matchedCurrent.has(index) ? [] : [line.name],
+			line.name === undefined ||
+			(matchedCurrent.has(index) && !isUserComment(currentLines[index - 1]))
+				? []
+				: [line.name],
 		),
 	);
+
+	const userRemoved = (line: EnvLine) =>
+		line.name === undefined &&
+		line.raw.trim() !== "" &&
+		baseRaw.has(line.raw) &&
+		!currentRaw.has(line.raw);
 
 	const output: EnvLine[] = [];
 	const emitted = new Set<string>();
@@ -286,7 +303,12 @@ export function threeWayMergeEnv(
 			currentSegment.forEach(emit);
 		else if (envKeysEqual(baseSegment, currentSegment)) {
 			for (const line of incomingSegment)
-				if (line.name === undefined || !userPlaced.has(line.name)) emit(line);
+				if (
+					line.name === undefined
+						? !userRemoved(line)
+						: !userPlaced.has(line.name)
+				)
+					emit(line);
 
 			for (const line of currentSegment)
 				if (
@@ -319,7 +341,8 @@ export function threeWayMergeEnv(
 				else if (
 					line.name === undefined
 						? !baseSegmentKeys.has(envLineKey(line)) &&
-							!currentSegmentKeys.has(envLineKey(line))
+							!currentSegmentKeys.has(envLineKey(line)) &&
+							!userRemoved(line)
 						: !userPlaced.has(line.name) &&
 							!currentSegmentKeys.has(envLineKey(line))
 				) {

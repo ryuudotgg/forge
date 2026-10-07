@@ -216,7 +216,11 @@ export function threeWayMergeSections(
 		for (const section of source) {
 			if (!headers.includes(section.header))
 				headers.splice(
-					preceding === undefined ? 0 : headers.indexOf(preceding) + 1,
+					preceding !== undefined
+						? headers.indexOf(preceding) + 1
+						: headers[0] === ""
+							? 1
+							: 0,
 					0,
 					section.header,
 				);
