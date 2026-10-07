@@ -825,6 +825,11 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
+			if (inRemovedRoot && previousArtifact.generated === true) {
+				removalsToApply.push(relativePath);
+				continue;
+			}
+
 			if (!descriptorMatchesArtifact(previousArtifact)) {
 				refusals.push({
 					path: relativePath,
@@ -1001,6 +1006,7 @@ const makeApply = Effect.gen(function* () {
 				}
 
 				committedArtifacts[file.artifactId] = {
+					...(nextArtifact?.generated === true ? { generated: true } : {}),
 					...(managedArtifact.base === undefined
 						? {}
 						: { base: managedArtifact.base }),

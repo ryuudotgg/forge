@@ -473,7 +473,7 @@ async function removeWebApp(
 			},
 		);
 
-		reportWebAppRemoval(selectedApp, config, nextConfig, retained);
+		reportWebAppRemoval(selectedApp, config, nextConfig, retained, []);
 		return true;
 	}
 
@@ -513,7 +513,7 @@ async function removeWebApp(
 		},
 	);
 
-	reportWebAppRemoval(selectedApp, config, nextConfig, retained);
+	reportWebAppRemoval(selectedApp, config, nextConfig, retained, removal.roots);
 	return true;
 }
 
@@ -522,6 +522,7 @@ function reportWebAppRemoval(
 	previousConfig: ForgeConfig,
 	nextConfig: ForgeConfig,
 	retained: ReadonlyArray<string>,
+	removedRoots: ReadonlyArray<string>,
 ) {
 	log.success(`We removed the ${app.name} web app.`);
 
@@ -531,6 +532,17 @@ function reportWebAppRemoval(
 	if (retained.length > 0)
 		log.info(
 			`We kept your edited ${retained.length === 1 ? "file" : "files"} at ${listAnd.format(retained)}.`,
+		);
+
+	const retainedRoots = removedRoots.filter((root) =>
+		retained.includes(`${root}/package.json`),
+	);
+
+	if (retainedRoots.length > 0)
+		log.info(
+			retainedRoots.length === 1
+				? `${retainedRoots[0]} is still a workspace package, so delete the folder to finish the removal.`
+				: `${listAnd.format(retainedRoots)} are still workspace packages, so delete those folders to finish the removal.`,
 		);
 }
 

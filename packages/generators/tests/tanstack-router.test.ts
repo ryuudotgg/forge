@@ -192,6 +192,10 @@ describe("tanstack-router/base template", () => {
 		expect(leafFile(contributions, "src/router.tsx").preserveExisting).toBe(
 			undefined,
 		);
+
+		expect(leafFile(contributions, "src/routeTree.gen.ts").generated).toBe(
+			true,
+		);
 	});
 
 	it("renders exact Vite configs with Tailwind cleanly switched on and off", () => {

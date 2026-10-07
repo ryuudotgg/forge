@@ -293,7 +293,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			ensuredModuleTarget(instance.key),
 			"src/routeTree.gen.ts",
 			readTemplate("frameworks/tanstack-router/src/routeTree.gen.ts"),
-			{ preserveExisting: true },
+			{ preserveExisting: true, generated: true },
 		),
 	];
 }

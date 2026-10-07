@@ -548,6 +548,8 @@ describe("email templates", () => {
 				expect(file.preserveExisting, path).toBe(
 					path === "src/custom.ts" ? true : undefined,
 				);
+
+				expect(file.generated, path).toBeUndefined();
 			}
 		},
 	);
