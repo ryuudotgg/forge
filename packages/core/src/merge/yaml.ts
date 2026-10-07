@@ -100,16 +100,23 @@ function parseBody(head: string, lines: string[]): Body {
 	const keys = new Set<string>();
 
 	let kind: "empty" | "mapping" | "sequence" = "empty";
+	let indentation: string | undefined;
 	for (const line of lines) {
 		if (isText(line)) {
 			items.push({ kind: "text", line });
 			continue;
 		}
 
-		const sequence = /^(?: {2})?-\s+(.+)$/.exec(line);
-		const mapping = line.startsWith("  ")
-			? mappingPair(line.slice(2))
-			: undefined;
+		const leading = /^ */.exec(line)?.[0] ?? "";
+		indentation ??= leading;
+
+		const entry = line.slice(leading.length);
+		if (leading !== indentation || /^(?:-\s+)?"[^"]*\\/.test(entry))
+			return { kind: "opaque", lines };
+
+		const sequence = /^-\s+(.+)$/.exec(entry);
+		const mapping =
+			sequence === null && leading !== "" ? mappingPair(entry) : undefined;
 
 		const entryKind = sequence === null ? "mapping" : "sequence";
 		const value = sequence?.[1] ?? mapping?.value;

@@ -304,6 +304,69 @@ describe("three way yaml merge", () => {
 		).toEqual([{ label: "foo", user: "foo:" }]);
 	});
 
+	it("merges a block indented by four spaces key by key", () => {
+		const base = "catalog:\n    vite: 7.0.0\n";
+
+		expect(
+			threeWayMergeYaml(
+				base,
+				"catalog:\n    vite: 7.0.0\n    left-pad: 1.3.0\n",
+				"catalog:\n  vite: 7.1.0\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "catalog:\n    vite: 7.1.0\n    left-pad: 1.3.0\n",
+		});
+	});
+
+	it("compares a block with an escaped quoted key as one value", () => {
+		const base = "catalog:\n  vite: 7.0.0\n";
+
+		expect(
+			threeWayMergeYaml(
+				base,
+				'catalog:\n  "\\u0076ite": 7.0.0\n  left-pad: 1.3.0\n',
+				"catalog:\n  vite: 7.1.0\n",
+			)?.conflicts,
+		).toEqual(["catalog"]);
+
+		expect(
+			threeWayMergeYaml(
+				"packages:\n  - apps/*\n",
+				'packages:\n  - "apps\\/*"\n',
+				"packages:\n  - apps/*\n  - tooling/*\n",
+			)?.conflicts,
+		).toEqual(["packages"]);
+	});
+
+	it("compares a block with a duplicate key or mixed entries as one value", () => {
+		const base = "catalog:\n  vite: 7.0.0\n";
+		const incoming = "catalog:\n  vite: 7.1.0\n";
+
+		expect(
+			threeWayMergeYaml(
+				base,
+				"catalog:\n  vite: 7.0.0\n  vite: 7.0.1\n",
+				incoming,
+			)?.conflicts,
+		).toEqual(["catalog"]);
+
+		expect(
+			threeWayMergeYaml(base, "catalog:\n  vite: 7.0.0\n  - extra\n", incoming)
+				?.conflicts,
+		).toEqual(["catalog"]);
+	});
+
+	it("compares a block with mixed indentation as one value", () => {
+		expect(
+			threeWayMergeYaml(
+				"catalog:\n  vite: 7.0.0\n",
+				"catalog:\n  vite: 7.0.0\n    left-pad: 1.3.0\n",
+				"catalog:\n  vite: 7.1.0\n",
+			)?.conflicts,
+		).toEqual(["catalog"]);
+	});
+
 	it("accepts sequence items at column zero under their key", () => {
 		const base = 'packages:\n  - "apps/*"\n';
 
