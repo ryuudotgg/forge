@@ -138,6 +138,25 @@ describe("web app adoption", () => {
 		]);
 	});
 
+	it("falls back when the primary directory name is another adopted app's folder", async () => {
+		const result = await resolved(
+			[
+				observed("sites/vault", { scriptPort: { kind: "absent" } }),
+				observed("apps/vault", {
+					packageName: "@acme/site",
+					frameworks: ["tanstack-router"],
+				}),
+			],
+			{ primaryRoot: "sites/vault" },
+		);
+
+		expect(result).not.toHaveProperty("webName");
+		expect([...result.prototypeRoots]).toEqual([
+			["sites/vault", "apps/web"],
+			["apps/vault", "apps/site"],
+		]);
+	});
+
 	it("uses the primary's name in observed port conflicts", async () => {
 		expect(
 			await refusal(

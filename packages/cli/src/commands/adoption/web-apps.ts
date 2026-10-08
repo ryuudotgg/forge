@@ -416,8 +416,13 @@ export const resolveWebAppAdoption = Effect.fn("resolveWebAppAdoption")(
 			webAppNameIssue(detectedName, input.addonIds) ??
 			webAppNamesIssue({ web, webName: detectedName, webApps });
 
+		const claimsAdoptedRoot = input.confirmed.some(
+			(module) =>
+				module.root === `apps/${detectedName}` && module.root !== primaryRoot,
+		);
+
 		const webName =
-			nameIssue === undefined && detectedName !== "web"
+			nameIssue === undefined && !claimsAdoptedRoot && detectedName !== "web"
 				? detectedName
 				: undefined;
 

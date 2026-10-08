@@ -20,6 +20,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				webApps: [{ name: "site", framework: "nextjs" }],
 				backend: "hono",
 				rpc: "orpc",
+				style: "tailwind",
 				linter: "biome",
 				packageManager: "pnpm",
 			});
