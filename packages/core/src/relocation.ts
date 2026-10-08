@@ -110,9 +110,11 @@ export function moveModules(
 	modules: ReadonlyArray<DiscoveredModule>,
 	moves: ReadonlyArray<DirectoryMove>,
 ): ReadonlyArray<DiscoveredModule> {
+	const changes = new Map(moves.map((move) => [move.moduleId, move]));
+
 	return modules.map((module) => {
-		const move = moves.find((entry) => entry.moduleId === module.id);
-		return move === undefined ? module : { ...module, root: move.to };
+		const root = relocatePath(module.root, changes);
+		return root === module.root ? module : { ...module, root };
 	});
 }
 

@@ -167,6 +167,86 @@ async function fixture(root: string) {
 }
 
 describe("directory publication", () => {
+	it("moves an app and its nested managed module with their ids and lock artifacts", async () => {
+		await withTempDir("relocation-nested", async (root) => {
+			const { move } = await fixture(root);
+			const nestedId = "fghij";
+			await writeJson(join(root, "apps/web/packages/utils/forge.json"), {
+				id: nestedId,
+				type: "package",
+				packageType: "library",
+				template: { id: "library/base", version: 1 },
+				capabilities: [],
+				slots: {},
+			});
+
+			const initial = await Effect.runPromise(
+				Effect.flatMap(Planner, (planner) =>
+					planner.planInstalled(
+						root,
+						{ web: "nextjs" } satisfies RenameConfig,
+						[],
+						registry,
+						{},
+					),
+				).pipe(Effect.provide(layer)),
+			);
+
+			await Effect.runPromise(
+				Apply.applyPlan(root, initial, {
+					resolutionPolicy: "accept-forge",
+				}).pipe(Effect.provide(layer)),
+			);
+
+			expect(initial.manifest.modules[nestedId]?.root).toBe(
+				"apps/web/packages/utils",
+			);
+
+			expect(
+				initial.lockfile.artifacts[`module:${nestedId}:file:forge.json`]?.path,
+			).toBe("apps/web/packages/utils/forge.json");
+
+			const plan = await installed(root, [move]);
+			expect(plan.manifest.modules[move.moduleId]?.root).toBe("apps/vault");
+			expect(plan.manifest.modules[nestedId]?.root).toBe(
+				"apps/vault/packages/utils",
+			);
+
+			expect(
+				plan.writes.some((write) => write.path.startsWith("apps/web/")),
+			).toBe(false);
+
+			await apply(root, plan);
+
+			const modules = await Effect.runPromise(
+				ConfigStore.discover(root).pipe(Effect.provide(layer)),
+			);
+
+			expect(modules.map(({ id, root }) => ({ id, root }))).toEqual(
+				expect.arrayContaining([
+					{ id: move.moduleId, root: "apps/vault" },
+					{ id: nestedId, root: "apps/vault/packages/utils" },
+				]),
+			);
+
+			expect(await readdir(join(root, "apps"))).toEqual(["vault"]);
+
+			const lock = await Effect.runPromise(
+				State.readLockfile(root).pipe(Effect.provide(layer)),
+			);
+
+			expect(lock.artifacts[`module:${nestedId}:file:forge.json`]?.path).toBe(
+				"apps/vault/packages/utils/forge.json",
+			);
+
+			expect(
+				Object.values(lock.artifacts).every(
+					(artifact) => !artifact.path.startsWith("apps/web/"),
+				),
+			).toBe(true);
+		});
+	});
+
 	it.each(["retained", "dropped"])(
 		"reports %s removals at their moved paths",
 		async (report) => {

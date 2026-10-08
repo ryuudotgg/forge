@@ -189,6 +189,35 @@ describe("root relocation", () => {
 		expect(moveModules([other], [move])[0]).toBe(other);
 	});
 
+	it("moves nested discovered modules on path boundaries with their ids", () => {
+		const app: DiscoveredModule = {
+			id: "abcde",
+			type: "app",
+			framework: "nextjs",
+			template: { id: "nextjs/base", version: 1 },
+			root: "apps/web",
+			slots: {},
+		};
+
+		const nested: DiscoveredModule = {
+			id: "fghij",
+			type: "package",
+			packageType: "library",
+			template: { id: "library/base", version: 1 },
+			capabilities: [],
+			root: "apps/web/packages/utils",
+			slots: {},
+		};
+
+		const sibling = { ...app, id: "klmno", root: "apps/webhooks" };
+
+		expect(moveModules([app, nested, sibling], [move])).toEqual([
+			{ ...app, root: "apps/vault" },
+			{ ...nested, root: "apps/vault/packages/utils" },
+			sibling,
+		]);
+	});
+
 	it("reads destination coordinates at their pending source", () => {
 		expect(sourcePath("apps/vault/src/page.tsx", [move])).toBe(
 			"apps/web/src/page.tsx",

@@ -140,12 +140,20 @@ export function runUpdateEffect(
 		const before =
 			renames.length === 0
 				? []
-				: yield* Effect.promise(() =>
+				: yield* Effect.tryPromise(() =>
 						command.scanReferences(
 							project.projectRoot,
 							renames,
 							project.modules,
 						),
+					).pipe(
+						Effect.catch(() => {
+							command.logWarn(
+								"We couldn't check the app references before moving. Check your files for the old app names.",
+							);
+
+							return Effect.succeed([]);
+						}),
 					);
 
 		const loadedRegistry = yield* Effect.promise(() =>

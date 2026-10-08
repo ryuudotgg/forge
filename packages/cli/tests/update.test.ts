@@ -165,6 +165,42 @@ it.effect("updates an existing addon-named app without a rename", () => {
 	});
 });
 
+it.effect(
+	"warns and completes the rename when the before apply reference scan fails",
+	() => {
+		const existing = managedProject({
+			config: { slug: "acme", web: "nextjs", webName: "vault" },
+		});
+
+		const project = {
+			...existing,
+			manifest: {
+				...existing.manifest,
+				modules: {
+					abcde: { root: "apps/web", definitionIds: ["nextjs/base"] },
+				},
+			},
+		};
+
+		const fixture = updateFixture({ project });
+		fixture.scanReferences.mockRejectedValueOnce(new Error("scan failed"));
+
+		return Effect.gen(function* () {
+			yield* runUpdateEffect({}).pipe(Effect.provide(fixture.layer));
+
+			expect(fixture.logWarn).toHaveBeenCalledWith(
+				expect.stringContaining("couldn't check"),
+			);
+
+			expect(fixture.applyInstalledPlan).toHaveBeenCalledOnce();
+			expect(fixture.scanReferences).toHaveBeenCalledTimes(2);
+			expect(fixture.logInfo).toHaveBeenCalledWith(
+				"We moved apps/web to apps/vault.",
+			);
+		});
+	},
+);
+
 it.effect("warns when the after apply reference scan fails", () => {
 	const existing = managedProject({
 		config: { slug: "acme", web: "nextjs", webName: "vault" },
