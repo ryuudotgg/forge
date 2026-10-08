@@ -374,6 +374,7 @@ export interface ForgeConfig {
 	readonly linter?: Linter;
 	readonly platforms?: ReadonlyArray<Platform>;
 	readonly web?: WebFramework;
+	readonly webName?: string;
 	readonly webApps?: ReadonlyArray<WebAppConfig>;
 	readonly backend?: Backend;
 	readonly rpc?: RpcProvider;

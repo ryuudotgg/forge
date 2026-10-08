@@ -169,6 +169,60 @@ vi.mock("@ryuugg/generators", async (importOriginal) => {
 });
 
 describe("add command", () => {
+	it("adds a secondary named web beside a named primary", async () => {
+		const project = managedProject({
+			config: { slug: "acme", web: "nextjs", webName: "vault" },
+			modules: [
+				{ ...appModule, root: "apps/vault", packageName: "@acme/vault" },
+			],
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+		await runAdd("nextjs", { name: "web", yes: true, "no-install": true });
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			project.projectRoot,
+			{
+				...project.config,
+				webApps: [{ name: "web", framework: "nextjs", port: 3002 }],
+			},
+			project.manifest.installs,
+			undefined,
+			undefined,
+			{},
+			{
+				additions: [{ framework: "nextjs", root: "apps/web" }],
+				modules: project.modules,
+				records: project.manifest.modules,
+			},
+		);
+	});
+
+	it("refuses an addition that takes the custom primary's name", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ config: { web: "nextjs", webName: "vault" } }),
+		);
+
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		try {
+			await expect(
+				runAdd("nextjs", { name: "vault", yes: true }),
+			).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"vault names both the primary web app and a secondary one.",
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
 	it.each([false, true])(
 		"prompts for an app name and handles cancellation %s",
 		async (cancelled) => {

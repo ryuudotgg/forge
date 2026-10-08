@@ -28,10 +28,15 @@ const generateStep = defineStep({
 		}
 
 		const projectRoot = String(config.path ?? ".");
-		const { webApps, ...withoutWebApps } = config;
-		const forgeConfig = withWebAppPorts(
-			Array.isArray(webApps) && webApps.length === 0 ? withoutWebApps : config,
-		);
+		const { webApps, webName, ...rest } = config;
+		const forgeConfig = withWebAppPorts({
+			...rest,
+			...(webApps === undefined ||
+			(Array.isArray(webApps) && webApps.length === 0)
+				? {}
+				: { webApps }),
+			...(webName === undefined || webName === "web" ? {} : { webName }),
+		});
 
 		try {
 			const loadedRegistry = await loadDefinitionRegistry();

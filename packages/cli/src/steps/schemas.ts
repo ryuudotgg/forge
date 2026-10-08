@@ -13,7 +13,10 @@ export { desktopSchema as desktop } from "./platforms/desktop";
 export { mobileSchema as mobile } from "./platforms/mobile";
 export { platformsSchema as platforms } from "./platforms/select";
 export { webSchema as web } from "./platforms/web";
-export { webAppsSchema as webApps } from "./platforms/web-apps";
+export {
+	webAppNameSchema as webName,
+	webAppsSchema as webApps,
+} from "./platforms/web-apps";
 export { catalogsSchema as catalogs } from "./project/catalogs";
 export { linterSchema as linter } from "./project/linter";
 export { nameSchema as name, slugSchema as slug } from "./project/name";

@@ -91,6 +91,71 @@ const sentences: ReadonlyArray<readonly [ReadonlyArray<WebAppConfig>, string]> =
 	];
 
 describe("web app adoption", () => {
+	it("records the detected primary directory name, not its package suffix", async () => {
+		const result = await resolved([
+			observed("apps/vault", {
+				packageName: "@acme/legacy",
+				scriptPort: { kind: "absent" },
+			}),
+		]);
+
+		expect(result.webName).toBe("vault");
+		expect([...result.prototypeRoots]).toEqual([["apps/vault", "apps/vault"]]);
+		expect(adoptedWebConfig(result, {})).toEqual({
+			web: "nextjs",
+			webName: "vault",
+			platforms: ["web"],
+		});
+	});
+
+	it.each(["web", "Vault", "server", "biome"])(
+		"keeps the default prototype for primary %s",
+		async (name) => {
+			const root = `apps/${name}`;
+			const result = await resolved([
+				observed(root, { scriptPort: { kind: "absent" } }),
+			]);
+
+			expect(result).not.toHaveProperty("webName");
+			expect([...result.prototypeRoots]).toEqual([[root, "apps/web"]]);
+			expect(adoptedWebConfig(result, {})).not.toHaveProperty("webName");
+		},
+	);
+
+	it("falls back when the primary directory name collides with a secondary", async () => {
+		const result = await resolved(
+			[
+				observed("sites/vault", { scriptPort: { kind: "absent" } }),
+				observed("apps/vault", { packageName: "@acme/vault" }),
+			],
+			{ primaryRoot: "sites/vault" },
+		);
+
+		expect(result).not.toHaveProperty("webName");
+		expect([...result.prototypeRoots]).toEqual([
+			["sites/vault", "apps/web"],
+			["apps/vault", "apps/vault"],
+		]);
+	});
+
+	it("uses the primary's name in observed port conflicts", async () => {
+		expect(
+			await refusal(
+				[
+					observed("apps/vault", {
+						scriptPort: { kind: "literal", port: 3010 },
+					}),
+					observed("apps/site", {
+						scriptPort: { kind: "literal", port: 3010 },
+					}),
+				],
+				{ primaryRoot: "apps/vault" },
+			),
+		).toBe(
+			"We couldn't adopt these web apps: vault and site both use port 3010. Give each app its own port in its dev script and run forge init again.",
+		);
+	});
+
 	describe("frameworks", () => {
 		it("refuses an app with two framework signatures and names both", async () => {
 			expect(
@@ -185,7 +250,7 @@ describe("web app adoption", () => {
 			);
 		});
 
-		it.each(reservedWebAppNames.filter((name) => name !== "web"))(
+		it.each(reservedWebAppNames)(
 			"refuses the reserved name %s",
 			async (name) => {
 				expect(
@@ -506,6 +571,7 @@ describe("web app adoption", () => {
 			expect(message).toBe(
 				"We couldn't adopt apps/site on port 3000 because Forge runs the primary web app on port 3000. Give apps/site another port in its dev script and run forge init again.",
 			);
+
 			expect(message).not.toContain("both use port");
 		});
 
@@ -804,7 +870,7 @@ describe("web app adoption", () => {
 			]);
 
 			expect([...result.prototypeRoots]).toEqual([
-				["apps/admin", "apps/web"],
+				["apps/admin", "apps/admin"],
 				["apps/frontend", "apps/frontend"],
 			]);
 		});

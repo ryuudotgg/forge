@@ -17,6 +17,7 @@ import mobile from "./platforms/mobile";
 import platformSelect from "./platforms/select";
 import web from "./platforms/web";
 import webApps from "./platforms/web-apps";
+import webName from "./platforms/web-name";
 import gitInit from "./post/git-init";
 import installDeps from "./post/install-deps";
 import catalogs from "./project/catalogs";
@@ -43,6 +44,7 @@ export const steps: Step[] = [
 
 	platformSelect,
 	web,
+	webName,
 	webApps,
 	desktop,
 	mobile,

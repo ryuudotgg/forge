@@ -28,6 +28,7 @@ import { installHook, pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+import { primaryWebAppName } from "../../web-apps";
 import { hostDriverDependencies } from "../host-drivers";
 import { prismaUserRelations, renderPrismaAuthTables } from "./auth-schema";
 
@@ -234,13 +235,17 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			...(config.web === undefined
 				? []
 				: [
-						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-							{
-								name: `@${slug}/db`,
-								version: "workspace:*",
-								type: "dependencies",
-							},
-						]),
+						surfaceDependencies(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							[
+								{
+									name: `@${slug}/db`,
+									version: "workspace:*",
+									type: "dependencies",
+								},
+							],
+						),
 					]),
 			...hostDriverDependencies(config, provider.prisma.runtimeDeps),
 
@@ -274,12 +279,16 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			...(config.web === undefined
 				? []
 				: [
-						surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-							"db:generate": pmRunIn(pm, dbPackage, "generate"),
-							"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
-							"db:push": pmRunIn(pm, dbPackage, "push"),
-							"db:studio": pmRunIn(pm, dbPackage, "studio"),
-						}),
+						surfaceScripts(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							{
+								"db:generate": pmRunIn(pm, dbPackage, "generate"),
+								"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
+								"db:push": pmRunIn(pm, dbPackage, "push"),
+								"db:studio": pmRunIn(pm, dbPackage, "studio"),
+							},
+						),
 					]),
 
 			// The generated client lives in the db package's source tree and is

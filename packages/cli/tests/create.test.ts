@@ -48,6 +48,125 @@ describe("create command", () => {
 		promptMocks.logError.mockReset();
 	});
 
+	it.each(["web", "vault"])(
+		"passes the explicit primary name %s from flags to orchestration",
+		async (webName) => {
+			await runCreate({ web: ["nextjs"], "web-name": webName });
+
+			expect(orchestratorMocks.orchestrate).toHaveBeenCalledWith(steps, {
+				initialConfig: { web: "nextjs", webName },
+				interactive: true,
+			});
+		},
+	);
+
+	it.each(["web", "vault"])(
+		"passes the explicit primary name %s from a config file to orchestration",
+		async (webName) => {
+			await withTempDir("create-primary-name", async (directory) => {
+				const configPath = join(directory, "forge.config.json");
+				await writeFile(configPath, JSON.stringify({ web: "nextjs", webName }));
+
+				await runCreate({ config: configPath });
+
+				expect(orchestratorMocks.orchestrate).toHaveBeenCalledWith(steps, {
+					initialConfig: { web: "nextjs", webName },
+					interactive: false,
+				});
+			});
+		},
+	);
+
+	it.each([
+		[
+			"Vault",
+			"Vault isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+		],
+		["server", "server is reserved. Pick another name for this web app."],
+		["biome", "biome is an addon id. Pick another name for this web app."],
+		["site", "site names both the primary web app and a secondary one."],
+	])(
+		"refuses the config primary name %s before orchestration",
+		async (webName, sentence) => {
+			await withTempDir("create-invalid-primary-name", async (directory) => {
+				const configPath = join(directory, "forge.config.json");
+				await writeFile(
+					configPath,
+					JSON.stringify({
+						web: "tanstack-router",
+						webName,
+						webApps: [{ name: "site", framework: "nextjs" }],
+					}),
+				);
+
+				const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+					throw new Error(`exit:${code ?? 0}`);
+				});
+
+				try {
+					await expect(runCreate({ config: configPath })).rejects.toThrow(
+						"exit:1",
+					);
+
+					expect(promptMocks.logError).toHaveBeenCalledWith(sentence);
+					expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
+				} finally {
+					exit.mockRestore();
+				}
+			});
+		},
+	);
+
+	it.each([
+		[
+			{ web: ["tanstack-router", "site=nextjs"], "web-name": "site" },
+			"site names both the primary web app and a secondary one.",
+		],
+		[
+			{ web: ["nextjs", "web=tanstack-router"] },
+			"web names both the primary web app and a secondary one.",
+		],
+	])(
+		"refuses a flag secondary that takes the primary name",
+		async (values, sentence) => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				await expect(runCreate(values)).rejects.toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledWith(sentence);
+				expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
+
+	it("accepts a flag secondary named web beside a config primary name", async () => {
+		await withTempDir("create-merged-primary-name", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+			await writeFile(
+				configPath,
+				JSON.stringify({ web: "tanstack-router", webName: "vault" }),
+			);
+
+			await runCreate({
+				config: configPath,
+				web: ["tanstack-router", "web=nextjs"],
+			});
+
+			expect(orchestratorMocks.orchestrate).toHaveBeenCalledWith(steps, {
+				initialConfig: {
+					web: "tanstack-router",
+					webName: "vault",
+					webApps: [{ name: "web", framework: "nextjs" }],
+				},
+				interactive: false,
+			});
+		});
+	});
+
 	it("refuses every unknown config key before decoding choices", async () => {
 		await withTempDir("create-unknown-keys", async (directory) => {
 			const configPath = join(directory, "forge.config.json");

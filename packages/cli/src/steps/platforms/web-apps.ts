@@ -2,7 +2,9 @@ import { confirm, isCancel, text } from "@clack/prompts";
 import { formatSchemaError } from "@ryuugg/core";
 import {
 	loadDefinitionRegistry,
+	primaryWebAppName,
 	reservedWebAppNames,
+	webAppNamesIssue,
 } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
@@ -20,7 +22,7 @@ export function webAppNameRuleIssue(name: string) {
 		return `${name} is reserved. Pick another name for this web app.`;
 }
 
-const webAppNameSchema = Schema.String.check(
+export const webAppNameSchema = Schema.String.check(
 	Schema.makeFilter(webAppNameRuleIssue),
 );
 
@@ -33,13 +35,11 @@ export const webAppsSchema = Schema.Array(
 	}),
 ).check(
 	Schema.makeFilter((apps) => {
-		const names = new Set<string>();
+		const nameIssue = webAppNamesIssue({ webApps: apps });
+		if (nameIssue !== undefined) return nameIssue;
+
 		const portOwners = new Map<number, string>();
 		for (const app of apps) {
-			if (names.has(app.name))
-				return `${app.name} is used by more than one web app.`;
-
-			names.add(app.name);
 			if (app.port === undefined) continue;
 
 			if (!Number.isInteger(app.port) || app.port < 1 || app.port > 65535)
@@ -74,9 +74,9 @@ export default defineStep<typeof webAppsSchema.Type>({
 	group: "platforms",
 	configKey: "webApps",
 	schema: webAppsSchema,
-	dependencies: ["web"],
+	dependencies: ["web", "webName"],
 	shouldRun: (config) => !!config.platforms?.includes("web"),
-	async execute(_config, interactive) {
+	async execute(config, interactive) {
 		if (!interactive) return SKIP;
 
 		const apps: Array<(typeof webAppsSchema.Type)[number]> = [];
@@ -102,7 +102,14 @@ export default defineStep<typeof webAppsSchema.Type>({
 					if (Result.isFailure(result))
 						return webAppsIssueMessage(result.failure);
 
-					return webAppNameIssue(value ?? "", addonIds);
+					return (
+						webAppNameIssue(value ?? "", addonIds) ??
+						webAppNamesIssue({
+							web: config.web,
+							webName: primaryWebAppName(config),
+							webApps: result.success,
+						})
+					);
 				},
 			});
 

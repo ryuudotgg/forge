@@ -1,12 +1,13 @@
 import {
 	type ForgeConfig,
+	primaryWebAppName,
 	secondaryClientOrigins,
 	webAppInstances,
 	webFrameworks,
 } from "@ryuugg/generators";
 
 export function webAppLabels(config: ForgeConfig): string[] {
-	if (!config.webApps?.length)
+	if (!config.webApps?.length && primaryWebAppName(config) === "web")
 		return config.web ? [webFrameworks.label(config.web)] : [];
 
 	return webAppInstances(config).map(

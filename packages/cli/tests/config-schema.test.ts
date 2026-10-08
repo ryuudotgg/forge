@@ -17,6 +17,73 @@ function decodeMessages(result: ReturnType<typeof decodeConfig>) {
 }
 
 describe("assembleSchema", () => {
+	it.each([
+		{
+			config: { webName: "vault" },
+			sentence: "A web app name needs a web framework.",
+		},
+		{
+			config: { web: "nextjs", webName: "Vault" },
+			sentence:
+				"Vault isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+		},
+		{
+			config: { web: "nextjs", webName: "server" },
+			sentence: "server is reserved. Pick another name for this web app.",
+		},
+		{
+			config: {
+				web: "nextjs",
+				webName: "site",
+				webApps: [{ name: "site", framework: "nextjs" }],
+			},
+			sentence: "site names both the primary web app and a secondary one.",
+		},
+		{
+			config: {
+				web: "nextjs",
+				webApps: [{ name: "web", framework: "nextjs" }],
+			},
+			sentence: "web names both the primary web app and a secondary one.",
+		},
+		{
+			config: {
+				web: "nextjs",
+				webApps: [
+					{ name: "site", framework: "nextjs" },
+					{ name: "site", framework: "nextjs" },
+				],
+			},
+			sentence: "site is used by more than one web app.",
+		},
+	])(
+		"checks primary names and project uniqueness: $sentence",
+		({ config, sentence }) => {
+			expect(
+				decodeMessages(decodeConfig({ name: "Acme", slug: "acme", ...config })),
+			).toEqual([
+				sentence,
+				...(config.webName === "Vault" ||
+				config.webName === "server" ||
+				sentence === "site is used by more than one web app."
+					? ["Expected undefined"]
+					: []),
+			]);
+		},
+	);
+
+	it("allows a secondary named web with a custom primary", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webName: "vault",
+			webApps: [{ name: "web", framework: "tanstack-router" }],
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
 	it.each([["passkey"], ["passkey", "passkey"]])(
 		"refuses passkey-only methods %j",
 		(...authMethods) => {
@@ -116,7 +183,7 @@ describe("assembleSchema", () => {
 		);
 	});
 
-	it("rejects reserved secondary web app names", () => {
+	it("rejects a secondary taking the default primary name", () => {
 		const result = decodeConfig({
 			name: "Acme",
 			slug: "acme",
@@ -125,7 +192,7 @@ describe("assembleSchema", () => {
 		});
 
 		expect(decodeMessages(result)).toContain(
-			"web is reserved. Pick another name for this web app.",
+			"web names both the primary web app and a secondary one.",
 		);
 	});
 

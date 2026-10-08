@@ -34,7 +34,7 @@ import {
 	readTemplate,
 	renderHeadersFromRequest,
 } from "../../template";
-import { webAppInstances } from "../../web-apps";
+import { primaryWebAppName, webAppInstances } from "../../web-apps";
 import { orpcTemplateVars, renderOrpcTemplate } from "./shared";
 
 export const orpcWebRecipe = defineTemplateRecipe({
@@ -243,7 +243,7 @@ export const orpcStandaloneAdapters = deriveRecipeAdapters({
 				});
 
 				return leafTextFile(
-					ensuredModuleTarget("web"),
+					ensuredModuleTarget(primaryWebAppName(config)),
 					rendered.destination,
 					rendered.content,
 				);
@@ -260,17 +260,21 @@ export const orpcStandaloneAdapters = deriveRecipeAdapters({
 			]),
 			...(orpcWebFramework(config) !== undefined
 				? [
-						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-							{
-								name: `@${slug}/orpc`,
-								version: "workspace:*",
-								type: "dependencies",
-							},
-							{ ...deps.orpcClient, type: "dependencies" },
-							{ ...deps.orpcServer, type: "dependencies" },
-							{ ...deps.orpcTanstackQuery, type: "dependencies" },
-							{ ...deps.tanstackReactQuery, type: "dependencies" },
-						]),
+						surfaceDependencies(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							[
+								{
+									name: `@${slug}/orpc`,
+									version: "workspace:*",
+									type: "dependencies",
+								},
+								{ ...deps.orpcClient, type: "dependencies" },
+								{ ...deps.orpcServer, type: "dependencies" },
+								{ ...deps.orpcTanstackQuery, type: "dependencies" },
+								{ ...deps.tanstackReactQuery, type: "dependencies" },
+							],
+						),
 					]
 				: []),
 			...expoOrpcClientContributions(config),

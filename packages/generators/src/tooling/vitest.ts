@@ -11,6 +11,7 @@ import { type ForgeConfig, hasAddon } from "../config";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { readTemplate } from "../template";
 import { catalogRef } from "../versions";
+import { primaryWebAppName } from "../web-apps";
 
 const vitest = defineAddon<ForgeConfig, "vitest">({
 	id: "vitest",
@@ -25,16 +26,22 @@ const vitest = defineAddon<ForgeConfig, "vitest">({
 
 		return [
 			leafTextFile(
-				ensuredModuleTarget("web"),
+				ensuredModuleTarget(primaryWebAppName(config)),
 				"vitest.config.ts",
 				readTemplate("tooling/vitest/vitest.config.ts"),
 			),
-			surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-				{ ...catalogRef("vitest"), type: "devDependencies" },
-			]),
-			surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-				test: "vitest run",
-			}),
+			surfaceDependencies(
+				ensuredModuleTarget(primaryWebAppName(config)),
+				"packageJson",
+				[{ ...catalogRef("vitest"), type: "devDependencies" }],
+			),
+			surfaceScripts(
+				ensuredModuleTarget(primaryWebAppName(config)),
+				"packageJson",
+				{
+					test: "vitest run",
+				},
+			),
 			surfaceScripts(projectTarget(), "rootPackageJson", {
 				test: "turbo run test",
 			}),
@@ -42,7 +49,7 @@ const vitest = defineAddon<ForgeConfig, "vitest">({
 				tasks: { test: { dependsOn: ["^test"] } },
 			}),
 			leafTextFile(
-				ensuredModuleTarget("web"),
+				ensuredModuleTarget(primaryWebAppName(config)),
 				"src/forge.test.ts",
 				readTemplate("tooling/vitest/src/forge.test.ts"),
 			),

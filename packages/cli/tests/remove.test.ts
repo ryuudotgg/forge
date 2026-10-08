@@ -1160,6 +1160,83 @@ describe("remove command", () => {
 		}
 	});
 
+	it.each(["vault", "primary", "apps/vault", appModule.id, "nextjs"])(
+		"refuses to remove custom primary web app by %s",
+		async (requestedId) => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({
+					config: {
+						web: "nextjs",
+						webName: "vault",
+						webApps: [{ name: "web", framework: "nextjs" }],
+					},
+					modules: [
+						{ ...appModule, root: "apps/vault", packageName: "@acme/vault" },
+						{ ...adminModule, root: "apps/web", packageName: "@acme/web" },
+					],
+				}),
+			);
+
+			try {
+				await expect(runRemove(requestedId, { yes: true })).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					requestedId === "nextjs"
+						? "We can't remove the primary web app. Pass a secondary app name instead."
+						: "We can't remove the primary web app.",
+				);
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
+
+	it("removes a secondary named web without removing the custom primary", async () => {
+		const primary = {
+			...appModule,
+			root: "apps/vault",
+			packageName: "@acme/vault",
+		};
+
+		const project = managedProject({
+			config: {
+				web: "nextjs",
+				webName: "vault",
+				webApps: [{ name: "web", framework: "nextjs" }],
+			},
+			modules: [
+				primary,
+				{ ...adminModule, root: "apps/web", packageName: "@acme/web" },
+			],
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+		await runRemove("web", { yes: true });
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			project.projectRoot,
+			{ web: "nextjs", webName: "vault", webApps: [] },
+			[],
+			undefined,
+			undefined,
+			{},
+			{
+				modules: [primary],
+				records: project.manifest.modules,
+				removedRoots: ["apps/web"],
+			},
+		);
+	});
+
 	it.each(["web", "primary", "apps/web", appModule.id, "nextjs"])(
 		"refuses to remove primary web app by %s",
 		async (requestedId) => {

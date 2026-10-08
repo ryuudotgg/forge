@@ -7,6 +7,7 @@ import {
 import type { ForgeConfig, WebFramework } from "../../config";
 import { standaloneApiOrigin } from "../../origins";
 import { interpolate, readTemplate } from "../../template";
+import { primaryWebAppName } from "../../web-apps";
 import { acceptInvitationSegment } from "../invitations";
 import { resolveAuthPlugins } from "../plugins";
 
@@ -58,7 +59,7 @@ export function invitationPageContributions(config: ForgeConfig) {
 
 	return [
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(primaryWebAppName(config)),
 			layout.path,
 			interpolate(readTemplate("auth/better-auth/web/accept-invitation.tsx"), {
 				"__PAGE_HEAD__\n": head,
@@ -67,9 +68,11 @@ export function invitationPageContributions(config: ForgeConfig) {
 		...(standaloneApiOrigin(config) === undefined
 			? []
 			: [
-					surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-						authDependency,
-					]),
+					surfaceDependencies(
+						ensuredModuleTarget(primaryWebAppName(config)),
+						"packageJson",
+						[authDependency],
+					),
 				]),
 	];
 }

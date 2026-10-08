@@ -7,7 +7,12 @@ import desktopStep from "../src/steps/platforms/desktop";
 import mobileStep from "../src/steps/platforms/mobile";
 import platformsStep from "../src/steps/platforms/select";
 import webStep from "../src/steps/platforms/web";
-import webAppsStep, { webAppsSchema } from "../src/steps/platforms/web-apps";
+import webAppsStep, {
+	webAppNameIssue,
+	webAppNameRuleIssue,
+	webAppsSchema,
+} from "../src/steps/platforms/web-apps";
+import webNameStep from "../src/steps/platforms/web-name";
 import { type PartialConfig, SKIP } from "../src/steps/types";
 
 const promptMocks = vi.hoisted(() => ({
@@ -57,6 +62,173 @@ beforeEach(() => {
 	promptMocks.multiselect.mockReset();
 	promptMocks.select.mockReset();
 	cancelMocks.cancel.mockClear();
+});
+
+describe("primary web app name", () => {
+	it.each([
+		["", "Give this web app a name."],
+		[
+			"Vault",
+			"Vault isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+		],
+		[
+			"2vault",
+			"2vault isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+		],
+		[
+			"vault_tools",
+			"vault_tools isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+		],
+		["server", "server is reserved. Pick another name for this web app."],
+	])("reports the name rule for %s", (name, sentence) => {
+		expect(webAppNameRuleIssue(name)).toBe(sentence);
+	});
+
+	it("reports the addon id rule", () => {
+		expect(webAppNameIssue("biome", ["biome"])).toBe(
+			"biome is an addon id. Pick another name for this web app.",
+		);
+
+		expect(webAppNameRuleIssue("web")).toBeUndefined();
+		expect(webAppNameRuleIssue("vault-tools2")).toBeUndefined();
+	});
+
+	it("prompts with an initial value and validates every rule", async () => {
+		promptMocks.text.mockResolvedValue("vault");
+
+		expect(webNameStep.dependencies).toEqual(["web"]);
+		expect(webNameStep.shouldRun({})).toBe(false);
+		expect(webNameStep.shouldRun({ web: "nextjs" })).toBe(true);
+		expect(webNameStep.schemaDefault).toBeUndefined();
+		await expect(webNameStep.execute({}, false)).resolves.toBe(SKIP);
+		await expect(webNameStep.execute({ web: "nextjs" }, true)).resolves.toBe(
+			"vault",
+		);
+
+		expect(promptMocks.text).toHaveBeenCalledWith({
+			message: "What is the name of your web app?",
+			initialValue: "web",
+			validate: expect.any(Function),
+		});
+
+		const prompt = promptMocks.text.mock.calls[0]?.[0];
+		expect(prompt?.validate("Vault")).toBe(webAppNameRuleIssue("Vault"));
+		expect(prompt?.validate("server")).toBe(webAppNameRuleIssue("server"));
+		expect(prompt?.validate("biome")).toBe(
+			"biome is an addon id. Pick another name for this web app.",
+		);
+
+		expect(prompt?.validate("web")).toBeUndefined();
+	});
+
+	it.each(["web", "vault"])("keeps the wizard result %s", async (webName) => {
+		promptMocks.text.mockResolvedValue(webName);
+		const config = await orchestrate([webStep, webNameStep], {
+			initialConfig: { web: "nextjs" },
+			interactive: true,
+		});
+
+		expect(config).toEqual({ web: "nextjs", webName });
+	});
+
+	it("refuses a primary name a flag secondary already uses", async () => {
+		promptMocks.text.mockResolvedValue("vault");
+		await webNameStep.execute(
+			{ web: "nextjs", webApps: [{ name: "admin", framework: "nextjs" }] },
+			true,
+		);
+
+		const prompt = promptMocks.text.mock.calls.at(-1)?.[0];
+		expect(prompt?.validate("admin")).toBe(
+			"admin names both the primary web app and a secondary one.",
+		);
+		expect(prompt?.validate("vault")).toBeUndefined();
+	});
+
+	it("cancels the primary name prompt", async () => {
+		const cancelled = Symbol("cancelled");
+		promptMocks.text.mockResolvedValue(cancelled);
+		promptMocks.isCancel.mockImplementation((value) => value === cancelled);
+
+		await expect(webNameStep.execute({ web: "nextjs" }, true)).rejects.toThrow(
+			"Cancelled",
+		);
+	});
+
+	it("allows a secondary named web only with a differently named primary", async () => {
+		promptMocks.confirm
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(false);
+
+		promptMocks.text.mockImplementation(async (prompt) => {
+			expect(prompt.validate("web")).toBeUndefined();
+			expect(prompt.validate("vault")).toBe(
+				"vault names both the primary web app and a secondary one.",
+			);
+
+			return "web";
+		});
+
+		promptMocks.select.mockResolvedValue("nextjs");
+
+		await expect(
+			webAppsStep.execute({ web: "tanstack-router", webName: "vault" }, true),
+		).resolves.toEqual([{ name: "web", framework: "nextjs" }]);
+	});
+});
+
+describe("primary name flags", () => {
+	it("parses a primary name beside both web frameworks", () => {
+		const { values } = parseCliArgs([
+			"create",
+			"acme",
+			"--web",
+			"tanstack-router",
+			"--web-name",
+			"vault",
+			"--web",
+			"site=nextjs",
+		]);
+
+		expect(buildFlagOverrides(values)).toEqual({
+			web: "tanstack-router",
+			webName: "vault",
+			webApps: [{ name: "site", framework: "nextjs" }],
+		});
+	});
+
+	it.each(["Vault", "server", "biome"])(
+		"refuses %s even without a web flag",
+		(name) => {
+			const sentence =
+				webAppNameRuleIssue(name) ?? webAppNameIssue(name, ["biome"]);
+
+			if (sentence === undefined) throw new Error("Missing Name Rule Sentence");
+
+			expect(() => buildFlagOverrides({ "web-name": name })).toThrow(sentence);
+		},
+	);
+
+	it("leaves name clashes to the merged config", () => {
+		expect(
+			buildFlagOverrides({ web: ["nextjs", "web=tanstack-router"] }),
+		).toEqual({
+			web: "nextjs",
+			webApps: [{ name: "web", framework: "tanstack-router" }],
+		});
+
+		expect(
+			buildFlagOverrides({
+				web: ["nextjs", "web=tanstack-router"],
+				"web-name": "vault",
+			}),
+		).toEqual({
+			web: "nextjs",
+			webName: "vault",
+			webApps: [{ name: "web", framework: "tanstack-router" }],
+		});
+	});
 });
 
 describe("platforms step", () => {
@@ -156,7 +328,7 @@ describe("secondary web apps step", () => {
 		expect(webAppsStep.id).toBe("webApps");
 		expect(webAppsStep.group).toBe("platforms");
 		expect(webAppsStep.configKey).toBe("webApps");
-		expect(webAppsStep.dependencies).toEqual(["web"]);
+		expect(webAppsStep.dependencies).toEqual(["web", "webName"]);
 
 		expect(webAppsStep.shouldRun({})).toBe(false);
 		expect(webAppsStep.shouldRun({ platforms: ["mobile"] })).toBe(false);
@@ -211,7 +383,7 @@ describe("secondary web apps step", () => {
 		const second = promptMocks.text.mock.calls[1]?.[0];
 
 		expect(first?.validate("web")).toBe(
-			"web is reserved. Pick another name for this web app.",
+			"web names both the primary web app and a secondary one.",
 		);
 
 		expect(first?.validate("Bad_Name")).toBe(
@@ -364,7 +536,6 @@ describe("secondary web apps step", () => {
 			{ name: "admin", framework: "nextjs" },
 			{ name: "admin", framework: "nextjs" },
 		],
-		[{ name: "web", framework: "nextjs" }],
 		[{ name: "Admin", framework: "nextjs" }],
 		[{ name: "2admin", framework: "nextjs" }],
 		[{ name: "admin_tools", framework: "nextjs" }],
@@ -379,6 +550,7 @@ describe("secondary web apps step", () => {
 	it("accepts valid secondary apps and an empty list", () => {
 		for (const apps of [
 			[],
+			[{ name: "web", framework: "nextjs" }],
 			[{ name: "admin-tools", framework: "nextjs" }],
 			[{ name: "admin", framework: "nextjs", client: true }],
 		])

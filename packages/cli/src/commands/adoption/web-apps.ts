@@ -3,8 +3,10 @@ import { formatSchemaError } from "@ryuugg/core";
 import {
 	backends,
 	type ForgeConfig,
+	primaryWebAppName,
 	type WebAppConfig,
 	type WebFramework,
+	webAppNamesIssue,
 	webAppPortIssue,
 	webDevPort,
 	webFrameworks,
@@ -50,6 +52,7 @@ export interface AdoptedSecondary {
 
 export interface ResolvedWebApps {
 	readonly web?: WebFramework;
+	readonly webName?: string;
 	readonly webApps: ReadonlyArray<AdoptedWebApp>;
 	readonly secondaries: ReadonlyArray<AdoptedSecondary>;
 	readonly prototypeRoots: ReadonlyMap<string, string>;
@@ -350,11 +353,13 @@ export const resolveWebAppAdoption = Effect.fn("resolveWebAppAdoption")(
 			const unmatched = unmatchedEntriesRefusal([], input.requested);
 			if (unmatched !== undefined) return yield* unmatched;
 
-			return {
+			const resolved: ResolvedWebApps = {
 				webApps: [],
 				secondaries: [],
-				prototypeRoots: new Map(),
-			} satisfies ResolvedWebApps;
+				prototypeRoots: new Map<string, string>(),
+			};
+
+			return resolved;
 		}
 
 		const primaryRoot = input.primaryRoot;
@@ -405,6 +410,18 @@ export const resolveWebAppAdoption = Effect.fn("resolveWebAppAdoption")(
 		];
 
 		const webApps = ordered.map((secondary) => secondary.app);
+		const detectedName = basename(primaryRoot);
+		const nameIssue =
+			webAppNameRuleIssue(detectedName) ??
+			webAppNameIssue(detectedName, input.addonIds) ??
+			webAppNamesIssue({ web, webName: detectedName, webApps });
+
+		const webName =
+			nameIssue === undefined && detectedName !== "web"
+				? detectedName
+				: undefined;
+
+		const primaryName = primaryWebAppName({ webName });
 		const decoded = Schema.decodeUnknownResult(webAppsSchema)(webApps);
 		const primaryScriptPort = input.observations.find(
 			(observation) => observation.root === primaryRoot,
@@ -415,31 +432,38 @@ export const resolveWebAppAdoption = Effect.fn("resolveWebAppAdoption")(
 				? webApps.find((app) => app.port === primaryScriptPort.port)
 				: undefined;
 
+		const projectNameIssue = webAppNamesIssue({ web, webName, webApps });
 		const refusal =
 			unmatchedEntriesRefusal(ordered, input.requested) ??
 			canonicalRootRefusal(ordered, input.confirmed) ??
+			(projectNameIssue === undefined
+				? undefined
+				: refuse(`We couldn't adopt these web apps: ${projectNameIssue}`)) ??
 			portRefusal(
 				Result.isFailure(decoded)
 					? formatSchemaError(decoded.failure, webApps)[0]?.message
 					: sharingPrimaryPort === undefined
 						? undefined
-						: `web and ${sharingPrimaryPort.name} both use port ${sharingPrimaryPort.port}.`,
+						: `${primaryName} and ${sharingPrimaryPort.name} both use port ${sharingPrimaryPort.port}.`,
 			);
 
 		if (refusal !== undefined) return yield* refusal;
 
-		return {
+		const resolved: ResolvedWebApps = {
 			web,
+			...(webName === undefined ? {} : { webName }),
 			webApps,
 			secondaries: ordered,
 			prototypeRoots: new Map([
-				[primaryRoot, "apps/web"],
+				[primaryRoot, `apps/${primaryName}`],
 				...ordered.map((secondary): [string, string] => [
 					secondary.root,
 					`apps/${secondary.app.name}`,
 				]),
 			]),
-		} satisfies ResolvedWebApps;
+		};
+
+		return resolved;
 	},
 );
 
@@ -509,6 +533,7 @@ export function adoptionRefusal(
 	return portRefusal(
 		webAppPortIssue({
 			web: resolved.web,
+			webName: resolved.webName,
 			webApps: resolved.webApps,
 			...(backend === undefined ? {} : { backend }),
 		}),
@@ -535,6 +560,9 @@ export function adoptedWebConfig(
 			? {}
 			: {
 					web: resolved.web,
+					...(resolved.webName === undefined
+						? {}
+						: { webName: resolved.webName }),
 					...(requested.platforms === undefined
 						? { platforms: webPlatforms }
 						: {}),

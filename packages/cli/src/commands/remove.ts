@@ -24,6 +24,7 @@ import {
 	hasAuthChoice,
 	type LoadedDefinitionRegistry,
 	loadAddonDefinition,
+	primaryWebAppName,
 	RegistryLoadError,
 	removeWebAppConfig,
 	resolveAuthMethods,
@@ -372,17 +373,18 @@ async function removeWebApp(
 ) {
 	const config: ForgeConfig = project.config;
 	const apps = config.webApps ?? [];
+	const primaryName = primaryWebAppName(config);
 	const primary = project.modules.find(
 		(module) =>
-			module.root === "apps/web" ||
+			module.root === `apps/${primaryName}` ||
 			(module.type === "app" && module.role === "primary"),
 	);
 
 	if (
-		requestedId === "web" ||
+		requestedId === primaryName ||
 		(requestedId === "primary" &&
 			!apps.some((app) => app.name === requestedId)) ||
-		requestedId === "apps/web" ||
+		requestedId === `apps/${primaryName}` ||
 		(primary !== undefined && requestedId === primary.id)
 	) {
 		log.error("We can't remove the primary web app.");

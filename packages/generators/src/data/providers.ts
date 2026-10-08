@@ -329,7 +329,7 @@ export const localMysql: DatabaseProviderProfile = {
 
 export const localSqlite: DatabaseProviderProfile = {
 	dialect: "sqlite",
-	// Both apps/web and packages/db sit two levels deep, so the relative
+	// Every app and packages/db sit two levels deep, so the relative
 	// file resolves to the workspace root from either working directory.
 	envVars: [
 		{
