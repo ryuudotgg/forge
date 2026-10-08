@@ -167,6 +167,36 @@ describe("create command", () => {
 		});
 	});
 
+	it("refuses malformed config web apps before orchestration", async () => {
+		await withTempDir("create-malformed-web-apps", async (directory) => {
+			const configPath = join(directory, "forge.config.json");
+			await writeFile(
+				configPath,
+				JSON.stringify({
+					web: "nextjs",
+					webApps: [{ name: "Site", framework: "nextjs" }],
+				}),
+			);
+
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				await expect(runCreate({ config: configPath })).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"Site isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+				);
+				expect(orchestratorMocks.orchestrate).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
 	it("refuses every unknown config key before decoding choices", async () => {
 		await withTempDir("create-unknown-keys", async (directory) => {
 			const configPath = join(directory, "forge.config.json");

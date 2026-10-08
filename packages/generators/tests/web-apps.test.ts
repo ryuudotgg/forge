@@ -110,6 +110,19 @@ describe("webAppInstances", () => {
 		expect(reservedWebAppNames).not.toContain("web");
 	});
 
+	it("refuses two secondary apps that share a name", () => {
+		expect(
+			webAppNamesIssue({
+				web: "nextjs",
+				webName: "vault",
+				webApps: [
+					{ name: "site", framework: "nextjs" },
+					{ name: "site", framework: "react-router" },
+				],
+			}),
+		).toBe("site is used by more than one web app.");
+	});
+
 	it("reserves the email preview port when adding secondary apps", () => {
 		let config: ForgeConfig = { web: "nextjs" };
 		for (let index = 0; index < emailPreviewPort - 3002; index += 1)

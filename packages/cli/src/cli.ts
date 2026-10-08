@@ -537,10 +537,7 @@ export function buildFlagOverrides(values: ParsedValues): PartialConfig {
 		if (!configKey) continue;
 
 		const value = values[key];
-		if (key === "web-name" && value !== undefined) {
-			if (typeof value !== "string")
-				throw new Error("CLI Args Invalid: web-name must be a string.");
-
+		if (key === "web-name" && typeof value === "string") {
 			const issue =
 				webAppNameRuleIssue(value) ??
 				webAppNameIssue(value, firstPartyAddonIds());
