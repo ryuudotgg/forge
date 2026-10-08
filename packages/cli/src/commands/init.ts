@@ -104,7 +104,7 @@ export function initSteps(commandPins: CommandPins) {
 					? createPackageManagerStep(commandPins.packageManager)
 					: step.id === "path"
 						? createPathStep("existing")
-						: step.id === "webApps"
+						: step.id === "webApps" || step.id === "webName"
 							? { ...step, execute: async () => SKIP }
 							: step,
 		);
@@ -884,14 +884,15 @@ export async function runInit(
 		? await confirmDetection(detection)
 		: detection.config;
 
-	const requestedConfig = {
+	const requestedConfig: Record<string, unknown> = {
 		...(yes ? defaultIdentity(projectRoot, rootPackageName) : {}),
 		...detectedConfig,
 		...(configFile?.config ?? {}),
 	};
 
+	const { webName, ...withoutWebName } = requestedConfig;
 	const initialConfig = {
-		...requestedConfig,
+		...withoutWebName,
 		...adoptedWebConfig(resolved, requestedConfig),
 		path: ".",
 	};

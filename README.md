@@ -50,7 +50,8 @@ bunx @ryuugg/forge
 ### Secondary web apps
 
 The wizard can add web apps with separate names and frameworks. For flags, repeat
-`--web`: a bare framework selects the primary app at `apps/web`, `name=framework`
+`--web`: a bare framework selects the primary app, which defaults to `apps/web`.
+Use `--web-name` or `webName` in a config file to change its name. `name=framework`
 adds an app at `apps/<name>`, and `name=framework+client` adds one that calls
 your API.
 
@@ -123,6 +124,7 @@ Config files accept these top level keys. Unknown keys are rejected. Choice valu
 | `linter` | Linter choice. |
 | `platforms` | Array of platform IDs: web, mobile, or desktop (unavailable). |
 | `web` | Primary web framework choice. |
+| `webName` | Primary web app name, defaults to web. |
 | `webApps` | Array of objects with name, framework, and optional client boolean and port number. |
 | `desktop` | Desktop framework choice, currently unavailable. |
 | `mobile` | Mobile framework choice. |

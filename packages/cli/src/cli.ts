@@ -24,6 +24,7 @@ import type { ParsedValues, SubcommandDef } from "./commands/registry";
 import {
 	firstPartyAddonIds,
 	webAppNameIssue,
+	webAppNameRuleIssue,
 	webAppsIssueMessage,
 	webAppsSchema,
 } from "./steps/platforms/web-apps";
@@ -72,6 +73,7 @@ export function decodeChoice<Id extends string>(
 			.filter((choice) => table.available(choice))
 			.map((choice) => table.label(choice)),
 	);
+
 	if (id === undefined)
 		throw new Error(
 			"flag" in source
@@ -84,6 +86,7 @@ export function decodeChoice<Id extends string>(
 			"flag" in source
 				? source.flag
 				: `${JSON.stringify(source.configKey)} in your config file`;
+
 		throw new Error(
 			`We don't support ${table.label(id)} for ${name} yet, so pick ${choices}.`,
 		);
@@ -183,6 +186,12 @@ export const options = {
 			"Repeat per app: framework, name=framework, or name=framework+client.",
 		choices: webFrameworks,
 		configKey: "web",
+	},
+
+	"web-name": {
+		type: "string",
+		description: "Name the primary web app. Defaults to web.",
+		configKey: "webName",
 	},
 
 	desktop: {
@@ -308,6 +317,7 @@ export const sections: CLISection[] = [
 			"catalogs",
 			"linter",
 			"web",
+			"web-name",
 			"desktop",
 			"mobile",
 			"backend",
@@ -527,6 +537,14 @@ export function buildFlagOverrides(values: ParsedValues): PartialConfig {
 		if (!configKey) continue;
 
 		const value = values[key];
+		if (key === "web-name" && typeof value === "string") {
+			const issue =
+				webAppNameRuleIssue(value) ??
+				webAppNameIssue(value, firstPartyAddonIds());
+
+			if (issue !== undefined) throw new Error(issue);
+		}
+
 		if (key === "web" && value !== undefined) {
 			const entries = typeof value === "string" ? [value] : value;
 			if (!Array.isArray(entries))

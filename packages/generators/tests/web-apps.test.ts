@@ -8,9 +8,11 @@ import {
 	addWebAppConfig,
 	builtins,
 	type ForgeConfig,
+	primaryWebAppName,
 	removeWebAppConfig,
 	reservedWebAppNames,
 	webAppInstances,
+	webAppNamesIssue,
 	webAppPortIssue,
 	webFrameworks,
 	withWebAppPorts,
@@ -70,6 +72,57 @@ function stablePlan(plan: ProjectPlan): string {
 }
 
 describe("webAppInstances", () => {
+	it("derives the primary identity from its configured name", () => {
+		const config: ForgeConfig = {
+			slug: "acme",
+			web: "tanstack-router",
+			webName: "vault",
+			webApps: [{ name: "web", framework: "nextjs" }],
+		};
+
+		expect(primaryWebAppName(config)).toBe("vault");
+		expect(primaryWebAppName({})).toBe("web");
+		expect(webAppInstances(config)).toEqual([
+			{
+				key: "vault",
+				root: "apps/vault",
+				packageName: "@acme/vault",
+				framework: "tanstack-router",
+				port: 3000,
+				primary: true,
+				role: "primary",
+			},
+			{
+				key: "web",
+				root: "apps/web",
+				packageName: "@acme/web",
+				framework: "nextjs",
+				port: 3002,
+				primary: false,
+			},
+		]);
+
+		expect(webAppNamesIssue(config)).toBeUndefined();
+		expect(webAppNamesIssue({ ...config, webName: "web" })).toBe(
+			"web names both the primary web app and a secondary one.",
+		);
+
+		expect(reservedWebAppNames).not.toContain("web");
+	});
+
+	it("refuses two secondary apps that share a name", () => {
+		expect(
+			webAppNamesIssue({
+				web: "nextjs",
+				webName: "vault",
+				webApps: [
+					{ name: "site", framework: "nextjs" },
+					{ name: "site", framework: "react-router" },
+				],
+			}),
+		).toBe("site is used by more than one web app.");
+	});
+
 	it("reserves the email preview port when adding secondary apps", () => {
 		let config: ForgeConfig = { web: "nextjs" };
 		for (let index = 0; index < emailPreviewPort - 3002; index += 1)
@@ -203,7 +256,6 @@ describe("webAppInstances", () => {
 
 	it("reserves every generated app and package name", () => {
 		expect(reservedWebAppNames).toEqual([
-			"web",
 			"server",
 			"mobile",
 			"desktop",
@@ -368,6 +420,107 @@ describe("web app ports", () => {
 		expect(webAppPortIssue({ ...previewClash, emailProvider: "resend" })).toBe(
 			`the email preview and admin both use port ${emailPreviewPort}.`,
 		);
+	});
+});
+
+describe("primary web app planning", () => {
+	it("generates the named primary beside the secondary and server", async () => {
+		const plan = await plannedProject({
+			name: "acme",
+			slug: "acme",
+			platforms: ["web"],
+			web: "tanstack-router",
+			webName: "vault",
+			webApps: [{ name: "site", framework: "nextjs" }],
+			backend: "hono",
+			rpc: "orpc",
+		});
+
+		expect(
+			Schema.decodeSync(appPackageSchema)(
+				contentAt(plan, "apps/vault/package.json"),
+			).name,
+		).toBe("@acme/vault");
+
+		expect(
+			Schema.decodeSync(appPackageSchema)(
+				contentAt(plan, "apps/site/package.json"),
+			).name,
+		).toBe("@acme/site");
+
+		expect(contentAt(plan, "apps/server/package.json")).toContain(
+			'"@acme/server"',
+		);
+
+		expect(
+			plan.writes.map(({ path, content }) => `${path}\n${content}`).join("\n"),
+		).not.toMatch(/apps\/web|@acme\/web/);
+
+		expect(plan.manifest.config.webName).toBe("vault");
+	});
+
+	it.each(webFrameworks.ids)(
+		"binds RPC, auth, ORM and test tooling to the named %s primary",
+		async (web) => {
+			for (const rpc of ["orpc", "trpc"] satisfies ReadonlyArray<
+				NonNullable<ForgeConfig["rpc"]>
+			>) {
+				const plan = await plannedProject({
+					slug: "acme",
+					web,
+					webName: "vault",
+					webApps: [{ name: "site", framework: "nextjs" }],
+					backend: web === "tanstack-router" ? "hono" : "self",
+					rpc,
+					authentication: "better-auth",
+					authPlugins: ["organization"],
+					orm: rpc === "orpc" ? "drizzle" : "prisma",
+					database: "sqlite",
+					addons: ["vitest"],
+				});
+
+				const primary = Schema.decodeSync(appPackageSchema)(
+					contentAt(plan, "apps/vault/package.json"),
+				);
+
+				expect(primary.name).toBe("@acme/vault");
+				expect(primary.dependencies).toHaveProperty(
+					`@acme/${rpc}`,
+					"workspace:*",
+				);
+
+				expect(primary.dependencies).toHaveProperty("@acme/db", "workspace:*");
+				expect(primary.dependencies).toHaveProperty(
+					"@acme/auth",
+					"workspace:*",
+				);
+
+				expect(contentAt(plan, "apps/vault/vitest.config.ts")).toContain(
+					"defineConfig",
+				);
+
+				expect(
+					plan.writes
+						.map(({ path, content }) => `${path}\n${content}`)
+						.join("\n"),
+				).not.toMatch(/apps\/web|@acme\/web/);
+			}
+		},
+	);
+
+	it("keeps the default primary tree identical with an explicit default name", async () => {
+		const config: ForgeConfig = {
+			slug: "acme",
+			web: "tanstack-router",
+			backend: "hono",
+			rpc: "orpc",
+			webApps: [{ name: "site", framework: "nextjs" }],
+		};
+
+		const absent = await plannedProject(config);
+		const explicit = await plannedProject({ ...config, webName: "web" });
+
+		expect(stablePlan(explicit)).toBe(stablePlan(absent));
 	});
 });
 
@@ -1209,6 +1362,7 @@ describe("Vite app ports", () => {
 			expect(scripts.dev).toBe(
 				"pnpm with-env vite dev --port 3000 --strictPort",
 			);
+
 			expect(scripts.preview).toBe(
 				"pnpm with-env vite preview --port 3000 --strictPort",
 			);

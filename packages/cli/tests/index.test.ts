@@ -120,8 +120,35 @@ describe("CLI argument parsing", () => {
 	const frameworkChoices =
 		"Next.js, React Router, TanStack Router, or TanStack Start";
 
+	it("reserves web only while it is the primary name", () => {
+		expect(
+			buildFlagOverrides(
+				parse([
+					"--web",
+					"tanstack-router",
+					"--web-name",
+					"vault",
+					"--web",
+					"web=nextjs",
+				]).values,
+			),
+		).toEqual({
+			web: "tanstack-router",
+			webName: "vault",
+			webApps: [{ name: "web", framework: "nextjs" }],
+		});
+
+		expect(
+			buildFlagOverrides(
+				parse(["--web", "tanstack-router", "--web", "web=nextjs"]).values,
+			),
+		).toEqual({
+			web: "tanstack-router",
+			webApps: [{ name: "web", framework: "nextjs" }],
+		});
+	});
+
 	it.each([
-		["web=nextjs", "web is reserved. Pick another name for this web app."],
 		[
 			"server=nextjs",
 			"server is reserved. Pick another name for this web app.",
@@ -541,6 +568,7 @@ describe("CLI entry dispatch", () => {
 			expect(testCli.error).toHaveBeenCalledExactlyOnceWith(
 				"--config needs a value. Run forge --help to see the available flags.",
 			);
+
 			expect(testCli.setExitCode).toHaveBeenCalledExactlyOnceWith(1);
 			expect(testCli.log).not.toHaveBeenCalled();
 		},
@@ -579,6 +607,7 @@ describe("CLI entry dispatch", () => {
 		expect(optionCli.error).toHaveBeenCalledExactlyOnceWith(
 			"We don't recognize that option. Run forge --help to see the available flags.",
 		);
+
 		expect(optionCli.setExitCode).toHaveBeenCalledWith(1);
 		expect(optionCli.log).not.toHaveBeenCalled();
 

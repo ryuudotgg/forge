@@ -1,7 +1,9 @@
-import { describe, it } from "vitest";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 import {
 	createProject,
 	expectInstallBuildAndTypecheck,
+	pathExists,
 	withScenarioWorkspace,
 } from "../utils/harness";
 import {
@@ -10,6 +12,31 @@ import {
 } from "../utils/install-smoke";
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
+	it("installs, builds, and typechecks a named primary with a Next.js secondary", async () => {
+		await withScenarioWorkspace("smoke-primary-web-name", async (workspace) => {
+			await createProject(workspace, {
+				web: "tanstack-router",
+				webName: "vault",
+				webApps: [{ name: "site", framework: "nextjs" }],
+				backend: "hono",
+				rpc: "orpc",
+				style: "tailwind",
+				linter: "biome",
+				packageManager: "pnpm",
+			});
+
+			expect(await pathExists(join(workspace.projectRoot, "apps/vault"))).toBe(
+				true,
+			);
+
+			expect(await pathExists(join(workspace.projectRoot, "apps/web"))).toBe(
+				false,
+			);
+
+			await expectInstallBuildAndTypecheck(workspace, "pnpm");
+		});
+	}, 600_000);
+
 	it.each([
 		{ primary: "tanstack-router", secondary: "nextjs", backend: "hono" },
 		{ primary: "nextjs", secondary: "tanstack-router", backend: "hono" },

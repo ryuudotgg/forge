@@ -29,6 +29,7 @@ import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
 import { catalogRef } from "../../versions";
+import { primaryWebAppName } from "../../web-apps";
 import { hostDriverDependencies } from "../host-drivers";
 import {
 	drizzleTableRelations,
@@ -255,13 +256,17 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			...(config.web === undefined
 				? []
 				: [
-						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-							{
-								name: `@${slug}/db`,
-								version: "workspace:*",
-								type: "dependencies",
-							},
-						]),
+						surfaceDependencies(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							[
+								{
+									name: `@${slug}/db`,
+									version: "workspace:*",
+									type: "dependencies",
+								},
+							],
+						),
 					]),
 			...hostDriverDependencies(config, provider.drizzle.runtimeDeps),
 
@@ -288,12 +293,16 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			...(config.web === undefined
 				? []
 				: [
-						surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-							"db:generate": pmRunIn(pm, dbPackage, "generate"),
-							"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
-							"db:push": pmRunIn(pm, dbPackage, "push"),
-							"db:studio": pmRunIn(pm, dbPackage, "studio"),
-						}),
+						surfaceScripts(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							{
+								"db:generate": pmRunIn(pm, dbPackage, "generate"),
+								"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
+								"db:push": pmRunIn(pm, dbPackage, "push"),
+								"db:studio": pmRunIn(pm, dbPackage, "studio"),
+							},
+						),
 					]),
 		];
 	},

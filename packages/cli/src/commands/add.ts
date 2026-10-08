@@ -29,6 +29,7 @@ import {
 	matchQuery,
 	orms,
 	RegistryLoadError,
+	webAppNamesIssue,
 	webFrameworks,
 } from "@ryuugg/generators";
 import { Effect, FileSystem, Result, Schema } from "effect";
@@ -611,7 +612,13 @@ async function addWebApp(
 	});
 
 	const decodeApps = (name: string) =>
-		Schema.decodeResult(webAppsSchema)([...existingApps, draftApp(name)]);
+		Schema.decodeResult(
+			webAppsSchema.check(
+				Schema.makeFilter((webApps) =>
+					webAppNamesIssue({ ...config, webApps }),
+				),
+			),
+		)([...existingApps, draftApp(name)]);
 
 	let name = typeof values.name === "string" ? values.name : undefined;
 	if (name === undefined) {

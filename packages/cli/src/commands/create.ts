@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
 import { formatSchemaError } from "@ryuugg/core";
+import { webAppNamesIssue } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { buildFlagOverrides, decodeChoice, options } from "../cli";
 import { acceptedConfigKeys, droppedValueIssue } from "../config/schema";
@@ -10,6 +11,8 @@ import { steps } from "../steps";
 import {
 	firstPartyAddonIds,
 	webAppNameIssue,
+	webAppNameRuleIssue,
+	webAppsIssueMessage,
 	webAppsSchema,
 } from "../steps/platforms/web-apps";
 import type { PartialConfig } from "../steps/types";
@@ -123,6 +126,16 @@ export async function runCreate(
 	}
 
 	initialConfig = { ...initialConfig, ...overrides };
+	if (typeof initialConfig.webName === "string") {
+		const issue =
+			webAppNameRuleIssue(initialConfig.webName) ??
+			webAppNameIssue(initialConfig.webName, firstPartyAddonIds());
+
+		if (issue !== undefined) {
+			log.error(issue);
+			process.exit(1);
+		}
+	}
 
 	const droppedIssue = droppedValueIssue(initialConfig);
 	if (droppedIssue !== undefined) {
@@ -134,11 +147,18 @@ export async function runCreate(
 		initialConfig.webApps ?? [],
 	);
 
+	if (Result.isFailure(configuredApps)) {
+		log.error(webAppsIssueMessage(configuredApps.failure));
+		process.exit(1);
+	}
+
 	if (Result.isSuccess(configuredApps)) {
 		const addonIds = firstPartyAddonIds();
-		const issue = configuredApps.success
-			.map((app) => webAppNameIssue(app.name, addonIds))
-			.find((entry) => entry !== undefined);
+		const issue =
+			webAppNamesIssue({ ...initialConfig, webApps: configuredApps.success }) ??
+			configuredApps.success
+				.map((app) => webAppNameIssue(app.name, addonIds))
+				.find((entry) => entry !== undefined);
 
 		if (issue !== undefined) {
 			log.error(issue);

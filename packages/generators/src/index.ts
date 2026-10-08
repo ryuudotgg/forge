@@ -186,11 +186,13 @@ export { default as typescript } from "./tooling/typescript";
 export { default as ui } from "./ui";
 export {
 	addWebAppConfig,
+	primaryWebAppName,
 	removeWebAppConfig,
 	reservedWebAppNames,
 	type WebAppConfig,
 	type WebAppInstance,
 	webAppInstances,
+	webAppNamesIssue,
 	webAppPortIssue,
 	withWebAppPorts,
 } from "./web-apps";

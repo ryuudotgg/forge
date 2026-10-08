@@ -44,6 +44,14 @@ const validCases: { readonly name: string; readonly config: PartialConfig }[] =
 	[
 		{ name: "default", config: defaultConfig },
 		{
+			name: "custom primary with a secondary named web",
+			config: {
+				...defaultConfig,
+				webName: "vault",
+				webApps: [{ name: "web", framework: "nextjs" }],
+			},
+		},
+		{
 			name: "Better Auth with passkey and plugins",
 			config: {
 				...authConfig,
@@ -60,6 +68,36 @@ interface RefusalCase {
 }
 
 const refusalCases: RefusalCase[] = [
+	{
+		name: "primary name without a framework",
+		config: { web: undefined, webName: "vault" },
+		sentence: "A web app name needs a web framework.",
+	},
+	{
+		name: "invalid primary name",
+		config: { webName: "Vault" },
+		sentence:
+			'Invalid Configuration:\n  webName: Vault isn\'t a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.\n  webName: Expected undefined, actual "Vault"',
+	},
+	{
+		name: "reserved primary name",
+		config: { webName: "server" },
+		sentence:
+			'Invalid Configuration:\n  webName: server is reserved. Pick another name for this web app.\n  webName: Expected undefined, actual "server"',
+	},
+	{
+		name: "secondary with the primary name",
+		config: {
+			webName: "vault",
+			webApps: [{ name: "vault", framework: "nextjs" }],
+		},
+		sentence: "vault names both the primary web app and a secondary one.",
+	},
+	{
+		name: "secondary named web with a default primary",
+		config: { webApps: [{ name: "web", framework: "nextjs" }] },
+		sentence: "web names both the primary web app and a secondary one.",
+	},
 	{
 		name: "email OTP without an email provider",
 		config: { authMethods: ["email-otp"] },

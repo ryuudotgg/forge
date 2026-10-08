@@ -14,7 +14,6 @@ export interface WebAppConfig {
 }
 
 export const reservedWebAppNames = [
-	"web",
 	"server",
 	"mobile",
 	"desktop",
@@ -41,17 +40,38 @@ export interface WebAppInstance {
 	readonly role?: "primary";
 }
 
+export function primaryWebAppName(config: ForgeConfig): string {
+	return config.webName ?? "web";
+}
+
+export function webAppNamesIssue(config: ForgeConfig): string | undefined {
+	const primaryName =
+		config.web === undefined ? undefined : primaryWebAppName(config);
+
+	const names = new Set<string>();
+	for (const app of config.webApps ?? []) {
+		if (app.name === primaryName)
+			return `${app.name} names both the primary web app and a secondary one.`;
+
+		if (names.has(app.name))
+			return `${app.name} is used by more than one web app.`;
+
+		names.add(app.name);
+	}
+}
+
 export function webAppInstances(config: ForgeConfig): WebAppInstance[] {
 	if (config.web === undefined) return [];
 
 	const slug = config.slug ?? "my-app";
+	const primaryName = primaryWebAppName(config);
 	const secondaryApps = config.webApps ?? [];
 	const primaryPort = webDevPort(config.web);
 	const instances: WebAppInstance[] = [
 		{
-			key: "web",
-			root: "apps/web",
-			packageName: `@${slug}/web`,
+			key: primaryName,
+			root: `apps/${primaryName}`,
+			packageName: `@${slug}/${primaryName}`,
 			framework: config.web,
 			port: primaryPort,
 			primary: true,

@@ -5,6 +5,7 @@ import introStep from "../src/steps/intro";
 import outroStep from "../src/steps/outro";
 import summaryStep from "../src/steps/summary";
 import { SKIP } from "../src/steps/types";
+import { webAppLabels } from "../src/utils/web-apps";
 
 const promptMocks = vi.hoisted(() => ({
 	intro: vi.fn<(message: string) => void>(),
@@ -33,6 +34,21 @@ beforeEach(() => {
 });
 
 describe("summary step", () => {
+	it("labels a custom primary name even without secondary apps", () => {
+		expect(webAppLabels({ web: "nextjs" })).toEqual(["Next.js"]);
+		expect(webAppLabels({ web: "nextjs", webName: "vault" })).toEqual([
+			"vault (Next.js)",
+		]);
+
+		expect(
+			webAppLabels({
+				web: "nextjs",
+				webName: "vault",
+				webApps: [{ name: "web", framework: "tanstack-router" }],
+			}),
+		).toEqual(["vault (Next.js)", "web (TanStack Router)"]);
+	});
+
 	it("names the primary and every secondary framework", async () => {
 		await summaryStep.execute(
 			{

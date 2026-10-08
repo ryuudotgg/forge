@@ -136,6 +136,35 @@ describe("generate step", () => {
 		});
 	}, 120_000);
 
+	it.each(["web", "vault"])(
+		"records the primary name %s only when it is not the default",
+		async (webName) => {
+			await withTempDir("generate-web-name", async (directory) => {
+				await generateStep.execute(
+					{
+						name: "Acme",
+						slug: "acme",
+						path: directory,
+						web: "nextjs",
+						webName,
+						packageManager: "pnpm",
+						runtime: "Node.js",
+					},
+					false,
+				);
+
+				const manifest = await readJson(
+					join(directory, ".forge", "manifest.json"),
+				);
+
+				if (webName === "web")
+					expect(manifest).not.toHaveProperty("config.webName");
+				else expect(manifest).toHaveProperty("config.webName", webName);
+			});
+		},
+		120_000,
+	);
+
 	it("plans a full TanStack Start project at framework slot paths", async () => {
 		await withTempDir("generate-tanstack-start", async (directory) => {
 			const result = await generateStep.execute(

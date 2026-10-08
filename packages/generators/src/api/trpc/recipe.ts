@@ -25,7 +25,7 @@ import { tanstackRouterFramework } from "../../frameworks/tanstack-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate, renderHeadersFromRequest } from "../../template";
-import { webAppInstances } from "../../web-apps";
+import { primaryWebAppName, webAppInstances } from "../../web-apps";
 import {
 	trpcRecipeMarkers,
 	trpcTemplateVars,
@@ -320,7 +320,7 @@ function standaloneTrpcClient(config: ForgeConfig) {
 				});
 
 				return leafTextFile(
-					ensuredModuleTarget("web"),
+					ensuredModuleTarget(primaryWebAppName(config)),
 					rendered.destination,
 					rendered.content,
 				);
@@ -336,7 +336,7 @@ function standaloneTrpcWebDependencies(config: ForgeConfig) {
 
 	return [
 		surfaceDependencies(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(primaryWebAppName(config)),
 			"packageJson",
 			trpcWebDependencies(config.slug ?? "my-app"),
 		),

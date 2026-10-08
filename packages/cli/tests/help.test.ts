@@ -57,6 +57,7 @@ describe("printHelp", () => {
 				"        --linter <value>               Biome · Oxc · ESLint + Prettier (soon)",
 				"        --web <value>                  Repeat per app: framework, name=framework, or name=framework+client.",
 				"                                       Next.js · React Router · TanStack Router · TanStack Start",
+				"        --web-name <value>             Name the primary web app. Defaults to web.",
 				"        --desktop <value> (soon)       Electron · Tauri",
 				"        --mobile <value>               Expo · React Native (soon)",
 				"        --backend <value>              Same app · Convex (soon) · Hono · Elysia (soon) · µWebSockets (soon) · Fastify · Express",

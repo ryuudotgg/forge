@@ -11,6 +11,7 @@ import {
 	twoFactorSkippedMessage,
 	twoFactorSkippingMethods,
 	unmetAuthPluginRequirements,
+	webAppNamesIssue,
 	webAppPortIssue,
 } from "@ryuugg/generators";
 import { Effect, Result, Schema } from "effect";
@@ -30,7 +31,8 @@ const authPluginConfigSchema = Schema.Struct({
 
 const webAppsConfigSchema = Schema.Struct({
 	web: Schema.optional(schemas.web),
-	webApps: schemas.webApps,
+	webName: Schema.optional(schemas.webName),
+	webApps: Schema.optional(schemas.webApps),
 });
 
 const checkedConfigSchema = Schema.Struct({
@@ -43,6 +45,7 @@ const checkedConfigSchema = Schema.Struct({
 	mobile: Schema.optional(schemas.mobile),
 	platforms: Schema.optional(schemas.platforms),
 	web: Schema.optional(schemas.web),
+	webName: Schema.optional(schemas.webName),
 	webApps: Schema.optional(schemas.webApps),
 });
 
@@ -98,6 +101,9 @@ export function droppedValueIssue(
 }
 
 export function configIssue(data: Record<string, unknown>): string | undefined {
+	if (data.webName !== undefined && data.web === undefined)
+		return "A web app name needs a web framework.";
+
 	if (data.databaseProvider !== undefined && data.database === undefined)
 		return "A database provider needs a database.";
 
@@ -105,8 +111,11 @@ export function configIssue(data: Record<string, unknown>): string | undefined {
 	if (droppedIssue !== undefined) return droppedIssue;
 
 	if (Schema.is(webAppsConfigSchema)(data)) {
-		if (data.web === undefined && data.webApps.length !== 0)
+		if (data.web === undefined && (data.webApps?.length ?? 0) !== 0)
 			return "Secondary web apps need a web framework.";
+
+		const nameIssue = webAppNamesIssue(data);
+		if (nameIssue !== undefined) return nameIssue;
 
 		const portIssue = webAppPortIssue(data);
 		if (portIssue !== undefined) return portIssue;
