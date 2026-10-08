@@ -33,6 +33,7 @@ import {
 	RegistryLoadError,
 } from "@ryuugg/generators";
 import { Effect, Exit, FileSystem, Result, Schema } from "effect";
+import { webAppConfigShapeIssue } from "../config/schema";
 import {
 	type CliServices,
 	failureFromCause,
@@ -45,6 +46,7 @@ import {
 	isInteractiveLifecycleSession,
 	promptForConflictResolutions,
 } from "./interactive-resolution";
+import { pendingWebAppRenameIssue } from "./web-app-renames";
 
 const ProjectPackageJsonSchema = Schema.fromJsonString(
 	Schema.Struct({
@@ -168,7 +170,6 @@ function shellPath(path: string): string {
 
 function declinedLine(change: DeclinedChange): string {
 	const counts = `${change.path}: ${change.added} ${change.added === 1 ? "line" : "lines"} added and ${change.removed} removed.`;
-
 	return change.diffPath === undefined
 		? `${counts} We couldn't save the full diff.`
 		: `${counts} Run "cat ${shellPath(change.diffPath)}" to see them.`;
@@ -259,6 +260,12 @@ export async function loadManagedProject(
 		process.exit(1);
 	}
 
+	const shapeIssue = webAppConfigShapeIssue(manifest.config);
+	if (shapeIssue !== undefined) {
+		log.error(shapeIssue);
+		process.exit(1);
+	}
+
 	const modules = await runLifecycleEffect(
 		ConfigStore.discover(absoluteProjectRoot),
 		"We couldn't read this project's modules.",
@@ -274,12 +281,27 @@ export async function loadManagedProject(
 		backend === undefined ? manifest.config : { ...manifest.config, backend };
 
 	const normalizedManifest = { ...manifest, config };
-	return {
+	const project = {
 		config,
 		manifest: normalizedManifest,
 		modules,
 		projectRoot: absoluteProjectRoot,
 	};
+
+	return project;
+}
+
+function refusePendingWebAppRenames(project: ManagedProject): void {
+	const issue = pendingWebAppRenameIssue(
+		project.config,
+		project.modules,
+		project.manifest.modules,
+	);
+
+	if (issue === undefined) return;
+
+	log.error(issue);
+	process.exit(1);
 }
 
 export async function hasProjectDevDependency(
@@ -475,6 +497,18 @@ export async function applyInstalledPlan(
 	options: ApplyOptions = {},
 	seed?: InstalledPlanningSeed,
 ) {
+	if (seed?.directoryMoves === undefined) {
+		const manifest = await runCliEffectValue(
+			State.readManifestOrDefault(projectRoot),
+		);
+
+		const modules =
+			seed?.modules ??
+			(await runCliEffectValue(ConfigStore.discover(projectRoot)));
+
+		refusePendingWebAppRenames({ config, manifest, modules, projectRoot });
+	}
+
 	const plan = await planInstalledProject(
 		projectRoot,
 		config,
@@ -496,6 +530,9 @@ export async function applyInstalledPlan(
 	const result = await applyLifecyclePlan(
 		projectRoot,
 		{
+			...(plan.directoryMoves === undefined
+				? {}
+				: { directoryMoves: plan.directoryMoves }),
 			...(plan.generatedRemovals === undefined
 				? {}
 				: { generatedRemovals: plan.generatedRemovals }),

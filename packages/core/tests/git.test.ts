@@ -3,10 +3,12 @@ import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
+import { referenceHits } from "../src/git";
 import {
 	GitError,
 	Subprocess,
 	SubprocessError,
+	type SubprocessInput,
 	trackedFiles,
 	workingTreeStatus,
 } from "../src/index";
@@ -62,6 +64,55 @@ async function repository(root: string) {
 }
 
 describe("project Git boundary", () => {
+	it.each([
+		"./apps/web",
+		"../../apps/web",
+		'"./apps/web/**/*"',
+		"See apps/web.",
+	])("recognizes the relative reference %s", (text) => {
+		expect(
+			referenceHits("README.md", 1, text, [
+				{ previous: "apps/web", next: "apps/vault" },
+			]),
+		).toHaveLength(1);
+	});
+
+	it.each(["apps/webhooks", "@acme/web-admin"])(
+		"does not warn for another token %s",
+		(text) => {
+			expect(
+				referenceHits("README.md", 1, text, [
+					{ previous: "apps/web", next: "apps/vault" },
+					{ previous: "@acme/web", next: "@acme/vault" },
+				]),
+			).toEqual([]);
+		},
+	);
+
+	it("reads tracked lists larger than one megabyte", async () => {
+		await withTempDir("git-large-index", async (root) => {
+			await writeText(join(root, "file.ts"), "export {};\n");
+			const output = `100644 ${"0".repeat(40)} 0\tfile.ts\0`.repeat(20_000);
+			const inputs: SubprocessInput[] = [];
+			const largeIndex = Layer.succeed(Subprocess, {
+				run: (input) => {
+					inputs.push(input);
+					return Effect.succeed({ exitCode: 0, output });
+				},
+			}).pipe(Layer.provideMerge(NodeServices.layer));
+
+			expect(Buffer.byteLength(output)).toBeGreaterThan(1024 * 1024);
+			expect(
+				await Effect.runPromise(
+					trackedFiles(root).pipe(Effect.provide(largeIndex)),
+				),
+			).toEqual(["file.ts"]);
+
+			expect(inputs).toHaveLength(1);
+			expect(inputs[0]?.maxOutputBytes).toBeUndefined();
+		});
+	});
+
 	it("keeps Forge bases byte identical when cloning with autocrlf", async () => {
 		await withTempDir("git-base-autocrlf", async (directory) => {
 			const root = join(directory, "repo");
@@ -238,6 +289,40 @@ describe("project Git boundary", () => {
 
 			expect(await status(project)).toEqual({ _tag: "Clean" });
 			expect(await files(project)).toEqual(["inside.ts"]);
+		});
+	});
+
+	it("excludes only the nested project's manifest and reports both rename paths", async () => {
+		await withTempDir("git-nested-rename", async (root) => {
+			await repository(root);
+
+			const project = join(root, "nested/project");
+			await writeText(join(project, ".forge/manifest.json"), "{}\n");
+			await writeText(join(project, "old name.ts"), "export {};\n");
+			await commit(root);
+
+			await writeText(join(project, ".forge/manifest.json"), "changed\n");
+
+			expect(
+				await Effect.runPromise(
+					workingTreeStatus(project, [".forge/manifest.json"]).pipe(
+						Effect.provide(gitLayer),
+					),
+				),
+			).toEqual({ _tag: "Clean" });
+
+			await git(project, ["mv", "old name.ts", "new name.ts"]);
+			expect(
+				await Effect.runPromise(
+					workingTreeStatus(project, [".forge/manifest.json"]).pipe(
+						Effect.provide(gitLayer),
+					),
+				),
+			).toEqual({
+				_tag: "Dirty",
+				paths: ["new name.ts", "old name.ts"],
+				renamedPaths: ["new name.ts", "old name.ts"],
+			});
 		});
 	});
 });

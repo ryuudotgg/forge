@@ -77,13 +77,12 @@ const refusalCases: RefusalCase[] = [
 		name: "invalid primary name",
 		config: { webName: "Vault" },
 		sentence:
-			'Invalid Configuration:\n  webName: Vault isn\'t a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.\n  webName: Expected undefined, actual "Vault"',
+			"Vault isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
 	},
 	{
 		name: "reserved primary name",
 		config: { webName: "server" },
-		sentence:
-			'Invalid Configuration:\n  webName: server is reserved. Pick another name for this web app.\n  webName: Expected undefined, actual "server"',
+		sentence: "server is reserved, so pick another name for this web app.",
 	},
 	{
 		name: "secondary with the primary name",

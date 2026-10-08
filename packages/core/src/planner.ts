@@ -49,6 +49,13 @@ import {
 	type TargetingPhaseContract,
 } from "./planner-evaluation";
 import {
+	type DirectoryMove,
+	moveModules,
+	previousLockfileAtNextRoots,
+	relocateInstalls,
+	rootChanges,
+} from "./relocation";
+import {
 	type RenderBucket,
 	type RenderedArtifact,
 	Renderer,
@@ -460,6 +467,7 @@ export interface PlannedFile {
 }
 
 export interface ProjectPlan {
+	readonly directoryMoves?: ReadonlyArray<DirectoryMove>;
 	readonly generatedRemovals?: ReadonlyArray<string>;
 	readonly dependencyNames: Readonly<Record<string, ReadonlyArray<string>>>;
 	readonly lockfile: Lockfile;
@@ -547,6 +555,7 @@ interface TemplateAddition {
 }
 
 export interface InstalledPlanningSeed {
+	readonly directoryMoves?: ReadonlyArray<DirectoryMove>;
 	readonly generatedRemovals?: ProjectPlan["generatedRemovals"];
 	readonly additions?: ReadonlyArray<TemplateAddition>;
 	readonly modules: ReadonlyArray<DiscoveredModule>;
@@ -1611,10 +1620,12 @@ const makePlanner = Effect.gen(function* () {
 		intent: PlanIntent<ConfigValue>,
 		seed?: InstalledPlanningSeed,
 	) {
-		const discovered =
+		const discovered = moveModules(
 			seed === undefined
 				? yield* configStore.discover(projectRoot)
-				: seed.modules;
+				: seed.modules,
+			seed?.directoryMoves ?? [],
+		);
 
 		const existingManifest = yield* state.readManifestOrDefault(projectRoot);
 		const existingLockfile = yield* state.readLockfile(projectRoot);
@@ -1980,7 +1991,7 @@ const makePlanner = Effect.gen(function* () {
 		const writes: RenderPlanningPhaseContract["result"]["writes"] =
 			yield* buildWrites(modules, renderedSurfaces, leafFiles);
 
-		const manifest: RenderPlanningPhaseContract["result"]["manifest"] =
+		const builtManifest: RenderPlanningPhaseContract["result"]["manifest"] =
 			yield* buildManifest(
 				intent.config,
 				defaultCreateInstalls.filter((install) => install.targets.length > 0),
@@ -1993,19 +2004,42 @@ const makePlanner = Effect.gen(function* () {
 					: existingManifest.registryDescriptors,
 			);
 
+		const changes = rootChanges(
+			existingManifest.modules,
+			builtManifest.modules,
+		);
+
+		const manifest = {
+			...builtManifest,
+			installs: relocateInstalls(builtManifest.installs, changes),
+		};
+
+		for (const move of seed?.directoryMoves ?? [])
+			if (manifest.modules[move.moduleId]?.root !== move.to)
+				return yield* Effect.die(
+					new Error(`Directory Move Mismatch: ${move.from}`),
+				);
+
 		const lockfile: RenderPlanningPhaseContract["result"]["lockfile"] =
 			yield* buildLockfile(modules, renderedSurfaces, leafFiles);
 
 		const previousPaths = new Set(
-			Object.values(existingLockfile.artifacts).map(
-				(artifact) => artifact.path,
-			),
+			Object.values(
+				previousLockfileAtNextRoots(
+					existingLockfile,
+					existingManifest.modules,
+					manifest.modules,
+				).artifacts,
+			).map((artifact) => artifact.path),
 		);
 
 		const nextPaths = new Set(writes.map((write) => write.path));
 
 		const removals = [...previousPaths].filter((path) => !nextPaths.has(path));
 		return {
+			...(seed?.directoryMoves === undefined
+				? {}
+				: { directoryMoves: seed.directoryMoves }),
 			dependencyNames,
 			lockfile,
 			manifest,

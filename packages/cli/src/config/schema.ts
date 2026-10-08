@@ -64,6 +64,24 @@ export function invalidConfigMessage(
 	return `Invalid Configuration:\n${issues}`;
 }
 
+const webAppConfigShape = Schema.Struct({
+	web: Schema.optional(Schema.String),
+	webName: Schema.optional(Schema.String),
+	webApps: Schema.optional(
+		Schema.Array(
+			Schema.Struct({ name: Schema.String, framework: Schema.String }),
+		),
+	),
+});
+
+export function webAppConfigShapeIssue(
+	config: Record<string, unknown>,
+): string | undefined {
+	return Schema.is(webAppConfigShape)(config)
+		? undefined
+		: malformedConfigIssue(config);
+}
+
 export function malformedConfigIssue(
 	config: Record<string, unknown>,
 ): string | undefined {

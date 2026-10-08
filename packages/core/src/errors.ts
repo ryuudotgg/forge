@@ -662,6 +662,8 @@ export class RendererError extends Schema.TaggedError<RendererError>()(
 }
 
 export const ApplyRefusalReason = Schema.Literals([
+	"move-source-missing",
+	"move-destination-exists",
 	"managed-file-modified",
 	"managed-base-damaged",
 	"unmanaged-file-exists",
@@ -670,6 +672,9 @@ export const ApplyRefusalReason = Schema.Literals([
 export type ApplyRefusalReason = typeof ApplyRefusalReason.Type;
 
 const ApplyErrorReason = Schema.Literals([
+	"move-source-missing",
+	"move-destination-exists",
+	"directory-move-failed",
 	"path-escapes-project-root",
 	"content-hash-failed",
 	"file-read-failed",
@@ -742,6 +747,9 @@ const ApplyErrorFields = Schema.Struct({
 type ApplyErrorPayload = typeof ApplyErrorFields.Type;
 
 const applyRequiredFields = {
+	"move-source-missing": [],
+	"move-destination-exists": [],
+	"directory-move-failed": [],
 	"path-escapes-project-root": [],
 	"content-hash-failed": [],
 	"file-read-failed": [],
@@ -792,6 +800,10 @@ export class ApplyError extends Schema.TaggedError<ApplyError>()(
 }
 
 const applyMessages = {
+	"move-source-missing": () => "Move Source Missing",
+	"move-destination-exists": () => "Move Destination Exists",
+	"directory-move-failed": (error: ApplyError) =>
+		`We couldn't move ${error.path}. Run forge update again. Do not restore the folders with Git.`,
 	"path-escapes-project-root": () => "Path Escapes Project Root",
 	"content-hash-failed": () => "Content Hash Failed",
 	"file-read-failed": () => "File Read Failed",
