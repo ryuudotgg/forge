@@ -7,8 +7,9 @@ import {
 	resolve,
 	sep,
 } from "node:path";
-import { Context, Effect, FileSystem, Layer, Result } from "effect";
+import { Context, Effect, FileSystem, Layer, Result, Schema } from "effect";
 import { CliVersion } from "./cli-version";
+import { ModuleIdSchema } from "./config";
 import { unifiedDiff } from "./diff";
 import { ApplyError, type ApplyRefusalReason, type StateError } from "./errors";
 import { formatJson } from "./format/json";
@@ -22,6 +23,15 @@ import {
 } from "./merge/lines";
 import type { MergeConflictResolution } from "./merge/types";
 import { threeWayMergeYaml } from "./merge/yaml";
+import {
+	artifactFilePath,
+	artifactModuleId,
+	type DirectoryMove,
+	previousLockfileAtNextRoots,
+	relocatePath,
+	rootChanges,
+	sourcePath,
+} from "./relocation";
 import { sortPackageJson } from "./sort/package-json";
 import type {
 	ArtifactBase,
@@ -48,6 +58,7 @@ export interface PlannedWrite {
 }
 
 export interface ApplyPlan {
+	readonly directoryMoves?: ReadonlyArray<DirectoryMove>;
 	readonly baseContents?: Readonly<Record<string, string>>;
 	readonly generatedRemovals?: ReadonlyArray<string>;
 	readonly lockfile: LockfileInput;
@@ -151,6 +162,8 @@ interface PreflightPhaseContract {
 		| "path-escapes-project-root"
 		| "content-hash-failed"
 		| "file-read-failed"
+		| "move-source-missing"
+		| "move-destination-exists"
 		| "json-parse-failed"
 		| "managed-file-modified"
 		| "managed-base-read-failed"
@@ -208,6 +221,7 @@ interface PublicationPhaseContract {
 		| "managed-file-modified"
 		| "managed-base-hash-mismatch"
 		| "atomic-state-backup-failed"
+		| "directory-move-failed"
 		| "file-remove-failed"
 		| "directory-write-failed"
 		| "atomic-file-write-failed"
@@ -324,37 +338,6 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function movedModuleArtifactId(
-	write: PlannedWrite,
-	current: ManifestInput,
-	previous: Manifest,
-): string | undefined {
-	if (write.artifactId === undefined) return undefined;
-
-	const match = /^module:([^:]+):file:(.+)$/.exec(write.artifactId);
-	const moduleId = match?.[1];
-	const artifactPath = match?.[2];
-	if (
-		moduleId === undefined ||
-		artifactPath === undefined ||
-		artifactPath !== write.path
-	)
-		return undefined;
-
-	const previousRoot = previous.modules[moduleId]?.root;
-	const nextRoot = current.modules[moduleId]?.root;
-	if (
-		nextRoot === undefined ||
-		previousRoot === undefined ||
-		nextRoot === previousRoot ||
-		!write.path.startsWith(`${nextRoot}/`)
-	)
-		return undefined;
-
-	const relativePath = write.path.slice(nextRoot.length + 1);
-	return `module:${moduleId}:file:${previousRoot}/${relativePath}`;
-}
-
 export function isUserOwnedEnv(relativePath: string): boolean {
 	return basename(relativePath) === ".env";
 }
@@ -399,6 +382,12 @@ function conflictMessage(conflicts: ReadonlyArray<ApplyConflict>): string {
 }
 
 function refusalSentence(refusal: ApplyRefusal): string {
+	if (refusal.reason === "move-source-missing")
+		return `${refusal.path} is missing or no longer holds the module Forge planned to move.`;
+
+	if (refusal.reason === "move-destination-exists")
+		return `${refusal.path} already exists. Choose an unoccupied destination.`;
+
 	if (refusal.reason === "managed-base-damaged")
 		return `${refusal.path}'s stored base under .forge/bases is missing or no longer matches its hash.`;
 
@@ -440,6 +429,8 @@ export function formatApplyError(
 	if (
 		error.reason === "managed-file-modified" ||
 		error.reason === "managed-base-damaged" ||
+		error.reason === "move-source-missing" ||
+		error.reason === "move-destination-exists" ||
 		error.reason === "unmanaged-file-exists"
 	) {
 		const operation =
@@ -455,7 +446,11 @@ export function formatApplyError(
 			reason: error.reason,
 			operation,
 			path: error.path,
-			resolvedBy: operation === "removal" ? ["accept-forge"] : resolutionFlags,
+			resolvedBy: error.reason.startsWith("move-")
+				? []
+				: operation === "removal"
+					? ["accept-forge"]
+					: resolutionFlags,
 		};
 
 		classification =
@@ -532,9 +527,23 @@ export function formatApplyError(
 				? `, then run again with ${listOr.format(suggested.map((flag) => `--${flag}`))}.`
 				: ".";
 
-		guidance.push(
-			`Neither flag resolves ${listAnd.format(paths)}, so move ${paths.length === 1 ? "it" : "them"} out of the way first${rerun}`,
+		const missingSources = refusals
+			.filter((refusal) => refusal.reason === "move-source-missing")
+			.map((refusal) => refusal.path);
+
+		if (missingSources.length > 0)
+			guidance.push(
+				`Restore the expected modules at ${listAnd.format(missingSources)} before retrying.`,
+			);
+
+		const occupiedPaths = paths.filter(
+			(path) => !missingSources.includes(path),
 		);
+
+		if (occupiedPaths.length > 0)
+			guidance.push(
+				`Neither flag resolves ${listAnd.format(occupiedPaths)}, so move ${occupiedPaths.length === 1 ? "it" : "them"} out of the way first${rerun}`,
+			);
 	} else if (overall.length === 2)
 		guidance.push(`Run again with ${keepClause}, or ${acceptClause}.`);
 	else if (overall.includes("keep-user"))
@@ -909,7 +918,19 @@ const makeApply = Effect.gen(function* () {
 		const previousManifest = yield* State.readManifestOrDefault(projectRoot);
 		yield* State.refuseOlderCli(projectRoot, previousManifest);
 
-		const previousArtifactIndex = buildArtifactIndex(previousLockfile);
+		const changes = rootChanges(
+			previousManifest.modules,
+			plan.manifest.modules,
+		);
+
+		const previousArtifactIndex = buildArtifactIndex(
+			previousLockfileAtNextRoots(
+				previousLockfile,
+				previousManifest.modules,
+				plan.manifest.modules,
+			),
+		);
+
 		const previousBaseHashes = new Set(
 			Object.values(previousLockfile.artifacts).flatMap((artifact) =>
 				artifact.base === undefined ? [] : [artifact.base.hash],
@@ -933,6 +954,7 @@ const makeApply = Effect.gen(function* () {
 		const declined: DeclinedChange[] = [];
 		const dropped: DroppedEdit[] = [];
 		const recordDeclined = (path: string, before: string, after: string) => {
+			path = relocatePath(path, pendingChanges);
 			const diff = unifiedDiff(path, before, after);
 			if (diff === "") return;
 
@@ -950,7 +972,112 @@ const makeApply = Effect.gen(function* () {
 
 		const conflicts: ApplyConflict[] = [];
 		const refusals: ApplyRefusal[] = [];
+		const pending: DirectoryMove[] = [];
+		const pendingChanges = new Map<
+			string,
+			{ readonly from: string; readonly to: string }
+		>();
+
+		const occupied = (path: string) =>
+			fs.readDirectory(dirname(path)).pipe(
+				Effect.map((entries) => entries.includes(basename(path))),
+				Effect.catchTag("PlatformError", (cause) =>
+					cause.reason._tag === "NotFound"
+						? Effect.succeed(false)
+						: Effect.fail(
+								new ApplyError({ path, reason: "file-read-failed", cause }),
+							),
+				),
+			);
+
+		const holdsModule = (path: string, moduleId: string) =>
+			Effect.gen(function* () {
+				const info = yield* fs.stat(path);
+				if (info.type !== "Directory") return false;
+
+				const raw = yield* fs.readFileString(resolve(path, "forge.json"));
+				const marker = yield* Schema.decodeEffect(
+					Schema.fromJsonString(Schema.Struct({ id: ModuleIdSchema })),
+				)(raw);
+
+				return marker.id === moduleId;
+			}).pipe(Effect.orElseSucceed(() => false));
+
+		for (const move of plan.directoryMoves ?? []) {
+			const change = changes.get(move.moduleId);
+			if (change?.from !== move.from || change.to !== move.to)
+				return yield* Effect.die(
+					new Error(`Directory Move Mismatch: ${move.from}`),
+				);
+
+			const from = yield* ensureContained(projectRoot, move.from);
+			const to = yield* ensureContained(projectRoot, move.to);
+			const sourceExists = yield* occupied(from);
+			const destinationExists = yield* occupied(to);
+			if (
+				!sourceExists &&
+				destinationExists &&
+				(yield* holdsModule(to, move.moduleId))
+			)
+				continue;
+
+			if (destinationExists) {
+				refusals.push({
+					path: move.to,
+					reason: "move-destination-exists",
+					operation: "write",
+					resolvedBy: [],
+				});
+
+				continue;
+			}
+
+			if (!sourceExists || !(yield* holdsModule(from, move.moduleId))) {
+				refusals.push({
+					path: move.from,
+					reason: "move-source-missing",
+					operation: "write",
+					resolvedBy: [],
+				});
+
+				continue;
+			}
+
+			pending.push(move);
+			pendingChanges.set(move.moduleId, move);
+		}
+
+		if (refusals.length > 0)
+			return yield* new ApplyError({
+				path: "directories",
+				reason: "preflight-failed",
+				detail: preflightMessage(refusals, []),
+				preflight: {
+					refusals,
+					hasConflicts: false,
+					hasManagedRefusals: false,
+					hasUnmanagedRefusals: true,
+					hasManagedRemovals: false,
+					hasUnmanagedRemovals: false,
+				},
+			});
+
 		const generatedRemovals = new Set(plan.generatedRemovals ?? []);
+
+		for (const path of [
+			...plan.writes.map((write) => write.path),
+			...plan.removals,
+		]) {
+			const move = pending.find(
+				(move) => path === move.from || path.startsWith(`${move.from}/`),
+			);
+
+			if (move !== undefined)
+				return yield* Effect.die(
+					new Error(`Directory Move Source Reused: ${move.from}`),
+				);
+		}
+
 		const removalRootRelocations = Object.entries(
 			plan.removalRootRelocations ?? {},
 		).sort(([leftRoot], [rightRoot]) => rightRoot.length - leftRoot.length);
@@ -960,17 +1087,25 @@ const makeApply = Effect.gen(function* () {
 				plannedPath.startsWith(`${previousRoot}/`),
 			);
 
-			const relativePath =
+			const relativePath = sourcePath(
 				relocation === undefined
 					? plannedPath
-					: `${relocation[1]}${plannedPath.slice(relocation[0].length)}`;
+					: `${relocation[1]}${plannedPath.slice(relocation[0].length)}`,
+				pending,
+			);
 
 			const fullPath = yield* ensureContained(projectRoot, relativePath);
 			if (isUserOwnedEnv(relativePath)) continue;
 			if (!(yield* pathExists(fullPath, relativePath))) continue;
 
 			const inRemovedRoot = isInRemovedRoot(relativePath);
-			const previousArtifact = previousArtifacts.get(plannedPath);
+			const indexedArtifact = previousArtifacts.get(plannedPath);
+
+			const previousArtifact =
+				indexedArtifact === undefined
+					? undefined
+					: { ...indexedArtifact, path: relativePath };
+
 			if (previousArtifact === undefined) {
 				if (policyFor(relativePath) === "accept-forge") {
 					removalsToApply.push(relativePath);
@@ -978,7 +1113,7 @@ const makeApply = Effect.gen(function* () {
 				}
 
 				if (policyFor(relativePath) === "keep-user") {
-					retained.push(relativePath);
+					retained.push(relocatePath(relativePath, pendingChanges));
 					continue;
 				}
 
@@ -1044,7 +1179,11 @@ const makeApply = Effect.gen(function* () {
 					}
 				}
 
-				dropped.push({ path: relativePath, lines });
+				dropped.push({
+					path: relocatePath(relativePath, pendingChanges),
+					lines,
+				});
+
 				continue;
 			}
 
@@ -1082,7 +1221,8 @@ const makeApply = Effect.gen(function* () {
 			const fileResolution = resolutionFor(relativePath);
 			if (previousArtifact.base?.origin === "adopted") {
 				if (fileResolution === "forge") removalsToApply.push(relativePath);
-				else if (inRemovedRoot) retained.push(relativePath);
+				else if (inRemovedRoot)
+					retained.push(relocatePath(relativePath, pendingChanges));
 				else
 					refusals.push({
 						path: relativePath,
@@ -1109,7 +1249,7 @@ const makeApply = Effect.gen(function* () {
 			}
 
 			if (inRemovedRoot) {
-				retained.push(relativePath);
+				retained.push(relocatePath(relativePath, pendingChanges));
 				continue;
 			}
 
@@ -1136,7 +1276,8 @@ const makeApply = Effect.gen(function* () {
 			);
 
 			if (base === undefined) {
-				if (fileResolution === "user") retained.push(relativePath);
+				if (fileResolution === "user")
+					retained.push(relocatePath(relativePath, pendingChanges));
 				else
 					refusals.push({
 						reason: "managed-base-damaged",
@@ -1183,7 +1324,12 @@ const makeApply = Effect.gen(function* () {
 		const policyReadHashes: PreflightPhaseContract["result"]["policyReadHashes"] =
 			new Map();
 
-		for (const file of plan.writes) {
+		for (const plannedFile of plan.writes) {
+			const file: PlannedWrite = {
+				...plannedFile,
+				path: sourcePath(plannedFile.path, pending),
+			};
+
 			const fullPath = yield* ensureContained(projectRoot, file.path);
 			if (!(yield* pathExists(fullPath, file.path))) {
 				writesToApply.push(file);
@@ -1200,27 +1346,40 @@ const makeApply = Effect.gen(function* () {
 			const filePolicy = policyFor(file.path);
 			const fileResolution = resolutionFor(file.path);
 
-			const previousArtifact = previousArtifacts.get(file.path);
-			const renamedArtifactId = movedModuleArtifactId(
-				file,
-				plan.manifest,
-				previousManifest,
-			);
+			const indexedArtifact = previousArtifacts.get(plannedFile.path);
+			const artifactPath = artifactFilePath(file.artifactId ?? "");
+			const moduleId = artifactModuleId(file.artifactId ?? "");
+			const moduleRoot =
+				moduleId === undefined
+					? undefined
+					: plan.manifest.modules[moduleId]?.root;
 
-			const movedArtifact =
-				(file.artifactId === undefined
+			const mismatchedPath =
+				moduleRoot !== undefined &&
+				artifactPath?.startsWith(`${moduleRoot}/`) === true &&
+				artifactPath !== plannedFile.path;
+
+			const previousArtifact =
+				mismatchedPath || indexedArtifact === undefined
 					? undefined
-					: previousArtifactsById.get(file.artifactId)) ??
-				(renamedArtifactId === undefined
+					: { ...indexedArtifact, path: file.path };
+
+			const artifactById =
+				mismatchedPath || file.artifactId === undefined
 					? undefined
-					: previousArtifactsById.get(renamedArtifactId));
+					: previousArtifactsById.get(file.artifactId);
 
 			const nextArtifact =
 				file.artifactId === undefined
 					? undefined
 					: committedArtifacts[file.artifactId];
 
-			const managedArtifact = previousArtifact ?? movedArtifact;
+			const managedArtifact =
+				previousArtifact ??
+				(artifactById === undefined
+					? undefined
+					: { ...artifactById, path: file.path });
+
 			if (file.preserveExisting === true) {
 				if (file.artifactId === undefined) continue;
 
@@ -1237,7 +1396,7 @@ const makeApply = Effect.gen(function* () {
 					definitionIds: managedArtifact.definitionIds,
 					hash: managedArtifact.hash,
 					kind: managedArtifact.kind,
-					path: file.path,
+					path: plannedFile.path,
 				};
 
 				if (managedArtifact.base !== undefined)
@@ -1253,9 +1412,8 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			const isModuleMarker = /^module:[^:]+:file:forge\.json$/.test(
-				file.artifactId ?? "",
-			);
+			const isModuleMarker =
+				artifactFilePath(file.artifactId ?? "") === "forge.json";
 
 			const previousBase = managedArtifact?.base;
 			const nextBase = nextArtifact?.base;
@@ -1981,7 +2139,24 @@ const makeApply = Effect.gen(function* () {
 					),
 				);
 
-			for (const relativePath of removalsToApply) {
+			for (const move of pending) {
+				const from = yield* ensureContained(projectRoot, move.from);
+				const to = yield* ensureContained(projectRoot, move.to);
+				yield* fs.makeDirectory(dirname(to), { recursive: true }).pipe(
+					Effect.andThen(fs.rename(from, to)),
+					Effect.mapError(
+						(cause) =>
+							new ApplyError({
+								path: move.from,
+								reason: "directory-move-failed",
+								cause,
+							}),
+					),
+				);
+			}
+
+			for (const source of removalsToApply) {
+				const relativePath = relocatePath(source, pendingChanges);
 				const fullPath = yield* ensureContained(projectRoot, relativePath);
 				if (!(yield* pathExists(fullPath, relativePath))) continue;
 
@@ -1998,7 +2173,11 @@ const makeApply = Effect.gen(function* () {
 			}
 
 			for (const staged of stagedWrites) {
-				const fullPath = yield* ensureContained(projectRoot, staged.path);
+				const fullPath = yield* ensureContained(
+					projectRoot,
+					relocatePath(staged.path, pendingChanges),
+				);
+
 				yield* fs.makeDirectory(dirname(fullPath), { recursive: true }).pipe(
 					Effect.mapError(
 						(cause) =>
@@ -2135,7 +2314,10 @@ const makeApply = Effect.gen(function* () {
 			.pipe(Effect.orElseSucceed(() => null));
 
 		for (const relativePath of realRoot === null ? [] : removalsToApply) {
-			let directory = dirname(resolve(projectRoot, relativePath));
+			let directory = dirname(
+				resolve(projectRoot, relocatePath(relativePath, pendingChanges)),
+			);
+
 			while (
 				directory !== rootPath &&
 				directory.startsWith(`${rootPath}${sep}`)

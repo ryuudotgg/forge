@@ -26,6 +26,7 @@ import {
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "../src/commands/lifecycle";
+import { malformedConfigIssue } from "../src/config/schema";
 import {
 	failingAddonRegistry,
 	planningFailures,
@@ -668,6 +669,48 @@ describe("lifecycle", () => {
 			}
 		});
 	});
+
+	it.each(
+		["add", "remove", "switch", "auth-choice", "init", "update"].flatMap(
+			(command) =>
+				["site", {}, [null]].map((webApps) => ({ command, webApps })),
+		),
+	)(
+		"refuses malformed webApps in $command before discovery or pairing",
+		async ({ command, webApps }) => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			const config = { web: "nextjs", webApps };
+
+			try {
+				await withTempDir("lifecycle-malformed-apps", async (directory) => {
+					await writeJson(join(directory, ".forge/lock.json"), {
+						schemaVersion: 1,
+						artifacts: {},
+					});
+
+					await writeJson(join(directory, ".forge/manifest.json"), {
+						schemaVersion: 1,
+						config,
+						installs: [],
+						modules: {},
+					});
+
+					await expect(loadManagedProject(directory, command)).rejects.toThrow(
+						"exit:1",
+					);
+
+					expect(promptMocks.logError).toHaveBeenCalledWith(
+						malformedConfigIssue(config),
+					);
+				});
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
 
 	it("exits when the manifest config is empty", async () => {
 		const exit = vi

@@ -186,8 +186,14 @@ export {
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
-export type { WorkingTreeStatus } from "./git";
-export { GitError, trackedFiles, workingTreeStatus } from "./git";
+export type { ReferenceHit, ReferenceToken, WorkingTreeStatus } from "./git";
+export {
+	GitError,
+	referenceHits,
+	trackedFiles,
+	trackedReferenceHits,
+	workingTreeStatus,
+} from "./git";
 export { hashContentHex } from "./hash";
 export type { FormattedSchemaIssue } from "./json";
 export {
@@ -230,6 +236,8 @@ export type {
 	ProjectPlan,
 } from "./planner";
 export { Planner } from "./planner";
+export type { DirectoryMove } from "./relocation";
+export { moveModules } from "./relocation";
 export type {
 	ModuleBucketTarget,
 	ProjectBucketTarget,
