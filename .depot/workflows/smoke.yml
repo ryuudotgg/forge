@@ -147,9 +147,56 @@ jobs:
         env:
           FORGE_SMOKE: "1"
 
+  email-upgrade:
+    name: Email Starter Upgrade
+    needs: [changes]
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.changes.result == 'failure' || needs.changes.outputs.relevant == 'true') }}
+    runs-on: depot-ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Build Current CLI
+        run: pnpm build --filter=@ryuugg/forge
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: baseline
+          ref: cd5d3788329c6c8b885c1c4f8ff05ef78ad12081
+
+      - name: Build Baseline CLI in Isolation
+        working-directory: baseline
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build --filter=./packages/cli
+
+      - name: Verify Email Starter Upgrade
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install-email.smoke.test.ts -t "upgrades baseline email starters to the current design" --reporter=default --reporter=json --outputFile.json=.cache/email-upgrade.json
+        env:
+          FORGE_SMOKE: "1"
+          FORGE_SMOKE_BASELINE_CLI: ${{ github.workspace }}/baseline/packages/cli/dist/index.mjs
+
+      - name: Verify Email Starter Upgrade Ran
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const report = JSON.parse(readFileSync("tests/scenarios/.cache/email-upgrade.json", "utf8"));
+
+          if (!(report.numPassedTests >= 1 && report.numFailedTests === 0)) {
+            throw new Error("Email Starter Upgrade Did Not Run");
+          }
+          NODE
+
   gate:
     name: Install Smoke Gate
-    needs: [smoke]
+    needs: [smoke, email-upgrade]
     if: ${{ always() }}
     runs-on: depot-ubuntu-latest
     permissions: {}
@@ -161,5 +208,11 @@ jobs:
             echo "Install Smoke Result: $SMOKE_RESULT."
             exit 1
           fi
+
+          if [[ "$EMAIL_UPGRADE_RESULT" == "failure" || "$EMAIL_UPGRADE_RESULT" == "cancelled" ]]; then
+            echo "Email Starter Upgrade Result: $EMAIL_UPGRADE_RESULT."
+            exit 1
+          fi
         env:
           SMOKE_RESULT: ${{ needs.smoke.result }}
+          EMAIL_UPGRADE_RESULT: ${{ needs.email-upgrade.result }}

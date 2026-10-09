@@ -197,7 +197,7 @@ describe("email addon", () => {
 interface EmailMessage {
 	to: string;
 	template: string;
-	props: Record<string, string>;
+	props: Record<string, string | number>;
 }
 
 const message: EmailMessage = {
@@ -466,6 +466,20 @@ function templatePaths(config: ForgeConfig) {
 		.filter((path) => path.startsWith("src/templates/"));
 }
 
+function expectDarkClasses(html: string) {
+	const classes = [...html.matchAll(/class="([^"]*)"/g)].flatMap((match) =>
+		(match[1] ?? "").split(/\s+/).filter(Boolean),
+	);
+
+	expect(
+		classes.every(
+			(token) =>
+				token.startsWith("dark_") ||
+				/^max-sm_(?:px-2|h-\d+px|w-\d+px)$/.test(token),
+		),
+	).toBe(true);
+}
+
 describe("email templates", () => {
 	it.each(providers)(
 		"plans React Email runtime imports for $id",
@@ -497,7 +511,11 @@ describe("email templates", () => {
 				expect(
 					plan.writes.find((write) => write.path === path)?.content,
 					path,
-				).toContain('from "react-email"');
+				).toContain(
+					path.endsWith("magic-link.tsx")
+						? 'from "../layout"'
+						: 'from "react-email"',
+				);
 
 			const packageFile = plan.writes.find(
 				(write) => write.path === "packages/email/package.json",
@@ -546,11 +564,76 @@ describe("email templates", () => {
 					throw new Error(`Missing Leaf File: ${path}`);
 
 				expect(file.update, path).toBe(
-					path === "src/custom.ts" ? "write-once" : undefined,
+					path === "src/custom.ts" ? "write-once" : "starter",
 				);
 
 				expect(file.generated, path).toBeUndefined();
 			}
+		},
+	);
+
+	it("plans template design and its test as starters but keeps send tests managed", async () => {
+		const plan = await plannedProject({
+			...allMessages,
+			addons: ["vitest"],
+			backend: "self",
+			database: "postgresql",
+			orm: "drizzle",
+			packageManager: "pnpm",
+			platforms: ["web"],
+			web: "nextjs",
+		});
+
+		for (const path of [
+			"packages/email/src/layout.tsx",
+			...templatePaths(allMessages).map((path) => `packages/email/${path}`),
+			"packages/email/src/verification-code.test.ts",
+		]) {
+			expect(
+				plan.writes.find((write) => write.path === path),
+				path,
+			).toMatchObject({ update: "starter" });
+
+			expect(
+				Object.values(plan.lockfile.artifacts).find(
+					(artifact) => artifact.path === path,
+				),
+				path,
+			).toMatchObject({ update: "starter" });
+		}
+
+		expect(
+			plan.writes.find(
+				(write) => write.path === "packages/email/src/index.test.ts",
+			)?.update,
+		).toBeUndefined();
+	});
+
+	it.each([
+		{ methods: ["email-otp"], addons: ["vitest"], enabled: true },
+		{ methods: ["email-otp"], addons: [], enabled: false },
+		{ methods: ["magic-link"], addons: ["vitest"], enabled: false },
+	] satisfies ReadonlyArray<{
+		methods: NonNullable<ForgeConfig["authMethods"]>;
+		addons: NonNullable<ForgeConfig["addons"]>;
+		enabled: boolean;
+	}>)(
+		"generates the verification design test only with OTP and Vitest: $enabled",
+		({ methods, addons, enabled }) => {
+			const contributions = contributionsOf({
+				...allMessages,
+				authMethods: methods,
+				addons,
+				web: "nextjs",
+			});
+
+			expect(
+				contributions.some(
+					(contribution) =>
+						contribution._tag === "LeafTextFileContribution" &&
+						contribution.path === "src/verification-code.test.ts",
+				),
+			).toBe(enabled);
 		},
 	);
 
@@ -734,7 +817,11 @@ describe("email templates", () => {
 				message: {
 					to: "reader@example.com",
 					template: "verificationCode",
-					props: { code: "123456", type: "forget-password" },
+					props: {
+						code: "123456",
+						type: "forget-password",
+						expiresInMinutes: 5,
+					},
 				},
 				subject: "Your password reset code",
 				expected: "123456",
@@ -763,18 +850,141 @@ describe("email templates", () => {
 				subject: "Ada Inviter invited you to Lumen Works",
 				expected: "inv_123",
 			},
+			{
+				message: {
+					to: "invitee@example.com",
+					template: "invitation",
+					props: {
+						email: "invitee@example.com",
+						inviterName: "Ada Inviter",
+						inviterEmail: "ada@example.com",
+						organizationName: "Lumen Works",
+						invitationId: "inv_123",
+						url: "https://app.example.com/accept-invitation/inv_123",
+					},
+				},
+				subject: "Ada Inviter invited you to Lumen Works",
+				expected: "https://app.example.com/accept-invitation/inv_123",
+			},
 		];
 
 		for (const { message, subject, expected } of cases) {
 			const rendered = await messages.renderMessage(message);
 
 			expect(rendered.subject).toBe(subject);
-			expect(rendered.html).toContain("font-weight:600");
-			expect(rendered.html).not.toContain("class=");
+			expect(rendered.html).toContain("font-weight:700");
+			expectDarkClasses(rendered.html);
 			expect(rendered.html).not.toMatch(/<link|<img|@import/);
 			expect(rendered.text).toContain(expected);
+
+			if (typeof message.props.url === "string") {
+				expect(rendered.html).toContain(
+					`href="${message.props.url.replaceAll("&", "&amp;")}"`,
+				);
+
+				expect(rendered.html).toContain("background-color:rgb(24,24,27)");
+				expect(rendered.html).toContain(
+					message.template === "magicLink"
+						? ">Sign in<"
+						: ">Accept invitation<",
+				);
+			}
 		}
 	}, 30_000);
+
+	it.each([
+		{ code: "1234", expiresInMinutes: 1 },
+		{ code: "123456", expiresInMinutes: 5 },
+		{ code: "12345678", expiresInMinutes: 10 },
+	])(
+		"renders one box per digit for $code and its configured expiry",
+		async ({ code, expiresInMinutes }) => {
+			const directory = await writeRenderSources(allMessages);
+			const messages: RenderedMessages = await import(
+				join(directory, "src/messages.ts")
+			);
+
+			const rendered = await messages.renderMessage({
+				to: "reader@example.com",
+				template: "verificationCode",
+				props: { code, type: "email-verification", expiresInMinutes },
+			});
+
+			const cells = [...rendered.html.matchAll(/<td\b([^>]*)>([^<]*)<\/td>/g)];
+			const boxes = cells.filter((cell) => /^\d$/.test(cell[2] ?? ""));
+			const spacers = cells.filter((cell) => cell[2] === "");
+
+			expect(boxes).toHaveLength(code.length);
+
+			for (const box of boxes) {
+				expect(box[1]).toContain("width:48px");
+				expect(box[1]).toContain("height:64px");
+
+				expect(box[1]).toMatch(/border(?:-width)?:1px/);
+				expect(box[1]).toMatch(/border(?:-style)?:[^";]*solid/);
+				expect(box[1]).toContain("border-radius:8px");
+				expect(box[1]).toContain("background-color:rgb(250,250,250)");
+			}
+
+			expect(spacers).toHaveLength(code.length - 1);
+
+			for (const [index, spacer] of spacers.entries())
+				expect(spacer[1]).toContain(
+					`width:${index === Math.ceil(code.length / 2) - 1 ? 24 : 8}px`,
+				);
+
+			expect(cells.map((cell) => cell[2]).join("")).toBe(code);
+			expect(rendered.html).toContain(
+				`width:${code.length * 48 + (code.length - 2) * 8 + 24}px`,
+			);
+
+			expect(rendered.html).toContain(`Verify your email: ${code}`);
+			expect(rendered.html).toContain("max-width:600px");
+			expect(rendered.html).toContain("prefers-color-scheme:dark");
+			expectDarkClasses(rendered.html);
+
+			const head = rendered.html.match(/<head>[\s\S]*?<\/head>/)?.[0];
+			const narrow =
+				code.length > 6
+					? { width: 32, height: 48, spacer: 4, gap: 12 }
+					: { width: 40, height: 56, spacer: 6, gap: 16 };
+
+			const narrowRowWidth =
+				code.length * narrow.width +
+				(code.length - 2) * narrow.spacer +
+				narrow.gap;
+
+			expect(narrowRowWidth + 16).toBeLessThanOrEqual(320);
+
+			for (const width of [
+				narrow.spacer,
+				narrow.gap,
+				narrow.width,
+				narrowRowWidth,
+			])
+				expect(head).toContain(
+					`@media (max-width:40rem){.max-sm_w-${width}px{width:${width}px!important}}`,
+				);
+
+			expect(head).toContain(
+				`@media (max-width:40rem){.max-sm_h-${narrow.height}px{height:${narrow.height}px!important}}`,
+			);
+
+			expect(head).toContain(
+				"@media (max-width:40rem){.max-sm_px-2{padding-right:0.5rem!important;padding-left:0.5rem!important}}",
+			);
+
+			expect(rendered.html).toContain(
+				'name="color-scheme" content="light dark"',
+			);
+
+			expect(rendered.text).toContain(code);
+			expect(rendered.text).toContain(
+				`This code expires in ${expiresInMinutes} ${expiresInMinutes === 1 ? "minute" : "minutes"}.`,
+			);
+		},
+		30_000,
+	);
 
 	it("sends a project's own template registered outside the managed files", async () => {
 		const directory = await writeRenderSources({ emailProvider: "resend" });
@@ -811,7 +1021,7 @@ describe("email templates", () => {
 
 		expect(rendered.subject).toBe("Welcome");
 		expect(rendered.text).toContain("Hi Ada");
-		expect(rendered.html).not.toContain("class=");
+		expectDarkClasses(rendered.html);
 	}, 30_000);
 
 	it("tests each template against the mocked provider with Vitest", () => {

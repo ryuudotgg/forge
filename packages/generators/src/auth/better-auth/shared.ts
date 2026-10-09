@@ -24,6 +24,7 @@ import {
 } from "../methods";
 import {
 	authPluginBindings,
+	authPluginConstants,
 	authPluginEnvEntries,
 	authPluginImports,
 	authPluginTables,
@@ -306,6 +307,9 @@ export function betterAuthRecipeVars(
 			pluginImports.filter(({ module }) => module.startsWith(".")),
 		),
 		PLUGINS: plugins.length === 0 ? "" : `${pluginsProperty(plugins)}\n\n`,
+		PLUGIN_CONSTANTS: authPluginConstants(config)
+			.map((constant) => `${constant}\n`)
+			.join(""),
 		TRUSTED_ORIGINS:
 			trustedOrigins.length === 0
 				? ""

@@ -101,7 +101,11 @@ const messageTemplates = [
 	{
 		name: "verificationCode",
 		file: "verification-code",
-		sample: ['      code: "123456",', '      type: "forget-password",'],
+		sample: [
+			'      code: "123456",',
+			'      type: "forget-password",',
+			"      expiresInMinutes: 5,",
+		],
 		expected: "123456",
 		enabled: (config: ForgeConfig) =>
 			resolveAuthMethods(config).includes("email-otp"),
@@ -231,6 +235,7 @@ const email = defineAddon<ForgeConfig, "email">({
 				ensuredModuleTarget("email"),
 				"src/layout.tsx",
 				readTemplate("email/packages/email/src/layout.tsx"),
+				{ update: "starter" },
 			),
 			...emailTemplates(config).map((template) =>
 				leafTextFile(
@@ -239,6 +244,7 @@ const email = defineAddon<ForgeConfig, "email">({
 					readTemplate(
 						`email/packages/email/src/templates/${template.file}.tsx`,
 					),
+					{ update: "starter" },
 				),
 			),
 			...(emailTemplates(config).length > 0
@@ -263,6 +269,21 @@ const email = defineAddon<ForgeConfig, "email">({
 							ensuredModuleTarget("email"),
 							"src/index.test.ts",
 							testSource(config, config.emailProvider),
+						),
+					]
+				: []),
+			...(vitest.when(config) &&
+			emailTemplates(config).some(
+				(template) => template.name === "verificationCode",
+			)
+				? [
+						leafTextFile(
+							ensuredModuleTarget("email"),
+							"src/verification-code.test.ts",
+							readTemplate(
+								"email/packages/email/src/verification-code.test.ts",
+							),
+							{ update: "starter" },
 						),
 					]
 				: []),

@@ -30,8 +30,8 @@ describe("sendEmail", () => {
       expect(sent).toHaveLength(1);
 
       const [email] = sent;
+
       expect(email?.html).toMatch(/style="[^"]+"/);
-      expect(email?.html).not.toContain("class=");
       expect(email?.text).toContain(expected);
     },
   );

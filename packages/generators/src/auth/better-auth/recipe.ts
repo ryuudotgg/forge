@@ -41,6 +41,7 @@ const betterAuthMarkers = {
 	DATASOURCE_PROVIDER: marker.required,
 	DRIZZLE_PROVIDER: marker.required,
 	PLUGIN_IMPORTS: marker.toggleLine("// __PLUGIN_IMPORTS__\n"),
+	PLUGIN_CONSTANTS: marker.toggleLine("__PLUGIN_CONSTANTS__\n"),
 	SCOPED_PLUGIN_IMPORTS: marker.toggleLine("__SCOPED_PLUGIN_IMPORTS__\n"),
 	RELATIVE_PLUGIN_IMPORTS: marker.toggleLine("__RELATIVE_PLUGIN_IMPORTS__\n"),
 	PLUGINS: marker.toggleLine("  // __PLUGINS__\n\n"),

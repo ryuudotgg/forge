@@ -12,6 +12,7 @@ __RELATIVE_PLUGIN_IMPORTS__
 const SESSION_EXPIRES_IN = 60 * 60 * 24 * 7; // 7 days
 const SESSION_UPDATE_AGE = 60 * 60 * 24; // 1 day
 const SESSION_CACHE_MAX_AGE = 60 * 15; // 15 minutes
+__PLUGIN_CONSTANTS__
 
 const authSecret = getAuthSecret();
 // __SOCIAL_DECLARATION__
