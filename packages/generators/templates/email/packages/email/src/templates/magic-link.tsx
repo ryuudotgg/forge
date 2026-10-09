@@ -1,6 +1,5 @@
 /** @jsxRuntime automatic */
-import { Button, Heading, Text } from "react-email";
-import { Layout } from "../layout";
+import { ActionButton, Layout } from "../layout";
 
 interface MagicLinkProps {
   url: string;
@@ -12,20 +11,13 @@ export function subject() {
 
 export default function MagicLink({ url }: MagicLinkProps) {
   return (
-    <Layout preview="Your sign in link">
-      <Heading className="text-xl font-semibold">Sign in</Heading>
-      <Text className="text-sm text-zinc-600">
-        Use the button below to sign in. The link works once.
-      </Text>
-      <Button
-        href={url}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-      >
-        Sign in
-      </Button>
-      <Text className="text-xs text-zinc-500">
-        If you didn't request this link, you can ignore this email.
-      </Text>
+    <Layout
+      preview="Your sign in link"
+      heading="Sign in"
+      subtitle="Use the button below to sign in. The link works once."
+      footnote="If you didn't request this link, you can ignore this email."
+    >
+      <ActionButton href={url}>Sign in</ActionButton>
     </Layout>
   );
 }

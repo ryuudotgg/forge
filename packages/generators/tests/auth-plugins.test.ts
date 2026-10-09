@@ -11,6 +11,7 @@ import {
 } from "../src";
 import {
 	authPluginBindings,
+	authPluginConstants,
 	authPluginEnvEntries,
 	authPluginFields,
 	authPluginImports,
@@ -31,6 +32,33 @@ const baseConfig: ForgeConfig = {
 	slug: "acme",
 	web: "nextjs",
 };
+
+it("collects OTP constants from active methods rather than selected plugins", () => {
+	expect(
+		authPluginConstants({
+			...baseConfig,
+			authMethods: ["email-otp"],
+			emailProvider: "resend",
+		}),
+	).toEqual(["const OTP_EXPIRES_IN = 60 * 5; // 5 minutes"]);
+
+	expect(
+		authPluginConstants({
+			...baseConfig,
+			authMethods: ["magic-link"],
+			emailProvider: "resend",
+			authPlugins: ["organization"],
+		}),
+	).toEqual([]);
+
+	expect(
+		authPluginConstants({
+			...baseConfig,
+			authentication: undefined,
+			authMethods: ["email-otp"],
+		}),
+	).toEqual([]);
+});
 
 const selections: ReadonlyArray<{
 	name: string;
@@ -700,6 +728,7 @@ describe("auth plugins", () => {
 				message: "Username needs this sign-in method: Email and password.",
 			}),
 		);
+
 		expect(() => resolveAuthPlugins(config)).toThrow(Refusal);
 
 		await expect(plannedProject(config)).rejects.toThrow(

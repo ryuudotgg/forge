@@ -1,6 +1,6 @@
 /** @jsxRuntime automatic */
-import { Button, Heading, Text } from "react-email";
-import { Layout } from "../layout";
+import { Text } from "react-email";
+import { ActionButton, Layout } from "../layout";
 
 interface InvitationProps {
   email: string;
@@ -24,29 +24,22 @@ export default function Invitation({
   url,
 }: InvitationProps) {
   return (
-    <Layout preview={`Join ${organizationName}`}>
-      <Heading className="text-xl font-semibold">
-        Join {organizationName}
-      </Heading>
-      <Text className="text-sm text-zinc-600">
-        {inviterName} ({inviterEmail}) invited you to join {organizationName}.
-      </Text>
+    <Layout
+      preview={`Join ${organizationName}`}
+      heading={`Join ${organizationName}`}
+      subtitle={
+        url === undefined
+          ? `${inviterName} (${inviterEmail}) invited you to join ${organizationName}.`
+          : `${inviterName} (${inviterEmail}) invited you to join ${organizationName}. Sign in as ${email}, then accept the invitation.`
+      }
+      footnote="If you weren't expecting this invitation, you can ignore this email."
+    >
       {url === undefined ? (
-        <Text className="text-sm text-zinc-600">
+        <Text className="text-center text-sm text-muted dark:text-muted-dark">
           Your invitation ID is {invitationId}.
         </Text>
       ) : (
-        <>
-          <Text className="text-sm text-zinc-600">
-            Sign in as {email}, then accept the invitation.
-          </Text>
-          <Button
-            href={url}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-          >
-            Accept invitation
-          </Button>
-        </>
+        <ActionButton href={url}>Accept invitation</ActionButton>
       )}
     </Layout>
   );

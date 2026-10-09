@@ -1,10 +1,12 @@
 /** @jsxRuntime automatic */
-import { Heading, Text } from "react-email";
+import { Fragment } from "react";
+import { Column, Row } from "react-email";
 import { Layout } from "../layout";
 
 interface VerificationCodeProps {
   code: string;
   type: string;
+  expiresInMinutes: number;
 }
 
 export function subject({ type }: VerificationCodeProps) {
@@ -24,18 +26,63 @@ export function subject({ type }: VerificationCodeProps) {
 }
 
 export default function VerificationCode(props: VerificationCodeProps) {
+  const digits = [...props.code];
+  const halfway = Math.ceil(digits.length / 2);
+  const digitWidth = 48;
+  const digitHeight = 64;
+  const cells = digits.map((digit, index) => ({
+    digit,
+    spacerWidth:
+      index === digits.length - 1 ? 0 : index === halfway - 1 ? 24 : 8,
+    narrowSpacerWidth:
+      index === digits.length - 1 ? 0 : index === halfway - 1 ? 16 : 6,
+  }));
+
+  const rowWidth = cells.reduce(
+    (width, cell) => width + digitWidth + cell.spacerWidth,
+    0,
+  );
+
+  const narrowRowWidth = cells.reduce(
+    (width, cell) => width + 40 + cell.narrowSpacerWidth,
+    0,
+  );
+
+  const minutes = `${props.expiresInMinutes} ${props.expiresInMinutes === 1 ? "minute" : "minutes"}`;
   return (
-    <Layout preview={subject(props)}>
-      <Heading className="text-xl font-semibold">{subject(props)}</Heading>
-      <Text className="text-sm text-zinc-600">
-        Enter this code to continue.
-      </Text>
-      <Text className="text-2xl font-semibold tracking-widest">
-        {props.code}
-      </Text>
-      <Text className="text-xs text-zinc-500">
-        If you didn't request this code, you can ignore this email.
-      </Text>
+    <Layout
+      preview={`${subject(props)}: ${props.code}`}
+      heading={subject(props)}
+      subtitle="Enter this code to continue."
+      footnote={`This code expires in ${minutes}. If you didn't request it, you can ignore this email.`}
+    >
+      <Row
+        align="center"
+        className={`max-sm:w-[${narrowRowWidth}px]`}
+        style={{ width: rowWidth, tableLayout: "fixed" }}
+      >
+        {cells.map(({ digit, spacerWidth, narrowSpacerWidth }, index) => (
+          <Fragment key={`${index}-${digit}`}>
+            <Column
+              className="rounded-md border border-solid border-border bg-card text-center text-xl font-semibold text-foreground dark:border-border-dark dark:bg-card-dark dark:text-foreground-dark max-sm:w-[40px] max-sm:h-[56px]"
+              style={{
+                width: digitWidth,
+                height: digitHeight,
+                boxSizing: "border-box",
+                verticalAlign: "middle",
+              }}
+            >
+              {digit}
+            </Column>
+            {spacerWidth === 0 ? null : (
+              <Column
+                className={`max-sm:w-[${narrowSpacerWidth}px]`}
+                style={{ width: spacerWidth }}
+              />
+            )}
+          </Fragment>
+        ))}
+      </Row>
     </Layout>
   );
 }
@@ -43,4 +90,5 @@ export default function VerificationCode(props: VerificationCodeProps) {
 VerificationCode.PreviewProps = {
   code: "123456",
   type: "sign-in",
+  expiresInMinutes: 5,
 } satisfies VerificationCodeProps;

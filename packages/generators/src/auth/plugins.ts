@@ -62,6 +62,7 @@ export interface AuthPluginDefinition {
 	readonly expo?: ReadonlyArray<AuthPluginImport>;
 	readonly tables?: ReadonlyArray<AuthTable>;
 	readonly files?: ReadonlyArray<string>;
+	readonly constants?: ReadonlyArray<string>;
 	readonly requires?: AuthMethod;
 	readonly fields?: Partial<Record<AuthModel, AuthFieldGroup>>;
 	readonly env?: ReadonlyArray<AuthPluginEnvEntry>;
@@ -97,6 +98,7 @@ export const authPluginDefinitions = {
 		emitsNamelessTypes: true,
 	},
 	"email-otp": {
+		constants: ["const OTP_EXPIRES_IN = 60 * 5; // 5 minutes"],
 		server: [
 			{
 				module: "better-auth/plugins",
@@ -104,11 +106,12 @@ export const authPluginDefinitions = {
 				call: [
 					"emailOTP({",
 					'      storeOTP: "hashed",',
+					"      expiresIn: OTP_EXPIRES_IN,",
 					"      async sendVerificationOTP({ email, otp, type }) {",
 					"        await sendEmail({",
 					"          to: email,",
 					'          template: "verificationCode",',
-					"          props: { code: otp, type },",
+					"          props: { code: otp, type, expiresInMinutes: OTP_EXPIRES_IN / 60 },",
 					"        });",
 					"      },",
 					"    })",
@@ -235,6 +238,15 @@ export function authPluginFiles(config: ForgeConfig): ReadonlyArray<string> {
 	return activeAuthExtensions(config).flatMap((extension) => {
 		const definition: AuthPluginDefinition = authPluginDefinitions[extension];
 		return definition.files ?? [];
+	});
+}
+
+export function authPluginConstants(
+	config: ForgeConfig,
+): ReadonlyArray<string> {
+	return activeAuthExtensions(config).flatMap((extension) => {
+		const definition: AuthPluginDefinition = authPluginDefinitions[extension];
+		return definition.constants ?? [];
 	});
 }
 

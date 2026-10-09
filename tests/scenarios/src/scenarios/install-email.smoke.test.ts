@@ -1,11 +1,17 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { LockfileSchema } from "@ryuugg/core";
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
+	commitFixture,
 	createProject,
 	expectInstallBuildAndTypecheck,
+	expectRun,
+	readJson,
 	runCommand,
+	tryRunForge,
 	withScenarioWorkspace,
 } from "../utils/harness";
 import {
@@ -20,6 +26,81 @@ import {
 const watchedInstallEnv = { pnpm_config_package_import_method: "copy" };
 
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
+	it.runIf(process.env.FORGE_SMOKE_BASELINE_CLI)(
+		"upgrades baseline email starters to the current design",
+		async () => {
+			const baselineCli = process.env.FORGE_SMOKE_BASELINE_CLI;
+			if (baselineCli === undefined)
+				throw new Error("Missing Baseline CLI: FORGE_SMOKE_BASELINE_CLI");
+
+			const config = {
+				name: "acme",
+				slug: "acme",
+				platforms: ["web"],
+				web: "tanstack-router",
+				backend: "hono",
+				rpc: "orpc",
+				orm: "drizzle",
+				database: "postgresql",
+				authentication: "better-auth",
+				authMethods: ["passkey", "email-otp", "magic-link"],
+				authPlugins: ["organization"],
+				emailProvider: "resend",
+				addons: ["vitest"],
+				packageManager: "pnpm",
+			};
+
+			const starterPaths = [
+				"packages/email/src/layout.tsx",
+				"packages/email/src/templates/verification-code.tsx",
+				"packages/email/src/templates/magic-link.tsx",
+				"packages/email/src/templates/invitation.tsx",
+			];
+
+			await withScenarioWorkspace("smoke-email-upgrade", async (baseline) => {
+				await createProject(baseline, config, { cliPath: baselineCli });
+				await expectRun(baseline, "git", ["init", "-q"]);
+				await commitFixture(baseline);
+
+				const update = await tryRunForge(baseline.projectRoot, ["update"], {
+					workspaceRoot: baseline.workspaceRoot,
+				});
+
+				const output = stripVTControlCharacters(
+					`${update.stdout}\n${update.stderr}`,
+				);
+
+				expect(update.exitCode, output).toBe(0);
+				expect(output).not.toMatch(/refus/i);
+
+				const lockfile = Schema.decodeUnknownSync(LockfileSchema)(
+					await readJson<unknown>(
+						join(baseline.projectRoot, ".forge/lock.json"),
+					),
+				);
+
+				await withScenarioWorkspace("smoke-email-current", async (current) => {
+					await createProject(current, config);
+
+					for (const path of starterPaths) {
+						expect(
+							await readFile(join(baseline.projectRoot, path), "utf-8"),
+							path,
+						).toBe(await readFile(join(current.projectRoot, path), "utf-8"));
+
+						expect(
+							Object.values(lockfile.artifacts).find(
+								(artifact) => artifact.path === path,
+							),
+							path,
+						).toMatchObject({ update: "starter" });
+					}
+				});
+			});
+		},
+		120_000,
+	);
+
 	it.each([
 		{ backend: "hono", web: "nextjs", emailProvider: "resend" },
 		{ backend: "fastify", web: "tanstack-router", emailProvider: "postmark" },
@@ -85,7 +166,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 						`${emailTest.stdout}\n${emailTest.stderr}`,
 					).toBe(0);
 
-					expect(emailTest.stdout).toMatch(/Tests\s+2 passed/);
+					expect(emailTest.stdout).toMatch(/Tests\s+5 passed/);
 
 					await expectEmailPreview(workspace.projectRoot);
 
@@ -112,6 +193,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					});
 
 					await expectProductionEmailSecrets(workspace.projectRoot);
+
 					if (backend === "express")
 						await expectOtpSendTiming(workspace.projectRoot, "server");
 				},

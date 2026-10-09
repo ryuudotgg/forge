@@ -192,6 +192,11 @@ describe("email authentication methods", () => {
 
 				expect(server).toContain(otpSendHook);
 				expect(server).toContain("await sendEmail({");
+
+				expect(server).toContain("const OTP_EXPIRES_IN = 60 * 5; // 5 minutes");
+				expect(server).toContain("expiresIn: OTP_EXPIRES_IN,");
+				expect(server).toContain("expiresInMinutes: OTP_EXPIRES_IN / 60");
+
 				expect(server).toContain("to: email,");
 				expect(server).not.toContain("emailAndPassword:");
 				expect(client).toContain('from "better-auth/client/plugins"');
@@ -240,6 +245,12 @@ describe("email authentication methods", () => {
 			expect(
 				writeContent(plan, "packages/auth/src/index.ts").includes(
 					"canSendEmail",
+				),
+			).toBe(method === "email-otp");
+
+			expect(
+				writeContent(plan, "packages/auth/src/index.ts").includes(
+					"const OTP_EXPIRES_IN = 60 * 5; // 5 minutes",
 				),
 			).toBe(method === "email-otp");
 
