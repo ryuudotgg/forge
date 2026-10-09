@@ -24,6 +24,7 @@ it("marks only starter content and preserves the write-once paths", async () => 
 	const components = plan.writes.filter((write) =>
 		write.path.startsWith("packages/ui/src/components/"),
 	);
+
 	if (components.length === 0) throw new Error("Missing UI Package");
 
 	expect(
@@ -39,6 +40,11 @@ it("marks only starter content and preserves the write-once paths", async () => 
 		"apps/site/app/icon.svg",
 		...components.map((write) => write.path),
 		"packages/ui/src/styles/globals.css",
+		"packages/email/src/layout.tsx",
+		"packages/email/src/templates/invitation.tsx",
+		"packages/email/src/templates/magic-link.tsx",
+		"packages/email/src/templates/verification-code.tsx",
+		"packages/email/src/verification-code.test.ts",
 	].sort();
 
 	expect(
@@ -47,15 +53,18 @@ it("marks only starter content and preserves the write-once paths", async () => 
 			.map((write) => write.path)
 			.sort(),
 	).toEqual(starterPaths);
+
 	expect(
 		Object.values(plan.lockfile.artifacts)
 			.filter((artifact) => artifact.update === "starter")
 			.map((artifact) => artifact.path)
 			.sort(),
 	).toEqual(starterPaths);
+
 	expect(
 		plan.writes.find((write) => write.path === "apps/web/src/routes/index.tsx"),
 	).toMatchObject({ kind: "surface" });
+
 	expect(
 		plan.writes.find((write) => write.path === "apps/web/src/routes/index.tsx"),
 	).not.toHaveProperty("update");
@@ -76,6 +85,7 @@ it.each(webFrameworks.ids)(
 			web === "nextjs"
 				? "apps/web/app/icon.svg"
 				: "apps/web/public/favicon.svg";
+
 		const page =
 			web === "nextjs"
 				? "apps/web/app/page.tsx"
@@ -86,10 +96,12 @@ it.each(webFrameworks.ids)(
 		expect(plan.writes.find((write) => write.path === icon)?.update).toBe(
 			"starter",
 		);
+
 		expect(plan.writes.find((write) => write.path === page)).toBeDefined();
 		expect(plan.writes.find((write) => write.path === page)?.update).toBe(
 			web === "nextjs" ? "starter" : undefined,
 		);
+
 		expect(
 			plan.writes.find((write) => write.path === "packages/ui/src/lib/utils.ts")
 				?.update,
