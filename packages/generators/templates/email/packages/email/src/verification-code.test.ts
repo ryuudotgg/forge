@@ -35,7 +35,9 @@ describe("verification code", () => {
       expect(spacers).toHaveLength(code.length - 1);
 
       for (const [index, spacer] of spacers.entries())
-        expect(spacer[1]).toContain(`width:${index === halfway - 1 ? 24 : 8}px`);
+        expect(spacer[1]).toContain(
+          `width:${index === halfway - 1 ? 24 : 8}px`,
+        );
 
       expect(cells.map((cell) => cell[2]).join("")).toBe(code);
       expect(html).toContain(
