@@ -1144,8 +1144,10 @@ const makeApply = Effect.gen(function* () {
 				(previousArtifact.update === "starter" &&
 					(yield* hashContent(yield* readFile(fullPath, relativePath))) !==
 						lastRender(previousArtifact))
-			)
+			) {
+				retained.push(relocatePath(relativePath, pendingChanges));
 				continue;
+			}
 
 			if (
 				departing.size > 0 &&

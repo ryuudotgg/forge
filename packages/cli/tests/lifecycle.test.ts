@@ -36,6 +36,7 @@ import {
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
+	logInfo: vi.fn<(message: string) => void>(),
 	logWarn:
 		vi.fn<
 			(
@@ -47,7 +48,11 @@ const promptMocks = vi.hoisted(() => ({
 
 vi.mock("@clack/prompts", () => ({
 	intro: vi.fn(),
-	log: { error: promptMocks.logError, warn: promptMocks.logWarn },
+	log: {
+		error: promptMocks.logError,
+		info: promptMocks.logInfo,
+		warn: promptMocks.logWarn,
+	},
 }));
 
 const decodeManifest = Schema.decodeUnknownSync(ManifestSchema);
@@ -949,4 +954,33 @@ describe("applyLifecyclePlan", () => {
 			expect(message).not.toContain("not printed");
 		}
 	});
+
+	it.each([
+		{
+			released: ["packages/email/src/welcome.tsx"],
+			message:
+				"Forge will leave packages/email/src/welcome.tsx alone from now on, since it has your changes.",
+		},
+		{
+			released: ["a.tsx", "b.tsx"],
+			message:
+				"Forge will leave a.tsx and b.tsx alone from now on, since they have your changes.",
+		},
+	])(
+		"reports released starter files: $message",
+		async ({ released, message }) => {
+			const apply = vi
+				.spyOn(Apply, "applyPlan")
+				.mockReturnValue(
+					Effect.succeed({ released, retained: [], declined: [], dropped: [] }),
+				);
+
+			promptMocks.logInfo.mockClear();
+
+			await applyLifecyclePlan("unused", plan, {});
+			apply.mockRestore();
+
+			expect(promptMocks.logInfo).toHaveBeenCalledExactlyOnceWith(message);
+		},
+	);
 });

@@ -292,7 +292,7 @@ describe("starter files", () => {
 	});
 
 	it.each([{ owned: true }, { owned: false }])(
-		"leaves an edited starter in place when Forge stops planning it, %j",
+		"keeps and reports an edited starter when Forge stops planning it, %j",
 		async ({ owned }) => {
 			await withTempDir("apply-starter-removal", async (directory) => {
 				await apply(directory, await planOf([starterFile("v1\n")]));
@@ -313,7 +313,7 @@ describe("starter files", () => {
 					declined: [],
 					dropped: [],
 					released: [],
-					retained: [],
+					retained: [starter],
 				});
 
 				expect(await lockArtifact(directory, starterId)).toBeUndefined();
