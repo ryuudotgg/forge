@@ -30,12 +30,21 @@ export default function VerificationCode(props: VerificationCodeProps) {
   const halfway = Math.ceil(digits.length / 2);
   const digitWidth = 48;
   const digitHeight = 64;
+  const narrow =
+    digits.length > 6
+      ? { width: 32, height: 48, spacer: 4, gap: 12 }
+      : { width: 40, height: 56, spacer: 6, gap: 16 };
+
   const cells = digits.map((digit, index) => ({
     digit,
     spacerWidth:
       index === digits.length - 1 ? 0 : index === halfway - 1 ? 24 : 8,
     narrowSpacerWidth:
-      index === digits.length - 1 ? 0 : index === halfway - 1 ? 16 : 6,
+      index === digits.length - 1
+        ? 0
+        : index === halfway - 1
+          ? narrow.gap
+          : narrow.spacer,
   }));
 
   const rowWidth = cells.reduce(
@@ -44,7 +53,7 @@ export default function VerificationCode(props: VerificationCodeProps) {
   );
 
   const narrowRowWidth = cells.reduce(
-    (width, cell) => width + 40 + cell.narrowSpacerWidth,
+    (width, cell) => width + narrow.width + cell.narrowSpacerWidth,
     0,
   );
 
@@ -64,7 +73,7 @@ export default function VerificationCode(props: VerificationCodeProps) {
         {cells.map(({ digit, spacerWidth, narrowSpacerWidth }, index) => (
           <Fragment key={`${index}-${digit}`}>
             <Column
-              className="rounded-md border border-solid border-border bg-card text-center text-xl font-semibold text-foreground dark:border-border-dark dark:bg-card-dark dark:text-foreground-dark max-sm:w-[40px] max-sm:h-[56px]"
+              className={`rounded-md border border-solid border-border bg-card text-center text-xl font-semibold text-foreground dark:border-border-dark dark:bg-card-dark dark:text-foreground-dark max-sm:w-[${narrow.width}px] max-sm:h-[${narrow.height}px]`}
               style={{
                 width: digitWidth,
                 height: digitHeight,

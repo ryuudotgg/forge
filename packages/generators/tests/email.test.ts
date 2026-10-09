@@ -475,7 +475,7 @@ function expectDarkClasses(html: string) {
 		classes.every(
 			(token) =>
 				token.startsWith("dark_") ||
-				/^max-sm_(?:px-2|h-56px|w-\d+px)$/.test(token),
+				/^max-sm_(?:px-2|h-\d+px|w-\d+px)$/.test(token),
 		),
 	).toBe(true);
 }
@@ -944,14 +944,30 @@ describe("email templates", () => {
 			expectDarkClasses(rendered.html);
 
 			const head = rendered.html.match(/<head>[\s\S]*?<\/head>/)?.[0];
-			const narrowRowWidth = code.length * 40 + (code.length - 2) * 6 + 16;
-			for (const width of [6, 16, 40, narrowRowWidth])
+			const narrow =
+				code.length > 6
+					? { width: 32, height: 48, spacer: 4, gap: 12 }
+					: { width: 40, height: 56, spacer: 6, gap: 16 };
+
+			const narrowRowWidth =
+				code.length * narrow.width +
+				(code.length - 2) * narrow.spacer +
+				narrow.gap;
+
+			expect(narrowRowWidth + 16).toBeLessThanOrEqual(320);
+
+			for (const width of [
+				narrow.spacer,
+				narrow.gap,
+				narrow.width,
+				narrowRowWidth,
+			])
 				expect(head).toContain(
 					`@media (max-width:40rem){.max-sm_w-${width}px{width:${width}px!important}}`,
 				);
 
 			expect(head).toContain(
-				"@media (max-width:40rem){.max-sm_h-56px{height:56px!important}}",
+				`@media (max-width:40rem){.max-sm_h-${narrow.height}px{height:${narrow.height}px!important}}`,
 			);
 
 			expect(head).toContain(
