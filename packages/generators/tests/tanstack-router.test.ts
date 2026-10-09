@@ -193,13 +193,11 @@ describe("tanstack-router/base template", () => {
 			leafFile(contributions, "src/routeTree.gen.ts").content,
 		).not.toContain("@tanstack/react-start");
 
-		expect(
-			leafFile(contributions, "src/routeTree.gen.ts").preserveExisting,
-		).toBe(true);
-
-		expect(leafFile(contributions, "src/router.tsx").preserveExisting).toBe(
-			undefined,
+		expect(leafFile(contributions, "src/routeTree.gen.ts").update).toBe(
+			"write-once",
 		);
+
+		expect(leafFile(contributions, "src/router.tsx").update).toBe(undefined);
 
 		expect(leafFile(contributions, "src/routeTree.gen.ts").generated).toBe(
 			true,

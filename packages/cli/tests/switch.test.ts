@@ -83,6 +83,7 @@ describe("exclusive addon switch", () => {
 
 		boundaryMocks.trackedFiles.mockReturnValue(Effect.succeed(["a.ts"]));
 		boundaryMocks.applyInstalledPlan.mockResolvedValue({
+			released: [],
 			dependenciesChanged: false,
 			retained: [],
 			declined: [],
@@ -433,6 +434,7 @@ describe("exclusive addon switch", () => {
 		"reports dropped edits with noInstall=%s",
 		async (noInstall) => {
 			boundaryMocks.applyInstalledPlan.mockResolvedValueOnce({
+				released: [],
 				dependenciesChanged: false,
 				retained: [],
 				declined: [],
@@ -458,6 +460,7 @@ describe("exclusive addon switch", () => {
 
 	it("reports a dropped empty file without a trailing listing", async () => {
 		boundaryMocks.applyInstalledPlan.mockResolvedValueOnce({
+			released: [],
 			dependenciesChanged: false,
 			retained: [],
 			declined: [],

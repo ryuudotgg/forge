@@ -3805,8 +3805,11 @@ describe("planner", () => {
 							ensuredModuleTarget("web"),
 							"src/routeTree.gen.ts",
 							"stub\n",
-							{ preserveExisting: true },
+							{ update: "write-once" },
 						),
+						leafTextFile(ensuredModuleTarget("web"), "src/welcome.tsx", "w\n", {
+							update: "starter",
+						}),
 						leafTextFile(ensuredModuleTarget("web"), "src/router.tsx", "r\n"),
 					],
 				});
@@ -3823,9 +3826,15 @@ describe("planner", () => {
 
 				expect(
 					created.writes
-						.filter((write) => write.preserveExisting === true)
+						.filter((write) => write.update === "write-once")
 						.map((write) => write.path),
 				).toEqual(["apps/web/src/routeTree.gen.ts"]);
+
+				expect(
+					Object.values(created.lockfile.artifacts)
+						.filter((artifact) => artifact.update === "starter")
+						.map((artifact) => artifact.path),
+				).toEqual(["apps/web/src/welcome.tsx"]);
 
 				await Effect.runPromise(applyPlanEffect(directory, created));
 

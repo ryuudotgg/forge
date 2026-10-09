@@ -602,7 +602,7 @@ describe("apply edge coverage", () => {
 										artifactId: "surface",
 										content: base,
 										path,
-										preserveExisting: true,
+										update: "write-once",
 									},
 								],
 							},

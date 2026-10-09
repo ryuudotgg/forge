@@ -225,7 +225,7 @@ const email = defineAddon<ForgeConfig, "email">({
 				ensuredModuleTarget("email"),
 				"src/custom.ts",
 				readTemplate("email/packages/email/src/custom.ts"),
-				{ preserveExisting: true },
+				{ update: "write-once" },
 			),
 			leafTextFile(
 				ensuredModuleTarget("email"),

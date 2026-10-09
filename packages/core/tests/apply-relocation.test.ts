@@ -517,7 +517,7 @@ describe("directory publication", () => {
 				...plan,
 				writes: plan.writes.map((write) =>
 					write.path.endsWith("logo.txt")
-						? { ...write, preserveExisting: true }
+						? { ...write, update: "write-once" as const }
 						: write,
 				),
 			});

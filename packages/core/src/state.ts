@@ -98,7 +98,9 @@ const LockfileArtifactSchema = Schema.Struct({
 	kind: LockfileArtifactKindSchema,
 	definitionIds: Schema.Array(Schema.String),
 	hash: Schema.String,
+	owner: Schema.optional(Schema.Literal("user")),
 	path: Schema.String,
+	update: Schema.optional(Schema.Literal("starter")),
 });
 
 export type LockfileArtifact = typeof LockfileArtifactSchema.Type;

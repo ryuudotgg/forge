@@ -40,6 +40,7 @@ import {
 	runCliEffect,
 	runCliEffectValue,
 } from "../runtime";
+import { listAnd } from "../utils/list";
 import { refusalMessage } from "../utils/refusal";
 import {
 	canResolveInteractively,
@@ -175,7 +176,12 @@ function declinedLine(change: DeclinedChange): string {
 		: `${counts} Run "cat ${shellPath(change.diffPath)}" to see them.`;
 }
 
-function reportDeclinedChanges(result: ApplyResult): ApplyResult {
+function reportApplied(result: ApplyResult): ApplyResult {
+	if (result.released.length > 0)
+		log.info(
+			`Forge will leave ${listAnd.format(result.released)} alone from now on, since ${result.released.length === 1 ? "it has" : "they have"} your changes.`,
+		);
+
 	if (result.declined.length === 0) return result;
 
 	const count = result.declined.length;
@@ -195,7 +201,7 @@ export async function applyLifecyclePlan(
 		Apply.applyPlan(projectRoot, plan, applyOptions);
 
 	const exit = await runCliEffect(apply(options));
-	if (Exit.isSuccess(exit)) return reportDeclinedChanges(exit.value);
+	if (Exit.isSuccess(exit)) return reportApplied(exit.value);
 
 	const failure = failureFromCause(exit.cause);
 	if (
@@ -210,7 +216,7 @@ export async function applyLifecyclePlan(
 
 		if (Exit.isSuccess(retry)) {
 			log.success(resolution.summary);
-			return reportDeclinedChanges(retry.value);
+			return reportApplied(retry.value);
 		}
 
 		return reportLifecycleFailure(
@@ -549,7 +555,7 @@ export async function applyInstalledPlan(
 				artifactId: write.artifactId,
 				content: write.content,
 				path: write.path,
-				...(write.preserveExisting === true ? { preserveExisting: true } : {}),
+				...(write.update === undefined ? {} : { update: write.update }),
 			})),
 		},
 		options,

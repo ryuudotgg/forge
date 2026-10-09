@@ -35,6 +35,7 @@ export type {
 	DependencyRef,
 	EnsuredModuleTarget,
 	EnsureModuleContribution,
+	FileUpdate,
 	FrameworkDefinition,
 	FrameworkId,
 	GeneratorCategory,
