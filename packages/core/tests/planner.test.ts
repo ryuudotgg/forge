@@ -292,6 +292,66 @@ function moduleBucketId(bucket: RenderBucket) {
 	return bucket.kind === "module" ? bucket.moduleId : undefined;
 }
 
+describe("starter text surfaces", () => {
+	it.each([true, false])("plans and locks starter=%s", async (starter) => {
+		await withTempDir("planner-starter-surface", async (directory) => {
+			const template = defineTemplate<TestConfig>({
+				id: "nextjs/base",
+				name: "Next.js Base",
+				category: "web",
+				version: 1,
+				framework: "nextjs",
+				when: (config) => config.web === "nextjs",
+				contribute: () => [
+					ensureAppModule("web", "apps/web", {
+						framework: "nextjs",
+						template: { id: "nextjs/base", version: 1 },
+						slots: { layout: "app/layout.tsx" },
+					}),
+					surfaceText(ensuredModuleTarget("web"), "layout", "base", {
+						priority: 0,
+						...(starter ? { update: "starter" } : {}),
+					}),
+					surfaceText(ensuredModuleTarget("web"), "layout", "override", {
+						priority: 1,
+						update: "starter",
+					}),
+				],
+			});
+
+			const registry = defineRegistry({
+				frameworks: testRegistry().frameworks,
+				templates: [template],
+				addons: [],
+			});
+
+			const plan = await Effect.runPromise(
+				planCreateEffect(directory, { web: "nextjs" }, registry),
+			);
+
+			const write = plan.writes.find(
+				(file) => file.path === "apps/web/app/layout.tsx",
+			);
+
+			if (write === undefined) throw new Error("Missing Planned Surface");
+
+			expect(write.kind).toBe("surface");
+			expect(write.content).toBe("override");
+			expect(write.update).toBe(starter ? "starter" : undefined);
+			expect(plan.lockfile.artifacts[write.artifactId]?.update).toBe(
+				starter ? "starter" : undefined,
+			);
+
+			if (!starter) {
+				expect(write).not.toHaveProperty("update");
+				expect(plan.lockfile.artifacts[write.artifactId]).not.toHaveProperty(
+					"update",
+				);
+			}
+		});
+	});
+});
+
 function alternativesRegistry() {
 	const ormAddon = (id: "orm-a" | "orm-b", orm: "a" | "b") =>
 		defineAddon<TestConfig>({

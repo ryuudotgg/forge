@@ -589,11 +589,14 @@ describe("remove", () => {
 				],
 			});
 
-			const adminPage = join(workspace.projectRoot, "apps/admin/app/page.tsx");
-			const webPage = join(workspace.projectRoot, "apps/web/app/page.tsx");
-			const webOriginal = await readFile(webPage, "utf-8");
-			await appendFile(adminPage, "// admin edit\n");
-			await appendFile(webPage, "// web edit\n");
+			const adminLayout = join(
+				workspace.projectRoot,
+				"apps/admin/app/layout.tsx",
+			);
+			const webLayout = join(workspace.projectRoot, "apps/web/app/layout.tsx");
+			const webOriginal = await readFile(webLayout, "utf-8");
+			await appendFile(adminLayout, "// admin edit\n");
+			await appendFile(webLayout, "// web edit\n");
 			const survivorsBefore = await treeHashes(
 				workspace.projectRoot,
 				"apps/admin",
@@ -605,8 +608,8 @@ describe("remove", () => {
 				{ workspaceRoot: workspace.workspaceRoot },
 			);
 
-			expect(await pathExists(adminPage)).toBe(false);
-			expect(await readFile(webPage, "utf-8")).toBe(
+			expect(await pathExists(adminLayout)).toBe(false);
+			expect(await readFile(webLayout, "utf-8")).toBe(
 				`${webOriginal}// web edit\n`,
 			);
 

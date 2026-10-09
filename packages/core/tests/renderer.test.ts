@@ -76,6 +76,55 @@ async function renderFailure(
 }
 
 describe("renderer", () => {
+	it.each([
+		{ baseStarter: true, overrideStarter: true, update: "starter" },
+		{ baseStarter: false, overrideStarter: true, update: undefined },
+		{ baseStarter: true, overrideStarter: false, update: undefined },
+	])(
+		"uses the conservative text update policy for %j",
+		async ({ baseStarter, overrideStarter, update }) => {
+			const base = surfaceText(selectedModuleTarget(), "layout", "base", {
+				priority: 0,
+				...(baseStarter ? { update: "starter" } : {}),
+			});
+
+			const override = surfaceText(
+				selectedModuleTarget(),
+				"layout",
+				"override",
+				{
+					priority: 1,
+					...(overrideStarter ? { update: "starter" } : {}),
+				},
+			);
+
+			const rendered = await render(
+				[
+					{
+						bucket: { kind: "module", moduleId: "abcde" },
+						contribution: base,
+						definitionId: "base",
+						order: 0,
+					},
+					{
+						bucket: { kind: "module", moduleId: "abcde" },
+						contribution: override,
+						definitionId: "override",
+						order: 1,
+					},
+				],
+				[appModule("nextjs", { layout: "app/layout.tsx" })],
+			);
+
+			expect(rendered).toHaveLength(1);
+			expect(rendered[0]?.content).toBe("override");
+			expect(rendered[0]?.update).toBe(update);
+			if (!baseStarter) expect(base).not.toHaveProperty("update");
+			if (update === undefined)
+				expect(rendered[0]).not.toHaveProperty("update");
+		},
+	);
+
 	it("combines package json surface contributions into a sorted artifact", async () => {
 		const inputs = [
 			{

@@ -103,70 +103,84 @@ describe("update", () => {
 	}, 120_000);
 
 	it("keeps declined base-less surface renders durable", async () => {
-		await withScenarioWorkspace("update-keep-user-page", async (workspace) => {
-			await createProject(workspace, {
-				packageManager: "pnpm",
-				web: "nextjs",
-			});
+		await withScenarioWorkspace(
+			"update-keep-user-layout",
+			async (workspace) => {
+				await createProject(workspace, {
+					packageManager: "pnpm",
+					web: "nextjs",
+				});
 
-			const pagePath = join(workspace.projectRoot, "apps/web/app/page.tsx");
-			const original = await readFile(pagePath, "utf-8");
-			await appendFile(pagePath, "// my page tweak\n", "utf-8");
-			const userContent = await readFile(pagePath, "utf-8");
+				const layoutPath = join(
+					workspace.projectRoot,
+					"apps/web/app/layout.tsx",
+				);
+				const original = await readFile(layoutPath, "utf-8");
+				await appendFile(layoutPath, "// my layout tweak\n", "utf-8");
+				const userContent = await readFile(layoutPath, "utf-8");
 
-			const keepUser = await tryRunForge(
-				workspace.projectRoot,
-				["update", "--keep-user"],
-				{ workspaceRoot: workspace.workspaceRoot },
-			);
+				const keepUser = await tryRunForge(
+					workspace.projectRoot,
+					["update", "--keep-user"],
+					{ workspaceRoot: workspace.workspaceRoot },
+				);
 
-			expect(keepUser.exitCode).toBe(0);
-			expect(await readFile(pagePath, "utf-8")).toBe(userContent);
+				expect(keepUser.exitCode).toBe(0);
+				expect(await readFile(layoutPath, "utf-8")).toBe(userContent);
 
-			const lockfile = await readJson<{
-				artifacts: Record<
-					string,
-					{
-						base?: { hash: string; mergeKind: string };
-						path: string;
-					}
-				>;
-			}>(join(workspace.projectRoot, ".forge/lock.json"));
+				const lockfile = await readJson<{
+					artifacts: Record<
+						string,
+						{
+							base?: { hash: string; mergeKind: string };
+							path: string;
+						}
+					>;
+				}>(join(workspace.projectRoot, ".forge/lock.json"));
 
-			const pageArtifact = Object.values(lockfile.artifacts).find(
-				(artifact) => artifact.path === "apps/web/app/page.tsx",
-			);
+				const layoutArtifact = Object.values(lockfile.artifacts).find(
+					(artifact) => artifact.path === "apps/web/app/layout.tsx",
+				);
 
-			expect(pageArtifact?.base).toMatchObject({ mergeKind: "opaque" });
+				expect(layoutArtifact?.base).toMatchObject({ mergeKind: "opaque" });
 
-			if (pageArtifact?.base === undefined)
-				throw new Error("Page Base Not Recorded");
+				if (layoutArtifact?.base === undefined)
+					throw new Error("Layout Base Not Recorded");
 
-			expect(
-				await readFile(
-					join(workspace.projectRoot, ".forge/bases", pageArtifact.base.hash),
-					"utf-8",
-				),
-			).toBe(original);
+				expect(
+					await readFile(
+						join(
+							workspace.projectRoot,
+							".forge/bases",
+							layoutArtifact.base.hash,
+						),
+						"utf-8",
+					),
+				).toBe(original);
 
-			const before = await stat(pagePath, { bigint: true });
-			const plain = await tryRunForge(workspace.projectRoot, ["update"], {
-				workspaceRoot: workspace.workspaceRoot,
-			});
+				const before = await stat(layoutPath, { bigint: true });
+				const plain = await tryRunForge(workspace.projectRoot, ["update"], {
+					workspaceRoot: workspace.workspaceRoot,
+				});
 
-			const after = await stat(pagePath, { bigint: true });
+				const after = await stat(layoutPath, { bigint: true });
 
-			expect(plain.exitCode).toBe(0);
-			expect(await readFile(pagePath, "utf-8")).toBe(userContent);
-			expect(after.ino).toBe(before.ino);
-			expect(after.mtimeNs).toBe(before.mtimeNs);
-			expect(
-				await readFile(
-					join(workspace.projectRoot, ".forge/bases", pageArtifact.base.hash),
-					"utf-8",
-				),
-			).toBe(original);
-		});
+				expect(plain.exitCode).toBe(0);
+				expect(await readFile(layoutPath, "utf-8")).toBe(userContent);
+				expect(after.ino).toBe(before.ino);
+				expect(after.mtimeNs).toBe(before.mtimeNs);
+				expect(
+					await readFile(
+						join(
+							workspace.projectRoot,
+							".forge/bases",
+							layoutArtifact.base.hash,
+						),
+						"utf-8",
+					),
+				).toBe(original);
+			},
+		);
 	}, 120_000);
 
 	it("preserves moved slot paths during replanning", async () => {

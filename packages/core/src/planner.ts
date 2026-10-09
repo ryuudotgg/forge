@@ -1501,6 +1501,7 @@ const makePlanner = Effect.gen(function* () {
 				hash,
 				kind: "surface",
 				path: artifact.path,
+				...(artifact.update === "starter" ? { update: "starter" } : {}),
 			};
 		}
 
@@ -1576,6 +1577,7 @@ const makePlanner = Effect.gen(function* () {
 					definitionIds: artifact.definitionIds,
 					kind: "surface",
 					path: artifact.path,
+					...(artifact.update === undefined ? {} : { update: artifact.update }),
 					target: artifact.bucket,
 					targetKey:
 						artifact.bucket.kind === "project"
