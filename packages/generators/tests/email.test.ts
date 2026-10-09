@@ -545,8 +545,8 @@ describe("email templates", () => {
 				if (file?._tag !== "LeafTextFileContribution")
 					throw new Error(`Missing Leaf File: ${path}`);
 
-				expect(file.preserveExisting, path).toBe(
-					path === "src/custom.ts" ? true : undefined,
+				expect(file.update, path).toBe(
+					path === "src/custom.ts" ? "write-once" : undefined,
 				);
 
 				expect(file.generated, path).toBeUndefined();

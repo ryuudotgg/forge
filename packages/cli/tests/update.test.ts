@@ -47,6 +47,7 @@ function updateFixture(options: UpdateFixtureOptions) {
 	};
 
 	const applyInstalledPlan = vi.fn<ApplyInstalledPlanFunction>(async () => ({
+		released: [],
 		declined: [],
 		dropped: [],
 		retained: [],

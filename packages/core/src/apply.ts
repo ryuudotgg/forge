@@ -8,6 +8,7 @@ import {
 	sep,
 } from "node:path";
 import { Context, Effect, FileSystem, Layer, Result, Schema } from "effect";
+import type { FileUpdate } from "./authoring";
 import { CliVersion } from "./cli-version";
 import { ModuleIdSchema } from "./config";
 import { unifiedDiff } from "./diff";
@@ -54,7 +55,7 @@ export interface PlannedWrite {
 	readonly artifactId?: string;
 	readonly content: string;
 	readonly path: string;
-	readonly preserveExisting?: boolean;
+	readonly update?: FileUpdate;
 }
 
 export interface ApplyPlan {
@@ -70,6 +71,7 @@ export interface ApplyPlan {
 }
 
 export interface ApplyResult {
+	readonly released: ReadonlyArray<string>;
 	readonly retained: ReadonlyArray<string>;
 	readonly declined: ReadonlyArray<DeclinedChange>;
 	readonly dropped: ReadonlyArray<DroppedEdit>;
@@ -275,6 +277,15 @@ function descriptorMatchesArtifact(artifact: LockfileArtifact): boolean {
 		? artifact.base.mergeKind !== "yaml"
 		: artifact.base.mergeKind === "opaque" ||
 				artifact.base.mergeKind === "yaml";
+}
+
+function lastRender(
+	artifact: LockfileArtifact | undefined,
+): string | undefined {
+	if (artifact === undefined) return undefined;
+	if (artifact.base === undefined) return artifact.hash;
+
+	return artifact.base.origin === "adopted" ? undefined : artifact.base.hash;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -951,6 +962,7 @@ const makeApply = Effect.gen(function* () {
 		const writesToApply: PreflightPhaseContract["result"]["writes"] = [];
 		const removalsToApply: PreflightPhaseContract["result"]["removals"] = [];
 		const retained: Array<string> = [];
+		const released: Array<string> = [];
 		const declined: DeclinedChange[] = [];
 		const dropped: DroppedEdit[] = [];
 		const recordDeclined = (path: string, before: string, after: string) => {
@@ -1126,6 +1138,14 @@ const makeApply = Effect.gen(function* () {
 
 				continue;
 			}
+
+			if (
+				previousArtifact.owner === "user" ||
+				(previousArtifact.update === "starter" &&
+					(yield* hashContent(yield* readFile(fullPath, relativePath))) !==
+						lastRender(previousArtifact))
+			)
+				continue;
 
 			if (
 				departing.size > 0 &&
@@ -1380,7 +1400,21 @@ const makeApply = Effect.gen(function* () {
 					? undefined
 					: { ...artifactById, path: file.path });
 
-			if (file.preserveExisting === true) {
+			if (
+				managedArtifact?.owner === "user" &&
+				file.artifactId !== undefined &&
+				nextArtifact !== undefined
+			) {
+				committedArtifacts[file.artifactId] = {
+					...nextArtifact,
+					hash: managedArtifact.hash,
+					owner: "user",
+				};
+
+				continue;
+			}
+
+			if (file.update === "write-once") {
 				if (file.artifactId === undefined) continue;
 
 				if (managedArtifact === undefined) {
@@ -1408,6 +1442,28 @@ const makeApply = Effect.gen(function* () {
 							managedArtifact.base,
 						),
 					);
+
+				continue;
+			}
+
+			if (
+				file.update === "starter" &&
+				file.artifactId !== undefined &&
+				nextArtifact !== undefined
+			) {
+				const render = lastRender(managedArtifact);
+				if (currentHash === nextHash || currentHash === render) {
+					if (currentHash !== nextHash) writesToApply.push(file);
+					continue;
+				}
+
+				committedArtifacts[file.artifactId] = {
+					...nextArtifact,
+					hash: render ?? nextHash,
+					owner: "user",
+				};
+
+				released.push(relocatePath(file.path, pendingChanges));
 
 				continue;
 			}
@@ -2344,6 +2400,7 @@ const makeApply = Effect.gen(function* () {
 		}
 
 		return {
+			released: released.sort(),
 			retained: retained.sort(),
 			dropped: dropped.sort((left, right) =>
 				left.path.localeCompare(right.path),

@@ -262,10 +262,12 @@ export interface LeafTextFileContribution {
 	readonly target: TargetRef;
 	readonly path: string | SlotPath;
 	readonly content: string;
-	readonly preserveExisting?: boolean;
+	readonly update?: FileUpdate;
 	readonly generated?: boolean;
 	readonly mergeKind?: "yaml";
 }
+
+export type FileUpdate = "write-once" | "starter";
 
 export type Contribution<Capability extends CapabilityId = CapabilityId> =
 	| EnsureModuleContribution
@@ -403,18 +405,24 @@ export function leafTextFile(
 	target: TargetRef,
 	path: string | SlotPath,
 	content: string,
-	options: {
-		readonly preserveExisting?: boolean;
-		readonly generated?: boolean;
-		readonly mergeKind?: "yaml";
-	} = {},
+	options:
+		| {
+				readonly update?: FileUpdate;
+				readonly generated?: boolean;
+				readonly mergeKind?: never;
+		  }
+		| {
+				readonly update?: never;
+				readonly generated?: boolean;
+				readonly mergeKind: "yaml";
+		  } = {},
 ): LeafTextFileContribution {
 	return {
 		_tag: "LeafTextFileContribution",
 		target,
 		path,
 		content,
-		...(options.preserveExisting === true ? { preserveExisting: true } : {}),
+		...(options.update === undefined ? {} : { update: options.update }),
 		...(options.generated === true ? { generated: true } : {}),
 		...(options.mergeKind === undefined
 			? {}

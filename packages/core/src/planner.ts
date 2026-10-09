@@ -6,6 +6,7 @@ import type {
 	DefinitionRegistry,
 	EnsuredModuleTarget,
 	EnsureModuleContribution,
+	FileUpdate,
 	ModuleTarget,
 	ResolvedModuleTarget,
 	SlotPath,
@@ -461,7 +462,7 @@ export interface PlannedFile {
 	readonly definitionIds: ReadonlyArray<string>;
 	readonly kind: "file" | "surface";
 	readonly path: string;
-	readonly preserveExisting?: boolean;
+	readonly update?: FileUpdate;
 	readonly target: RenderBucket;
 	readonly targetKey: string;
 }
@@ -1313,7 +1314,7 @@ const makePlanner = Effect.gen(function* () {
 				readonly bucket: RenderBucket;
 				readonly content: string;
 				readonly definitionIds: ReadonlyArray<string>;
-				readonly preserveExisting: boolean;
+				readonly update?: FileUpdate;
 				readonly generated: boolean;
 				readonly mergeKind?: "yaml";
 			}
@@ -1390,6 +1391,7 @@ const makePlanner = Effect.gen(function* () {
 							sameTarget &&
 							existing.content === contribution.content &&
 							existing.mergeKind === contribution.mergeKind &&
+							existing.update === contribution.update &&
 							existing.definitionIds.includes(entry.definitionId)
 						)
 							continue;
@@ -1404,7 +1406,9 @@ const makePlanner = Effect.gen(function* () {
 						bucket: target,
 						content: contribution.content,
 						definitionIds: [entry.definitionId],
-						preserveExisting: contribution.preserveExisting === true,
+						...(contribution.update === undefined
+							? {}
+							: { update: contribution.update }),
 						generated: contribution.generated === true,
 						...(contribution.mergeKind === undefined
 							? {}
@@ -1419,7 +1423,7 @@ const makePlanner = Effect.gen(function* () {
 				content: file.content,
 				generators: file.definitionIds,
 				path: filePath(path),
-				...(file.preserveExisting ? { preserveExisting: true } : {}),
+				...(file.update === undefined ? {} : { update: file.update }),
 				...(file.generated ? { generated: true } : {}),
 				...(file.mergeKind === undefined ? {} : { mergeKind: file.mergeKind }),
 			}),
@@ -1537,6 +1541,7 @@ const makePlanner = Effect.gen(function* () {
 				hash,
 				kind: "file",
 				path,
+				...(file.update === "starter" ? { update: "starter" } : {}),
 			};
 		}
 
@@ -1588,7 +1593,7 @@ const makePlanner = Effect.gen(function* () {
 					definitionIds: file.generators,
 					kind: "file",
 					path: String(file.path),
-					...(file.preserveExisting === true ? { preserveExisting: true } : {}),
+					...(file.update === undefined ? {} : { update: file.update }),
 					target: file.bucket,
 					targetKey:
 						file.bucket.kind === "project"

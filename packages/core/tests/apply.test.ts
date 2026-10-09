@@ -6407,7 +6407,7 @@ describe("apply", () => {
 					artifactId: "module:web:file:src/routeTree.gen.ts",
 					content: stub,
 					path: routeTree,
-					preserveExisting: true,
+					update: "write-once",
 				},
 			],
 		});

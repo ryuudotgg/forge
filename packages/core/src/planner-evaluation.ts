@@ -4,6 +4,7 @@ import type {
 	AddonDefinition,
 	Contribution,
 	DefinitionRegistry,
+	FileUpdate,
 	TemplateDefinition,
 } from "./authoring";
 import {
@@ -86,7 +87,7 @@ export interface TargetedLeafFile {
 	readonly content: string;
 	readonly generators: ReadonlyArray<string>;
 	readonly path: ReturnType<typeof filePath>;
-	readonly preserveExisting?: boolean;
+	readonly update?: FileUpdate;
 	readonly generated?: boolean;
 	readonly mergeKind?: "yaml";
 }
