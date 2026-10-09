@@ -351,6 +351,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			ensuredModuleTarget(instance.key),
 			"public/favicon.svg",
 			readTemplate("frameworks/favicon.svg"),
+			{ update: "starter" },
 		),
 		...selfHostedCorsContributions(config, instance),
 	];

@@ -61,6 +61,7 @@ export interface RenderedArtifact {
 	readonly kind: "surface";
 	readonly mergeKind?: SurfaceMergeKind;
 	readonly path: ReturnType<typeof filePath>;
+	readonly update?: "starter";
 }
 
 function resolveSurfaceMergeKind(
@@ -410,6 +411,13 @@ const makeRenderer = Effect.succeed({
 								? first.contribution.surface
 								: `${first.contribution.surface}`,
 						kind: "surface",
+						...(entries.every(
+							(entry) =>
+								entry.contribution._tag === "ManagedTextSurfaceContribution" &&
+								entry.contribution.update === "starter",
+						)
+							? { update: "starter" }
+							: {}),
 						...(mergeKind === undefined ? {} : { mergeKind }),
 						path,
 					});

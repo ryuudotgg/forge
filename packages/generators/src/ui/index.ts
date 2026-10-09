@@ -117,11 +117,13 @@ const ui = defineAddon<ForgeConfig, "ui">({
 				ensuredModuleTarget("ui"),
 				"src/styles/globals.css",
 				renderUiTemplate(config, "packages/ui/src/styles/globals.css"),
+				{ update: "starter" },
 			),
 			leafTextFile(
 				ensuredModuleTarget("ui"),
 				"src/components/button.tsx",
 				renderUiTemplate(config, "packages/ui/src/components/button.tsx"),
+				{ update: "starter" },
 			),
 		];
 	},

@@ -240,7 +240,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			ensuredModuleTarget(instance.key),
 			"page",
 			interpolate(readTemplate("frameworks/nextjs/app/page.tsx"), vars),
-			{ priority: 0 },
+			{ priority: 0, update: "starter" },
 		),
 		surfaceText(
 			ensuredModuleTarget(instance.key),
@@ -287,6 +287,7 @@ function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
 			ensuredModuleTarget(instance.key),
 			"app/icon.svg",
 			readTemplate("frameworks/favicon.svg"),
+			{ update: "starter" },
 		),
 		...selfHostedCorsContributions(config, instance),
 		...(instance.primary &&

@@ -27,6 +27,7 @@ const managed = "biome.json";
 const managedId = `project:file:${managed}`;
 
 interface File {
+	readonly kind?: "file" | "surface";
 	readonly id: string;
 	readonly path: string;
 	readonly content: string;
@@ -39,7 +40,7 @@ async function planOf(files: ReadonlyArray<File>): Promise<ApplyPlan> {
 		artifacts[file.id] = {
 			definitionIds: ["email"],
 			hash: await hashContent(file.content),
-			kind: "file",
+			kind: file.kind ?? "file",
 			path: file.path,
 			...(file.update === "starter" ? { update: "starter" } : {}),
 		};
@@ -133,56 +134,125 @@ const preMarkReader = Layer.effect(
 const preMarkLayer = preMarkReader.pipe(Layer.provideMerge(coreLayer));
 
 describe("starter files", () => {
-	it("updates an untouched starter, then leaves it to the user once edited", async () => {
-		await withTempDir("apply-starter", async (directory) => {
-			const path = join(directory, starter);
+	it.each(["untouched", "edited", "owned"])(
+		"handles removal of a %s starter surface",
+		async (state) => {
+			await withTempDir("apply-starter-surface-removal", async (directory) => {
+				const id = "project:surface:welcome";
+				const file: File = { ...starterFile("v1\n"), id, kind: "surface" };
 
-			await apply(directory, await planOf([starterFile("v1\n")]));
-			const untouched = await apply(
-				directory,
-				await planOf([starterFile("v2\n")]),
-			);
+				await apply(directory, await planOf([file]));
 
-			expect(await readFile(path, "utf-8")).toBe("v2\n");
-			expect(untouched.released).toEqual([]);
+				if (state !== "untouched")
+					await writeText(join(directory, starter), "mine\n");
 
-			await writeText(path, "mine\n");
-			const edited = await apply(
-				directory,
-				await planOf([starterFile("v3\n")]),
-			);
+				if (state === "owned")
+					await apply(directory, await planOf([{ ...file, content: "v2\n" }]));
 
-			expect(await readFile(path, "utf-8")).toBe("mine\n");
-			expect(edited.released).toEqual([starter]);
-			expect(await lockArtifact(directory, starterId)).toEqual({
-				definitionIds: ["email"],
-				hash: await hashContent("v2\n"),
-				kind: "file",
-				owner: "user",
+				const result = await apply(directory, {
+					...(await planOf([])),
+					removals: [starter],
+				});
+
+				expect(result).toEqual({
+					declined: [],
+					dropped: [],
+					released: [],
+					retained: state === "untouched" ? [] : [starter],
+				});
+
+				expect(await lockArtifact(directory, id)).toBeUndefined();
+
+				if (state === "untouched")
+					await expect(
+						readFile(join(directory, starter), "utf-8"),
+					).rejects.toThrow();
+				else
+					expect(await readFile(join(directory, starter), "utf-8")).toBe(
+						"mine\n",
+					);
+			});
+		},
+	);
+
+	it.each(["file", "surface"] satisfies ReadonlyArray<"file" | "surface">)(
+		"updates an untouched starter %s, then leaves it to the user once edited",
+		async (kind) => {
+			const starterId =
+				kind === "surface"
+					? "project:surface:welcome"
+					: `project:file:${starter}`;
+
+			const starterFile = (content: string): File => ({
+				id: starterId,
 				path: starter,
+				content,
+				kind,
 				update: "starter",
 			});
 
-			const owned = await apply(directory, await planOf([starterFile("v4\n")]));
+			await withTempDir("apply-starter", async (directory) => {
+				const path = join(directory, starter);
 
-			expect(await readFile(path, "utf-8")).toBe("mine\n");
-			expect(owned.released).toEqual([]);
-			expect((await lockArtifact(directory, starterId))?.owner).toBe("user");
+				await apply(directory, await planOf([starterFile("v1\n")]));
+				const untouched = await apply(
+					directory,
+					await planOf([starterFile("v2\n")]),
+				);
 
-			await rm(path);
-			const restored = await apply(
-				directory,
-				await planOf([starterFile("v4\n")]),
-			);
+				expect(await readFile(path, "utf-8")).toBe("v2\n");
+				expect(untouched.released).toEqual([]);
 
-			expect(await readFile(path, "utf-8")).toBe("v4\n");
-			expect(restored.released).toEqual([]);
-			expect((await lockArtifact(directory, starterId))?.owner).toBeUndefined();
+				await writeText(path, "mine\n");
+				const edited = await apply(
+					directory,
+					await planOf([starterFile("v3\n")]),
+				);
 
-			await apply(directory, await planOf([starterFile("v5\n")]));
-			expect(await readFile(path, "utf-8")).toBe("v5\n");
-		});
-	});
+				expect(await readFile(path, "utf-8")).toBe("mine\n");
+				expect(edited.released).toEqual([starter]);
+				expect(await lockArtifact(directory, starterId)).toEqual({
+					definitionIds: ["email"],
+					hash: await hashContent("v2\n"),
+					kind,
+					owner: "user",
+					path: starter,
+					update: "starter",
+				});
+
+				const owned = await apply(
+					directory,
+					await planOf([starterFile("v4\n")]),
+				);
+
+				expect(await readFile(path, "utf-8")).toBe("mine\n");
+				expect(owned.released).toEqual([]);
+				expect(owned).toEqual({
+					declined: [],
+					dropped: [],
+					released: [],
+					retained: [],
+				});
+
+				expect((await lockArtifact(directory, starterId))?.owner).toBe("user");
+
+				await rm(path);
+				const restored = await apply(
+					directory,
+					await planOf([starterFile("v4\n")]),
+				);
+
+				expect(await readFile(path, "utf-8")).toBe("v4\n");
+				expect(restored.released).toEqual([]);
+				expect(
+					(await lockArtifact(directory, starterId))?.owner,
+				).toBeUndefined();
+
+				await apply(directory, await planOf([starterFile("v5\n")]));
+				expect(await readFile(path, "utf-8")).toBe("v5\n");
+			});
+		},
+	);
 
 	it("hands over a starter edited while Forge's render stays the same", async () => {
 		await withTempDir("apply-starter-same-render", async (directory) => {

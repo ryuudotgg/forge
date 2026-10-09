@@ -209,6 +209,7 @@ export interface ManagedTextSurfaceContribution {
 	readonly surface: ManagedSurfaceName;
 	readonly content: string;
 	readonly priority?: number;
+	readonly update?: "starter";
 }
 
 export interface ManagedJsonSurfaceContribution {
@@ -309,7 +310,7 @@ export function surfaceText(
 	target: TargetRef,
 	surface: ManagedSurfaceName,
 	content: string,
-	options?: { readonly priority?: number },
+	options?: { readonly priority?: number; readonly update?: "starter" },
 ): ManagedTextSurfaceContribution {
 	return {
 		_tag: "ManagedTextSurfaceContribution",
@@ -317,6 +318,7 @@ export function surfaceText(
 		surface,
 		content,
 		priority: options?.priority,
+		...(options?.update === undefined ? {} : { update: options.update }),
 	};
 }
 
