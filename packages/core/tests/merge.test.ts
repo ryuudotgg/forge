@@ -241,6 +241,24 @@ describe("merge helpers", () => {
 		);
 	});
 
+	it("keeps __proto__ keys as own entries at every level", () => {
+		const config = Object.fromEntries([
+			["__proto__", 1],
+			["normal", 2],
+		]);
+
+		const json = Object.fromEntries([
+			["__proto__", { nested: true }],
+			["config", config],
+		]);
+
+		const { merged, conflicts } = threeWayMergeJson(json, json, json);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(formatJson(json));
+		expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+	});
+
 	it("follows a nested template reorder when the app is unchanged", () => {
 		const base = { config: { alpha: 1, beta: 2 } };
 		const incoming = { config: { beta: 2, alpha: 1 } };
