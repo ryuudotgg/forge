@@ -3,6 +3,7 @@ import {
 	appendLines,
 	type ConflictResolution,
 	envResidue,
+	formatJson,
 	jsonResidue,
 	mergeJson,
 	parseSections,
@@ -133,6 +134,139 @@ describe("merge helpers", () => {
 			plugins: ["base"],
 			scripts: { test: "vitest" },
 		});
+	});
+
+	it("preserves app additions in their original json key order", () => {
+		const base = {
+			$schema: "https://turborepo.com/schema.json",
+			ui: "tui",
+			tasks: { build: { dependsOn: ["^build"] } },
+		};
+
+		const current = {
+			$schema: base.$schema,
+			ui: base.ui,
+			agentGuidance: false,
+			tasks: base.tasks,
+		};
+
+		const { merged, conflicts } = threeWayMergeJson(base, current, base);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(formatJson(current));
+		expect(Object.keys(merged)).toEqual(Object.keys(current));
+	});
+
+	it("places incoming keys after surviving neighbours in app order", () => {
+		const { merged, conflicts } = threeWayMergeJson(
+			{ removedFirst: true, anchor: true, removed: true, tail: true },
+			{ anchor: true, app: true, tail: true },
+			{
+				removedFirst: true,
+				first: true,
+				anchor: true,
+				removed: true,
+				added: true,
+				next: true,
+				tail: true,
+			},
+		);
+
+		expect(conflicts).toEqual([]);
+		expect(Object.keys(merged)).toEqual([
+			"first",
+			"anchor",
+			"added",
+			"next",
+			"app",
+			"tail",
+		]);
+	});
+
+	it("places incoming keys after surviving neighbours in nested app order", () => {
+		const { merged, conflicts } = threeWayMergeJson(
+			{
+				tasks: { removedFirst: true, anchor: true, removed: true, tail: true },
+			},
+			{ tasks: { anchor: true, app: true, tail: true } },
+			{
+				tasks: {
+					removedFirst: true,
+					first: true,
+					anchor: true,
+					removed: true,
+					added: true,
+					next: true,
+					tail: true,
+				},
+			},
+		);
+
+		expect(conflicts).toEqual([]);
+
+		const tasks = merged.tasks;
+		if (typeof tasks !== "object" || tasks === null)
+			throw new Error("Expected Merged Tasks Object");
+
+		expect(Object.keys(tasks)).toEqual([
+			"first",
+			"anchor",
+			"added",
+			"next",
+			"app",
+			"tail",
+		]);
+	});
+
+	it("follows incoming json key order when the app is unchanged", () => {
+		const base = { alpha: true, beta: true, gamma: true };
+		const incoming = { gamma: true, alpha: true, beta: true };
+
+		const { merged, conflicts } = threeWayMergeJson(base, base, incoming);
+
+		expect(conflicts).toEqual([]);
+		expect(Object.keys(merged)).toEqual(Object.keys(incoming));
+	});
+
+	it("keeps a nested app reorder when the template changes a value", () => {
+		const { merged, conflicts } = threeWayMergeJson(
+			{ config: { alpha: 1, beta: 2 } },
+			{ config: { beta: 2, alpha: 1 } },
+			{ config: { alpha: 3, beta: 2 } },
+		);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(
+			formatJson({ config: { beta: 2, alpha: 3 } }),
+		);
+	});
+
+	it("keeps __proto__ keys as own entries at every level", () => {
+		const config = Object.fromEntries([
+			["__proto__", 1],
+			["normal", 2],
+		]);
+
+		const json = Object.fromEntries([
+			["__proto__", { nested: true }],
+			["config", config],
+		]);
+
+		const { merged, conflicts } = threeWayMergeJson(json, json, json);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(formatJson(json));
+		expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+	});
+
+	it("follows a nested template reorder when the app is unchanged", () => {
+		const base = { config: { alpha: 1, beta: 2 } };
+		const incoming = { config: { beta: 2, alpha: 1 } };
+
+		const { merged, conflicts } = threeWayMergeJson(base, base, incoming);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(formatJson(incoming));
 	});
 
 	it("three-way merges independent json changes and reports scalar conflicts", () => {
