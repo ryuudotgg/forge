@@ -44,12 +44,11 @@
 		},
 		{
 			"groupName": "effect",
-			"matchPackageNames": ["effect", "@effect/**", "!@effect/tsgo"],
-			"matchUpdateTypes": ["minor", "patch"]
+			"matchPackageNames": ["effect", "@effect/**"]
 		},
 		{
 			"addLabels": ["framework-major"],
-			"matchPackageNames": ["effect", "@effect/**", "!@effect/tsgo"],
+			"matchPackageNames": ["effect", "@effect/**"],
 			"matchUpdateTypes": ["major"]
 		},
 		{
@@ -87,7 +86,7 @@
 		}
 	],
 	"rangeStrategy": "bump",
-	"rebaseWhen": "behind-base-branch",
+	"rebaseWhen": "conflicted",
 	"minimumReleaseAge": "1440 minutes",
 	"reviewers": ["ryuudotgg"],
 	"vulnerabilityAlerts": {
