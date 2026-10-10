@@ -140,16 +140,11 @@ export function threeWayMergeEnv(
 
 		const nonConflictingMerge = !fullyResolved
 			? undefined
-			: threeWayMergeEnv(
-					serializeEnv(collapseDuplicateVariables(baseLines, duplicateNames)),
-					serializeEnv(
-						collapseDuplicateVariables(currentLines, duplicateNames),
-					),
-					serializeEnv(
-						collapseDuplicateVariables(incomingLines, duplicateNames),
-					),
-					resolution,
-					resolveConflict,
+			: mergeUniqueEnv(
+					collapseDuplicateVariables(baseLines, duplicateNames),
+					collapseDuplicateVariables(currentLines, duplicateNames),
+					collapseDuplicateVariables(incomingLines, duplicateNames),
+					duplicateNames,
 				);
 
 		const currentVariables = variables(
@@ -173,7 +168,7 @@ export function threeWayMergeEnv(
 		const resolvedLines =
 			nonConflictingMerge === undefined
 				? undefined
-				: parseEnv(nonConflictingMerge.merged).flatMap((line) => {
+				: nonConflictingMerge.flatMap((line) => {
 						if (line.name === undefined || !duplicateNames.has(line.name))
 							return [line];
 
@@ -202,6 +197,20 @@ export function threeWayMergeEnv(
 		};
 	}
 
+	return {
+		merged: serializeEnv(
+			mergeUniqueEnv(baseLines, currentLines, incomingLines, new Set()),
+		),
+		conflicts: [],
+	};
+}
+
+function mergeUniqueEnv(
+	baseLines: ReadonlyArray<EnvLine>,
+	currentLines: ReadonlyArray<EnvLine>,
+	incomingLines: ReadonlyArray<EnvLine>,
+	resolvedNames: ReadonlySet<string>,
+): EnvLine[] {
 	const baseVariables = variables(baseLines);
 	const currentVariables = variables(currentLines);
 	const incomingVariables = variables(incomingLines);
@@ -211,6 +220,8 @@ export function threeWayMergeEnv(
 
 		const currentLine = currentVariables.get(line.name);
 		const baseLine = baseVariables.get(line.name);
+		const deletedByUser = baseLine !== undefined && currentLine === undefined;
+		if (deletedByUser && !resolvedNames.has(line.name)) continue;
 
 		selectedVariables.set(
 			line.name,
@@ -364,10 +375,7 @@ export function threeWayMergeEnv(
 		previousIncoming = incomingEnd + (anchor === -1 ? 0 : 1);
 	}
 
-	return {
-		merged: serializeEnv(output),
-		conflicts: [],
-	};
+	return output;
 }
 
 export function envResidue(base: string, current: string): string {

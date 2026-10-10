@@ -885,6 +885,57 @@ describe("merge helpers", () => {
 		).toEqual({ conflicts: [], merged: "EDITED=user\n" });
 	});
 
+	it("keeps user-deleted env variables and their comments deleted", () => {
+		expect(
+			threeWayMergeEnv(
+				'AUTH_SECRET=old\n# Cookie domain\nAUTH_COOKIE_DOMAIN=""\nDATABASE_URL=old\n',
+				"AUTH_SECRET=old\nDATABASE_URL=old\n",
+				'AUTH_SECRET=old\n# Cookie domain\nAUTH_COOKIE_DOMAIN=""\nDATABASE_URL=old\n',
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "AUTH_SECRET=old\nDATABASE_URL=old\n",
+		});
+	});
+
+	it("keeps user-deleted env variables deleted when forge changes their values", () => {
+		expect(
+			threeWayMergeEnv(
+				'AUTH_SECRET=old\n# Cookie domain\nAUTH_COOKIE_DOMAIN=""\nDATABASE_URL=old\n',
+				"AUTH_SECRET=old\nDATABASE_URL=old\n",
+				'AUTH_SECRET=old\n# Cookie domain\nAUTH_COOKIE_DOMAIN="example.com"\nDATABASE_URL=old\n',
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "AUTH_SECRET=old\nDATABASE_URL=old\n",
+		});
+	});
+
+	it("restores a deleted env variable when forge wins its duplicate conflict", () => {
+		expect(
+			threeWayMergeEnv("VALUE=old\n", "", "VALUE=one\nVALUE=two\n", "forge")
+				.merged,
+		).toBe("VALUE=two\n");
+
+		expect(
+			threeWayMergeEnv("VALUE=old\n", "", "VALUE=one\nVALUE=two\n", "user")
+				.merged,
+		).toBe("");
+	});
+
+	it("adds new forge env variables while keeping user-edited values", () => {
+		expect(
+			threeWayMergeEnv(
+				"EDITED=old\n",
+				"EDITED=user\n",
+				"EDITED=old\nADDED=new\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "EDITED=user\nADDED=new\n",
+		});
+	});
+
 	it("uses new forge env values when users left the base untouched", () => {
 		expect(
 			threeWayMergeEnv("VALUE=old\n", "VALUE=old\n", "VALUE=new\n"),
