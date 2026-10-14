@@ -93,7 +93,7 @@ jobs:
           --health-retries 10
 
       mysql:
-        image: mysql:26.7@sha256:9d48c42f8341068f199116dfccb919b607c99765b5c61e549a548a43033471a4
+        image: mysql:26.7@sha256:893418c8a7a34c60d2d961cc30ef136095da141478562ed2101ae3f5faba9c3f
         env:
           MYSQL_ROOT_PASSWORD: mysql
         ports:
@@ -128,7 +128,7 @@ jobs:
 
       - name: Upload Smoke Report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-smoke-report-${{ matrix.shard }}
           path: |
