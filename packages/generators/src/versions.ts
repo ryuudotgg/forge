@@ -154,7 +154,7 @@ export const versions = {
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.49",
+		version: "1.169.3",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
