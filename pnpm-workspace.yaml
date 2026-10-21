@@ -70,7 +70,7 @@ catalogs:
     effect: 4.0.5
     "@effect/platform-node": 4.0.5
     "@effect/platform-node-shared": 4.0.5
-    "@effect/tsgo": ^0.54.0
+    "@effect/tsgo": ^0.54.1
     "@effect/vitest": 4.0.5
 
 nodeLinker: hoisted
