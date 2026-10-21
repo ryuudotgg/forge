@@ -43,8 +43,8 @@ catalogs:
     "@biomejs/biome": 2.5.15
 
     # Commit Linting
-    "@commitlint/cli": ^21.2.3
-    "@commitlint/config-conventional": ^21.2.3
+    "@commitlint/cli": ^21.2.4
+    "@commitlint/config-conventional": ^21.2.4
     "@commitlint/types": ^21.2.3
     sherif: ^1.13.0
     "@ryuugg/stanza": 0.3.3
