@@ -10,16 +10,28 @@ import {
 	surfaceScripts,
 	surfaceText,
 	type TemplateDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import { installHook, pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcDescriptor, rpcProviderTemplate } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
+import {
+	type WebAppInstance,
+	webAppInstances,
+	webAppRenderConfig,
+} from "../../web-apps";
+
+const tanstackRouterSlots = {
+	layout: "src/routes/__root.tsx",
+	page: "src/routes/index.tsx",
+};
 
 export const tanstackRouterFramework: FrameworkDefinition<"tanstack-router"> =
 	defineFramework({
@@ -30,7 +42,7 @@ export const tanstackRouterFramework: FrameworkDefinition<"tanstack-router"> =
 		ignoreDirs: [".tanstack/"],
 		name: "TanStack Router",
 		sourceRoot: "src",
-		slots: ["layout", "page"],
+		slots: Object.keys(tanstackRouterSlots),
 		tsconfigPreset: {
 			name: "tanstack-router",
 			content: {
@@ -76,8 +88,14 @@ const tanstackRouterBaseTemplate: TemplateDefinition<
 		{ id: "typescript", type: "addon" },
 		{ id: "ui", type: "addon" },
 	],
-	when: (config) => config.web === "tanstack-router",
-	contribute: ({ config }) => buildContributions(config),
+	when: (config) =>
+		webAppInstances(config).some(
+			(instance) => instance.framework === "tanstack-router",
+		),
+	contribute: ({ config }) =>
+		webAppInstances(config)
+			.filter((instance) => instance.framework === "tanstack-router")
+			.flatMap((instance) => buildContributions(config, instance)),
 });
 
 export const tanstackRouterBaseTemplateMetadata: FirstPartyTemplateMetadata = {
@@ -92,7 +110,8 @@ export const tanstackRouterBaseTemplateMetadata: FirstPartyTemplateMetadata = {
 	summary: "Base TanStack Router template.",
 };
 
-function buildContributions(config: ForgeConfig) {
+function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
+	const renderConfig = webAppRenderConfig(config, instance);
 	const slug = config.slug ?? "my-app";
 	const projectName = config.name ?? slug;
 	const pm = resolvePackageManager(config);
@@ -103,22 +122,30 @@ function buildContributions(config: ForgeConfig) {
 		"// __TAILWIND_IMPORT__\n": useTailwind
 			? 'import tailwindcss from "@tailwindcss/vite";\n'
 			: "",
-		"/* __TAILWIND_PLUGIN__ */ ": useTailwind ? "tailwindcss(), " : "",
+		"    __TAILWIND_PLUGIN__\n": useTailwind ? "    tailwindcss(),\n" : "",
 	};
-	const usesTrpc = config.rpc === "trpc";
+
+	const rpc = rpcDescriptor(renderConfig);
+	const providersTemplate = readTemplate(
+		"frameworks/tanstack-router/src/providers.tsx",
+	);
 
 	const providers = interpolate(
-		readTemplate("frameworks/tanstack-router/src/providers.tsx"),
+		renderConfig.rpc === undefined
+			? providersTemplate
+			: rpcProviderTemplate(providersTemplate, renderConfig.rpc),
 		{
-			"// __TRPC_IMPORT__\n": usesTrpc
-				? 'import { TRPCReactProvider } from "@/trpc/react";\n'
-				: "",
-			"  // __TRPC_ENTRY__\n": usesTrpc ? "  trpc: TRPCReactProvider,\n" : "",
+			"// __TRPC_IMPORT__\n":
+				rpc !== undefined
+					? `import { ${rpc.client.component} } from "${rpc.client.module}";\n`
+					: "",
+			"  // __TRPC_ENTRY__\n":
+				rpc !== undefined ? `  ${config.rpc}: ${rpc.client.component},\n` : "",
 		},
 	);
 
 	const webPackageJson: Record<string, unknown> = {
-		name: `@${slug}/web`,
+		name: instance.packageName,
 		version: "0.1.0",
 		private: true,
 		type: "module",
@@ -149,8 +176,8 @@ function buildContributions(config: ForgeConfig) {
 			type: "dependencies",
 		},
 		{ ...deps.tanstackReactRouter, type: "dependencies" },
-		{ ...deps.react, type: "dependencies" },
-		{ ...deps.reactDom, type: "dependencies" },
+		{ ...catalogRef("react", config), type: "dependencies" },
+		{ ...catalogRef("reactDom", config), type: "dependencies" },
 		{ ...deps.nextThemes, type: "dependencies" },
 		{ ...deps.t3OssEnvCore, type: "dependencies" },
 		{ ...deps.zod, type: "dependencies" },
@@ -171,17 +198,20 @@ function buildContributions(config: ForgeConfig) {
 	];
 
 	return [
-		ensureAppModule("web", "apps/web", {
+		ensureAppModule(instance.key, instance.root, {
 			framework: "tanstack-router",
 			template: { id: "tanstack-router/base", version: 1 },
-			slots: {
-				layout: "src/routes/__root.tsx",
-				page: "src/routes/index.tsx",
-			},
+			slots: instance.primary
+				? tanstackRouterSlots
+				: {
+						layout: tanstackRouterSlots.layout,
+						page: tanstackRouterSlots.page,
+					},
+			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),
 
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"layout",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/src/routes/__root.tsx"),
@@ -190,7 +220,7 @@ function buildContributions(config: ForgeConfig) {
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"page",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/src/routes/index.tsx"),
@@ -199,55 +229,85 @@ function buildContributions(config: ForgeConfig) {
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"frameworkConfig",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/vite.config.ts"),
 				vars,
 			),
 		),
-		surfaceJson(ensuredModuleTarget("web"), "tsconfig", webTsconfig),
-		surfaceJson(ensuredModuleTarget("web"), "packageJson", webPackageJson),
-		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", appDeps),
-		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+		surfaceJson(ensuredModuleTarget(instance.key), "tsconfig", webTsconfig),
+		surfaceJson(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			webPackageJson,
+		),
+		surfaceDependencies(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			appDeps,
+		),
+		surfaceScripts(ensuredModuleTarget(instance.key), "packageJson", {
 			build: pmRun(pm, "with-env", "vite build"),
-			dev: pmRun(pm, "with-env", "vite dev --port 3000"),
+			dev: pmRun(
+				pm,
+				"with-env",
+				`vite dev --port ${instance.port} --strictPort`,
+			),
 			"generate-routes": "tsr generate",
-			postinstall: pmRun(pm, "generate-routes"),
+			postinstall: installHook(
+				"@tanstack/router-cli",
+				pmRun(pm, "generate-routes"),
+			),
 			pretypecheck: pmRun(pm, "generate-routes"),
-			preview: pmRun(pm, "with-env", "vite preview"),
+			preview: pmRun(
+				pm,
+				"with-env",
+				`vite preview --port ${instance.port} --strictPort`,
+			),
 			typecheck: "tsc --noEmit",
 			"with-env": "dotenv -e ../../.env --",
 		}),
 
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"env.ts",
 			interpolate(
 				readTemplate("frameworks/tanstack-router/env.ts"),
-				viteServerEnvMarkers(config),
+				viteServerEnvMarkers(config, instance),
 			),
 		),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"index.html",
 			interpolate(readTemplate("frameworks/tanstack-router/index.html"), vars),
 		),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"src/main.tsx",
 			readTemplate("frameworks/tanstack-router/src/main.tsx"),
 		),
-		leafTextFile(ensuredModuleTarget("web"), "src/providers.tsx", providers),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
+			"src/providers.tsx",
+			providers,
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
 			"src/router.tsx",
 			readTemplate("frameworks/tanstack-router/src/router.tsx"),
 		),
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"src/routeTree.gen.ts",
 			readTemplate("frameworks/tanstack-router/src/routeTree.gen.ts"),
+			{ update: "write-once", generated: true },
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"public/favicon.svg",
+			readTemplate("frameworks/favicon.svg"),
+			{ update: "starter" },
 		),
 	];
 }

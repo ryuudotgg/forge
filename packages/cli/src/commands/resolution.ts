@@ -1,9 +1,9 @@
-import type { ApplyOptions, ResolutionPolicy } from "@ryuujs/core";
+import type { ApplyOptions, ResolutionPolicy } from "@ryuugg/core";
 
 export type ResolutionArguments = [] | [ApplyOptions];
 
 export function resolutionArguments(
-	values: Readonly<Record<string, string | boolean | undefined>>,
+	values: Readonly<Record<string, string | boolean | string[] | undefined>>,
 ): ResolutionArguments {
 	let resolutionPolicy: ResolutionPolicy = "refuse";
 	if (values["keep-user"] === true) resolutionPolicy = "keep-user";

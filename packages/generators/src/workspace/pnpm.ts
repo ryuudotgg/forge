@@ -1,4 +1,4 @@
-import { defineAddon, leafTextFile, projectTarget } from "@ryuujs/core";
+import { defineAddon, leafTextFile, projectTarget } from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import type { FirstPartyAddonMetadata } from "../registry/types";
 import { catalogEntries } from "../versions";
@@ -19,6 +19,7 @@ const pnpm = defineAddon<ForgeConfig, "pnpm">({
 			projectTarget(),
 			"pnpm-workspace.yaml",
 			buildWorkspaceYaml(config),
+			{ mergeKind: "yaml" },
 		),
 	],
 });
@@ -54,6 +55,7 @@ function buildWorkspaceYaml(config: ForgeConfig): string {
 	for (const { group, entries } of groups) {
 		if (group !== first?.group) lines.push("");
 		lines.push(`  # ${group}`);
+
 		for (const entry of entries)
 			lines.push(`  ${quote(entry.name)}: ${entry.version}`);
 	}

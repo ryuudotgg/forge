@@ -1,5 +1,6 @@
-import type { AdapterContext } from "@ryuujs/core";
+import type { AdapterContext } from "@ryuugg/core";
 import {
+	type Dependency,
 	defineTemplateRecipe,
 	ensuredModuleTarget,
 	inModule,
@@ -12,7 +13,8 @@ import {
 	slotAsset,
 	slotPath,
 	surfaceDependencies,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
+import { selfHostedCorsRoute } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import { expoFramework, expoScheme } from "../../frameworks/expo";
@@ -24,32 +26,57 @@ import { reactRouterFramework } from "../../frameworks/react-router";
 import { tanstackStartFramework } from "../../frameworks/tanstack-start";
 import { deriveRecipeAdapters } from "../../registry/recipe-adapters";
 import { readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
+import {
+	authPluginBindings,
+	authPluginImports,
+	authPluginPackages,
+} from "../plugins";
 import { betterAuthRecipeVars } from "./shared";
 
 const betterAuthMarkers = {
 	SLUG: marker.required,
+	APP_NAME: marker.required,
+	AUTH_ENV_NAMES: marker.required,
 	DATASOURCE_PROVIDER: marker.required,
 	DRIZZLE_PROVIDER: marker.required,
-	COOKIE_IMPORT: marker.toggleLine("// __COOKIE_IMPORT__\n"),
-	COOKIE_PLUGIN: marker.toggleLine("  // __COOKIE_PLUGIN__\n\n"),
+	PLUGIN_IMPORTS: marker.toggleLine("// __PLUGIN_IMPORTS__\n"),
+	PLUGIN_CONSTANTS: marker.toggleLine("__PLUGIN_CONSTANTS__\n"),
+	SCOPED_PLUGIN_IMPORTS: marker.toggleLine("__SCOPED_PLUGIN_IMPORTS__\n"),
+	RELATIVE_PLUGIN_IMPORTS: marker.toggleLine("__RELATIVE_PLUGIN_IMPORTS__\n"),
+	PLUGINS: marker.toggleLine("  // __PLUGINS__\n\n"),
+	CLIENT_PLUGIN_IMPORTS: marker.toggleLine("// __CLIENT_PLUGIN_IMPORTS__\n"),
+	CLIENT_PLUGINS: marker.toggleLine("    // __CLIENT_PLUGINS__\n"),
 	TRUSTED_ORIGINS: marker.toggleLine("  // __TRUSTED_ORIGINS__\n"),
 	EMAIL_PASSWORD: marker.toggleLine("  // __EMAIL_PASSWORD__\n"),
+	HOOKS: marker.toggleLine("  // __HOOKS__\n\n"),
+	DATABASE_HOOKS: marker.toggleLine("  // __DATABASE_HOOKS__\n\n"),
+	SOCIAL_DECLARATION: marker.toggleLine("// __SOCIAL_DECLARATION__\n"),
+	SOCIAL_OPTION: marker.toggleLine("  // __SOCIAL_OPTION__\n\n"),
+	SOCIAL_FUNCTION: marker.toggleLine("// __SOCIAL_FUNCTION__\n\n"),
+	DB_HELPER_IMPORT: marker.toggleLine("__DB_HELPER_IMPORT__\n"),
+	ADAPTER_SCHEMA_IMPORT: marker.toggleLine("__ADAPTER_SCHEMA_IMPORT__\n"),
+	ADAPTER_MODELS: marker.toggleLine("__ADAPTER_MODELS__\n"),
 } as const;
 
-function betterAuthModuleDependencies(slug: string) {
+const { CLIENT_PLUGIN_IMPORTS, CLIENT_PLUGINS, ...betterAuthServerMarkers } =
+	betterAuthMarkers;
+
+function betterAuthModuleDependencies(config: ForgeConfig) {
+	const slug = config.slug ?? "my-app";
 	return [
 		{
 			name: `@${slug}/auth`,
 			version: "workspace:*",
 			type: "dependencies" as const,
 		},
-		{ ...deps.betterAuth, type: "dependencies" as const },
+		{ ...catalogRef("betterAuth", config), type: "dependencies" as const },
 	];
 }
 
 export const betterAuthRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthMarkers,
+	markers: betterAuthServerMarkers,
 	assets: [
 		sharedAsset("index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -82,6 +109,10 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 
 		return betterAuthRecipeVars(context.config, context.framework);
 	},
+	content: (asset, content, { config, framework }) =>
+		asset._tag === "SlotAssetDefinition"
+			? selfHostedCorsRoute(config, framework.id, content)
+			: content,
 	include: (asset, { config }) =>
 		asset._tag === "SlotAssetDefinition" ||
 		asset.name === `index-${config.orm}`,
@@ -97,7 +128,7 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 		surfaceDependencies(
 			moduleTarget(module),
 			"packageJson",
-			betterAuthModuleDependencies(config.slug ?? "my-app"),
+			betterAuthModuleDependencies(config),
 		),
 		...expoAuthClientContributions(config),
 	],
@@ -107,7 +138,9 @@ export const betterAuthAdapters = deriveRecipeAdapters({
 // distinct keys here even though `path` below rewrites both to src/index.ts.
 export const betterAuthHonoRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthMarkers,
+	markers: {
+		...betterAuthServerMarkers,
+	},
 	assets: [
 		sharedAsset("index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -128,8 +161,9 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 	frameworks: [honoFramework],
 	readTemplate,
 	requiredSlots: ["auth"],
-	markers: ({ config }: AdapterContext<ForgeConfig>) =>
-		betterAuthRecipeVars(config, honoFramework),
+	markers: ({ config }: AdapterContext<ForgeConfig>) => ({
+		...betterAuthRecipeVars(config, honoFramework),
+	}),
 	include: (asset, { config }) =>
 		asset._tag === "SlotAssetDefinition" ||
 		asset.name === `index-${config.orm}`,
@@ -145,7 +179,7 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 		surfaceDependencies(
 			moduleTarget(module),
 			"packageJson",
-			betterAuthModuleDependencies(config.slug ?? "my-app"),
+			betterAuthModuleDependencies(config),
 		),
 		...expoAuthClientContributions(config),
 	],
@@ -153,7 +187,7 @@ export const betterAuthHonoAdapters = deriveRecipeAdapters({
 
 export const betterAuthFastifyRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthMarkers,
+	markers: betterAuthServerMarkers,
 	assets: [
 		sharedAsset("fastify-index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -191,7 +225,7 @@ export const betterAuthFastifyAdapters = deriveRecipeAdapters({
 		surfaceDependencies(
 			moduleTarget(module),
 			"packageJson",
-			betterAuthModuleDependencies(config.slug ?? "my-app"),
+			betterAuthModuleDependencies(config),
 		),
 		...expoAuthClientContributions(config),
 	],
@@ -199,7 +233,7 @@ export const betterAuthFastifyAdapters = deriveRecipeAdapters({
 
 export const betterAuthExpressRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: betterAuthMarkers,
+	markers: betterAuthServerMarkers,
 	assets: [
 		sharedAsset("express-index-drizzle", {
 			template: "auth/better-auth/packages/auth/src/index.drizzle.ts",
@@ -237,7 +271,7 @@ export const betterAuthExpressAdapters = deriveRecipeAdapters({
 		surfaceDependencies(
 			moduleTarget(module),
 			"packageJson",
-			betterAuthModuleDependencies(config.slug ?? "my-app"),
+			betterAuthModuleDependencies(config),
 		),
 		...expoAuthClientContributions(config),
 	],
@@ -245,7 +279,12 @@ export const betterAuthExpressAdapters = deriveRecipeAdapters({
 
 export const betterAuthExpoRecipe = defineTemplateRecipe({
 	addon: "better-auth",
-	markers: { SCHEME: marker.required, SLUG: marker.required },
+	markers: {
+		SCHEME: marker.required,
+		SLUG: marker.required,
+		CLIENT_PLUGIN_IMPORTS,
+		CLIENT_PLUGINS,
+	},
 	assets: [
 		sharedAsset("expo-client", {
 			template: "auth/better-auth/expo/auth-client.ts",
@@ -258,7 +297,14 @@ export function expoAuthClientContributions(config: ForgeConfig) {
 	if (config.mobile !== "expo") return [];
 
 	const slug = config.slug ?? "my-app";
-	const markers = { SCHEME: expoScheme(slug), SLUG: slug };
+	const plugins = authPluginBindings(config, "expo");
+	const markers = {
+		SCHEME: expoScheme(slug),
+		SLUG: slug,
+		CLIENT_PLUGIN_IMPORTS: authPluginImports(plugins),
+		CLIENT_PLUGINS: plugins.map(({ name }) => `    ${name}(),\n`).join(""),
+	};
+
 	const asset = betterAuthExpoRecipe.assets[0];
 	const rendered = renderRecipeAsset(
 		betterAuthExpoRecipe,
@@ -268,12 +314,17 @@ export function expoAuthClientContributions(config: ForgeConfig) {
 	);
 
 	const target = ensuredModuleTarget("mobile");
-
 	return [
 		leafTextFile(target, rendered.destination, rendered.content),
 		surfaceDependencies(target, "packageJson", [
-			{ ...deps.betterAuth, type: "dependencies" },
+			{ ...catalogRef("betterAuth", config), type: "dependencies" },
 			{ ...deps.betterAuthExpo, type: "dependencies" },
+			...authPluginPackages(config, "expo").map(
+				(dependency): Dependency => ({
+					...dependency,
+					type: "dependencies",
+				}),
+			),
 			{ ...deps.expoSecureStore, type: "dependencies" },
 		]),
 	];

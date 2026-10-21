@@ -11,7 +11,7 @@ import {
 	surfaceLines,
 	surfaceScripts,
 	type TemplateDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
 import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
@@ -22,6 +22,7 @@ import type {
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
 
 export const expoFramework: FrameworkDefinition<"expo"> = defineFramework({
 	id: "expo",
@@ -95,7 +96,6 @@ function buildContributions(config: ForgeConfig) {
 	const pm = resolvePackageManager(config);
 	const origin = appOrigin(config);
 	const useNativewind = config.nativeStyleFramework === "nativewind";
-
 	return [
 		ensureAppModule("mobile", "apps/mobile", {
 			framework: "expo",
@@ -124,7 +124,7 @@ function buildContributions(config: ForgeConfig) {
 			{ ...deps.expoRouter, type: "dependencies" },
 			{ ...deps.reactNativeSafeAreaContext, type: "dependencies" },
 			{ ...deps.reactNativeScreens, type: "dependencies" },
-			{ ...deps.react, type: "dependencies" },
+			{ ...catalogRef("react", config), type: "dependencies" },
 			{ ...deps.reactNative, type: "dependencies" },
 			{ ...deps.t3OssEnvCore, type: "dependencies" },
 			{ ...deps.zod, type: "dependencies" },

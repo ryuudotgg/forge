@@ -1,6 +1,7 @@
-import type { PackageManager, Runtime } from "@ryuujs/core";
+import type { AddonDefinition, PackageManager, Runtime } from "@ryuugg/core";
+import type { WebAppConfig } from "./web-apps";
 
-function defineChoices<const T extends Record<string, string>>(
+export function defineChoices<const T extends Record<string, string>>(
 	definitions: T,
 	options?: {
 		aliases?: Readonly<Record<string, keyof T & string>>;
@@ -9,27 +10,39 @@ function defineChoices<const T extends Record<string, string>>(
 ) {
 	type ChoiceId = keyof T & string;
 
-	const ids = Object.keys(definitions) as ReadonlyArray<ChoiceId>;
+	const ids: ReadonlyArray<ChoiceId> = Object.keys(definitions).filter(
+		(id): id is ChoiceId => Object.hasOwn(definitions, id),
+	);
+
 	const read = (id: ChoiceId) => {
 		const value = definitions[id];
 		if (value === undefined) throw new Error(`Missing Choice: ${id}`);
 		return value;
 	};
-	const byDisplayName = new Map(ids.map((id) => [read(id).toLowerCase(), id]));
-	const unavailable = new Set(options?.unavailable ?? []);
-	const aliases = new Map(Object.entries(options?.aliases ?? {}));
 
+	const fold = (value: string) => value.normalize("NFKC").toLowerCase();
+	const byValue = new Map<string, ChoiceId>();
+	function register(value: string, id: ChoiceId) {
+		const key = fold(value);
+		const existing = byValue.get(key);
+		if (existing !== undefined && existing !== id)
+			throw new Error(`Choice Collision: ${key}`);
+
+		byValue.set(key, id);
+	}
+
+	for (const id of ids) {
+		register(id, id);
+		register(read(id), id);
+	}
+
+	for (const [alias, id] of Object.entries(options?.aliases ?? {}))
+		register(alias, id);
+
+	const unavailable = new Set(options?.unavailable ?? []);
 	function normalize(value: unknown): ChoiceId | undefined {
 		if (typeof value !== "string") return undefined;
-
-		const normalizedValue = value.toLowerCase();
-		const alias = aliases.get(normalizedValue);
-		if (alias !== undefined) return alias;
-
-		const id = ids.find((candidate) => candidate === value);
-		if (id !== undefined) return id;
-
-		return byDisplayName.get(normalizedValue);
+		return byValue.get(fold(value));
 	}
 
 	function label(id: ChoiceId): T[ChoiceId] {
@@ -56,6 +69,27 @@ export const platforms = defineChoices(
 );
 
 export type Platform = keyof typeof platforms.definitions;
+
+export const authMethods = defineChoices({
+	"email-password": "Email and password",
+	google: "Google",
+	apple: "Apple",
+	passkey: "Passkey",
+	"email-otp": "Email OTP",
+	"magic-link": "Magic link",
+});
+
+export type AuthMethod = keyof typeof authMethods.definitions;
+
+export const authPlugins = defineChoices({
+	"two-factor": "Two-factor",
+	username: "Username",
+	admin: "Admin",
+	organization: "Organization",
+	polar: "Polar",
+});
+
+export type AuthPlugin = keyof typeof authPlugins.definitions;
 
 export const webFrameworks = defineChoices({
 	nextjs: "Next.js",
@@ -86,6 +120,7 @@ export type Backend = keyof typeof backends.definitions;
 
 export const rpcProviders = defineChoices({
 	trpc: "tRPC",
+	orpc: "oRPC",
 } as const);
 
 export type RpcProvider = keyof typeof rpcProviders.definitions;
@@ -118,6 +153,14 @@ export const authenticationProviders = defineChoices(
 export type AuthenticationProvider =
 	keyof typeof authenticationProviders.definitions;
 
+export const emailProviders = defineChoices({
+	resend: "Resend",
+	postmark: "Postmark",
+	smtp: "SMTP",
+} as const);
+
+export type EmailProvider = keyof typeof emailProviders.definitions;
+
 export const styleFrameworks = defineChoices(
 	{ tailwind: "Tailwind CSS", unocss: "UnoCSS" } as const,
 	{ unavailable: ["unocss"] },
@@ -138,7 +181,7 @@ export const linters = defineChoices(
 		oxc: "Oxc",
 		"eslint-prettier": "ESLint + Prettier",
 	} as const,
-	{ unavailable: ["oxc", "eslint-prettier"] },
+	{ unavailable: ["eslint-prettier"] },
 );
 
 export type Linter = keyof typeof linters.definitions;
@@ -216,7 +259,6 @@ export function hasAddon(config: ForgeConfig, addon: OptionalAddon): boolean {
 export function withAddon(config: ForgeConfig, addon: string): ForgeConfig {
 	const normalized = optionalAddons.normalize(addon);
 	if (normalized === undefined || hasAddon(config, normalized)) return config;
-
 	return { ...config, addons: [...(config.addons ?? []), normalized] };
 }
 
@@ -235,11 +277,17 @@ export const addonConfigBindings: Readonly<
 > = {
 	"better-auth": { authentication: "better-auth" },
 	biome: { linter: "biome" },
+	oxc: { linter: "oxc" },
 	drizzle: { orm: "drizzle" },
 	prisma: { orm: "prisma" },
 	nativewind: { nativeStyleFramework: "nativewind" },
 	tailwind: { style: "tailwind" },
 	trpc: { rpc: "trpc" },
+	orpc: { rpc: "orpc" },
+};
+
+const addonDependentFields: Readonly<Record<string, ReadonlyArray<string>>> = {
+	"better-auth": ["authMethods", "authPlugins"],
 };
 
 export function configWithInstall(
@@ -248,7 +296,6 @@ export function configWithInstall(
 ): ForgeConfig {
 	const binding = addonConfigBindings[addonId];
 	if (binding === undefined) return withAddon(config, addonId);
-
 	return { ...config, ...binding };
 }
 
@@ -256,6 +303,11 @@ export function configWithoutInstall(
 	config: ForgeConfig,
 	addonId: string,
 ): ForgeConfig {
+	if (addonId === "email") {
+		const { emailProvider, ...rest } = config;
+		return rest;
+	}
+
 	const binding = addonConfigBindings[addonId];
 	if (binding === undefined) return withoutAddon(config, addonId);
 
@@ -263,24 +315,52 @@ export function configWithoutInstall(
 	for (const [field, value] of Object.entries(binding))
 		if (next[field] === value) delete next[field];
 
+	for (const field of addonDependentFields[addonId] ?? []) delete next[field];
+
 	return next;
 }
 
-export function installConflict(
+export function configWithSwitch(
+	config: ForgeConfig,
+	holderId: string,
+	addonId: string,
+): ForgeConfig {
+	return configWithInstall(configWithoutInstall(config, holderId), addonId);
+}
+
+export type InstallChange =
+	| { readonly _tag: "Open" }
+	| { readonly _tag: "Blocked"; readonly holderId: string }
+	| { readonly _tag: "Switch"; readonly holderId: string };
+
+export function installChange(
 	addonId: string,
 	installedIds: ReadonlyArray<string>,
-): string | undefined {
+	addons: ReadonlyArray<AddonDefinition<ForgeConfig>>,
+): InstallChange {
 	const binding = addonConfigBindings[addonId];
-	if (binding === undefined) return undefined;
+	if (binding === undefined) return { _tag: "Open" };
 
 	const fields = Object.keys(binding);
 
-	return Object.entries(addonConfigBindings).find(
+	const holderId = Object.entries(addonConfigBindings).find(
 		([id, other]) =>
 			id !== addonId &&
 			installedIds.includes(id) &&
 			Object.keys(other).some((field) => fields.includes(field)),
 	)?.[0];
+
+	if (holderId === undefined) return { _tag: "Open" };
+
+	const requested = addons.find((addon) => addon.id === addonId);
+	const holder = addons.find((addon) => addon.id === holderId);
+	const switchable =
+		requested?.exclusive === true &&
+		requested.switching !== undefined &&
+		holder?.exclusive === true &&
+		holder.switching !== undefined;
+
+	return { _tag: switchable ? "Switch" : "Blocked", holderId };
 }
 
 export interface ForgeConfig {
@@ -294,10 +374,15 @@ export interface ForgeConfig {
 	readonly linter?: Linter;
 	readonly platforms?: ReadonlyArray<Platform>;
 	readonly web?: WebFramework;
+	readonly webName?: string;
+	readonly webApps?: ReadonlyArray<WebAppConfig>;
 	readonly backend?: Backend;
 	readonly rpc?: RpcProvider;
 	readonly orm?: Orm;
 	readonly authentication?: AuthenticationProvider;
+	readonly authMethods?: ReadonlyArray<AuthMethod>;
+	readonly authPlugins?: ReadonlyArray<AuthPlugin>;
+	readonly emailProvider?: EmailProvider;
 	readonly database?: Database;
 	readonly databaseProvider?: DatabaseProvider;
 	readonly style?: StyleFramework;

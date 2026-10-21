@@ -8,7 +8,7 @@ import {
 	resolveApiHost,
 } from "../src";
 import { standaloneApiOrigin } from "../src/origins";
-import { plannedProject } from "./planner-harness";
+import { plannedProject, serverEnvGroups } from "./planner-harness";
 
 const markerPattern = /__[A-Z_]+__/;
 
@@ -28,9 +28,11 @@ describe("Fastify backend", () => {
 		expect(
 			resolveApiHost(
 				{ backend: "fastify", web: "tanstack-router" },
+				"trpc",
 				builtins.frameworks,
 			),
 		).toBe("server");
+
 		expect(standaloneApiOrigin({ backend: "fastify" })).toBe(
 			"http://localhost:3001",
 		);
@@ -40,10 +42,11 @@ describe("Fastify backend", () => {
 		expect(fastifyFramework).toMatchObject({
 			buildOutputs: ["dist/**"],
 			ignoreDirs: [],
-			slots: ["api", "trpc", "auth"],
+			slots: ["api", "trpc", "auth", "orpc"],
 			sourceRoot: "src",
 			tsconfigPreset: { name: "fastify" },
 		});
+
 		expect(fastifyFramework).not.toHaveProperty("configFile");
 	});
 
@@ -101,12 +104,14 @@ describe("Fastify backend", () => {
 
 			const app = writeContent(plan, "apps/server/src/app.ts");
 			expect(app).toContain('import cors from "@fastify/cors"');
-			expect(app).toContain("origin: env.WEB_URL");
+			expect(app).toContain('import { webOrigins } from "../env.js";');
+			expect(app).toContain("origin: webOrigins,");
 			expect(app).toContain('"x-trpc-source"');
 			expect(app).not.toMatch(markerPattern);
 			expect(app.includes("registerTrpcRoutes(app);")).toBe(
 				combination.rpc === "trpc",
 			);
+
 			expect(app.includes("registerAuthRoutes(app);")).toBe(
 				combination.authentication === "better-auth",
 			);
@@ -116,21 +121,41 @@ describe("Fastify backend", () => {
 				expect(route).toContain("fastifyTRPCPlugin");
 				expect(route).toContain('prefix: "/api/trpc"');
 				expect(route).toContain("headersFromRequest(req.headers)");
+				expect(route).toContain(
+					'responseMeta: () => ({ headers: { vary: ["Origin"] } }),',
+				);
+
 				if (combination.authentication === "better-auth")
 					expect(route).toContain(
 						"auth,\n          headers: headersFromRequest(req.headers)",
 					);
+
 				expect(route).not.toMatch(markerPattern);
 			}
 
 			if (combination.authentication === "better-auth") {
 				const route = writeContent(plan, "apps/server/src/routes/auth.ts");
+
 				expect(route).toContain('method: ["GET", "POST"]');
 				expect(route).toContain('url: "/api/auth/*"');
 				expect(route).toContain("async handler(request, reply)");
 				expect(route).not.toContain("app.all(");
+
 				expect(route).toContain("fromNodeHeaders(request.headers)");
 				expect(route).toContain("await auth.handler(");
+				expect(route).toContain("app.register(async (scope) => {");
+				expect(route).toContain("scope.removeAllContentTypeParsers();");
+				expect(route).toContain(
+					'scope.addContentTypeParser(\n      "*",\n      { parseAs: "buffer" },',
+				);
+
+				expect(route).toContain("(_request, body, done) => done(null, body)");
+				expect(route).toContain("scope.route({");
+				expect(route).toContain(
+					"Buffer.isBuffer(request.body) ? request.body : undefined",
+				);
+
+				expect(route).not.toContain("JSON.stringify(request.body)");
 				expect(route).toContain("reply.status(response.status)");
 				expect(route).not.toMatch(markerPattern);
 			}
@@ -152,6 +177,7 @@ describe("Fastify backend", () => {
 			slug: "acme",
 			web: "nextjs",
 		};
+
 		const [fastify, hono] = await Promise.all([
 			plannedProject({ ...config, backend: "fastify" }),
 			plannedProject({ ...config, backend: "hono" }),
@@ -185,26 +211,57 @@ describe("Fastify backend", () => {
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"framework": "fastify"',
 		);
+
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"trpc": "src/routes/trpc.ts"',
 		);
+
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"auth": "src/routes/auth.ts"',
 		);
+
 		expect(Object.values(plan.manifest.modules)).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ root: "apps/server" }),
 			]),
 		);
+
 		expect(
 			plan.writes.some((write) => write.path.startsWith("apps/web/")),
 		).toBe(false);
+
 		expect(
 			apiHostError(
 				{ backend: "fastify" },
-				{ id: "trpc", name: "tRPC" },
+				{ id: "trpc", name: "tRPC", slot: "trpc" },
 				builtins.frameworks,
 			),
 		).toBeUndefined();
+	});
+
+	it("groups NODE_ENV alone and PORT with every origin setting", async () => {
+		const config = {
+			backend: "fastify",
+			catalogs: "scoped",
+			name: "Acme",
+			packageManager: "pnpm",
+			slug: "acme",
+			web: "tanstack-router",
+		} as const;
+
+		const plain = await plannedProject(config);
+		expect(serverEnvGroups(writeContent(plain, "apps/server/env.ts"))).toEqual([
+			["NODE_ENV"],
+			["PORT", "WEB_URL"],
+		]);
+
+		const withClient = await plannedProject({
+			...config,
+			webApps: [{ name: "admin", framework: "nextjs", client: true }],
+		});
+
+		expect(
+			serverEnvGroups(writeContent(withClient, "apps/server/env.ts")),
+		).toEqual([["NODE_ENV"], ["PORT", "WEB_URL", "WEB_URLS"]]);
 	});
 });

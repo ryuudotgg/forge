@@ -5,8 +5,9 @@ import {
 	type LoadedDefinitionRegistry,
 	loadDefinitionRegistry,
 	matchQuery,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import color from "picocolors";
+import { listOr } from "../utils/list";
 import { loadDiscoveryRegistry } from "./lifecycle";
 
 const groupOrder: ReadonlyArray<readonly [CatalogKind, string]> = [
@@ -15,20 +16,23 @@ const groupOrder: ReadonlyArray<readonly [CatalogKind, string]> = [
 	["addon", "Addons"],
 ];
 
+const catalogKinds = groupOrder.map(([kind]) => kind).sort();
+
 export interface ListOptions {
 	readonly kind?: CatalogKind;
 	readonly query: string;
 }
 
 export function parseCatalogKind(
-	value: string | boolean | undefined,
+	value: string | boolean | string[] | undefined,
 ): CatalogKind | undefined {
 	if (value === undefined) return undefined;
-	if (value === "addon" || value === "framework" || value === "template")
-		return value;
+
+	const kind = catalogKinds.find((candidate) => candidate === value);
+	if (kind !== undefined) return kind;
 
 	throw new Error(
-		'Catalog Kind Invalid: use "addon", "framework", or "template".',
+		`${String(value)} isn't a catalog kind. Use ${listOr.format(catalogKinds)}.`,
 	);
 }
 
@@ -159,7 +163,7 @@ export function buildListOutput(
 
 export async function runList(
 	query: string | undefined,
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 	loadRegistry: () => Promise<LoadedDefinitionRegistry> = () =>
 		loadDiscoveryRegistry("."),
 ) {

@@ -6,6 +6,7 @@ import {
 	createProject,
 	pathExists,
 	readJson,
+	removeAddon,
 	updateProject,
 	withScenarioWorkspace,
 } from "../utils/harness";
@@ -80,11 +81,14 @@ describe("addons", () => {
 			const root = await readJson<PackageJson>(
 				join(workspace.projectRoot, "package.json"),
 			);
+
 			const shared = await readJson<PackageJson>(
 				join(workspace.projectRoot, "packages/shared/package.json"),
 			);
 
-			expect(root.scripts?.prepare).toBe("lefthook install");
+			expect(root.scripts?.prepare).toBe(
+				"node -e \"try{require.resolve('lefthook/package.json');process.exit(1)}catch{}\" || lefthook install",
+			);
 			expect(root.devDependencies?.lefthook).toBe("catalog:");
 			expect(root.devDependencies?.["@commitlint/cli"]).toBe("catalog:");
 
@@ -158,7 +162,9 @@ describe("addons", () => {
 				join(workspace.projectRoot, "package.json"),
 			);
 
-			expect(rootWithHooks.scripts?.prepare).toBe("lefthook install");
+			expect(rootWithHooks.scripts?.prepare).toBe(
+				"node -e \"try{require.resolve('lefthook/package.json');process.exit(1)}catch{}\" || lefthook install",
+			);
 
 			await addAddon(workspace.projectRoot, "commitlint");
 
@@ -179,6 +185,7 @@ describe("addons", () => {
 					join(workspace.projectRoot, "packages/shared/forge.json"),
 				),
 			).toBe(true);
+
 			expect(
 				await pathExists(
 					join(workspace.projectRoot, "packages/shared/src/index.ts"),
@@ -200,14 +207,17 @@ describe("addons", () => {
 				"commitlint",
 				"shared",
 			]);
+
 			expect(manifest.installs).toContainEqual({
 				definitionId: "lefthook",
 				targets: [{ kind: "project" }],
 			});
+
 			expect(manifest.installs).toContainEqual({
 				definitionId: "commitlint",
 				targets: [{ kind: "project" }],
 			});
+
 			expect(manifest.installs).toContainEqual({
 				definitionId: "shared",
 				targets: [{ kind: "project" }],
@@ -221,6 +231,40 @@ describe("addons", () => {
 			);
 
 			expect(lefthookAfterUpdate).toBe(lefthookFullYaml);
+		});
+	}, 240_000);
+
+	it("ends add and remove with a completion line and skips a repeat add", async () => {
+		await withScenarioWorkspace("addons-completion", async (workspace) => {
+			await createProject(workspace, {
+				linter: "biome",
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			const added = await addAddon(workspace.projectRoot, "commitlint");
+			expect(added.stdout).toContain(
+				'We added commitlint. Run "pnpm install" to update your dependencies.',
+			);
+
+			const state = async () =>
+				await Promise.all(
+					[".forge/manifest.json", ".forge/lock.json"].map(
+						async (file) =>
+							await readFile(join(workspace.projectRoot, file), "utf-8"),
+					),
+				);
+
+			const before = await state();
+			const repeated = await addAddon(workspace.projectRoot, "commitlint");
+
+			expect(repeated.stdout).toContain("commitlint is already installed.");
+			expect(await state()).toEqual(before);
+
+			const removed = await removeAddon(workspace.projectRoot, "commitlint");
+			expect(removed.stdout).toContain(
+				'We removed commitlint. Run "pnpm install" to update your dependencies.',
+			);
 		});
 	}, 240_000);
 });

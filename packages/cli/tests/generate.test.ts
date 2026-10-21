@@ -7,12 +7,13 @@ import {
 	defineRegistry,
 	defineTemplate,
 	ensureAppModule,
-} from "@ryuujs/core";
-import * as generators from "@ryuujs/generators";
+} from "@ryuugg/core";
+import * as generators from "@ryuugg/generators";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import generateStep from "../src/steps/generate";
 import { SKIP } from "../src/steps/types";
+import { failingAddonRegistry, planningFailures } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
@@ -27,7 +28,6 @@ async function withTempDir<T>(
 	run: (directory: string) => Promise<T>,
 ) {
 	const directory = await mkdtemp(join(tmpdir(), `forge-${name}-`));
-
 	try {
 		return await run(directory);
 	} finally {
@@ -40,6 +40,31 @@ async function readJson(path: string): Promise<unknown> {
 }
 
 describe("generate step", () => {
+	it.each(planningFailures)(
+		"preserves definition failure: $message",
+		async ({ failure }) => {
+			const loaded = failingAddonRegistry(failure);
+			const registry = vi
+				.spyOn(generators, "loadDefinitionRegistry")
+				.mockReturnValue(loaded);
+
+			const expected =
+				"_tag" in failure && failure._tag === "Refusal"
+					? failure.message
+					: "Generation Failed: Definition Failed: boom";
+
+			try {
+				await withTempDir("generate-refusal", async (directory) => {
+					await expect(
+						generateStep.execute({ path: directory, slug: "acme" }, false),
+					).rejects.toHaveProperty("message", expected);
+				});
+			} finally {
+				registry.mockRestore();
+			}
+		},
+	);
+
 	beforeEach(() => {
 		promptMocks.logError.mockReset();
 		vi.spyOn(generators, "probeWorkspaceCommandVersions").mockReturnValue(
@@ -80,6 +105,66 @@ describe("generate step", () => {
 		});
 	}, 120_000);
 
+	it("records each secondary web app's port in the manifest", async () => {
+		await withTempDir("generate-ports", async (directory) => {
+			await generateStep.execute(
+				{
+					name: "Acme",
+					slug: "acme",
+					path: directory,
+					web: "nextjs",
+					webApps: [
+						{ name: "admin", framework: "nextjs", client: true },
+						{ name: "site", framework: "react-router" },
+					],
+					packageManager: "pnpm",
+					runtime: "Node.js",
+				},
+				false,
+			);
+
+			expect(
+				await readJson(join(directory, ".forge", "manifest.json")),
+			).toMatchObject({
+				config: {
+					webApps: [
+						{ name: "admin", framework: "nextjs", client: true, port: 3002 },
+						{ name: "site", framework: "react-router", port: 3003 },
+					],
+				},
+			});
+		});
+	}, 120_000);
+
+	it.each(["web", "vault"])(
+		"records the primary name %s only when it is not the default",
+		async (webName) => {
+			await withTempDir("generate-web-name", async (directory) => {
+				await generateStep.execute(
+					{
+						name: "Acme",
+						slug: "acme",
+						path: directory,
+						web: "nextjs",
+						webName,
+						packageManager: "pnpm",
+						runtime: "Node.js",
+					},
+					false,
+				);
+
+				const manifest = await readJson(
+					join(directory, ".forge", "manifest.json"),
+				);
+
+				if (webName === "web")
+					expect(manifest).not.toHaveProperty("config.webName");
+				else expect(manifest).toHaveProperty("config.webName", webName);
+			});
+		},
+		120_000,
+	);
+
 	it("plans a full TanStack Start project at framework slot paths", async () => {
 		await withTempDir("generate-tanstack-start", async (directory) => {
 			const result = await generateStep.execute(
@@ -113,6 +198,7 @@ describe("generate step", () => {
 				"src/routeTree.gen.ts",
 				"components.json",
 			];
+
 			for (const path of expectedWebFiles)
 				expect(
 					await readFile(join(directory, "apps/web", path), "utf-8"),
@@ -122,9 +208,11 @@ describe("generate step", () => {
 			const manifest = await readJson(
 				join(directory, ".forge", "manifest.json"),
 			);
+
 			expect(manifest).toMatchObject({
 				config: expect.objectContaining({ web: "tanstack-start" }),
 			});
+
 			expect(JSON.stringify(manifest)).toContain(
 				'"definitionIds":["tanstack-start/base"]',
 			);
@@ -133,6 +221,7 @@ describe("generate step", () => {
 				join(directory, "apps/web/src/routes/api/trpc/$.ts"),
 				"utf-8",
 			);
+
 			expect(trpcRoute).toContain('createFileRoute("/api/trpc/$")');
 			expect(trpcRoute).toContain('import { auth } from "@acme/auth";');
 
@@ -140,6 +229,7 @@ describe("generate step", () => {
 				join(directory, "packages/auth/src/index.ts"),
 				"utf-8",
 			);
+
 			expect(authIndex).toContain(
 				'import { tanstackStartCookies } from "better-auth/tanstack-start";',
 			);
@@ -147,6 +237,7 @@ describe("generate step", () => {
 			const components = await readJson(
 				join(directory, "apps/web/components.json"),
 			);
+
 			expect(components).toMatchObject({ rsc: false });
 		});
 	}, 120_000);
@@ -194,6 +285,7 @@ describe("generate step", () => {
 				join(directory, "apps/web/app/routes.ts"),
 				"utf-8",
 			);
+
 			expect(routes).toContain('route("api/trpc/*", "routes/api.trpc.$.ts")');
 			expect(routes).toContain('route("api/auth/*", "routes/api.auth.$.ts")');
 			expect(routes).not.toMatch(/__[A-Z_]+__/);
@@ -202,15 +294,18 @@ describe("generate step", () => {
 				join(directory, "packages/auth/src/index.ts"),
 				"utf-8",
 			);
+
 			expect(authIndex).not.toContain("tanstackStartCookies");
 			expect(authIndex).not.toContain("nextCookies");
 
 			const manifest = await readJson(
 				join(directory, ".forge", "manifest.json"),
 			);
+
 			expect(manifest).toMatchObject({
 				config: expect.objectContaining({ web: "react-router" }),
 			});
+
 			expect(JSON.stringify(manifest)).toContain(
 				'"definitionIds":["react-router/base"]',
 			);
@@ -281,7 +376,7 @@ describe("generate step", () => {
 				),
 			).rejects.toHaveProperty(
 				"message",
-				"Generation Failed: Forge cannot safely update these files:\n.gitignore already exists and is not managed by Forge.\n--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
+				"Generation Failed: Forge cannot safely update these files:\n.gitignore already exists and is not managed by Forge.",
 			);
 		});
 	}, 120_000);
@@ -297,6 +392,7 @@ describe("generate step", () => {
 			slots: ["layout"],
 			tsconfigPreset: { content: {}, name: "fake" },
 		});
+
 		const fakeTemplate = defineTemplate<generators.ForgeConfig>({
 			id: "fake/base",
 			framework: "fake",
@@ -312,6 +408,7 @@ describe("generate step", () => {
 				}),
 			],
 		});
+
 		const trpc = defineAddon<generators.ForgeConfig>({
 			id: "trpc",
 			name: "tRPC",
@@ -328,6 +425,7 @@ describe("generate step", () => {
 			when: (config) => config.rpc === "trpc",
 			contribute: () => [],
 		});
+
 		const loadRegistry = vi
 			.spyOn(generators, "loadDefinitionRegistry")
 			.mockReturnValue({

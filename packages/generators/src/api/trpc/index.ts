@@ -5,19 +5,13 @@ import {
 	leafTextFile,
 	surfaceDependencies,
 	surfaceJson,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
-import {
-	type ApiHostConsumer,
-	apiHostError,
-	apiHostFramework,
-} from "../../api-host";
+import { apiHostError, apiHostFramework, rpcConsumer } from "../../api-host";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { renderTrpcTemplate } from "./shared";
-
-const trpcConsumer: ApiHostConsumer = { id: "trpc", name: "tRPC" };
 
 const trpc = defineAddon<ForgeConfig, "trpc">({
 	id: "trpc",
@@ -33,7 +27,7 @@ const trpc = defineAddon<ForgeConfig, "trpc">({
 		module.slots.trpc !== undefined,
 	when: (config) => config.rpc === "trpc",
 	contribute: ({ config, frameworks }) => {
-		const failure = apiHostError(config, trpcConsumer, frameworks);
+		const failure = apiHostError(config, rpcConsumer("trpc"), frameworks);
 		if (failure !== undefined) return Effect.fail(failure);
 
 		const slug = config.slug ?? "my-app";

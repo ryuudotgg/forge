@@ -97,6 +97,7 @@ export const db = new PrismaClient({ adapter });
 			expect(db.schema).toContain('provider = "prisma-client"');
 			expect(db.schema).toContain('output   = "../src/generated/prisma"');
 			expect(db.schema).toContain('provider = "postgresql"');
+
 			expect(db.schema).toContain("model User {");
 			expect(db.schema).toContain("model Session {");
 			expect(db.schema).toContain("model Account {");
@@ -112,6 +113,7 @@ export const db = new PrismaClient({ adapter });
     DATABASE_URL: z.url(),
     DATABASE_DIRECT_URL: z.url(),
   },`);
+
 			expect(db.dbEnv).toContain(`  runtimeEnvStrict: {
     NODE_ENV: process.env.NODE_ENV,
     DATABASE_URL: process.env.DATABASE_URL,
@@ -161,9 +163,11 @@ export const db = new PrismaClient({ adapter });
 			expect(auth).toContain(
 				'import { prismaAdapter } from "better-auth/adapters/prisma";',
 			);
+
 			expect(auth).toContain(
 				'database: prismaAdapter(db, { provider: "postgresql" }),',
 			);
+
 			expect(auth).not.toContain("drizzleAdapter");
 
 			expect(nextConfig).toContain('"@acme/db"');
@@ -177,12 +181,15 @@ export const db = new PrismaClient({ adapter });
 			expect(installs).not.toContain("drizzle");
 
 			expect(rootPackageJson.scripts).toMatchObject({
-				postinstall: "pnpm --filter @acme/db run generate",
+				postinstall:
+					"node -e \"try{require.resolve('prisma/package.json',{paths:['packages/db']});process.exit(1)}catch{}\" || pnpm --filter @acme/db run generate",
 			});
+
 			expect(web.scripts).toMatchObject({
 				"db:generate": "pnpm --filter @acme/db run generate",
 				"db:migrate": "pnpm --filter @acme/db run migrate",
 			});
+
 			expect(web.dependencies).toHaveProperty("@acme/db");
 			expect(trpc.dependencies).toHaveProperty("@acme/db");
 		});
@@ -197,6 +204,7 @@ export const db = new PrismaClient({ adapter });
 			expect(db.client).toContain(
 				'import { PrismaNeon } from "@prisma/adapter-neon";',
 			);
+
 			expect(db.client).toContain(
 				"const adapter = new PrismaNeon({ connectionString: env.DATABASE_URL });",
 			);
@@ -204,6 +212,7 @@ export const db = new PrismaClient({ adapter });
 			expect(db.packageJson.dependencies).toHaveProperty(
 				"@prisma/adapter-neon",
 			);
+
 			expect(db.packageJson.dependencies).not.toHaveProperty(
 				"@prisma/adapter-pg",
 			);
@@ -223,14 +232,17 @@ export const db = new PrismaClient({ adapter });
 			expect(db.client).toContain(
 				'import { PrismaPg } from "@prisma/adapter-pg";',
 			);
+
 			expect(db.packageJson.dependencies).toHaveProperty("@prisma/adapter-pg");
 
 			expect(db.env).toContain(
 				'DATABASE_URL="postgres://user:password@pooled.db.prisma.io:5432/?sslmode=require"',
 			);
+
 			expect(db.env).toContain(
 				'DATABASE_DIRECT_URL="postgres://user:password@db.prisma.io:5432/?sslmode=require"',
 			);
+
 			expect(db.envExample).toContain("pooled.db.prisma.io:5432");
 		});
 	}, 120_000);
@@ -263,11 +275,13 @@ export const db = new PrismaClient({ adapter });
 			expect(db.prismaConfig).toContain(
 				'fileURLToPath(new URL("prisma/local.db", import.meta.url))',
 			);
+
 			expect(db.prismaConfig).toContain("turso db shell");
 
 			expect(db.packageJson.dependencies).toHaveProperty(
 				"@prisma/adapter-libsql",
 			);
+
 			expect(db.packageJson.dependencies).not.toHaveProperty(
 				"@prisma/adapter-pg",
 			);
@@ -275,6 +289,7 @@ export const db = new PrismaClient({ adapter });
 			expect(db.env).toContain(
 				'TURSO_DATABASE_URL="libsql://database-name-org.aws-us-east-1.turso.io"',
 			);
+
 			expect(db.env).toContain('TURSO_AUTH_TOKEN="change-me"');
 
 			expect(db.dbEnv).toContain(`  server: {
@@ -286,6 +301,7 @@ export const db = new PrismaClient({ adapter });
 				join(workspace.projectRoot, ".gitignore"),
 				"utf-8",
 			);
+
 			expect(gitignore).toContain("/packages/db/prisma/local.db*");
 		});
 	}, 120_000);
@@ -303,6 +319,7 @@ export const db = new PrismaClient({ adapter });
 				expect(db.client).toContain(
 					'import { PrismaPlanetScale } from "@prisma/adapter-planetscale";',
 				);
+
 				expect(db.client).toContain(
 					"const adapter = new PrismaPlanetScale({ url: env.DATABASE_URL });",
 				);
@@ -313,6 +330,7 @@ export const db = new PrismaClient({ adapter });
 				expect(db.schema).toContain(
 					'ipAddress String?  @map("ip_address") @db.Text',
 				);
+
 				expect(db.schema).not.toContain("@db.Timestamptz");
 
 				expect(db.prismaConfig).toContain("process.env.DATABASE_URL");
@@ -330,6 +348,7 @@ export const db = new PrismaClient({ adapter });
 					join(workspace.projectRoot, "packages/auth/src/index.ts"),
 					"utf-8",
 				);
+
 				expect(auth).toContain(
 					'database: prismaAdapter(db, { provider: "mysql" }),',
 				);
@@ -346,6 +365,7 @@ export const db = new PrismaClient({ adapter });
 			expect(db.client).toContain(
 				'import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";',
 			);
+
 			expect(db.client).toContain(
 				"const adapter = new PrismaBetterSqlite3({ url: env.DATABASE_URL });",
 			);
@@ -358,6 +378,7 @@ export const db = new PrismaClient({ adapter });
 			expect(db.packageJson.dependencies).toHaveProperty(
 				"@prisma/adapter-better-sqlite3",
 			);
+
 			expect(db.packageJson.devDependencies).toHaveProperty(
 				"@types/better-sqlite3",
 			);
@@ -368,6 +389,7 @@ export const db = new PrismaClient({ adapter });
 				readFile(join(workspace.projectRoot, ".gitignore"), "utf-8"),
 				readFile(join(workspace.projectRoot, "pnpm-workspace.yaml"), "utf-8"),
 			]);
+
 			expect(gitignore).toContain("/local.db*");
 			expect(workspaceYaml).toContain("better-sqlite3: true");
 		});
@@ -382,6 +404,7 @@ export const db = new PrismaClient({ adapter });
 			expect(db.client).toContain(
 				'import { PrismaMariaDb } from "@prisma/adapter-mariadb";',
 			);
+
 			expect(db.client).toContain("const adapter = new PrismaMariaDb({");
 
 			expect(db.schema).toContain('provider = "mysql"');
@@ -400,6 +423,7 @@ export const db = new PrismaClient({ adapter });
 				join(workspace.projectRoot, "pnpm-workspace.yaml"),
 				"utf-8",
 			);
+
 			expect(workspaceYaml).not.toContain("better-sqlite3: true");
 		});
 	}, 120_000);

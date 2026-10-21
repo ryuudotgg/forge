@@ -7,7 +7,6 @@ export async function withTempDir<T>(
 	run: (directory: string) => Promise<T>,
 ) {
 	const directory = await mkdtemp(join(tmpdir(), `forge-${name}-`));
-
 	try {
 		return await run(directory);
 	} finally {

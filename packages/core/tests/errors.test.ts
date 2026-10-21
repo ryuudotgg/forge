@@ -30,7 +30,6 @@ describe("structured error rendering", () => {
 
 	const plannerCases = [
 		["ensured-module-conflict", "Ensured Module Conflict"],
-		["multiple-templates-selected", "Multiple Templates Selected"],
 		["definition-dependency-missing", "Definition Dependency Missing"],
 		["definition-cycle-detected", "Definition Cycle Detected"],
 		["module-root-conflict", "Module Root Conflict"],
@@ -55,6 +54,7 @@ describe("structured error rendering", () => {
 		expect(error.message).toBe(
 			"Command Version Probe Failed: pnpm --version probe exploded",
 		);
+
 		expect(error.cause).toBe(cause);
 	});
 
@@ -82,6 +82,7 @@ describe("structured error rendering", () => {
 		expect(error.message).toBe(
 			"Better Auth needs a backend. TanStack Router can't host it; add a backend framework.",
 		);
+
 		expect(
 			() =>
 				new GeneratorError({
@@ -101,6 +102,7 @@ describe("structured error rendering", () => {
 					generatorName: "Tailwind",
 				}),
 		).toThrow();
+
 		expect(
 			Schema.is(GeneratorError)({
 				_tag: "GeneratorError",
@@ -121,12 +123,15 @@ describe("structured error rendering", () => {
 		expect(Schema.is(SubprocessError)({ ...base, reason: "spawn-error" })).toBe(
 			false,
 		);
+
 		expect(
 			Schema.is(SubprocessError)({ ...base, reason: "timeout-error" }),
 		).toBe(false);
+
 		expect(
 			Schema.is(SubprocessError)({ ...base, reason: "output-limit-error" }),
 		).toBe(false);
+
 		expect(
 			Schema.is(SubprocessError)({ ...base, reason: "non-zero-exit" }),
 		).toBe(false);
@@ -144,6 +149,7 @@ describe("structured error rendering", () => {
 		expect(error.message).toBe(
 			"Framework Slots Invalid: Next.js has duplicate layout slots",
 		);
+
 		expect(error.cause).toBe(cause);
 	});
 
@@ -166,7 +172,9 @@ describe("structured error rendering", () => {
 			cause,
 		});
 
-		expect(error.message).toBe("Module Config Read Failed");
+		expect(error.message).toBe(
+			"Module Config Read Failed: apps/web/forge.json",
+		);
 		expect(error.cause).toBe(cause);
 	});
 
@@ -178,7 +186,9 @@ describe("structured error rendering", () => {
 			cause,
 		});
 
-		expect(error.message).toBe("Module Config Directory Failed");
+		expect(error.message).toBe(
+			"Module Config Directory Failed: apps/web/forge.json",
+		);
 		expect(error.cause).toBe(cause);
 	});
 
@@ -190,7 +200,9 @@ describe("structured error rendering", () => {
 			cause,
 		});
 
-		expect(error.message).toBe("Module Config Write Failed");
+		expect(error.message).toBe(
+			"Module Config Write Failed: apps/web/forge.json",
+		);
 		expect(error.cause).toBe(cause);
 	});
 
@@ -216,6 +228,7 @@ describe("structured error rendering", () => {
 		expect(error.message).toBe(
 			"State Bundle Parse Failed: Unexpected token at position 4",
 		);
+
 		expect(error.cause).toBe(cause);
 	});
 
@@ -231,6 +244,7 @@ describe("structured error rendering", () => {
 		expect(error.message).toBe(
 			"Invalid State Bundle\n  manifest.schemaVersion: Expected 1\n  lockfile: Missing",
 		);
+
 		expect(error.cause).toBe(cause);
 	});
 
@@ -257,15 +271,10 @@ describe("structured error rendering", () => {
 				path: "apps/web",
 				reason,
 				cause,
-				...(reason === "multiple-templates-selected" && {
-					category: "web",
-				}),
 				...(reason === "slot-path-invalid" && { detail: message }),
 			});
 
 			expect(error.reason).toBe(reason);
-			if (reason === "multiple-templates-selected")
-				expect(error.category).toBe("web");
 			expect(error.message).toBe(message);
 			expect(error.cause).toBe(cause);
 		},
@@ -286,9 +295,19 @@ describe("structured error rendering", () => {
 			Schema.is(PlannerError)({
 				_tag: "PlannerError",
 				path: "registry",
+				reason: "multiple-templates-selected",
+				category: "web",
+			}),
+		).toBe(false);
+
+		expect(
+			Schema.is(PlannerError)({
+				_tag: "PlannerError",
+				path: "registry",
 				reason: "write-path-collision",
 			}),
 		).toBe(false);
+
 		expect(
 			Schema.is(ApplyError)({
 				_tag: "ApplyError",
@@ -309,6 +328,7 @@ describe("structured error rendering", () => {
 		expect(error.message).toBe(
 			"Module Discovery Failed: Error: directory traversal failed",
 		);
+
 		expect(error.cause).toBe(cause);
 	});
 });

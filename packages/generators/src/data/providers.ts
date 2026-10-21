@@ -1,4 +1,10 @@
-import type { Database, DatabaseProvider, ForgeConfig, Orm } from "../config";
+import {
+	type Database,
+	type DatabaseProvider,
+	databaseProviders,
+	type ForgeConfig,
+	type Orm,
+} from "../config";
 import type { VersionKey } from "../versions";
 
 export interface ProviderEnvVar {
@@ -16,7 +22,7 @@ export type DrizzleDriver =
 	| "planetscale-serverless"
 	| "postgres-js";
 
-export type DrizzleClientTemplate = DrizzleDriver | "planetscale" | "turso";
+export type DrizzleClientTemplate = DrizzleDriver | "turso";
 
 export type DrizzleKitDialect = "mysql" | "postgresql" | "sqlite" | "turso";
 
@@ -62,6 +68,10 @@ export interface DatabaseProviderProfile {
 	readonly envVars: ReadonlyArray<ProviderEnvVar>;
 	readonly drizzle: DrizzleSupport;
 	readonly prisma: PrismaSupport;
+}
+
+export function drizzleForeignKeys(provider: DatabaseProviderProfile): boolean {
+	return provider.drizzle.schemaTemplates.auth !== "auth.planetscale";
 }
 
 // Better Auth's drizzle adapter names the postgres dialect "pg".
@@ -149,6 +159,7 @@ const mysqlSchemaTemplates = {
 	users: "users.mysql",
 	auth: "auth.mysql",
 } as const;
+
 const sqliteSchemaTemplates = {
 	users: "users.sqlite",
 	auth: "auth.sqlite",
@@ -156,19 +167,6 @@ const sqliteSchemaTemplates = {
 
 const neonHttp = {
 	clientTemplate: "neon-http",
-	driver: "neon-http",
-	databaseType: "NeonHttpDatabase",
-	kitDialect: "postgresql",
-	kitCredentials: postgresKitCredentials,
-	schemaTemplates: postgresSchemaTemplates,
-	runtimeDeps: ["neonServerless"],
-	devDeps: ["pg", "typesPg"],
-} as const satisfies DrizzleSupport;
-
-// PlanetScale Postgres reuses the Neon serverless driver, but serves the
-// HTTP protocol on the database host itself instead of Neon's API gateway.
-const planetscaleHttp = {
-	clientTemplate: "planetscale",
 	driver: "neon-http",
 	databaseType: "NeonHttpDatabase",
 	kitDialect: "postgresql",
@@ -331,7 +329,7 @@ export const localMysql: DatabaseProviderProfile = {
 
 export const localSqlite: DatabaseProviderProfile = {
 	dialect: "sqlite",
-	// Both apps/web and packages/db sit two levels deep, so the relative
+	// Every app and packages/db sit two levels deep, so the relative
 	// file resolves to the workspace root from either working directory.
 	envVars: [
 		{
@@ -373,7 +371,7 @@ const postgresProfiles: Record<
 			directUrl:
 				"postgresql://user:password@host.psdb.cloud:5432/postgres?sslmode=verify-full",
 		}),
-		drizzle: planetscaleHttp,
+		drizzle: nodePostgres,
 		prisma: prismaPg,
 	},
 	neon: {
@@ -461,6 +459,14 @@ const profilesByDialect: Record<
 	postgresql: postgresProfiles,
 	sqlite: { turso },
 };
+
+export function databaseProviderIdsFor(
+	database: Database,
+): ReadonlyArray<DatabaseProvider> {
+	return databaseProviders.ids.filter(
+		(provider) => profilesByDialect[database][provider] !== undefined,
+	);
+}
 
 export function resolveDatabaseProvider(
 	config: ForgeConfig,

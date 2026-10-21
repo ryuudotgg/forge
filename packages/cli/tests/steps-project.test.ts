@@ -1,10 +1,26 @@
+import {
+	chmod,
+	mkdir,
+	mkdtemp,
+	rm,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Effect, Result, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import catalogsStep from "../src/steps/project/catalogs";
 import linterStep from "../src/steps/project/linter";
 import nameStep from "../src/steps/project/name";
-import packageManagerStep from "../src/steps/project/package-manager";
-import pathStep, { pathSchema } from "../src/steps/project/path";
+import packageManagerStep, {
+	createPackageManagerStep,
+} from "../src/steps/project/package-manager";
+import pathStep, {
+	createPathStep,
+	occupiedTargetIssue,
+	pathSchema,
+} from "../src/steps/project/path";
 import runtimeStep from "../src/steps/project/runtime";
 import { type PartialConfig, SKIP } from "../src/steps/types";
 
@@ -17,6 +33,7 @@ const promptMocks = vi.hoisted(() => ({
 
 const coreMocks = vi.hoisted(() => ({
 	checkPackageManager: vi.fn(),
+	checkPackageManagerInstalled: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -27,19 +44,18 @@ vi.mock("@clack/prompts", () => ({
 	text: promptMocks.text,
 }));
 
-vi.mock("@ryuujs/core", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/core")>();
-
+vi.mock("@ryuugg/core", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/core")>();
 	return {
 		...original,
 		checkPackageManager: coreMocks.checkPackageManager,
+		checkPackageManagerInstalled: coreMocks.checkPackageManagerInstalled,
 	};
 });
 
 function rawConfig(values: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
 	for (const [key, value] of Object.entries(values)) config[key] = value;
-
 	return config;
 }
 
@@ -54,6 +70,12 @@ describe("project steps", () => {
 		coreMocks.checkPackageManager.mockReturnValue(
 			Effect.succeed({ ok: true, message: "ok" }),
 		);
+
+		coreMocks.checkPackageManagerInstalled.mockReset();
+		coreMocks.checkPackageManagerInstalled.mockReturnValue(
+			Effect.succeed({ ok: true, message: "ok" }),
+		);
+
 		promptMocks.logError.mockReset();
 		promptMocks.logWarn.mockReset();
 		promptMocks.select.mockReset();
@@ -71,6 +93,7 @@ describe("project steps", () => {
 			await expect(
 				packageManagerStep.execute({ runtime: "Deno" }, false),
 			).resolves.toBe("pnpm");
+
 			await expect(packageManagerStep.execute({}, false)).resolves.toBe("pnpm");
 		});
 
@@ -117,6 +140,103 @@ describe("project steps", () => {
 
 			expect(coreMocks.checkPackageManager).not.toHaveBeenCalled();
 			expect(promptMocks.logError).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			["validates", "validate"],
+			["chooses", "execute"],
+		])(
+			"%s a pinned Yarn from its packageManager pin without probing",
+			async (_label, phase) => {
+				const step = createPackageManagerStep({
+					packageManager: "Yarn",
+					version: "4.5.0",
+				});
+
+				if (phase === "validate")
+					await expect(
+						Promise.resolve(step.validate?.("Yarn", {})),
+					).resolves.toBeUndefined();
+				else await expect(step.execute({}, false)).resolves.toBe("Yarn");
+
+				expect(coreMocks.checkPackageManager).not.toHaveBeenCalled();
+				expect(promptMocks.logError).not.toHaveBeenCalled();
+			},
+		);
+
+		it("checks a pinned package manager is installed without running it", async () => {
+			const step = createPackageManagerStep({
+				packageManager: "Yarn",
+				version: "4.5.0",
+			});
+
+			await step.validate?.("Yarn", {});
+			expect(coreMocks.checkPackageManagerInstalled).toHaveBeenCalledWith(
+				"Yarn",
+			);
+		});
+
+		it("refuses a pinned package manager that isn't installed", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			coreMocks.checkPackageManagerInstalled.mockReturnValue(
+				Effect.succeed({
+					ok: false,
+					message:
+						"You don't have Yarn installed, please install it and try again.",
+				}),
+			);
+
+			try {
+				const step = createPackageManagerStep({
+					packageManager: "Yarn",
+					version: "4.5.0",
+				});
+
+				await expect(step.execute({}, false)).rejects.toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"You don't have Yarn installed, please install it and try again.",
+				);
+			} finally {
+				exit.mockRestore();
+			}
+		});
+
+		it("refuses a project pinned below the supported pnpm", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			try {
+				const step = createPackageManagerStep({
+					packageManager: "pnpm",
+					version: "9.15.0",
+				});
+
+				await expect(
+					Promise.resolve(step.validate?.("pnpm", {})),
+				).rejects.toThrow("exit:1");
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					"You need pnpm v10 or later to forge a project, but you're running v9.15.0.",
+				);
+
+				expect(coreMocks.checkPackageManager).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+
+		it("probes a package manager the pin does not name", async () => {
+			const step = createPackageManagerStep({
+				packageManager: "Yarn",
+				version: "4.5.0",
+			});
+
+			await step.validate?.("npm", {});
+			expect(coreMocks.checkPackageManager).toHaveBeenCalledWith("npm");
 		});
 
 		it("exits non-interactively when the smart default fails the version gate", async () => {
@@ -170,6 +290,7 @@ describe("project steps", () => {
 					],
 				}),
 			);
+
 			expect(coreMocks.checkPackageManager).toHaveBeenCalledWith("Bun");
 		});
 
@@ -240,6 +361,7 @@ describe("project steps", () => {
 			expect(validate?.("a".repeat(16))).toBe(
 				"It must be less than 15 characters.",
 			);
+
 			expect(validate?.("!!!")).toBe("We couldn't generate a slug.");
 			expect(validate?.("Acme")).toBeUndefined();
 		});
@@ -294,7 +416,121 @@ describe("project steps", () => {
 			await expect(pathStep.execute({ path: "./custom" }, false)).resolves.toBe(
 				"./custom",
 			);
-			await expect(pathStep.execute({ path: "." }, false)).resolves.toBe(".");
+
+			await expect(
+				createPathStep("existing").execute({ path: "." }, false),
+			).resolves.toBe(".");
+		});
+
+		it("accepts a missing or empty target directory", async () => {
+			const root = await mkdtemp(join(tmpdir(), "forge-path-"));
+			try {
+				expect(occupiedTargetIssue(join(root, "missing"))).toBeUndefined();
+				expect(occupiedTargetIssue(root)).toBeUndefined();
+			} finally {
+				await rm(root, { force: true, recursive: true });
+			}
+		});
+
+		it("names what occupies a target directory", async () => {
+			const root = await mkdtemp(join(tmpdir(), "forge-path-"));
+			try {
+				await writeFile(join(root, "package.json"), "{}");
+				expect(occupiedTargetIssue(root)).toBe(
+					`"${root}" already holds package.json. Pick a new or empty directory, or run forge init inside it to adopt your project.`,
+				);
+
+				for (const name of ["a.ts", "b.ts", "c.ts"])
+					await writeFile(join(root, name), "");
+
+				expect(occupiedTargetIssue(root)).toContain(
+					"already holds a.ts, b.ts, c.ts, and 1 more.",
+				);
+
+				await mkdir(join(root, ".forge"));
+				await writeFile(join(root, ".forge", "manifest.json"), "{}");
+				expect(occupiedTargetIssue(root)).toBe(
+					`"${root}" already holds a Forge project. Run forge add or forge update inside it instead.`,
+				);
+
+				expect(occupiedTargetIssue(join(root, "package.json"))).toBe(
+					`"${join(root, "package.json")}" is a file, so we can't create your project there. Pick another path.`,
+				);
+			} finally {
+				await rm(root, { force: true, recursive: true });
+			}
+		});
+
+		it("refuses a dangling symlink target", async () => {
+			const root = await mkdtemp(join(tmpdir(), "forge-path-"));
+
+			try {
+				const link = join(root, "acme");
+				await symlink(join(root, "gone"), link);
+				expect(occupiedTargetIssue(link)).toBe(
+					`"${link}" can't be read, so we can't create your project there. Pick another path.`,
+				);
+			} finally {
+				await rm(root, { force: true, recursive: true });
+			}
+		});
+
+		it.skipIf(process.getuid?.() === 0)(
+			"refuses a target directory it cannot read",
+			async () => {
+				const root = await mkdtemp(join(tmpdir(), "forge-path-"));
+				try {
+					await chmod(root, 0o000);
+					expect(occupiedTargetIssue(root)).toBe(
+						`"${root}" can't be read, so we can't create your project there. Pick another path.`,
+					);
+
+					const hidden = join(root, "acme");
+					expect(occupiedTargetIssue(hidden)).toBe(
+						`"${hidden}" can't be read, so we can't create your project there. Pick another path.`,
+					);
+				} finally {
+					await chmod(root, 0o700);
+					await rm(root, { force: true, recursive: true });
+				}
+			},
+		);
+
+		it("exits when the default slug directory is occupied", async () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				await expect(pathStep.execute({ slug: "src" }, false)).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					expect.stringMatching(/^"\.\/src" already holds /),
+				);
+			} finally {
+				exit.mockRestore();
+			}
+		});
+
+		it("exits when a supplied target is occupied", () => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				expect(() => pathStep.validate?.(".", {})).toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					expect.stringMatching(/^The current directory already holds /),
+				);
+
+				expect(() =>
+					createPathStep("existing").validate?.(".", {}),
+				).not.toThrow();
+			} finally {
+				exit.mockRestore();
+			}
 		});
 
 		it("skips when the configured path is not relative", async () => {
@@ -318,6 +554,10 @@ describe("project steps", () => {
 			expect(captured?.validate?.("")).toBeUndefined();
 			expect(captured?.validate?.("/abs")).toBe(
 				"You need to provide a relative path.",
+			);
+
+			expect(captured?.validate?.(".")).toMatch(
+				/^The current directory already holds .+\. Pick a new or empty directory, or run forge init inside it to adopt your project\.$/,
 			);
 		});
 	});
@@ -378,9 +618,9 @@ describe("project steps", () => {
 		});
 
 		it("skips an unavailable linter when non-interactive", async () => {
-			await expect(linterStep.execute({ linter: "oxc" }, false)).resolves.toBe(
-				SKIP,
-			);
+			await expect(
+				linterStep.execute({ linter: "eslint-prettier" }, false),
+			).resolves.toBe(SKIP);
 		});
 
 		it("returns the selected linter", async () => {
@@ -392,7 +632,7 @@ describe("project steps", () => {
 				expect.objectContaining({
 					options: [
 						{ label: "Biome", value: "biome" },
-						{ label: "Oxc", value: "oxc", hint: "coming soon" },
+						{ label: "Oxc", value: "oxc" },
 						{
 							label: "ESLint + Prettier",
 							value: "eslint-prettier",
@@ -406,20 +646,20 @@ describe("project steps", () => {
 
 		it("warns and re-prompts when an unavailable linter is selected", async () => {
 			promptMocks.select
-				.mockResolvedValueOnce("oxc")
+				.mockResolvedValueOnce("eslint-prettier")
 				.mockResolvedValueOnce("biome");
 
 			await expect(linterStep.execute({}, true)).resolves.toBe("biome");
 
 			expect(promptMocks.logWarn).toHaveBeenCalledWith(
-				"We don't support Oxc yet.",
+				"We don't support ESLint + Prettier yet.",
 			);
+
 			expect(promptMocks.select).toHaveBeenCalledTimes(2);
 		});
 
 		it("skips when None is selected", async () => {
 			promptMocks.select.mockResolvedValue("none");
-
 			await expect(linterStep.execute({}, true)).resolves.toBe(SKIP);
 		});
 	});
@@ -472,7 +712,6 @@ describe("project steps", () => {
 
 		it("skips when None is selected", async () => {
 			promptMocks.select.mockResolvedValue("none");
-
 			await expect(catalogsStep.execute({}, true)).resolves.toBe(SKIP);
 		});
 	});

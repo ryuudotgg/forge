@@ -6,8 +6,31 @@ export {
 	apiHostFramework,
 	apiHostFrameworks,
 	resolveApiHost,
+	rpcConsumer,
+	rpcProviderError,
 } from "./api-host";
 export { default as betterAuth } from "./auth/better-auth";
+export {
+	type AuthChoice,
+	authChoice,
+	authChoiceChangesSchema,
+	authChoiceLabel,
+	configWithAuthChoice,
+	hasAuthChoice,
+} from "./auth/choices";
+export {
+	authEmailMethods,
+	authPasskeyIssue,
+	resolveAuthMethods,
+} from "./auth/methods";
+export {
+	authPluginRequirement,
+	authPluginRequirementMessage,
+	resolveAuthPlugins,
+	twoFactorSkippedMessage,
+	twoFactorSkippingMethods,
+	unmetAuthPluginRequirements,
+} from "./auth/plugins";
 export type {
 	AddonCatalogEntry,
 	CatalogEntry,
@@ -23,11 +46,14 @@ export {
 } from "./catalog";
 export type {
 	AuthenticationProvider,
+	AuthMethod,
+	AuthPlugin,
 	Backend,
 	Catalogs,
 	Database,
 	DatabaseProvider,
 	DesktopFramework,
+	EmailProvider,
 	ForgeConfig,
 	Linter,
 	MobileFramework,
@@ -43,15 +69,20 @@ export type {
 export {
 	addonConfigBindings,
 	authenticationProviders,
+	authMethods,
+	authPlugins,
 	backends,
 	catalogs,
 	configWithInstall,
 	configWithoutInstall,
+	configWithSwitch,
 	databaseProviders,
 	databases,
 	desktopFrameworks,
+	emailProviders,
 	hasAddon,
-	installConflict,
+	type InstallChange,
+	installChange,
 	linters,
 	mobileFrameworks,
 	nativeStyleFrameworks,
@@ -74,6 +105,7 @@ export type {
 	ProviderEnvVar,
 } from "./data/providers";
 export {
+	databaseProviderIdsFor,
 	localMysql,
 	localPostgres,
 	localSqlite,
@@ -102,8 +134,15 @@ export {
 	tanstackStartFramework,
 } from "./frameworks/tanstack-start";
 export { default as biome } from "./linters/biome";
+export { default as oxc } from "./linters/oxc";
+export {
+	secondaryClientOrigins,
+	standaloneBackendDevPort,
+	webDevPort,
+} from "./origins";
 export { default as drizzle } from "./orm/drizzle";
 export { default as prisma } from "./orm/prisma";
+export { pmRunIn } from "./pm";
 export {
 	builtins,
 	decodeRegistryPackageManifest,
@@ -138,12 +177,25 @@ export type {
 	RegistryPackageManifest,
 	RegistryUnit,
 } from "./registry/types";
+export { type RpcDescriptor, rpcDescriptor, rpcDescriptors } from "./rpc";
 export { default as shared } from "./shared";
 export { default as nativewind } from "./style/nativewind";
 export { default as tailwind } from "./style/tailwind";
 export { default as gitignore } from "./tooling/gitignore";
 export { default as typescript } from "./tooling/typescript";
 export { default as ui } from "./ui";
+export {
+	addWebAppConfig,
+	primaryWebAppName,
+	removeWebAppConfig,
+	reservedWebAppNames,
+	type WebAppConfig,
+	type WebAppInstance,
+	webAppInstances,
+	webAppNamesIssue,
+	webAppPortIssue,
+	withWebAppPorts,
+} from "./web-apps";
 export { default as bun } from "./workspace/bun";
 export { probeWorkspaceCommandVersions } from "./workspace/command-versions";
 export { default as pnpm } from "./workspace/pnpm";

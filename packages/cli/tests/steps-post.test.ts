@@ -24,7 +24,7 @@ const subprocessMocks = vi.hoisted(() => ({
 	failCommit: false,
 	installDefect: vi.fn<() => Error | undefined>(),
 	installOutcome: vi.fn<() => "success" | "non-zero" | "timeout">(),
-	run: vi.fn<typeof import("@ryuujs/core").Subprocess.run>(),
+	run: vi.fn<typeof import("@ryuugg/core").Subprocess.run>(),
 	timeoutCommit: false,
 }));
 
@@ -44,8 +44,8 @@ vi.mock("@clack/prompts", () => ({
 
 vi.mock("../src/utils/cancel", () => ({ cancel: cancelMocks.cancel }));
 
-vi.mock("@ryuujs/core", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/core")>();
+vi.mock("@ryuugg/core", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/core")>();
 
 	subprocessMocks.run.mockImplementation((input) => {
 		if (input.command === "git") {
@@ -63,6 +63,7 @@ vi.mock("@ryuujs/core", async (importOriginal) => {
 						elapsedMs: input.timeoutMs,
 					}),
 				);
+
 			if (subprocessMocks.failCommit)
 				return Effect.fail(
 					new original.SubprocessError({
@@ -88,6 +89,7 @@ vi.mock("@ryuujs/core", async (importOriginal) => {
 					elapsedMs: input.timeoutMs,
 				}),
 			);
+
 		if (subprocessMocks.installOutcome() === "non-zero")
 			return Effect.fail(
 				new original.SubprocessError({
@@ -121,7 +123,6 @@ async function withTempDir<T>(
 	run: (directory: string) => Promise<T>,
 ) {
 	const directory = await mkdtemp(join(tmpdir(), `forge-${name}-`));
-
 	try {
 		return await run(directory);
 	} finally {
@@ -139,10 +140,9 @@ async function withGitEnv<T>(run: () => Promise<T>) {
 	try {
 		return await run();
 	} finally {
-		for (const [key, value] of previous) {
+		for (const [key, value] of previous)
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;
-		}
 	}
 }
 
@@ -158,6 +158,7 @@ beforeEach(() => {
 	promptMocks.isCancel.mockReset();
 	promptMocks.isCancel.mockReturnValue(false);
 	promptMocks.log.warn.mockReset();
+
 	promptMocks.spinner.mockReset();
 	promptMocks.spinnerStart.mockReset();
 	promptMocks.spinnerStop.mockReset();
@@ -167,13 +168,16 @@ beforeEach(() => {
 		start: promptMocks.spinnerStart,
 		stop: promptMocks.spinnerStop,
 	}));
+
 	subprocessMocks.commitDefect.mockReset();
 	subprocessMocks.commitDefect.mockReturnValue(undefined);
 	subprocessMocks.failCommit = false;
+
 	subprocessMocks.installDefect.mockReset();
 	subprocessMocks.installDefect.mockReturnValue(undefined);
 	subprocessMocks.installOutcome.mockReset();
 	subprocessMocks.installOutcome.mockReturnValue("success");
+
 	subprocessMocks.run.mockClear();
 	subprocessMocks.timeoutCommit = false;
 	cancelMocks.cancel.mockClear();
@@ -222,6 +226,7 @@ describe("git init step", () => {
 				active: "Yes & Modify Message (Recommended)",
 				inactive: "No",
 			});
+
 			expect(lastCommitSubject(directory)).toBe("feat: custom");
 		});
 	});
@@ -319,6 +324,7 @@ describe("git init step", () => {
 				expect(promptMocks.log.warn).toHaveBeenCalledWith(
 					"We couldn't create the initial commit, so set up git yourself when you're ready.",
 				);
+
 				expect(stderr).not.toHaveBeenCalled();
 			} finally {
 				stderr.mockRestore();
@@ -344,6 +350,7 @@ describe("git init step", () => {
 				expect(promptMocks.log.warn).toHaveBeenCalledWith(
 					"We couldn't create the initial commit, so set up git yourself when you're ready.",
 				);
+
 				expect(stderr).toHaveBeenCalledWith(defect);
 				expect(exit).not.toHaveBeenCalled();
 			} finally {
@@ -376,6 +383,7 @@ describe("install deps step", () => {
 			active: "Yes",
 			inactive: "No",
 		});
+
 		expect(promptMocks.spinner).not.toHaveBeenCalled();
 		expect(subprocessMocks.run).not.toHaveBeenCalled();
 	});
@@ -408,9 +416,11 @@ describe("install deps step", () => {
 			timeoutMs: 600_000,
 			outputMode: "pipe",
 		});
+
 		expect(promptMocks.spinnerStart).toHaveBeenCalledWith(
 			"We're installing your dependencies...",
 		);
+
 		expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
 			"We've installed your dependencies!",
 		);
@@ -429,6 +439,7 @@ describe("install deps step", () => {
 		expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
 			"We couldn't install your dependencies.",
 		);
+
 		expect(promptMocks.log.warn).toHaveBeenCalledWith(
 			"The pnpm install didn't finish, so run it yourself inside the project when you're ready.",
 		);
@@ -446,6 +457,7 @@ describe("install deps step", () => {
 		expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
 			"We couldn't install your dependencies.",
 		);
+
 		expect(promptMocks.log.warn).toHaveBeenCalledWith(
 			"The pnpm install didn't finish, so run it yourself inside the project when you're ready.",
 		);
@@ -466,12 +478,15 @@ describe("install deps step", () => {
 			expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
 				"We couldn't install your dependencies.",
 			);
+
 			expect(promptMocks.log.warn).toHaveBeenCalledWith(
 				"The pnpm install didn't finish, so run it yourself inside the project when you're ready.",
 			);
+
 			expect(promptMocks.spinnerStop).toHaveBeenCalledBefore(
 				promptMocks.log.warn,
 			);
+
 			expect(stderr).not.toHaveBeenCalled();
 		} finally {
 			stderr.mockRestore();
@@ -495,9 +510,11 @@ describe("install deps step", () => {
 			expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
 				"We couldn't install your dependencies.",
 			);
+
 			expect(promptMocks.log.warn).toHaveBeenCalledWith(
 				"The pnpm install didn't finish, so run it yourself inside the project when you're ready.",
 			);
+
 			expect(stderr).toHaveBeenCalledWith(defect);
 			expect(promptMocks.spinnerStop).toHaveBeenCalledBefore(stderr);
 			expect(exit).not.toHaveBeenCalled();

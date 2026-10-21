@@ -3,7 +3,6 @@ import { options } from "../src/cli";
 import { printHelp } from "../src/utils/help";
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
 function stripAnsi(text: string): string {
 	return text.replace(ansiPattern, "");
 }
@@ -19,7 +18,6 @@ function captureHelp(): string[] {
 
 	try {
 		printHelp();
-
 		return stripAnsi(output).split("\n").slice(0, -1);
 	} finally {
 		writeSpy.mockRestore();
@@ -56,15 +54,18 @@ describe("printHelp", () => {
 				"        --runtime <value>              Node.js · Bun · Deno",
 				"        --package-manager <value>      pnpm · npm · Yarn · Bun",
 				"        --catalogs <value>             Flat · Scoped",
-				"        --linter <value>               Biome · Oxc (soon) · ESLint + Prettier (soon)",
-				"        --web <value>                  Next.js · React Router · TanStack Router · TanStack Start",
+				"        --linter <value>               Biome · Oxc · ESLint + Prettier (soon)",
+				"        --web <value>                  Repeat per app: framework, name=framework, or name=framework+client.",
+				"                                       Next.js · React Router · TanStack Router · TanStack Start",
+				"        --web-name <value>             Name the primary web app. Defaults to web.",
 				"        --desktop <value> (soon)       Electron · Tauri",
 				"        --mobile <value>               Expo · React Native (soon)",
 				"        --backend <value>              Same app · Convex (soon) · Hono · Elysia (soon) · µWebSockets (soon) · Fastify · Express",
-				"        --rpc <value>                  tRPC",
+				"        --rpc <value>                  tRPC · oRPC",
 				"        --database <value>             MySQL · PostgreSQL · SQLite",
 				"        --orm <value>                  Drizzle ORM · Prisma",
 				"        --auth <value>                 Better Auth · Auth.js (soon) · WorkOS (soon) · Clerk (soon)",
+				"        --email <value>                Resend · Postmark · SMTP",
 				"        --database-provider <value>    PlanetScale · Neon · Nile · Supabase · Prisma Postgres · Turso",
 				"        --style <value>                Tailwind CSS · UnoCSS (soon)",
 				"        --native-style <value>         NativeWind · Tamagui (soon) · Unistyles (soon)",
@@ -82,11 +83,17 @@ describe("printHelp", () => {
 				"  forge add/remove/update options",
 				"        --keep-user                    Keep your values when resolving conflicts.",
 				"        --accept-forge                 Take Forge's values when resolving conflicts.",
+				"        --yes                          Install a new registry package without asking first.",
+				"",
+				"  forge add <framework> options",
+				"        --name <value>                 Name the secondary web app to add.",
+				"        --client                       Mark the new secondary web app as an API client.",
 				"",
 				"  Examples",
 				"    forge list auth",
 				"    forge info drizzle",
 				"    forge add trpc",
+				"    forge create --web tanstack-router --web admin=nextjs+client",
 				"",
 			]
 				.map((line) => (line.length === 0 ? "│" : `│  ${line}`))
@@ -96,7 +103,6 @@ describe("printHelp", () => {
 
 	it("documents every option as a long flag", () => {
 		const output = captureHelp().join("\n");
-
 		for (const key of Object.keys(options))
 			expect(output).toContain(`--${key}`);
 	});
@@ -116,12 +122,33 @@ describe("printHelp", () => {
 
 		const columns = descriptions.map((description) => {
 			const line = lines.find((entry) => entry.includes(description));
-
 			expect(line).toBeDefined();
 			return line?.indexOf(description);
 		});
 
 		expect(new Set(columns).size).toBe(1);
+	});
+
+	it("documents --name and --client only for forge add", () => {
+		const lines = captureHelp();
+		const sectionOf = (flag: string) =>
+			lines
+				.slice(
+					0,
+					lines.findIndex((line) => line.includes(flag)),
+				)
+				.findLast((line) => line.trim().endsWith("options"))
+				?.trim();
+
+		expect(lines.filter((line) => line.includes("--client"))).toHaveLength(1);
+		expect(sectionOf("--client")).toBe("│    forge add <framework> options");
+		expect(sectionOf("Name the secondary web app")).toBe(
+			"│    forge add <framework> options",
+		);
+
+		expect(lines.join("\n")).not.toContain(
+			"forge add/remove/update options\n│          --name",
+		);
 	});
 
 	it("derives choice hints with availability markers", () => {

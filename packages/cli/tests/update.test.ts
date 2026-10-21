@@ -1,17 +1,27 @@
+import { log } from "@clack/prompts";
 import { expect, it, vi } from "@effect/vitest";
+import type { ForgeConfig } from "@ryuugg/generators";
+import * as generators from "@ryuugg/generators";
 import { Effect, Layer } from "effect";
 import type {
 	applyInstalledPlan as ApplyInstalledPlan,
 	loadManagedProject as LoadManagedProject,
 	loadProjectRegistry as LoadProjectRegistry,
 } from "../src/commands/lifecycle";
+import { applyInstalledPlan } from "../src/commands/lifecycle";
 import {
 	runUpdate,
 	runUpdateEffect,
 	UpdateCommand,
 	type UpdateCommandService,
 } from "../src/commands/update";
-import { managedProject } from "./lifecycle-fixtures";
+import { malformedConfigIssue } from "../src/config/schema";
+import {
+	adminModule,
+	failingAddonRegistry,
+	managedProject,
+	planningFailures,
+} from "./lifecycle-fixtures";
 
 type ApplyInstalledPlanFunction = typeof ApplyInstalledPlan;
 type LoadManagedProjectFunction = typeof LoadManagedProject;
@@ -35,39 +45,413 @@ function updateFixture(options: UpdateFixtureOptions) {
 			recipes: [],
 		},
 	};
-	const applyInstalledPlan = vi.fn<ApplyInstalledPlanFunction>(async () => {});
+
+	const applyInstalledPlan = vi.fn<ApplyInstalledPlanFunction>(async () => ({
+		released: [],
+		declined: [],
+		dropped: [],
+		retained: [],
+		dependenciesChanged: false,
+	}));
+
 	const intro = vi.fn();
 	const loadManagedProject = vi.fn<LoadManagedProjectFunction>(
 		async () => project,
 	);
+
 	const loadProjectRegistry = vi.fn<LoadProjectRegistryFunction>(
 		async () => registry,
 	);
+
 	const logInfo = vi.fn();
+	const logWarn = vi.fn();
+	const logError = vi.fn();
+	const checkRenames = vi.fn<UpdateCommandService["checkRenames"]>(
+		async () => undefined,
+	);
+
+	const scanReferences = vi.fn<UpdateCommandService["scanReferences"]>(
+		async () => [],
+	);
+
+	const existingPaths = vi.fn<UpdateCommandService["existingPaths"]>(
+		async () => [],
+	);
+
+	const installHint = vi.fn<UpdateCommandService["installHint"]>(
+		async () => undefined,
+	);
+
 	const service: UpdateCommandService = {
+		checkRenames,
+		scanReferences,
+		existingPaths,
+		installHint,
 		applyInstalledPlan,
 		intro,
 		loadManagedProject,
 		loadProjectRegistry,
 		logInfo,
+		logWarn,
+		logError,
 	};
 
 	return {
+		checkRenames,
+		scanReferences,
+		existingPaths,
+		installHint,
 		applyInstalledPlan,
 		intro,
 		layer: Layer.succeed(UpdateCommand, UpdateCommand.of(service)),
 		loadManagedProject,
 		loadProjectRegistry,
 		logInfo,
+		logWarn,
+		logError,
 	};
 }
+
+it.each(["site", {}, [null]])(
+	"refuses malformed webApps %j before pairing",
+	async (webApps) => {
+		const config: Record<string, unknown> = { web: "nextjs", webApps };
+		const fixture = updateFixture({ project: managedProject({ config }) });
+		const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new Error("exit:1");
+		});
+
+		try {
+			await expect(runUpdate({}, fixture.layer)).rejects.toThrow("exit:1");
+			expect(fixture.logError.mock.calls).toEqual([
+				[malformedConfigIssue(config)],
+			]);
+
+			expect(fixture.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	},
+);
+
+it.effect("updates an existing addon-named app without a rename", () => {
+	const config: ForgeConfig = {
+		slug: "acme",
+		web: "nextjs",
+		webName: "tailwind",
+	};
+
+	const existing = managedProject({ config });
+	const project = {
+		...existing,
+		modules: existing.modules.map((module) => ({
+			...module,
+			root: "apps/tailwind",
+			packageName: "@acme/tailwind",
+		})),
+		manifest: {
+			...existing.manifest,
+			modules: {
+				abcde: { root: "apps/tailwind", definitionIds: ["nextjs/base"] },
+			},
+		},
+	};
+
+	const fixture = updateFixture({ project });
+
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({}).pipe(Effect.provide(fixture.layer));
+		expect(fixture.logError).not.toHaveBeenCalled();
+		expect(fixture.applyInstalledPlan).toHaveBeenCalledOnce();
+	});
+});
+
+it.effect(
+	"warns and completes the rename when the before apply reference scan fails",
+	() => {
+		const existing = managedProject({
+			config: { slug: "acme", web: "nextjs", webName: "vault" },
+		});
+
+		const project = {
+			...existing,
+			manifest: {
+				...existing.manifest,
+				modules: {
+					abcde: { root: "apps/web", definitionIds: ["nextjs/base"] },
+				},
+			},
+		};
+
+		const fixture = updateFixture({ project });
+		fixture.scanReferences.mockRejectedValueOnce(new Error("scan failed"));
+
+		return Effect.gen(function* () {
+			yield* runUpdateEffect({}).pipe(Effect.provide(fixture.layer));
+
+			expect(fixture.logWarn).toHaveBeenCalledWith(
+				expect.stringContaining("couldn't check"),
+			);
+
+			expect(fixture.applyInstalledPlan).toHaveBeenCalledOnce();
+			expect(fixture.scanReferences).toHaveBeenCalledTimes(2);
+			expect(fixture.logInfo).toHaveBeenCalledWith(
+				"We moved apps/web to apps/vault.",
+			);
+		});
+	},
+);
+
+it.effect("warns when the after apply reference scan fails", () => {
+	const existing = managedProject({
+		config: { slug: "acme", web: "nextjs", webName: "vault" },
+	});
+
+	const project = {
+		...existing,
+		manifest: {
+			...existing.manifest,
+			modules: { abcde: { root: "apps/web", definitionIds: ["nextjs/base"] } },
+		},
+	};
+
+	const fixture = updateFixture({ project });
+	fixture.scanReferences
+		.mockResolvedValueOnce([])
+		.mockRejectedValueOnce(new Error("scan failed"));
+
+	fixture.installHint.mockResolvedValue(
+		"Run pnpm install to refresh your workspace dependencies.",
+	);
+
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({}).pipe(Effect.provide(fixture.layer));
+		expect(fixture.logWarn).toHaveBeenCalledWith(
+			expect.stringContaining("couldn't check"),
+		);
+
+		expect(fixture.logInfo).toHaveBeenCalledWith(
+			"We moved apps/web to apps/vault.",
+		);
+
+		expect(fixture.logInfo).toHaveBeenCalledWith(
+			"Run pnpm install to refresh your workspace dependencies.",
+		);
+	});
+});
+
+it.each<{ readonly config: ForgeConfig; readonly message: string }>([
+	{
+		config: { slug: "acme", web: "nextjs", webName: "server" },
+		message: "server is reserved, so pick another name for this web app.",
+	},
+	{
+		config: {
+			slug: "acme",
+			web: "nextjs",
+			webApps: [{ name: "tailwind", framework: "nextjs" }],
+		},
+		message: "tailwind is an addon id, so pick another name for this web app.",
+	},
+])(
+	"prints exactly one name refusal sentence: $message",
+	async ({ config, message }) => {
+		const existing = managedProject({ config });
+		const site = {
+			...adminModule,
+			root: "apps/site",
+			packageName: "@acme/site",
+		};
+
+		const project = {
+			...existing,
+			modules:
+				config.webApps === undefined
+					? existing.modules
+					: [...existing.modules, site],
+			manifest: {
+				...existing.manifest,
+				modules: {
+					abcde: { root: "apps/web", definitionIds: ["nextjs/base"] },
+					[site.id]: { root: "apps/site", definitionIds: ["nextjs/base"] },
+				},
+			},
+		};
+
+		const fixture = updateFixture({ project });
+		const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+			throw new Error("exit:1");
+		});
+
+		try {
+			await expect(runUpdate({}, fixture.layer)).rejects.toThrow("exit:1");
+			expect(fixture.logError.mock.calls).toEqual([[message]]);
+			expect(fixture.loadProjectRegistry).not.toHaveBeenCalled();
+			expect(fixture.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	},
+);
+
+it.effect(
+	"plans a rename before apply and reports it without missing app warnings",
+	() => {
+		const existing = managedProject({
+			config: { slug: "acme", web: "nextjs", webName: "vault" },
+		});
+
+		const project = {
+			...existing,
+			manifest: {
+				...existing.manifest,
+				modules: {
+					abcde: { root: "apps/web", definitionIds: ["nextjs/base"] },
+				},
+			},
+		};
+
+		const fixture = updateFixture({ project });
+		return Effect.gen(function* () {
+			yield* runUpdateEffect({});
+
+			expect(fixture.checkRenames).toHaveBeenCalledOnce();
+			expect(fixture.applyInstalledPlan).toHaveBeenCalledWith(
+				".",
+				project.config,
+				project.manifest.installs,
+				undefined,
+				undefined,
+				{},
+				{
+					modules: project.modules,
+					records: project.manifest.modules,
+					directoryMoves: [
+						{ moduleId: "abcde", from: "apps/web", to: "apps/vault" },
+					],
+				},
+			);
+
+			expect(fixture.scanReferences).toHaveBeenCalledTimes(2);
+			expect(fixture.logInfo).toHaveBeenCalledWith(
+				"We moved apps/web to apps/vault.",
+			);
+
+			expect(fixture.logWarn).not.toHaveBeenCalled();
+		}).pipe(Effect.provide(fixture.layer));
+	},
+);
+
+it("refuses rename safety failures before registry loading, reference scanning or apply", async () => {
+	const existing = managedProject({
+		config: { slug: "acme", web: "nextjs", webName: "vault" },
+	});
+
+	const fixture = updateFixture({
+		project: {
+			...existing,
+			manifest: {
+				...existing.manifest,
+				modules: { abcde: { root: "apps/web", definitionIds: [] } },
+			},
+		},
+	});
+
+	fixture.checkRenames.mockResolvedValue(
+		"We can't rename web apps while you have uncommitted changes in README.md. Commit or stash them first.",
+	);
+
+	const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+		throw new Error("exit:1");
+	});
+
+	try {
+		await expect(runUpdate({}, fixture.layer)).rejects.toThrow("exit:1");
+		expect(fixture.logError).toHaveBeenCalledOnce();
+		expect(fixture.loadProjectRegistry).not.toHaveBeenCalled();
+		expect(fixture.scanReferences).not.toHaveBeenCalled();
+		expect(fixture.applyInstalledPlan).not.toHaveBeenCalled();
+	} finally {
+		exit.mockRestore();
+	}
+});
+
+it.each(planningFailures)(
+	"prints planning failure: $message",
+	async ({ failure, message }) => {
+		const loaded = failingAddonRegistry(failure);
+		const registry = vi
+			.spyOn(generators, "loadDefinitionRegistry")
+			.mockReturnValue(loaded);
+
+		const fixture = updateFixture({
+			registry: loaded,
+			project: managedProject({
+				config: { slug: "acme" },
+				modules: [],
+				installs: [
+					{ definitionId: "test-refusal", targets: [{ kind: "project" }] },
+				],
+			}),
+		});
+
+		const logError = vi.spyOn(log, "error").mockImplementation(() => {});
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		fixture.applyInstalledPlan.mockImplementation(
+			(projectRoot, config, installs) =>
+				applyInstalledPlan(projectRoot, config, installs, {
+					node: "22.11.0",
+					pnpm: "10.12.1",
+				}),
+		);
+
+		try {
+			await expect(runUpdate({}, fixture.layer)).rejects.toThrow("exit:1");
+			expect(logError).toHaveBeenCalledExactlyOnceWith(message);
+			expect(exit).toHaveBeenCalledWith(1);
+		} finally {
+			registry.mockRestore();
+			logError.mockRestore();
+			exit.mockRestore();
+		}
+	},
+);
+
+it("refuses invalid config before registry loading or applying", async () => {
+	const fixture = updateFixture({
+		project: managedProject({ config: { authMethods: ["email-password"] } }),
+	});
+
+	const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+		throw new Error("Update refused");
+	});
+
+	try {
+		await expect(runUpdate({}, fixture.layer)).rejects.toThrow(
+			"Update refused",
+		);
+
+		expect(fixture.logError.mock.calls).toEqual([
+			["Authentication methods need Better Auth."],
+		]);
+
+		expect(exit).toHaveBeenCalledWith(1);
+		expect(fixture.loadProjectRegistry).not.toHaveBeenCalled();
+		expect(fixture.applyInstalledPlan).not.toHaveBeenCalled();
+	} finally {
+		exit.mockRestore();
+	}
+});
 
 it.effect("re-applies the plan with the manifest installs", () => {
 	const project = managedProject({
 		installs: [{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
 	});
-	const fixture = updateFixture({ project });
 
+	const fixture = updateFixture({ project });
 	return Effect.gen(function* () {
 		yield* runUpdateEffect({});
 
@@ -91,6 +475,45 @@ it.effect("re-applies the plan with the manifest installs", () => {
 	}).pipe(Effect.provide(fixture.layer));
 });
 
+it.effect("warns when a configured secondary web app is missing", () => {
+	const fixture = updateFixture({
+		project: managedProject({
+			config: {
+				slug: "acme",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			},
+		}),
+	});
+
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({});
+
+		expect(fixture.logWarn).toHaveBeenCalledOnce();
+		expect(fixture.logWarn).toHaveBeenCalledWith(
+			"We skipped the admin web app because its folder is missing. Run forge remove admin to drop it from your config.",
+		);
+	}).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect("does not warn when a configured secondary web app exists", () => {
+	const fixture = updateFixture({
+		project: managedProject({
+			config: {
+				slug: "acme",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs" }],
+			},
+			modules: [adminModule],
+		}),
+	});
+
+	return Effect.gen(function* () {
+		yield* runUpdateEffect({});
+		expect(fixture.logWarn).not.toHaveBeenCalled();
+	}).pipe(Effect.provide(fixture.layer));
+});
+
 it.effect("runs the Promise command wrapper with an injected layer", () => {
 	const fixture = updateFixture({});
 
@@ -105,7 +528,6 @@ it.effect("runs the Promise command wrapper with an injected layer", () => {
 
 it.effect("prints the intro before applying the plan", () => {
 	const fixture = updateFixture({});
-
 	return Effect.gen(function* () {
 		yield* runUpdateEffect({});
 
@@ -116,8 +538,10 @@ it.effect("prints the intro before applying the plan", () => {
 
 		const introOrder =
 			fixture.intro.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
+
 		const applyOrder =
 			fixture.applyInstalledPlan.mock.invocationCallOrder[0] ?? 0;
+
 		expect(introOrder).toBeLessThan(applyOrder);
 	}).pipe(Effect.provide(fixture.layer));
 });
@@ -142,7 +566,6 @@ it.effect("forwards opted-in registries", () => {
 
 it.effect("forwards the selected conflict resolution policy", () => {
 	const fixture = updateFixture({});
-
 	return Effect.gen(function* () {
 		yield* runUpdateEffect({ "keep-user": true });
 
@@ -198,6 +621,7 @@ it.effect("reports registry package version changes", () => {
 		expect(fixture.loadProjectRegistry).toHaveBeenCalledWith(".", [
 			"@acme/forge-sentry",
 		]);
+
 		expect(fixture.logInfo).toHaveBeenCalledWith(
 			"@acme/forge-sentry 1.4.2 -> 1.5.0.",
 		);

@@ -10,16 +10,42 @@ import {
 	surfaceScripts,
 	surfaceText,
 	type TemplateDefinition,
-} from "@ryuujs/core";
-import type { ForgeConfig } from "../../config";
+} from "@ryuugg/core";
+import { apiHostFramework } from "../../api-host";
+import { reactRouterInvitationRoute } from "../../auth/better-auth/invitation-page";
+import {
+	selfHostedCorsContributions,
+	selfHostedCorsViteConfig,
+} from "../../client-cors";
+import type { ForgeConfig, RpcProvider } from "../../config";
 import { deps } from "../../deps";
 import { viteServerEnvMarkers } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import { installHook, pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcDescriptor, rpcProviderTemplate } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
+import {
+	type WebAppInstance,
+	webAppInstances,
+	webAppRenderConfig,
+} from "../../web-apps";
+
+const reactRouterSlots = {
+	layout: "app/root.tsx",
+	page: "app/routes/home.tsx",
+	api: "app/routes/api",
+	trpc: "app/routes/api.trpc.$.ts",
+	auth: "app/routes/api.auth.$.ts",
+};
+
+const reactRouterRpcRoutes: { readonly [Id in RpcProvider]: string } = {
+	trpc: '  route("api/trpc/*", "routes/api.trpc.$.ts"),\n',
+	orpc: '  route("api/orpc/*", "routes/api.orpc.$.ts"),\n',
+};
 
 export const reactRouterFramework: FrameworkDefinition<"react-router"> =
 	defineFramework({
@@ -30,7 +56,7 @@ export const reactRouterFramework: FrameworkDefinition<"react-router"> =
 		ignoreDirs: [".react-router/"],
 		name: "React Router",
 		sourceRoot: "app",
-		slots: ["layout", "page", "api", "trpc", "auth"],
+		slots: [...Object.keys(reactRouterSlots), "orpc"],
 		tsconfigPreset: {
 			name: "react-router",
 			content: {
@@ -79,8 +105,14 @@ const reactRouterBaseTemplate: TemplateDefinition<
 		{ id: "typescript", type: "addon" },
 		{ id: "ui", type: "addon" },
 	],
-	when: (config) => config.web === "react-router",
-	contribute: ({ config }) => buildContributions(config),
+	when: (config) =>
+		webAppInstances(config).some(
+			(instance) => instance.framework === "react-router",
+		),
+	contribute: ({ config }) =>
+		webAppInstances(config)
+			.filter((instance) => instance.framework === "react-router")
+			.flatMap((instance) => buildContributions(config, instance)),
 });
 
 export const reactRouterBaseTemplateMetadata: FirstPartyTemplateMetadata = {
@@ -95,53 +127,77 @@ export const reactRouterBaseTemplateMetadata: FirstPartyTemplateMetadata = {
 	summary: "Base React Router template.",
 };
 
-function buildContributions(config: ForgeConfig) {
+function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
+	const renderConfig = webAppRenderConfig(config, instance);
 	const slug = config.slug ?? "my-app";
 	const projectName = config.name ?? slug;
 
 	const pm = resolvePackageManager(config);
 
 	const useTailwind = config.style === "tailwind";
-	const usesTrpc = config.rpc === "trpc";
-	const usesAuth = config.authentication === "better-auth";
+	const rpc = rpcDescriptor(renderConfig);
+	const usesAuth = renderConfig.authentication === "better-auth";
+	const servesApiRoutes =
+		instance.primary && apiHostFramework(renderConfig) === "react-router";
 
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
+	const providersTemplate = readTemplate(
+		"frameworks/react-router/app/providers.tsx",
+	);
+
 	const providers = interpolate(
-		readTemplate("frameworks/react-router/app/providers.tsx"),
+		renderConfig.rpc === undefined
+			? providersTemplate
+			: rpcProviderTemplate(providersTemplate, renderConfig.rpc),
 		{
-			"// __TRPC_IMPORT__\n": usesTrpc
-				? 'import { TRPCReactProvider } from "@/trpc/react";\n'
-				: "",
-			"  // __TRPC_ENTRY__\n": usesTrpc ? "  trpc: TRPCReactProvider,\n" : "",
+			"// __TRPC_IMPORT__\n":
+				rpc !== undefined
+					? `import { ${rpc.client.component} } from "${rpc.client.module}";\n`
+					: "",
+			"  // __TRPC_ENTRY__\n":
+				rpc !== undefined ? `  ${config.rpc}: ${rpc.client.component},\n` : "",
 		},
 	);
+
+	const invitationRoute = instance.primary
+		? reactRouterInvitationRoute(renderConfig)
+		: "";
+
+	const extraRoutes = [
+		servesApiRoutes && renderConfig.rpc !== undefined
+			? reactRouterRpcRoutes[renderConfig.rpc]
+			: "",
+		servesApiRoutes && usesAuth
+			? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
+			: "",
+		invitationRoute,
+	].join("");
 
 	const routes = interpolate(
 		readTemplate("frameworks/react-router/app/routes.ts"),
 		{
-			ROUTE_IMPORT: usesTrpc || usesAuth ? ", route" : "",
-			"// __TRPC_ROUTE__\n": usesTrpc
-				? '  route("api/trpc/*", "routes/api.trpc.$.ts"),\n'
-				: "",
-			"// __AUTH_ROUTE__\n": usesAuth
-				? '  route("api/auth/*", "routes/api.auth.$.ts"),\n'
-				: "",
+			ROUTE_IMPORT: extraRoutes === "" ? "" : ", route",
+			ROUTES:
+				extraRoutes === ""
+					? 'index("routes/home.tsx")'
+					: `\n  index("routes/home.tsx"),\n${extraRoutes}`,
 		},
 	);
 
-	const viteConfig = interpolate(
-		readTemplate("frameworks/react-router/vite.config.ts"),
-		{
+	const viteConfig = selfHostedCorsViteConfig(
+		config,
+		instance,
+		interpolate(readTemplate("frameworks/react-router/vite.config.ts"), {
 			"// __TAILWIND_IMPORT__\n": useTailwind
 				? 'import tailwindcss from "@tailwindcss/vite";\n'
 				: "",
 			"/* __TAILWIND_PLUGIN__ */ ": useTailwind ? "tailwindcss(), " : "",
-		},
+		}),
 	);
 
 	const webPackageJson: Record<string, unknown> = {
-		name: `@${slug}/web`,
+		name: instance.packageName,
 		version: "0.1.0",
 		private: true,
 		type: "module",
@@ -175,11 +231,11 @@ function buildContributions(config: ForgeConfig) {
 			version: "workspace:*",
 			type: "dependencies",
 		},
-		{ ...deps.react, type: "dependencies" },
-		{ ...deps.reactDom, type: "dependencies" },
+		{ ...catalogRef("react", config), type: "dependencies" },
+		{ ...catalogRef("reactDom", config), type: "dependencies" },
 		{ ...deps.reactRouter, type: "dependencies" },
 		{ ...deps.reactRouterNode, type: "dependencies" },
-		{ ...deps.reactRouterServe, type: "dependencies" },
+		{ ...deps.srvx, type: "dependencies" },
 		{ ...deps.isbot, type: "dependencies" },
 		{ ...deps.nextThemes, type: "dependencies" },
 		{ ...deps.t3OssEnvCore, type: "dependencies" },
@@ -194,31 +250,33 @@ function buildContributions(config: ForgeConfig) {
 		{ ...deps.typesNode, type: "devDependencies" },
 		{ ...deps.typesReact, type: "devDependencies" },
 		{ ...deps.typesReactDom, type: "devDependencies" },
-		{ ...deps.dotenvCli, type: "devDependencies" },
+		{ ...deps.dotenvCli, type: "dependencies" },
 		{ ...deps.typescript, type: "devDependencies" },
 	];
 
 	return [
-		ensureAppModule("web", "apps/web", {
+		ensureAppModule(instance.key, instance.root, {
 			framework: "react-router",
 			template: { id: "react-router/base", version: 1 },
-			slots: {
-				layout: "app/root.tsx",
-				page: "app/routes/home.tsx",
-				api: "app/routes/api",
-				trpc: "app/routes/api.trpc.$.ts",
-				auth: "app/routes/api.auth.$.ts",
-			},
+			slots: instance.primary
+				? {
+						...reactRouterSlots,
+						...(renderConfig.rpc === "orpc"
+							? { orpc: "app/routes/api.orpc.$.ts" }
+							: {}),
+					}
+				: { layout: reactRouterSlots.layout, page: reactRouterSlots.page },
+			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),
 
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"layout",
 			interpolate(readTemplate("frameworks/react-router/app/root.tsx"), vars),
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"page",
 			interpolate(
 				readTemplate("frameworks/react-router/app/routes/home.tsx"),
@@ -227,44 +285,75 @@ function buildContributions(config: ForgeConfig) {
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"frameworkConfig",
 			readTemplate("frameworks/react-router/react-router.config.ts"),
 		),
-		surfaceJson(ensuredModuleTarget("web"), "tsconfig", webTsconfig),
-		surfaceJson(ensuredModuleTarget("web"), "packageJson", webPackageJson),
-		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", appDeps),
-		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+		surfaceJson(ensuredModuleTarget(instance.key), "tsconfig", webTsconfig),
+		surfaceJson(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			webPackageJson,
+		),
+		surfaceDependencies(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			appDeps,
+		),
+		surfaceScripts(ensuredModuleTarget(instance.key), "packageJson", {
 			build: pmRun(pm, "with-env", "react-router build"),
-			dev: pmRun(pm, "with-env", "react-router dev"),
-			postinstall: pmRun(pm, "typegen"),
-			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
-			start: pmRun(
+			dev: pmRun(
 				pm,
 				"with-env",
-				"react-router-serve ./build/server/index.js",
+				instance.primary
+					? "react-router dev"
+					: `react-router dev --port ${instance.port} --strictPort`,
 			),
+			postinstall: installHook("@react-router/dev", pmRun(pm, "typegen")),
+			pretypecheck: pmRun(pm, "with-env", "react-router typegen"),
+			start:
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs",
 			typecheck: "tsc --noEmit",
 			typegen: pmRun(pm, "with-env", "react-router typegen"),
 			"with-env": "dotenv -e ../../.env --",
 		}),
 
 		leafTextFile(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"env.ts",
 			interpolate(
 				readTemplate("frameworks/react-router/env.ts"),
-				viteServerEnvMarkers(config),
+				viteServerEnvMarkers(config, instance),
 			),
 		),
-		leafTextFile(ensuredModuleTarget("web"), "app/providers.tsx", providers),
-		leafTextFile(ensuredModuleTarget("web"), "app/routes.ts", routes),
-		leafTextFile(ensuredModuleTarget("web"), "vite.config.ts", viteConfig),
 		leafTextFile(
-			ensuredModuleTarget("web"),
-			"public/favicon.svg",
-			readTemplate("frameworks/react-router/public/favicon.svg"),
+			ensuredModuleTarget(instance.key),
+			".env.production",
+			`PORT=${instance.port}\n`,
 		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"server.mjs",
+			readTemplate("frameworks/react-router/server.mjs"),
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"app/providers.tsx",
+			providers,
+		),
+		leafTextFile(ensuredModuleTarget(instance.key), "app/routes.ts", routes),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"vite.config.ts",
+			viteConfig,
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"public/favicon.svg",
+			readTemplate("frameworks/favicon.svg"),
+			{ update: "starter" },
+		),
+		...selfHostedCorsContributions(config, instance),
 	];
 }
 

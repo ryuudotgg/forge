@@ -8,19 +8,88 @@ import {
 	surfaceJson,
 	surfaceLines,
 	surfaceScripts,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
+import {
+	type AuthField,
+	type AuthFieldGroup,
+	authPluginFields,
+	authPluginTables,
+} from "../../auth/plugins";
 import type { ForgeConfig } from "../../config";
 import {
 	envFileLine,
 	envRuntimeLines,
 	envServerLines,
+	type PrismaDatasourceProvider,
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { deps } from "../../deps";
-import { standaloneApiOrigin } from "../../origins";
-import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
+import { installHook, pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
+import { primaryWebAppName } from "../../web-apps";
+import { hostDriverDependencies } from "../host-drivers";
+import { prismaUserRelations, renderPrismaAuthTables } from "./auth-schema";
+
+const authFieldTypes: Record<AuthField["type"], string> = {
+	string: "String?",
+	boolean: "Boolean?",
+	date: "DateTime?",
+};
+
+function prismaAuthFields(
+	groups: ReadonlyArray<AuthFieldGroup>,
+	datasource: PrismaDatasourceProvider,
+): string {
+	if (groups.length === 0) return "";
+
+	const fields = groups.flat();
+	const nameWidth = Math.max(...fields.map(({ name }) => name.length));
+	const typeWidth = Math.max(
+		...fields.map(({ type }) => authFieldTypes[type].length),
+	);
+
+	return groups
+		.map((group) => {
+			const columns = group.map((field) => {
+				const snakeName = field.name.replace(
+					/[A-Z]/g,
+					(letter) => `_${letter.toLowerCase()}`,
+				);
+
+				const attributes = [
+					...(field.unique ? ["@unique"] : []),
+					...(field.default === false ? ["@default(false)"] : []),
+					...(snakeName !== field.name ? [`@map("${snakeName}")`] : []),
+				];
+
+				const fieldType = authFieldTypes[field.type];
+				const hasNativeAttribute =
+					(field.type === "string" &&
+						!field.unique &&
+						datasource === "mysql") ||
+					(field.type === "date" && datasource === "postgresql");
+
+				const definition =
+					attributes.length > 0 || hasNativeAttribute
+						? `${fieldType.padEnd(typeWidth)}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}`
+						: fieldType;
+
+				const nativeType =
+					field.type === "date"
+						? "__TIMESTAMPTZ__"
+						: field.type === "string" && !field.unique
+							? "__TEXT__"
+							: "";
+
+				return `  ${field.name.padEnd(nameWidth)} ${definition}${nativeType}\n`;
+			});
+
+			return `\n${columns.join("")}`;
+		})
+		.join("");
+}
 
 const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 	id: "prisma",
@@ -41,18 +110,28 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 		const usesAuth = config.authentication === "better-auth";
 		const envVars = provider.prisma.envVars ?? provider.envVars;
 		const emulatesRelations = provider.prisma.relationMode !== undefined;
+		const tables = authPluginTables(config);
 		const vars = {
 			SLUG: slug,
+			"__AUTH_USER_RELATIONS__\n": prismaUserRelations(tables),
+			"__AUTH_TABLES__\n": renderPrismaAuthTables(
+				tables,
+				provider.prisma.datasourceProvider,
+			),
 			DATASOURCE_PROVIDER: provider.prisma.datasourceProvider,
 			ENV_RUNTIME: envRuntimeLines(envVars),
 			ENV_SERVER: envServerLines(envVars),
 			RELATION_MODE: emulatesRelations
 				? `\n  relationMode = "${provider.prisma.relationMode}"`
 				: "",
-			"  // __PASSWORD_FIELD__\n":
-				standaloneApiOrigin(config) === undefined
-					? ""
-					: "  password              String?__TEXT__\n",
+			"  // __USER_PLUGIN_FIELDS__\n": prismaAuthFields(
+				authPluginFields(config, "user"),
+				provider.prisma.datasourceProvider,
+			),
+			"  // __SESSION_PLUGIN_FIELDS__\n": prismaAuthFields(
+				authPluginFields(config, "session"),
+				provider.prisma.datasourceProvider,
+			),
 			TEXT: provider.prisma.datasourceProvider === "mysql" ? " @db.Text" : "",
 			TIMESTAMPTZ:
 				provider.prisma.datasourceProvider === "postgresql"
@@ -100,7 +179,7 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			}),
 			surfaceDependencies(ensuredModuleTarget("db"), "packageJson", [
 				...provider.prisma.runtimeDeps.map((key) => ({
-					...deps[key],
+					...catalogRef(key, config),
 					type: "dependencies" as const,
 				})),
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
@@ -112,7 +191,7 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 					type: "devDependencies",
 				},
 				...provider.prisma.devDeps.map((key) => ({
-					...deps[key],
+					...catalogRef(key, config),
 					type: "devDependencies" as const,
 				})),
 				{ ...deps.typesNode, type: "devDependencies" },
@@ -156,14 +235,19 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			...(config.web === undefined
 				? []
 				: [
-						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-							{
-								name: `@${slug}/db`,
-								version: "workspace:*",
-								type: "dependencies",
-							},
-						]),
+						surfaceDependencies(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							[
+								{
+									name: `@${slug}/db`,
+									version: "workspace:*",
+									type: "dependencies",
+								},
+							],
+						),
 					]),
+			...hostDriverDependencies(config, provider.prisma.runtimeDeps),
 
 			surfaceLines(
 				projectTarget(),
@@ -195,21 +279,25 @@ const prisma = defineAddon<ForgeConfig, "prisma", "nextjs">({
 			...(config.web === undefined
 				? []
 				: [
-						surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-							"db:generate": pmRunIn(pm, dbPackage, "generate"),
-							"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
-							"db:push": pmRunIn(pm, dbPackage, "push"),
-							"db:studio": pmRunIn(pm, dbPackage, "studio"),
-						}),
+						surfaceScripts(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							{
+								"db:generate": pmRunIn(pm, dbPackage, "generate"),
+								"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
+								"db:push": pmRunIn(pm, dbPackage, "push"),
+								"db:studio": pmRunIn(pm, dbPackage, "studio"),
+							},
+						),
 					]),
 
 			// The generated client lives in the db package's source tree and is
 			// gitignored, so a fresh checkout has to regenerate it on install.
 			surfaceScripts(projectTarget(), "rootPackageJson", {
-				postinstall: pmRunIn(
-					pm,
-					{ name: `@${slug}/db`, path: "packages/db" },
-					"generate",
+				postinstall: installHook(
+					"prisma",
+					pmRunIn(pm, { name: `@${slug}/db`, path: "packages/db" }, "generate"),
+					"packages/db",
 				),
 			}),
 		];

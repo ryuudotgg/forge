@@ -1,5 +1,5 @@
 import { isCancel, text } from "@clack/prompts";
-import { formatSchemaError } from "@ryuujs/core";
+import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { slugify } from "../../utils/slugify";

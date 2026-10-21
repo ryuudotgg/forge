@@ -10,17 +10,19 @@ datasource db {
 model User {
   id            String   @id
 
-  name          String__TEXT__
-  image         String?__TEXT__
-
   email         String   @unique
   emailVerified Boolean  @default(false) @map("email_verified")
+
+  name          String__TEXT__
+  image         String?__TEXT__
+  // __USER_PLUGIN_FIELDS__
 
   createdAt     DateTime @default(now()) @map("created_at")__TIMESTAMPTZ__
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__
 
   sessions Session[]
   accounts Account[]
+__AUTH_USER_RELATIONS__
 
   @@map("users")
 }
@@ -34,6 +36,7 @@ model Session {
 
   ipAddress String?  @map("ip_address")__TEXT__
   userAgent String?  @map("user_agent")__TEXT__
+  // __SESSION_PLUGIN_FIELDS__
 
   createdAt DateTime @default(now()) @map("created_at")__TIMESTAMPTZ__
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__
@@ -61,7 +64,7 @@ model Account {
   idToken               String?   @map("id_token")__TEXT__
 
   scope                 String?__TEXT__
-  // __PASSWORD_FIELD__
+  password              String?__TEXT__
 
   createdAt             DateTime  @default(now()) @map("created_at")__TIMESTAMPTZ__
   updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")__TIMESTAMPTZ__
@@ -85,3 +88,4 @@ model Verification {
 
   @@map("verifications")
 }
+__AUTH_TABLES__

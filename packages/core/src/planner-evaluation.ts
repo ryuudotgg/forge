@@ -4,6 +4,7 @@ import type {
 	AddonDefinition,
 	Contribution,
 	DefinitionRegistry,
+	FileUpdate,
 	TemplateDefinition,
 } from "./authoring";
 import {
@@ -59,7 +60,6 @@ export interface EvaluationPhaseContract {
 	readonly plannerReasons: PlannerReasons<
 		| "definition-cycle-detected"
 		| "adapter-target-must-be-module"
-		| "adapter-target-app-missing"
 		| "adapter-framework-missing"
 	>;
 }
@@ -87,6 +87,9 @@ export interface TargetedLeafFile {
 	readonly content: string;
 	readonly generators: ReadonlyArray<string>;
 	readonly path: ReturnType<typeof filePath>;
+	readonly update?: FileUpdate;
+	readonly generated?: boolean;
+	readonly mergeKind?: "yaml";
 }
 
 interface TargetingPhaseResult {
@@ -128,6 +131,34 @@ export function definitionKey<ConfigValue>(
 	return `${definition._tag}:${definition.id}`;
 }
 
+function isRefusal(cause: unknown): cause is { readonly message: string } {
+	return (
+		typeof cause === "object" &&
+		cause !== null &&
+		"_tag" in cause &&
+		cause._tag === "Refusal" &&
+		"message" in cause &&
+		typeof cause.message === "string"
+	);
+}
+
+function contributionFailure(generatorId: string, cause: unknown) {
+	if (isRefusal(cause))
+		return new GeneratorError({
+			generatorId,
+			reason: "refused",
+			detail: cause.message,
+			cause,
+		});
+
+	return new GeneratorError({
+		generatorId,
+		reason: "definition-failed",
+		detail: cause instanceof Error ? cause.message : String(cause),
+		cause,
+	});
+}
+
 function normalizeContributionResult(
 	generatorId: string,
 	contribute: () =>
@@ -140,29 +171,15 @@ function normalizeContributionResult(
 		try {
 			result = contribute();
 		} catch (error) {
-			return Effect.fail(
-				new GeneratorError({
-					generatorId,
-					reason: "definition-failed",
-					detail: error instanceof Error ? error.message : String(error),
-					cause: error,
-				}),
-			);
+			return Effect.fail(contributionFailure(generatorId, error));
 		}
 
 		if (Effect.isEffect(result)) return result;
-		if (result instanceof Promise) {
+		if (result instanceof Promise)
 			return Effect.tryPromise({
 				try: () => result,
-				catch: (cause) =>
-					new GeneratorError({
-						generatorId,
-						reason: "definition-failed",
-						detail: cause instanceof Error ? cause.message : String(cause),
-						cause,
-					}),
+				catch: (cause) => contributionFailure(generatorId, cause),
 			});
-		}
 
 		return Effect.succeed(result);
 	});
@@ -220,7 +237,6 @@ export const evaluateDefinitions = Effect.fn("Planner.evaluateDefinitions")(
 		commandProbe: Context.Service.Shape<typeof CommandProbe>,
 	) {
 		const ordered = yield* orderDefinitions(definitions);
-
 		return yield* Effect.forEach(ordered, (definition, order) =>
 			normalizeContributionResult(definition.id, () =>
 				definition.contribute({
@@ -262,7 +278,6 @@ export const evaluateAdapters = Effect.fn("Planner.evaluateAdapters")(
 		);
 
 		const adapterEvaluations: EvaluatedDefinition[] = [];
-
 		for (const addon of registry.addons) {
 			const addonAdapters = registry.adapters.filter(
 				(adapter) => adapter.addon === addon.id,
@@ -282,12 +297,7 @@ export const evaluateAdapters = Effect.fn("Planner.evaluateAdapters")(
 					});
 
 				const module = modulesById.get(target.moduleId);
-				if (!module)
-					return yield* new PlannerError({
-						path: addon.id,
-						reason: "adapter-target-app-missing",
-					});
-
+				if (!module) continue;
 				if (module.config.type !== "app") continue;
 
 				const framework = frameworksById.get(module.config.framework);

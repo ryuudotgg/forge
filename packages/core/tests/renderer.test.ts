@@ -76,6 +76,55 @@ async function renderFailure(
 }
 
 describe("renderer", () => {
+	it.each([
+		{ baseStarter: true, overrideStarter: true, update: "starter" },
+		{ baseStarter: false, overrideStarter: true, update: undefined },
+		{ baseStarter: true, overrideStarter: false, update: undefined },
+	])(
+		"uses the conservative text update policy for %j",
+		async ({ baseStarter, overrideStarter, update }) => {
+			const base = surfaceText(selectedModuleTarget(), "layout", "base", {
+				priority: 0,
+				...(baseStarter ? { update: "starter" } : {}),
+			});
+
+			const override = surfaceText(
+				selectedModuleTarget(),
+				"layout",
+				"override",
+				{
+					priority: 1,
+					...(overrideStarter ? { update: "starter" } : {}),
+				},
+			);
+
+			const rendered = await render(
+				[
+					{
+						bucket: { kind: "module", moduleId: "abcde" },
+						contribution: base,
+						definitionId: "base",
+						order: 0,
+					},
+					{
+						bucket: { kind: "module", moduleId: "abcde" },
+						contribution: override,
+						definitionId: "override",
+						order: 1,
+					},
+				],
+				[appModule("nextjs", { layout: "app/layout.tsx" })],
+			);
+
+			expect(rendered).toHaveLength(1);
+			expect(rendered[0]?.content).toBe("override");
+			expect(rendered[0]?.update).toBe(update);
+			if (!baseStarter) expect(base).not.toHaveProperty("update");
+			if (update === undefined)
+				expect(rendered[0]).not.toHaveProperty("update");
+		},
+	);
+
 	it("combines package json surface contributions into a sorted artifact", async () => {
 		const inputs = [
 			{
@@ -136,6 +185,7 @@ describe("renderer", () => {
 			"override",
 			"deps",
 		]);
+
 		expect(rendered[0]?.content).toBe(
 			`${[
 				"{",
@@ -191,7 +241,6 @@ describe("renderer", () => {
 
 		const rendered = await render(inputs, []);
 		const packageJson: unknown = JSON.parse(rendered[0]?.content ?? "");
-
 		if (
 			typeof packageJson !== "object" ||
 			packageJson === null ||
@@ -320,6 +369,37 @@ describe("renderer", () => {
 		]);
 	});
 
+	it("renders the gitattributes surface as a lines merge at the root", async () => {
+		const rendered = await render(
+			[
+				{
+					bucket: { kind: "project" },
+					contribution: surfaceLines(
+						projectTarget(),
+						"gitattributes",
+						[".forge/** -text"],
+						{ section: "Forge state" },
+					),
+					definitionId: "root",
+					order: 0,
+				},
+			],
+			[],
+		);
+
+		expect(rendered).toEqual([
+			{
+				bucket: { kind: "project" },
+				content: "# Forge state\n.forge/** -text\n",
+				definitionIds: ["root"],
+				key: "gitattributes",
+				kind: "surface",
+				mergeKind: "lines",
+				path: ".gitattributes",
+			},
+		]);
+	});
+
 	it("prefers the highest priority text contribution", async () => {
 		const inputs = [
 			{
@@ -368,6 +448,7 @@ describe("renderer", () => {
 			],
 			[appModule("nextjs")],
 		);
+
 		expect(rendered[0]?.path).toBe("apps/web/tsconfig.json");
 		expect(rendered[0]?.mergeKind).toBeUndefined();
 	});
@@ -386,6 +467,7 @@ describe("renderer", () => {
 			],
 			[],
 		);
+
 		expect(rendered[0]?.path).toBe(".env");
 		expect(rendered[0]?.mergeKind).toBeUndefined();
 	});
@@ -458,6 +540,7 @@ describe("renderer", () => {
 			slots: [],
 			tsconfigPreset: { content: {}, name: "forge-web" },
 		});
+
 		const inputs = [
 			{
 				bucket: { kind: "module", moduleId: "abcde" },
@@ -512,6 +595,7 @@ describe("renderer", () => {
 			slots: [],
 			tsconfigPreset: { content: {}, name: "configless" },
 		});
+
 		const error = await renderFailure(
 			[
 				{

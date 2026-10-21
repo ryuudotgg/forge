@@ -8,7 +8,7 @@ import {
 	resolveApiHost,
 } from "../src";
 import { standaloneApiOrigin } from "../src/origins";
-import { plannedProject } from "./planner-harness";
+import { plannedProject, serverEnvGroups } from "./planner-harness";
 
 const markerPattern = /__[A-Z_]+__/;
 
@@ -28,9 +28,11 @@ describe("Express backend", () => {
 		expect(
 			resolveApiHost(
 				{ backend: "express", web: "tanstack-router" },
+				"trpc",
 				builtins.frameworks,
 			),
 		).toBe("server");
+
 		expect(standaloneApiOrigin({ backend: "express" })).toBe(
 			"http://localhost:3001",
 		);
@@ -40,10 +42,11 @@ describe("Express backend", () => {
 		expect(expressFramework).toMatchObject({
 			buildOutputs: ["dist/**"],
 			ignoreDirs: [],
-			slots: ["api", "trpc", "auth"],
+			slots: ["api", "trpc", "auth", "orpc"],
 			sourceRoot: "src",
 			tsconfigPreset: { name: "express" },
 		});
+
 		expect(expressFramework).not.toHaveProperty("configFile");
 	});
 
@@ -100,15 +103,19 @@ describe("Express backend", () => {
 			});
 
 			const app = writeContent(plan, "apps/server/src/app.ts");
+
 			expect(app).toContain('import cors from "cors"');
 			expect(app).toContain('import express from "express"');
 			expect(app).toContain("export const app: Express = express()");
-			expect(app).toContain("origin: env.WEB_URL");
+
+			expect(app).toContain('import { webOrigins } from "../env.js";');
+			expect(app).toContain("origin: webOrigins,");
 			expect(app).toContain('"x-trpc-source"');
 			expect(app).not.toMatch(markerPattern);
 			expect(app.includes("registerTrpcRoutes(app);")).toBe(
 				combination.rpc === "trpc",
 			);
+
 			expect(app.includes("registerAuthRoutes(app);")).toBe(
 				combination.authentication === "better-auth",
 			);
@@ -118,10 +125,15 @@ describe("Express backend", () => {
 				expect(route).toContain("createExpressMiddleware");
 				expect(route).toContain('"/api/trpc"');
 				expect(route).toContain("headersFromRequest(req.headers)");
+				expect(route).toContain(
+					'responseMeta: () => ({ headers: { vary: ["Origin"] } }),',
+				);
+
 				if (combination.authentication === "better-auth")
 					expect(route).toContain(
 						"auth,\n          headers: headersFromRequest(req.headers)",
 					);
+
 				expect(route).not.toMatch(markerPattern);
 			}
 
@@ -150,6 +162,7 @@ describe("Express backend", () => {
 			slug: "acme",
 			web: "nextjs",
 		};
+
 		const [express, hono] = await Promise.all([
 			plannedProject({ ...config, backend: "express" }),
 			plannedProject({ ...config, backend: "hono" }),
@@ -183,26 +196,57 @@ describe("Express backend", () => {
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"framework": "express"',
 		);
+
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"trpc": "src/routes/trpc.ts"',
 		);
+
 		expect(writeContent(plan, "apps/server/forge.json")).toContain(
 			'"auth": "src/routes/auth.ts"',
 		);
+
 		expect(Object.values(plan.manifest.modules)).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ root: "apps/server" }),
 			]),
 		);
+
 		expect(
 			plan.writes.some((write) => write.path.startsWith("apps/web/")),
 		).toBe(false);
+
 		expect(
 			apiHostError(
 				{ backend: "express" },
-				{ id: "trpc", name: "tRPC" },
+				{ id: "trpc", name: "tRPC", slot: "trpc" },
 				builtins.frameworks,
 			),
 		).toBeUndefined();
+	});
+
+	it("groups NODE_ENV alone and PORT with every origin setting", async () => {
+		const config = {
+			backend: "express",
+			catalogs: "scoped",
+			name: "Acme",
+			packageManager: "pnpm",
+			slug: "acme",
+			web: "tanstack-router",
+		} as const;
+
+		const plain = await plannedProject(config);
+		expect(serverEnvGroups(writeContent(plain, "apps/server/env.ts"))).toEqual([
+			["NODE_ENV"],
+			["PORT", "WEB_URL"],
+		]);
+
+		const withClient = await plannedProject({
+			...config,
+			webApps: [{ name: "admin", framework: "nextjs", client: true }],
+		});
+
+		expect(
+			serverEnvGroups(writeContent(withClient, "apps/server/env.ts")),
+		).toEqual([["NODE_ENV"], ["PORT", "WEB_URL", "WEB_URLS"]]);
 	});
 });

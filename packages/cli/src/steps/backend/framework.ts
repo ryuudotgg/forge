@@ -1,5 +1,5 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { backends, resolveApiHost } from "@ryuujs/generators";
+import { backends, resolveApiHost } from "@ryuugg/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {
@@ -32,12 +32,11 @@ export default defineStep<typeof backendSchema.Type>({
 		if (!interactive) {
 			const normalized = backends.normalize(config.backend);
 			if (normalized && backends.available(normalized)) return normalized;
-
 			return SKIP;
 		}
 
 		const recommended =
-			resolveApiHost({ ...config, backend: "self" }) === "web"
+			resolveApiHost({ ...config, backend: "self" }, "api") === "web"
 				? "self"
 				: (backends.availableIds.find((id) => id !== "self") ?? "self");
 

@@ -5,7 +5,7 @@ import {
 	type LoadedDefinitionRegistry,
 	loadDefinitionRegistry,
 	matchQuery,
-} from "@ryuujs/generators";
+} from "@ryuugg/generators";
 import color from "picocolors";
 import { listAnd, listOr } from "../utils/list";
 import { loadDiscoveryRegistry } from "./lifecycle";
@@ -137,7 +137,6 @@ export function suggestCatalogEntries(
 	query: string,
 ) {
 	const visible = entries.filter((entry) => !entry.hidden);
-
 	for (let length = query.length; length >= 3; length -= 1) {
 		const suggestions = visible.filter((entry) =>
 			matchQuery(entry, query.slice(0, length)),
@@ -181,7 +180,7 @@ export function buildInfoEnvelope(
 
 export async function runInfo(
 	id: string,
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 	loadRegistry: () => Promise<LoadedDefinitionRegistry> = () =>
 		loadDiscoveryRegistry("."),
 ) {
@@ -190,10 +189,8 @@ export async function runInfo(
 		: loadRegistry());
 
 	const entry = loadedRegistry.catalog.find((candidate) => candidate.id === id);
-	if (!entry || entry.hidden) {
-		log.error(buildInfoNotFoundMessage(id, loadedRegistry.catalog));
-		process.exit(1);
-	}
+	if (!entry || entry.hidden)
+		throw new Error(buildInfoNotFoundMessage(id, loadedRegistry.catalog));
 
 	if (values.json === true) {
 		console.log(

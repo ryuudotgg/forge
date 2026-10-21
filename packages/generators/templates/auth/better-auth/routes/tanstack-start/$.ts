@@ -2,9 +2,12 @@
 import "@tanstack/react-start";
 
 import { auth } from "@__SLUG__/auth";
+import { withClientAddress } from "@__SLUG__/auth/client-address";
 import { createFileRoute } from "@tanstack/react-router";
+import { getRequestIP } from "@tanstack/react-start/server";
 
-function handler({ request }: { readonly request: Request }) {
+function handler({ request: inbound }: { readonly request: Request }) {
+  const request = withClientAddress(inbound, getRequestIP());
   return auth.handler(request);
 }
 

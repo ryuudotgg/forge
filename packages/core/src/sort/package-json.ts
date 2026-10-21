@@ -56,7 +56,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function sortObjectKeys(obj: Record<string, unknown>): Record<string, unknown> {
 	const sorted: Record<string, unknown> = {};
 	for (const key of Object.keys(obj).sort()) sorted[key] = obj[key];
-
 	return sorted;
 }
 
@@ -71,6 +70,7 @@ export function sortPackageJson(
 		.sort();
 
 	for (const key of remaining) sorted[key] = json[key];
+
 	for (const key of Object.keys(sorted))
 		if (ALPHABETICAL_SORT_KEYS.has(key) && isRecord(sorted[key]))
 			sorted[key] = sortObjectKeys(sorted[key] as Record<string, unknown>);

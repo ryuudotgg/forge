@@ -8,7 +8,7 @@ import {
 	surfaceJson,
 	surfaceLines,
 	surfaceScripts,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { type ForgeConfig, hasAddon } from "../config";
 import { envFileLine } from "../data/providers";
 import { deps } from "../deps";
@@ -35,7 +35,6 @@ const worker = defineAddon<ForgeConfig, "worker">({
 	contribute: ({ config }) => {
 		const slug = config.slug ?? "my-app";
 		const pm = resolvePackageManager(config);
-
 		return [
 			ensureAppModule("worker", "apps/worker", {
 				framework: "hono",
@@ -66,7 +65,7 @@ const worker = defineAddon<ForgeConfig, "worker">({
 					version: "workspace:*",
 					type: "devDependencies",
 				},
-				{ ...deps.dotenvCli, type: "devDependencies" },
+				{ ...deps.dotenvCli, type: "dependencies" },
 				{ ...deps.tsdown, type: "devDependencies" },
 				{ ...deps.tsx, type: "devDependencies" },
 				{ ...deps.typesNode, type: "devDependencies" },

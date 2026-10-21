@@ -1,11 +1,14 @@
 import addonSelect from "./addons/select";
 import authCustomUI from "./auth/custom-ui";
+import authMethods from "./auth/methods";
+import authPlugins from "./auth/plugins";
 import authProvider from "./auth/provider";
 import backendFramework from "./backend/framework";
 import rpc from "./backend/rpc";
 import database from "./data/database";
 import databaseProvider from "./data/database-provider";
 import orm from "./data/orm";
+import emailProvider from "./email/provider";
 import generate from "./generate";
 import intro from "./intro";
 import outro from "./outro";
@@ -13,6 +16,8 @@ import desktop from "./platforms/desktop";
 import mobile from "./platforms/mobile";
 import platformSelect from "./platforms/select";
 import web from "./platforms/web";
+import webApps from "./platforms/web-apps";
+import webName from "./platforms/web-name";
 import gitInit from "./post/git-init";
 import installDeps from "./post/install-deps";
 import catalogs from "./project/catalogs";
@@ -39,6 +44,8 @@ export const steps: Step[] = [
 
 	platformSelect,
 	web,
+	webName,
+	webApps,
 	desktop,
 	mobile,
 
@@ -50,6 +57,8 @@ export const steps: Step[] = [
 	databaseProvider,
 
 	authProvider,
+	authMethods,
+	authPlugins,
 	authCustomUI,
 
 	webStyleFramework,
@@ -57,6 +66,7 @@ export const steps: Step[] = [
 	uiLibrary,
 
 	addonSelect,
+	emailProvider,
 
 	summary,
 	generate,

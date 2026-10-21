@@ -53,7 +53,6 @@ function threeWayMergeArrays(
 			const baseValue = base[index];
 			const currentValue = current[index];
 			const incomingValue = incoming[index];
-
 			if (jsonEqual(currentValue, incomingValue)) indexed.push(currentValue);
 			else if (jsonEqual(baseValue, currentValue)) indexed.push(incomingValue);
 			else if (jsonEqual(baseValue, incomingValue)) indexed.push(currentValue);
@@ -81,8 +80,8 @@ function threeWayMergeArrays(
 
 	const append = (value: unknown) => {
 		const key = arrayKey(value);
-
 		if (mergedKeys.has(key)) return;
+
 		mergedKeys.add(key);
 
 		merged.push(value);
@@ -178,11 +177,9 @@ export function deepMerge(
 	source: Record<string, unknown>,
 ): Record<string, unknown> {
 	const result: Record<string, unknown> = { ...target };
-
 	for (const key of Object.keys(source)) {
 		const sourceValue = source[key];
 		const targetValue = target[key];
-
 		if (isPlainObject(sourceValue) && isPlainObject(targetValue))
 			result[key] = deepMerge(targetValue, sourceValue);
 		else if (Array.isArray(sourceValue) && Array.isArray(targetValue))
@@ -227,6 +224,18 @@ export function mergeJson(
 	return deepMerge(existing, patch);
 }
 
+export function formatJsonPath(path: ReadonlyArray<string>): string {
+	return path
+		.map((segment, index) =>
+			/^[A-Za-z_$][\w$]*$/.test(segment)
+				? index === 0
+					? segment
+					: `.${segment}`
+				: `[${JSON.stringify(segment)}]`,
+		)
+		.join("");
+}
+
 export function threeWayMergeJson(
 	base: Record<string, unknown>,
 	current: Record<string, unknown>,
@@ -241,7 +250,6 @@ export function jsonResidue(
 	current: Record<string, unknown>,
 ): Record<string, unknown> {
 	const residue: Record<string, unknown> = {};
-
 	for (const [key, currentValue] of Object.entries(current)) {
 		if (!Object.hasOwn(base, key)) {
 			residue[key] = currentValue;
@@ -249,7 +257,6 @@ export function jsonResidue(
 		}
 
 		const baseValue = base[key];
-
 		if (jsonEqual(baseValue, currentValue)) continue;
 		if (isPlainObject(baseValue) && isPlainObject(currentValue)) {
 			const nested = jsonResidue(baseValue, currentValue);
@@ -274,6 +281,48 @@ export function jsonResidue(
 	return residue;
 }
 
+function orderMergedKeys(
+	base: Record<string, unknown>,
+	current: Record<string, unknown>,
+	incoming: Record<string, unknown>,
+	merged: ReadonlyMap<string, unknown>,
+): string[] {
+	const currentKeys = Object.keys(current);
+	const survivingBaseKeys = Object.keys(base).filter((key) =>
+		Object.hasOwn(current, key),
+	);
+
+	const touchedOrder =
+		currentKeys.length !== survivingBaseKeys.length ||
+		currentKeys.some((key, index) => key !== survivingBaseKeys[index]);
+
+	const incomingKeys = Object.keys(incoming);
+	const primary = touchedOrder ? currentKeys : incomingKeys;
+	const secondary = touchedOrder ? incomingKeys : currentKeys;
+	const ordered = primary.filter((key) => merged.has(key));
+	const included = new Set(ordered);
+	for (const [index, key] of secondary.entries()) {
+		if (!merged.has(key) || included.has(key)) continue;
+
+		const anchor = secondary
+			.slice(0, index)
+			.reverse()
+			.find((candidate) => included.has(candidate));
+
+		const anchorIndex = anchor === undefined ? -1 : ordered.indexOf(anchor);
+		ordered.splice(anchorIndex + 1, 0, key);
+		included.add(key);
+	}
+
+	for (const key of merged.keys()) {
+		if (included.has(key)) continue;
+		ordered.push(key);
+		included.add(key);
+	}
+
+	return ordered;
+}
+
 function mergeJsonObjects(
 	base: Record<string, unknown>,
 	current: Record<string, unknown>,
@@ -281,7 +330,7 @@ function mergeJsonObjects(
 	options: MergeJsonOptions,
 	path: ReadonlyArray<string>,
 ): JsonMergeResult {
-	const merged: Record<string, unknown> = {};
+	const merged = new Map<string, unknown>();
 	const conflicts: Array<ReadonlyArray<string>> = [];
 
 	const allKeys = new Set([
@@ -297,20 +346,38 @@ function mergeJsonObjects(
 		const currentPresent = Object.hasOwn(current, key);
 		const incomingPresent = Object.hasOwn(incoming, key);
 
-		const baseValue = base[key];
-		const currentValue = current[key];
-		const incomingValue = incoming[key];
+		const baseValue = basePresent ? base[key] : undefined;
+		const currentValue = currentPresent ? current[key] : undefined;
+		const incomingValue = incomingPresent ? incoming[key] : undefined;
+		if (
+			isPlainObject(baseValue) &&
+			isPlainObject(currentValue) &&
+			isPlainObject(incomingValue)
+		) {
+			const nested = mergeJsonObjects(
+				baseValue,
+				currentValue,
+				incomingValue,
+				options,
+				keyPath,
+			);
+
+			merged.set(key, nested.merged);
+			conflicts.push(...nested.conflicts);
+
+			continue;
+		}
 
 		if (
 			basePresent === incomingPresent &&
 			jsonEqual(baseValue, incomingValue)
 		) {
-			if (currentPresent) merged[key] = currentValue;
+			if (currentPresent) merged.set(key, currentValue);
 			continue;
 		}
 
 		if (basePresent === currentPresent && jsonEqual(baseValue, currentValue)) {
-			if (incomingPresent) merged[key] = incomingValue;
+			if (incomingPresent) merged.set(key, incomingValue);
 			continue;
 		}
 
@@ -318,7 +385,7 @@ function mergeJsonObjects(
 			currentPresent === incomingPresent &&
 			jsonEqual(currentValue, incomingValue)
 		) {
-			if (currentPresent) merged[key] = currentValue;
+			if (currentPresent) merged.set(key, currentValue);
 			continue;
 		}
 
@@ -347,28 +414,9 @@ function mergeJsonObjects(
 			);
 
 			if (Object.keys(nested.merged).length > 0 || currentPresent)
-				merged[key] = nested.merged;
+				merged.set(key, nested.merged);
 
 			conflicts.push(...nested.conflicts);
-			continue;
-		}
-
-		if (
-			isPlainObject(baseValue) &&
-			isPlainObject(currentValue) &&
-			isPlainObject(incomingValue)
-		) {
-			const nested = mergeJsonObjects(
-				baseValue,
-				currentValue,
-				incomingValue,
-				options,
-				keyPath,
-			);
-
-			merged[key] = nested.merged;
-			conflicts.push(...nested.conflicts);
-
 			continue;
 		}
 
@@ -384,7 +432,7 @@ function mergeJsonObjects(
 				options.resolveConflict?.(keyPath) ?? options.resolution,
 			);
 
-			merged[key] = arrayResult.merged;
+			merged.set(key, arrayResult.merged);
 
 			if (arrayResult.conflicts) conflicts.push(keyPath);
 
@@ -395,9 +443,17 @@ function mergeJsonObjects(
 
 		const resolution = options.resolveConflict?.(keyPath) ?? options.resolution;
 		if (resolution === "user") {
-			if (currentPresent) merged[key] = currentValue;
-		} else if (incomingPresent) merged[key] = incomingValue;
+			if (currentPresent) merged.set(key, currentValue);
+		} else if (incomingPresent) merged.set(key, incomingValue);
 	}
 
-	return { merged, conflicts };
+	return {
+		merged: Object.fromEntries(
+			orderMergedKeys(base, current, incoming, merged).map((key) => [
+				key,
+				merged.get(key),
+			]),
+		),
+		conflicts,
+	};
 }

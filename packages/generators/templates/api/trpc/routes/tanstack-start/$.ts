@@ -1,8 +1,8 @@
 // Loads the server-route type augmentation for createFileRoute.
 import "@tanstack/react-start";
 
-import { appRouter, createTRPCContext } from "@__SLUG__/trpc";
 // __AUTH_IMPORT__
+import { appRouter, createTRPCContext } from "@__SLUG__/trpc";
 import { createFileRoute } from "@tanstack/react-router";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 

@@ -7,17 +7,36 @@ import {
 	resolve,
 	sep,
 } from "node:path";
-import { Context, Effect, FileSystem, Layer, Result } from "effect";
+import { Context, Effect, FileSystem, Layer, Result, Schema } from "effect";
+import type { FileUpdate } from "./authoring";
+import { CliVersion } from "./cli-version";
+import { ModuleIdSchema } from "./config";
+import { unifiedDiff } from "./diff";
 import { ApplyError, type ApplyRefusalReason, type StateError } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
 import { envResidue, threeWayMergeEnv } from "./merge/env";
-import { jsonResidue, threeWayMergeJson } from "./merge/json";
-import { sectionResidue, threeWayMergeSections } from "./merge/lines";
+import { formatJsonPath, jsonResidue, threeWayMergeJson } from "./merge/json";
+import {
+	appendMissingLines,
+	sectionResidue,
+	threeWayMergeSections,
+} from "./merge/lines";
 import type { MergeConflictResolution } from "./merge/types";
+import { threeWayMergeYaml } from "./merge/yaml";
+import {
+	artifactFilePath,
+	artifactModuleId,
+	type DirectoryMove,
+	previousLockfileAtNextRoots,
+	relocatePath,
+	rootChanges,
+	sourcePath,
+} from "./relocation";
 import { sortPackageJson } from "./sort/package-json";
 import type {
 	ArtifactBase,
+	FileMergeKind,
 	Lockfile,
 	LockfileArtifact,
 	LockfileInput,
@@ -36,17 +55,43 @@ export interface PlannedWrite {
 	readonly artifactId?: string;
 	readonly content: string;
 	readonly path: string;
+	readonly update?: FileUpdate;
 }
 
 export interface ApplyPlan {
+	readonly directoryMoves?: ReadonlyArray<DirectoryMove>;
 	readonly baseContents?: Readonly<Record<string, string>>;
+	readonly generatedRemovals?: ReadonlyArray<string>;
 	readonly lockfile: LockfileInput;
 	readonly manifest: ManifestInput;
+	readonly removalRootRelocations?: Readonly<Record<string, string>>;
 	readonly removals: ReadonlyArray<string>;
+	readonly removedRoots?: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedWrite>;
 }
 
+export interface ApplyResult {
+	readonly released: ReadonlyArray<string>;
+	readonly retained: ReadonlyArray<string>;
+	readonly declined: ReadonlyArray<DeclinedChange>;
+	readonly dropped: ReadonlyArray<DroppedEdit>;
+}
+
+export interface DroppedEdit {
+	readonly path: string;
+	readonly lines: string;
+}
+
+export interface DeclinedChange {
+	readonly path: string;
+	readonly diff: string;
+	readonly added: number;
+	readonly removed: number;
+	readonly diffPath: string | undefined;
+}
+
 export type ResolutionPolicy = "accept-forge" | "keep-user" | "refuse";
+export type ResolutionFlag = Exclude<ResolutionPolicy, "refuse">;
 export type ConflictResolution = "forge" | "user";
 
 export type ApplyResolution =
@@ -59,8 +104,14 @@ export type ApplyResolution =
 			readonly resolution: ConflictResolution;
 	  };
 
+export interface DepartingAddons {
+	readonly definitionIds: ReadonlyArray<string>;
+	readonly committedPaths: ReadonlyArray<string>;
+}
+
 export interface ApplyOptions {
 	readonly conflictResolutions?: Readonly<Record<string, ApplyResolution>>;
+	readonly departing?: DepartingAddons;
 	readonly resolutionPolicy?: ResolutionPolicy;
 }
 
@@ -72,6 +123,7 @@ export interface ApplyConflict {
 	readonly base: unknown;
 	readonly forge: unknown;
 	readonly label: string;
+	readonly resolvedBy: ReadonlyArray<ResolutionFlag>;
 	readonly user: unknown;
 }
 
@@ -79,7 +131,7 @@ export interface ApplyRefusal {
 	readonly reason: ApplyRefusalReason;
 	readonly operation: "removal" | "write";
 	readonly path: string;
-	readonly resolvable: boolean;
+	readonly resolvedBy: ReadonlyArray<ResolutionFlag>;
 }
 
 interface PreflightClassification {
@@ -90,6 +142,7 @@ interface PreflightClassification {
 	readonly hasUnmanagedRefusals: boolean;
 	readonly hasUnmanagedRemovals: boolean;
 	readonly refusals: ReadonlyArray<ApplyRefusal>;
+	readonly outsideRemoval?: ReadonlyArray<string>;
 }
 
 type ApplyReasons<Reason extends ApplyError["reason"]> = ReadonlyArray<Reason>;
@@ -111,6 +164,8 @@ interface PreflightPhaseContract {
 		| "path-escapes-project-root"
 		| "content-hash-failed"
 		| "file-read-failed"
+		| "move-source-missing"
+		| "move-destination-exists"
 		| "json-parse-failed"
 		| "managed-file-modified"
 		| "managed-base-read-failed"
@@ -168,6 +223,7 @@ interface PublicationPhaseContract {
 		| "managed-file-modified"
 		| "managed-base-hash-mismatch"
 		| "atomic-state-backup-failed"
+		| "directory-move-failed"
 		| "file-remove-failed"
 		| "directory-write-failed"
 		| "atomic-file-write-failed"
@@ -177,7 +233,7 @@ interface PublicationPhaseContract {
 		| "atomic-lockfile-write-failed"
 		| "atomic-state-publish-failed"
 	>;
-	readonly result: ReturnType<() => void>;
+	readonly result: { readonly reportsSaved: boolean };
 }
 
 type PublicationPhaseError = ApplyError;
@@ -192,11 +248,14 @@ function classifyPreflight(
 		hasConflicts: conflicts.length > 0,
 		hasManagedRemovals: refusals.some(
 			(refusal) =>
-				refusal.reason === "managed-file-modified" &&
+				(refusal.reason === "managed-file-modified" ||
+					refusal.reason === "managed-base-damaged") &&
 				refusal.operation === "removal",
 		),
 		hasManagedRefusals: refusals.some(
-			(refusal) => refusal.reason === "managed-file-modified",
+			(refusal) =>
+				refusal.reason === "managed-file-modified" ||
+				refusal.reason === "managed-base-damaged",
 		),
 		hasUnmanagedRefusals: refusals.some(
 			(refusal) => refusal.reason === "unmanaged-file-exists",
@@ -214,7 +273,19 @@ function descriptorMatchesArtifact(artifact: LockfileArtifact): boolean {
 	if (artifact.base.semanticsVersion !== SURFACE_MERGE_SEMANTICS_VERSION)
 		return false;
 
-	return artifact.kind === "surface" || artifact.base.mergeKind === "opaque";
+	return artifact.kind === "surface"
+		? artifact.base.mergeKind !== "yaml"
+		: artifact.base.mergeKind === "opaque" ||
+				artifact.base.mergeKind === "yaml";
+}
+
+function lastRender(
+	artifact: LockfileArtifact | undefined,
+): string | undefined {
+	if (artifact === undefined) return undefined;
+	if (artifact.base === undefined) return artifact.hash;
+
+	return artifact.base.origin === "adopted" ? undefined : artifact.base.hash;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -253,15 +324,19 @@ function descriptorsCompatible(
 
 	const previousBase = previous.base;
 	const nextBase = next.base;
-
 	if (previousBase === undefined)
 		return (
 			nextBase === undefined ||
+			(previous.kind === "file" && nextBase.mergeKind === "yaml") ||
 			(previous.kind === "surface" && nextBase.mergeKind !== "opaque")
 		);
 
 	if (previousBase.mergeKind === "opaque")
-		return nextBase === undefined || nextBase.mergeKind === "opaque";
+		return (
+			nextBase === undefined ||
+			nextBase.mergeKind === "opaque" ||
+			(previous.kind === "file" && nextBase.mergeKind === "yaml")
+		);
 
 	return (
 		nextBase !== undefined &&
@@ -274,40 +349,12 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function movedModuleArtifactId(
-	write: PlannedWrite,
-	current: ManifestInput,
-	previous: Manifest,
-): string | undefined {
-	if (write.artifactId === undefined) return undefined;
-
-	const match = /^module:([^:]+):file:(.+)$/.exec(write.artifactId);
-	const moduleId = match?.[1];
-	const artifactPath = match?.[2];
-	if (
-		moduleId === undefined ||
-		artifactPath === undefined ||
-		artifactPath !== write.path
-	)
-		return undefined;
-
-	const previousRoot = previous.modules[moduleId]?.root;
-	const nextRoot = current.modules[moduleId]?.root;
-
-	if (
-		nextRoot === undefined ||
-		previousRoot === undefined ||
-		nextRoot === previousRoot ||
-		!write.path.startsWith(`${nextRoot}/`)
-	)
-		return undefined;
-
-	const relativePath = write.path.slice(nextRoot.length + 1);
-	return `module:${moduleId}:file:${previousRoot}/${relativePath}`;
-}
-
 export function isUserOwnedEnv(relativePath: string): boolean {
 	return basename(relativePath) === ".env";
+}
+
+export function appendsToUnmanagedFile(relativePath: string): boolean {
+	return basename(relativePath) === ".gitattributes";
 }
 
 function valueAtPath(
@@ -318,21 +365,11 @@ function valueAtPath(
 	for (const segment of path) {
 		if (!isJsonObject(current) || !Object.hasOwn(current, segment))
 			return undefined;
+
 		current = current[segment];
 	}
-	return current;
-}
 
-function formatJsonPath(path: ReadonlyArray<string>): string {
-	return path
-		.map((segment, index) =>
-			/^[A-Za-z_$][\w$]*$/.test(segment)
-				? index === 0
-					? segment
-					: `.${segment}`
-				: `[${JSON.stringify(segment)}]`,
-		)
-		.join("");
+	return current;
 }
 
 export function describeConflictValue(value: unknown): string {
@@ -356,6 +393,15 @@ function conflictMessage(conflicts: ReadonlyArray<ApplyConflict>): string {
 }
 
 function refusalSentence(refusal: ApplyRefusal): string {
+	if (refusal.reason === "move-source-missing")
+		return `${refusal.path} is missing or no longer holds the module Forge planned to move.`;
+
+	if (refusal.reason === "move-destination-exists")
+		return `${refusal.path} already exists. Choose an unoccupied destination.`;
+
+	if (refusal.reason === "managed-base-damaged")
+		return `${refusal.path}'s stored base under .forge/bases is missing or no longer matches its hash.`;
+
 	return refusal.reason === "managed-file-modified"
 		? `${refusal.path} was modified after Forge last managed it.`
 		: `${refusal.path} already exists and is not managed by Forge.`;
@@ -378,29 +424,51 @@ function preflightMessage(
 	return sections.join("\n");
 }
 
+const listAnd = new Intl.ListFormat("en", { type: "conjunction" });
+const listOr = new Intl.ListFormat("en", { type: "disjunction" });
+const resolutionFlags: ReadonlyArray<ResolutionFlag> = [
+	"keep-user",
+	"accept-forge",
+];
+
 export function formatApplyError(
 	error: ApplyError,
 	options: FormatApplyErrorOptions = {},
 ): string {
 	let report: string;
 	let classification = error.preflight;
-
 	if (
 		error.reason === "managed-file-modified" ||
+		error.reason === "managed-base-damaged" ||
+		error.reason === "move-source-missing" ||
+		error.reason === "move-destination-exists" ||
 		error.reason === "unmanaged-file-exists"
 	) {
-		const refusal: ApplyRefusal = {
+		const operation =
+			classification?.hasManagedRemovals === true ||
+			classification?.hasUnmanagedRemovals === true
+				? "removal"
+				: "write";
+
+		const refusal: ApplyRefusal = classification?.refusals?.find(
+			(candidate) =>
+				candidate.reason === error.reason && candidate.path === error.path,
+		) ?? {
 			reason: error.reason,
-			operation:
-				classification?.hasManagedRemovals === true ||
-				classification?.hasUnmanagedRemovals === true
-					? "removal"
-					: "write",
+			operation,
 			path: error.path,
-			resolvable: false,
+			resolvedBy: error.reason.startsWith("move-")
+				? []
+				: operation === "removal"
+					? ["accept-forge"]
+					: resolutionFlags,
 		};
 
-		classification ??= classifyPreflight([refusal], []);
+		classification =
+			classification === undefined
+				? classifyPreflight([refusal], [])
+				: { ...classification, refusals: classification.refusals ?? [refusal] };
+
 		report = preflightMessage([refusal], []);
 	} else report = error.message;
 
@@ -411,27 +479,108 @@ export function formatApplyError(
 		!classification.hasUnmanagedRefusals
 	)
 		return report;
+
 	if (options.includeResolutionGuidance === false) return report;
 
+	const refusals = classification.refusals ?? [];
+	const items = [...refusals, ...(classification.conflicts ?? [])];
+	const overall = resolutionFlags.filter((flag) =>
+		items.every((item) => item.resolvedBy.includes(flag)),
+	);
+
+	const stuck = [
+		...new Set(
+			refusals
+				.filter((refusal) => refusal.resolvedBy.length === 0)
+				.map((refusal) => refusal.path),
+		),
+	];
+
+	const remaining = items.filter((item) => item.resolvedBy.length > 0);
+	const rest = resolutionFlags.filter((flag) =>
+		remaining.every((item) => item.resolvedBy.includes(flag)),
+	);
+
+	const suggested =
+		stuck.length > 0 ? (remaining.length > 0 ? rest : []) : overall;
+
+	const onlyRemovals =
+		(classification.conflicts ?? []).length === 0 &&
+		refusals.length > 0 &&
+		refusals.every((refusal) => refusal.operation === "removal");
+
+	const removed =
+		new Set(refusals.map((refusal) => refusal.path)).size === 1 ? "it" : "them";
+
+	const keepClause = onlyRemovals
+		? `--keep-user to keep ${removed}`
+		: "--keep-user to keep your version wherever you and Forge disagree";
+
+	const acceptClause = onlyRemovals
+		? `--accept-forge to let Forge delete ${removed}`
+		: "--accept-forge to take Forge's version and overwrite yours";
+
+	const outside = classification.outsideRemoval ?? [];
 	const guidance: string[] = [];
+	if (outside.length > 0)
+		guidance.push(
+			`${listAnd.format(outside)} ${outside.length === 1 ? "sits" : "sit"} outside the app you're removing, so --accept-forge leaves ${outside.length === 1 ? "it" : "them"} alone.`,
+		);
+
+	if (stuck.length > 0 || overall.length === 0) {
+		const paths =
+			stuck.length > 0
+				? stuck
+				: [...new Set(refusals.map((refusal) => refusal.path))];
+
+		const rerun =
+			suggested.length > 0
+				? `, then run again with ${listOr.format(suggested.map((flag) => `--${flag}`))}.`
+				: ".";
+
+		const missingSources = refusals
+			.filter((refusal) => refusal.reason === "move-source-missing")
+			.map((refusal) => refusal.path);
+
+		if (missingSources.length > 0)
+			guidance.push(
+				`Restore the expected modules at ${listAnd.format(missingSources)} before retrying.`,
+			);
+
+		const occupiedPaths = paths.filter(
+			(path) => !missingSources.includes(path),
+		);
+
+		if (occupiedPaths.length > 0)
+			guidance.push(
+				`Neither flag resolves ${listAnd.format(occupiedPaths)}, so move ${occupiedPaths.length === 1 ? "it" : "them"} out of the way first${rerun}`,
+			);
+	} else if (overall.length === 2)
+		guidance.push(`Run again with ${keepClause}, or ${acceptClause}.`);
+	else if (overall.includes("keep-user"))
+		guidance.push(`Run again with ${keepClause}.`);
+	else guidance.push(`Run again with ${acceptClause}.`);
+
 	if (
-		(classification.hasConflicts || classification.hasManagedRefusals) &&
-		!classification.hasManagedRemovals
+		suggested.includes("keep-user") &&
+		refusals.some(
+			(refusal) =>
+				refusal.reason === "unmanaged-file-exists" &&
+				refusal.operation === "write" &&
+				refusal.resolvedBy.includes("keep-user"),
+		)
 	)
 		guidance.push(
-			"Run again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
+			"With --keep-user, Forge keeps the files you already had and manages them from then on.",
 		);
 
-	if (classification.hasManagedRemovals)
+	if (
+		suggested.includes("accept-forge") &&
+		!onlyRemovals &&
+		refusals.some((refusal) => refusal.operation === "removal")
+	)
 		guidance.push(
-			"Run again with --accept-forge to remove modified managed files that Forge no longer plans.",
-		);
-
-	if (classification.hasUnmanagedRefusals)
-		guidance.push(
-			classification.hasUnmanagedRemovals
-				? "--keep-user cannot resolve unmanaged files; use --accept-forge to remove files Forge no longer plans."
-				: "--keep-user cannot resolve unmanaged files; use --accept-forge to overwrite and manage them.",
+			"With --accept-forge, Forge also deletes files it no longer needs, including ones you edited or made yourself.",
 		);
 
 	return `${report}\n${guidance.join("\n")}`;
@@ -447,6 +596,7 @@ function formatMergedJson(
 
 const makeApply = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem;
+	const cliVersion = yield* CliVersion;
 
 	const ensureContained = Effect.fn("Apply.ensureContained")(function* (
 		projectRoot: string,
@@ -454,7 +604,6 @@ const makeApply = Effect.gen(function* () {
 	) {
 		const rootPath = resolve(projectRoot);
 		const fullPath = resolve(rootPath, relativePath);
-
 		if (
 			isAbsolute(relativePath) ||
 			(fullPath !== rootPath && !fullPath.startsWith(`${rootPath}${sep}`))
@@ -561,7 +710,7 @@ const makeApply = Effect.gen(function* () {
 		});
 	});
 
-	const readBase = Effect.fn("Apply.readBase")(function* (
+	const readStoredBase = Effect.fn("Apply.readStoredBase")(function* (
 		projectRoot: string,
 		artifact: LockfileArtifact,
 		base: ArtifactBase,
@@ -578,15 +727,66 @@ const makeApply = Effect.gen(function* () {
 		);
 	});
 
+	const readBase = Effect.fn("Apply.readBase")(function* (
+		projectRoot: string,
+		artifact: LockfileArtifact,
+		base: ArtifactBase,
+	) {
+		return yield* State.readBase(projectRoot, base.hash).pipe(
+			Effect.catchIf(
+				(cause) =>
+					cause.reason === "base-read-failed" ||
+					cause.reason === "base-hash-mismatch",
+				() => Effect.void,
+			),
+			Effect.mapError(
+				(cause) =>
+					new ApplyError({
+						path: artifact.path,
+						reason: "managed-base-read-failed",
+						cause,
+					}),
+			),
+		);
+	});
+
 	const mergeSurface = Effect.fn("Apply.mergeSurface")(function* (
-		kind: SurfaceMergeKind,
+		kind: SurfaceMergeKind | FileMergeKind,
 		path: string,
 		base: string,
 		current: string,
 		incoming: string,
 		resolution?: MergeConflictResolution,
 		resolveConflict?: (label: string) => MergeConflictResolution | undefined,
+		syntheticBase = false,
 	) {
+		if (kind === "yaml") {
+			for (const { document, content } of [
+				{ document: "base", content: base },
+				{ document: "incoming", content: incoming },
+			])
+				if (threeWayMergeYaml(content, content, content) === undefined)
+					return yield* new ApplyError({
+						path,
+						reason: "preflight-failed",
+						detail: `Managed YAML Parse Failed: ${path} (${document})`,
+					});
+
+			const merged = threeWayMergeYaml(
+				base,
+				current,
+				incoming,
+				resolution,
+				resolveConflict,
+				syntheticBase,
+			);
+
+			if (merged === undefined)
+				return yield* new ApplyError({ path, reason: "managed-file-modified" });
+
+			return merged;
+		}
+
 		if (kind === "env")
 			return threeWayMergeEnv(
 				base,
@@ -655,24 +855,65 @@ const makeApply = Effect.gen(function* () {
 		plan: ApplyPlan,
 		options: ApplyOptions = {},
 	) {
-		const resolutionPolicy = options.resolutionPolicy ?? "refuse";
-		const mergeResolution =
-			resolutionPolicy === "refuse"
+		const requestedPolicy = options.resolutionPolicy ?? "refuse";
+		const installed = new Set(
+			plan.manifest.installs.map((install) => install.definitionId),
+		);
+
+		const departing = new Set(
+			(options.departing?.definitionIds ?? []).filter(
+				(id) => !installed.has(id),
+			),
+		);
+
+		const committedPaths = new Set(options.departing?.committedPaths ?? []);
+
+		const removedRoots = plan.removedRoots ?? [];
+		const isInRemovedRoot = (path: string) =>
+			removedRoots.some((root) => path === root || path.startsWith(`${root}/`));
+
+		const policyFor = (
+			path: string,
+			policy = requestedPolicy,
+		): ResolutionPolicy =>
+			policy === "accept-forge" &&
+			plan.removedRoots !== undefined &&
+			!isInRemovedRoot(path)
+				? "refuse"
+				: policy;
+
+		const resolvedByFor = (
+			path: string,
+			keepUser: boolean,
+		): ReadonlyArray<ResolutionFlag> =>
+			resolutionFlags.filter((flag) =>
+				flag === "keep-user" ? keepUser : policyFor(path, flag) === flag,
+			);
+
+		const mergeResolutionFor = (path: string) => {
+			const policy = policyFor(path);
+			return policy === "refuse"
 				? undefined
-				: resolutionPolicy === "keep-user"
+				: policy === "keep-user"
 					? "user"
 					: "forge";
+		};
 
 		const requestedResolutions = new Map(
 			Object.entries(options.conflictResolutions ?? {}),
 		);
 
 		const consumedResolutionLabels = new Set<string>();
-		const resolutionFor = (label: string, conflict?: ApplyConflict) => {
+		const resolutionFor = (
+			path: string,
+			label = path,
+			conflict?: ApplyConflict,
+		) => {
 			const request = requestedResolutions.get(label);
-			if (request === undefined) return mergeResolution;
+			if (request === undefined) return mergeResolutionFor(path);
 
 			consumedResolutionLabels.add(label);
+
 			if (
 				conflict !== undefined &&
 				"expected" in request &&
@@ -686,8 +927,26 @@ const makeApply = Effect.gen(function* () {
 
 		const previousLockfile = yield* State.readLockfile(projectRoot);
 		const previousManifest = yield* State.readManifestOrDefault(projectRoot);
+		yield* State.refuseOlderCli(projectRoot, previousManifest);
 
-		const previousArtifactIndex = buildArtifactIndex(previousLockfile);
+		const changes = rootChanges(
+			previousManifest.modules,
+			plan.manifest.modules,
+		);
+
+		const previousArtifactIndex = buildArtifactIndex(
+			previousLockfileAtNextRoots(
+				previousLockfile,
+				previousManifest.modules,
+				plan.manifest.modules,
+			),
+		);
+
+		const previousBaseHashes = new Set(
+			Object.values(previousLockfile.artifacts).flatMap((artifact) =>
+				artifact.base === undefined ? [] : [artifact.base.hash],
+			),
+		);
 
 		const previousArtifacts = previousArtifactIndex.byPath;
 		const previousArtifactsById = previousArtifactIndex.byId;
@@ -702,19 +961,171 @@ const makeApply = Effect.gen(function* () {
 
 		const writesToApply: PreflightPhaseContract["result"]["writes"] = [];
 		const removalsToApply: PreflightPhaseContract["result"]["removals"] = [];
+		const retained: Array<string> = [];
+		const released: Array<string> = [];
+		const declined: DeclinedChange[] = [];
+		const dropped: DroppedEdit[] = [];
+		const recordDeclined = (path: string, before: string, after: string) => {
+			path = relocatePath(path, pendingChanges);
+			const diff = unifiedDiff(path, before, after);
+			if (diff === "") return;
+
+			const body = diff.split("\n").slice(2);
+			declined.push({
+				path,
+				diff,
+				added: body.filter((line) => line.startsWith("+")).length,
+				removed: body.filter((line) => line.startsWith("-")).length,
+				diffPath: `.forge/declined/${path}.diff`,
+			});
+		};
+
+		const preservedBaseContents = new Map<string, string>();
 
 		const conflicts: ApplyConflict[] = [];
 		const refusals: ApplyRefusal[] = [];
+		const pending: DirectoryMove[] = [];
+		const pendingChanges = new Map<
+			string,
+			{ readonly from: string; readonly to: string }
+		>();
 
-		for (const relativePath of plan.removals) {
+		const occupied = (path: string) =>
+			fs.readDirectory(dirname(path)).pipe(
+				Effect.map((entries) => entries.includes(basename(path))),
+				Effect.catchTag("PlatformError", (cause) =>
+					cause.reason._tag === "NotFound"
+						? Effect.succeed(false)
+						: Effect.fail(
+								new ApplyError({ path, reason: "file-read-failed", cause }),
+							),
+				),
+			);
+
+		const holdsModule = (path: string, moduleId: string) =>
+			Effect.gen(function* () {
+				const info = yield* fs.stat(path);
+				if (info.type !== "Directory") return false;
+
+				const raw = yield* fs.readFileString(resolve(path, "forge.json"));
+				const marker = yield* Schema.decodeEffect(
+					Schema.fromJsonString(Schema.Struct({ id: ModuleIdSchema })),
+				)(raw);
+
+				return marker.id === moduleId;
+			}).pipe(Effect.orElseSucceed(() => false));
+
+		for (const move of plan.directoryMoves ?? []) {
+			const change = changes.get(move.moduleId);
+			if (change?.from !== move.from || change.to !== move.to)
+				return yield* Effect.die(
+					new Error(`Directory Move Mismatch: ${move.from}`),
+				);
+
+			const from = yield* ensureContained(projectRoot, move.from);
+			const to = yield* ensureContained(projectRoot, move.to);
+			const sourceExists = yield* occupied(from);
+			const destinationExists = yield* occupied(to);
+			if (
+				!sourceExists &&
+				destinationExists &&
+				(yield* holdsModule(to, move.moduleId))
+			)
+				continue;
+
+			if (destinationExists) {
+				refusals.push({
+					path: move.to,
+					reason: "move-destination-exists",
+					operation: "write",
+					resolvedBy: [],
+				});
+
+				continue;
+			}
+
+			if (!sourceExists || !(yield* holdsModule(from, move.moduleId))) {
+				refusals.push({
+					path: move.from,
+					reason: "move-source-missing",
+					operation: "write",
+					resolvedBy: [],
+				});
+
+				continue;
+			}
+
+			pending.push(move);
+			pendingChanges.set(move.moduleId, move);
+		}
+
+		if (refusals.length > 0)
+			return yield* new ApplyError({
+				path: "directories",
+				reason: "preflight-failed",
+				detail: preflightMessage(refusals, []),
+				preflight: {
+					refusals,
+					hasConflicts: false,
+					hasManagedRefusals: false,
+					hasUnmanagedRefusals: true,
+					hasManagedRemovals: false,
+					hasUnmanagedRemovals: false,
+				},
+			});
+
+		const generatedRemovals = new Set(plan.generatedRemovals ?? []);
+
+		for (const path of [
+			...plan.writes.map((write) => write.path),
+			...plan.removals,
+		]) {
+			const move = pending.find(
+				(move) => path === move.from || path.startsWith(`${move.from}/`),
+			);
+
+			if (move !== undefined)
+				return yield* Effect.die(
+					new Error(`Directory Move Source Reused: ${move.from}`),
+				);
+		}
+
+		const removalRootRelocations = Object.entries(
+			plan.removalRootRelocations ?? {},
+		).sort(([leftRoot], [rightRoot]) => rightRoot.length - leftRoot.length);
+
+		for (const plannedPath of plan.removals) {
+			const relocation = removalRootRelocations.find(([previousRoot]) =>
+				plannedPath.startsWith(`${previousRoot}/`),
+			);
+
+			const relativePath = sourcePath(
+				relocation === undefined
+					? plannedPath
+					: `${relocation[1]}${plannedPath.slice(relocation[0].length)}`,
+				pending,
+			);
+
 			const fullPath = yield* ensureContained(projectRoot, relativePath);
 			if (isUserOwnedEnv(relativePath)) continue;
 			if (!(yield* pathExists(fullPath, relativePath))) continue;
 
-			const previousArtifact = previousArtifacts.get(relativePath);
+			const inRemovedRoot = isInRemovedRoot(relativePath);
+			const indexedArtifact = previousArtifacts.get(plannedPath);
+
+			const previousArtifact =
+				indexedArtifact === undefined
+					? undefined
+					: { ...indexedArtifact, path: relativePath };
+
 			if (previousArtifact === undefined) {
-				if (resolutionPolicy === "accept-forge") {
+				if (policyFor(relativePath) === "accept-forge") {
 					removalsToApply.push(relativePath);
+					continue;
+				}
+
+				if (policyFor(relativePath) === "keep-user") {
+					retained.push(relocatePath(relativePath, pendingChanges));
 					continue;
 				}
 
@@ -722,9 +1133,88 @@ const makeApply = Effect.gen(function* () {
 					path: relativePath,
 					reason: "unmanaged-file-exists",
 					operation: "removal",
-					resolvable: false,
+					resolvedBy: resolvedByFor(relativePath, true),
 				});
 
+				continue;
+			}
+
+			if (
+				previousArtifact.owner === "user" ||
+				(previousArtifact.update === "starter" &&
+					(yield* hashContent(yield* readFile(fullPath, relativePath))) !==
+						lastRender(previousArtifact))
+			) {
+				retained.push(relocatePath(relativePath, pendingChanges));
+				continue;
+			}
+
+			if (
+				departing.size > 0 &&
+				committedPaths.has(relativePath) &&
+				previousArtifact.definitionIds.length > 0 &&
+				previousArtifact.definitionIds.every((id) => departing.has(id))
+			) {
+				const currentContent = yield* readFile(fullPath, relativePath);
+				const currentHash = yield* hashContent(currentContent);
+				const baseDescriptor = previousArtifact.base;
+				const rendered =
+					baseDescriptor === undefined
+						? previousArtifact.hash
+						: baseDescriptor.origin === "adopted"
+							? undefined
+							: baseDescriptor.hash;
+
+				const unedited = currentHash === rendered;
+
+				resolutionFor(relativePath);
+				removalsToApply.push(relativePath);
+				if (unedited) continue;
+
+				let lines = currentContent;
+				if (
+					baseDescriptor !== undefined &&
+					baseDescriptor.origin !== "adopted" &&
+					descriptorMatchesArtifact(previousArtifact) &&
+					(baseDescriptor.mergeKind === "json" ||
+						baseDescriptor.mergeKind === "env" ||
+						baseDescriptor.mergeKind === "lines")
+				) {
+					const base = yield* readBase(
+						projectRoot,
+						previousArtifact,
+						baseDescriptor,
+					);
+
+					if (base !== undefined) {
+						const residue = yield* Effect.result(
+							surfaceResidue(
+								baseDescriptor.mergeKind,
+								relativePath,
+								base,
+								currentContent,
+							),
+						);
+
+						if (Result.isSuccess(residue) && residue.success !== "")
+							lines = residue.success;
+					}
+				}
+
+				dropped.push({
+					path: relocatePath(relativePath, pendingChanges),
+					lines,
+				});
+
+				continue;
+			}
+
+			if (
+				inRemovedRoot &&
+				(previousArtifact.generated === true ||
+					generatedRemovals.has(plannedPath))
+			) {
+				removalsToApply.push(relativePath);
 				continue;
 			}
 
@@ -733,9 +1223,17 @@ const makeApply = Effect.gen(function* () {
 					path: relativePath,
 					reason: "managed-file-modified",
 					operation: "removal",
-					resolvable: false,
+					resolvedBy: [],
 				});
 
+				continue;
+			}
+
+			if (
+				basename(relativePath) === "forge.json" &&
+				removedRoots.includes(dirname(relativePath))
+			) {
+				removalsToApply.push(relativePath);
 				continue;
 			}
 
@@ -745,12 +1243,14 @@ const makeApply = Effect.gen(function* () {
 			const fileResolution = resolutionFor(relativePath);
 			if (previousArtifact.base?.origin === "adopted") {
 				if (fileResolution === "forge") removalsToApply.push(relativePath);
+				else if (inRemovedRoot)
+					retained.push(relocatePath(relativePath, pendingChanges));
 				else
 					refusals.push({
 						path: relativePath,
 						reason: "managed-file-modified",
 						operation: "removal",
-						resolvable: false,
+						resolvedBy: resolvedByFor(relativePath, false),
 					});
 
 				continue;
@@ -770,27 +1270,22 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (resolutionPolicy === "keep-user") {
-				refusals.push({
-					path: relativePath,
-					reason: "managed-file-modified",
-					operation: "removal",
-					resolvable: false,
-				});
-
+			if (inRemovedRoot) {
+				retained.push(relocatePath(relativePath, pendingChanges));
 				continue;
 			}
 
 			const baseDescriptor = previousArtifact.base;
 			if (
 				baseDescriptor === undefined ||
-				baseDescriptor.mergeKind === "opaque"
+				baseDescriptor.mergeKind === "opaque" ||
+				baseDescriptor.mergeKind === "yaml"
 			) {
 				refusals.push({
 					path: relativePath,
 					reason: "managed-file-modified",
 					operation: "removal",
-					resolvable: false,
+					resolvedBy: resolvedByFor(relativePath, false),
 				});
 
 				continue;
@@ -801,6 +1296,21 @@ const makeApply = Effect.gen(function* () {
 				previousArtifact,
 				baseDescriptor,
 			);
+
+			if (base === undefined) {
+				if (fileResolution === "user")
+					retained.push(relocatePath(relativePath, pendingChanges));
+				else
+					refusals.push({
+						reason: "managed-base-damaged",
+						operation: "removal",
+						path: relativePath,
+						resolvedBy: resolvedByFor(relativePath, true),
+					});
+
+				continue;
+			}
+
 			const residueResult = yield* Effect.result(
 				surfaceResidue(
 					baseDescriptor.mergeKind,
@@ -818,7 +1328,7 @@ const makeApply = Effect.gen(function* () {
 					path: relativePath,
 					reason: "managed-file-modified",
 					operation: "removal",
-					resolvable: false,
+					resolvedBy: resolvedByFor(relativePath, false),
 				});
 
 				continue;
@@ -835,52 +1345,133 @@ const makeApply = Effect.gen(function* () {
 
 		const policyReadHashes: PreflightPhaseContract["result"]["policyReadHashes"] =
 			new Map();
-		for (const file of plan.writes) {
+
+		for (const plannedFile of plan.writes) {
+			const file: PlannedWrite = {
+				...plannedFile,
+				path: sourcePath(plannedFile.path, pending),
+			};
+
 			const fullPath = yield* ensureContained(projectRoot, file.path);
 			if (!(yield* pathExists(fullPath, file.path))) {
 				writesToApply.push(file);
 				continue;
 			}
 
-			if (isUserOwnedEnv(file.path)) {
-				for (const [artifactId, artifact] of Object.entries(committedArtifacts))
-					if (artifact.path === file.path)
-						delete committedArtifacts[artifactId];
-
-				continue;
-			}
+			if (isUserOwnedEnv(file.path)) continue;
 
 			const currentContent = yield* readFile(fullPath, file.path);
 
 			const currentHash = yield* hashContent(currentContent);
 			const nextHash = yield* hashContent(file.content);
 
+			const filePolicy = policyFor(file.path);
 			const fileResolution = resolutionFor(file.path);
 
-			const previousArtifact = previousArtifacts.get(file.path);
-			const renamedArtifactId = movedModuleArtifactId(
-				file,
-				plan.manifest,
-				previousManifest,
-			);
+			const indexedArtifact = previousArtifacts.get(plannedFile.path);
+			const artifactPath = artifactFilePath(file.artifactId ?? "");
+			const moduleId = artifactModuleId(file.artifactId ?? "");
+			const moduleRoot =
+				moduleId === undefined
+					? undefined
+					: plan.manifest.modules[moduleId]?.root;
 
-			const movedArtifact =
-				(file.artifactId === undefined
+			const mismatchedPath =
+				moduleRoot !== undefined &&
+				artifactPath?.startsWith(`${moduleRoot}/`) === true &&
+				artifactPath !== plannedFile.path;
+
+			const previousArtifact =
+				mismatchedPath || indexedArtifact === undefined
 					? undefined
-					: previousArtifactsById.get(file.artifactId)) ??
-				(renamedArtifactId === undefined
+					: { ...indexedArtifact, path: file.path };
+
+			const artifactById =
+				mismatchedPath || file.artifactId === undefined
 					? undefined
-					: previousArtifactsById.get(renamedArtifactId));
+					: previousArtifactsById.get(file.artifactId);
 
 			const nextArtifact =
 				file.artifactId === undefined
 					? undefined
 					: committedArtifacts[file.artifactId];
 
-			const managedArtifact = previousArtifact ?? movedArtifact;
-			const isModuleMarker = /^module:[^:]+:file:forge\.json$/.test(
-				file.artifactId ?? "",
-			);
+			const managedArtifact =
+				previousArtifact ??
+				(artifactById === undefined
+					? undefined
+					: { ...artifactById, path: file.path });
+
+			if (
+				managedArtifact?.owner === "user" &&
+				file.artifactId !== undefined &&
+				nextArtifact !== undefined
+			) {
+				committedArtifacts[file.artifactId] = {
+					...nextArtifact,
+					hash: managedArtifact.hash,
+					owner: "user",
+				};
+
+				continue;
+			}
+
+			if (file.update === "write-once") {
+				if (file.artifactId === undefined) continue;
+
+				if (managedArtifact === undefined) {
+					delete committedArtifacts[file.artifactId];
+					continue;
+				}
+
+				committedArtifacts[file.artifactId] = {
+					...(nextArtifact?.generated === true ? { generated: true } : {}),
+					...(managedArtifact.base === undefined
+						? {}
+						: { base: managedArtifact.base }),
+					definitionIds: managedArtifact.definitionIds,
+					hash: managedArtifact.hash,
+					kind: managedArtifact.kind,
+					path: plannedFile.path,
+				};
+
+				if (managedArtifact.base !== undefined)
+					preservedBaseContents.set(
+						file.artifactId,
+						yield* readStoredBase(
+							projectRoot,
+							managedArtifact,
+							managedArtifact.base,
+						),
+					);
+
+				continue;
+			}
+
+			if (
+				file.update === "starter" &&
+				file.artifactId !== undefined &&
+				nextArtifact !== undefined
+			) {
+				const render = lastRender(managedArtifact);
+				if (currentHash === nextHash || currentHash === render) {
+					if (currentHash !== nextHash) writesToApply.push(file);
+					continue;
+				}
+
+				committedArtifacts[file.artifactId] = {
+					...nextArtifact,
+					hash: render ?? nextHash,
+					owner: "user",
+				};
+
+				released.push(relocatePath(file.path, pendingChanges));
+
+				continue;
+			}
+
+			const isModuleMarker =
+				artifactFilePath(file.artifactId ?? "") === "forge.json";
 
 			const previousBase = managedArtifact?.base;
 			const nextBase = nextArtifact?.base;
@@ -924,18 +1515,81 @@ const makeApply = Effect.gen(function* () {
 				return true;
 			};
 
+			const preserveUnchangedRender = (base: ArtifactBase) =>
+				previousArtifact !== undefined &&
+				(previousBase === undefined
+					? managedArtifact?.hash === nextHash
+					: previousBase.origin !== "adopted" &&
+						previousBase.hash === nextHash) &&
+				rebaseCurrentContent(base);
+
 			if (adoptMatchingContent(nextHash)) continue;
 			if (managedArtifact === undefined) {
-				if (resolutionPolicy === "accept-forge") {
+				if (filePolicy === "accept-forge") {
 					writesToApply.push(file);
 					continue;
+				}
+
+				if (
+					appendsToUnmanagedFile(file.path) &&
+					nextArtifact?.base?.mergeKind === "lines"
+				) {
+					const adopted = appendMissingLines(currentContent, file.content);
+					const adoptedHash = yield* hashContent(adopted);
+
+					policyReadHashes.set(file.path, currentHash);
+
+					if (adoptedHash !== currentHash)
+						writesToApply.push({ ...file, content: adopted });
+
+					if (file.artifactId !== undefined && nextArtifact !== undefined)
+						committedArtifacts[file.artifactId] = {
+							...nextArtifact,
+							hash: adoptedHash,
+						};
+
+					continue;
+				}
+
+				if (
+					filePolicy === "keep-user" &&
+					!isModuleMarker &&
+					descriptorsAreCompatible
+				) {
+					if (file.artifactId === undefined) {
+						recordDeclined(file.path, currentContent, file.content);
+						continue;
+					}
+
+					if (nextArtifact !== undefined) {
+						committedArtifacts[file.artifactId] = {
+							...nextArtifact,
+							hash: currentHash,
+							base: {
+								hash: currentHash,
+								mergeKind: nextArtifact.base?.mergeKind ?? "opaque",
+								origin: "adopted",
+								semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
+							},
+						};
+
+						preservedBaseContents.set(file.artifactId, currentContent);
+						policyReadHashes.set(file.path, currentHash);
+						recordDeclined(file.path, currentContent, file.content);
+						continue;
+					}
 				}
 
 				refusals.push({
 					path: file.path,
 					reason: "unmanaged-file-exists",
 					operation: "write",
-					resolvable: false,
+					resolvedBy: resolvedByFor(
+						file.path,
+						!isModuleMarker &&
+							descriptorsAreCompatible &&
+							(file.artifactId === undefined || nextArtifact !== undefined),
+					),
 				});
 
 				continue;
@@ -951,14 +1605,14 @@ const makeApply = Effect.gen(function* () {
 					path: file.path,
 					reason: "managed-file-modified",
 					operation: "write",
-					resolvable: false,
+					resolvedBy: [],
 				});
 
 				continue;
 			}
 
 			if (
-				resolutionPolicy !== "accept-forge" &&
+				filePolicy !== "accept-forge" &&
 				currentHash === managedArtifact.hash &&
 				previousBase !== undefined &&
 				previousBase.hash === nextHash
@@ -968,6 +1622,7 @@ const makeApply = Effect.gen(function* () {
 					managedArtifact,
 					previousBase,
 				);
+
 				if (storedBase === file.content) {
 					if (file.artifactId !== undefined && nextArtifact !== undefined)
 						committedArtifacts[file.artifactId] = {
@@ -993,7 +1648,10 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (previousBase?.mergeKind === "opaque") {
+			if (
+				nextBase?.mergeKind !== "yaml" &&
+				previousBase?.mergeKind === "opaque"
+			) {
 				if (fileResolution === "forge") {
 					writesToApply.push(file);
 					continue;
@@ -1005,20 +1663,33 @@ const makeApply = Effect.gen(function* () {
 					semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
 				} satisfies ArtifactBase;
 
-				if (fileResolution === "user" && rebaseCurrentContent(declinedBase))
+				if (preserveUnchangedRender(declinedBase)) continue;
+
+				if (fileResolution === "user" && rebaseCurrentContent(declinedBase)) {
+					const base = yield* readBase(
+						projectRoot,
+						managedArtifact,
+						previousBase,
+					).pipe(Effect.orElseSucceed(() => currentContent));
+
+					recordDeclined(file.path, base ?? currentContent, file.content);
 					continue;
+				}
 
 				refusals.push({
 					path: file.path,
 					reason: "managed-file-modified",
 					operation: "write",
-					resolvable: canRebaseCurrentContent,
+					resolvedBy: resolvedByFor(file.path, canRebaseCurrentContent),
 				});
 
 				continue;
 			}
 
-			if (previousBase === undefined || nextBase === undefined) {
+			const kind =
+				nextBase?.mergeKind === "yaml" ? "yaml" : previousBase?.mergeKind;
+
+			if (nextBase === undefined || kind === undefined || kind === "opaque") {
 				if (fileResolution === "forge") {
 					writesToApply.push(file);
 					continue;
@@ -1032,36 +1703,63 @@ const makeApply = Effect.gen(function* () {
 						semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
 					} satisfies ArtifactBase);
 
-				if (fileResolution === "user" && rebaseCurrentContent(declinedBase))
+				if (preserveUnchangedRender(declinedBase)) continue;
+
+				if (fileResolution === "user" && rebaseCurrentContent(declinedBase)) {
+					if (managedArtifact.hash !== nextHash)
+						recordDeclined(file.path, currentContent, file.content);
+
 					continue;
+				}
 
 				refusals.push({
 					path: file.path,
 					reason: "managed-file-modified",
 					operation: "write",
-					resolvable: canRebaseCurrentContent,
+					resolvedBy: resolvedByFor(file.path, canRebaseCurrentContent),
 				});
 
 				continue;
 			}
 
-			const base = yield* readBase(projectRoot, managedArtifact, previousBase);
-			const mergeBase =
-				previousBase.origin === "adopted"
-					? previousBase.mergeKind === "json"
-						? "{}\n"
-						: ""
-					: base;
+			const syntheticBase =
+				previousBase === undefined || previousBase.origin === "adopted";
+
+			const mergeBase = syntheticBase
+				? kind === "json"
+					? "{}\n"
+					: ""
+				: yield* readBase(projectRoot, managedArtifact, previousBase);
+
+			if (mergeBase === undefined) {
+				if (fileResolution === "forge") {
+					writesToApply.push(file);
+					continue;
+				}
+
+				if (fileResolution === "user" && rebaseCurrentContent(nextBase))
+					continue;
+
+				refusals.push({
+					reason: "managed-base-damaged",
+					operation: "write",
+					path: file.path,
+					resolvedBy: resolvedByFor(file.path, canRebaseCurrentContent),
+				});
+
+				continue;
+			}
 
 			const mergedResult = yield* Effect.result(
 				mergeSurface(
-					previousBase.mergeKind,
+					kind,
 					file.path,
 					mergeBase,
 					currentContent,
 					file.content,
-					mergeResolution,
-					(label) => resolutionFor(`${file.path} -> ${label}`),
+					mergeResolutionFor(file.path),
+					(label) => resolutionFor(file.path, `${file.path} -> ${label}`),
+					syntheticBase,
 				),
 			);
 
@@ -1074,14 +1772,16 @@ const makeApply = Effect.gen(function* () {
 					continue;
 				}
 
-				if (fileResolution === "user" && rebaseCurrentContent(nextBase))
+				if (fileResolution === "user" && rebaseCurrentContent(nextBase)) {
+					recordDeclined(file.path, mergeBase, file.content);
 					continue;
+				}
 
 				refusals.push({
 					path: file.path,
 					reason: "managed-file-modified",
 					operation: "write",
-					resolvable: canRebaseCurrentContent,
+					resolvedBy: resolvedByFor(file.path, canRebaseCurrentContent),
 				});
 
 				continue;
@@ -1089,13 +1789,13 @@ const makeApply = Effect.gen(function* () {
 
 			const merged = mergedResult.success;
 			const discoveredConflicts: ApplyConflict[] = [];
-
 			if ("json" in merged)
 				for (const conflict of merged.conflicts)
 					discoveredConflicts.push({
 						base: valueAtPath(merged.json.base, conflict),
 						forge: valueAtPath(merged.json.incoming, conflict),
 						label: `${file.path} -> ${formatJsonPath(conflict)}`,
+						resolvedBy: resolvedByFor(file.path, true),
 						user: valueAtPath(merged.json.current, conflict),
 					});
 			else
@@ -1105,12 +1805,14 @@ const makeApply = Effect.gen(function* () {
 						base: values?.base,
 						forge: values?.forge,
 						label: `${file.path} -> ${conflict}`,
+						resolvedBy: resolvedByFor(file.path, true),
 						user: values?.user,
 					});
 				}
 
 			const unresolvedConflicts = discoveredConflicts.filter(
-				(conflict) => resolutionFor(conflict.label, conflict) === undefined,
+				(conflict) =>
+					resolutionFor(file.path, conflict.label, conflict) === undefined,
 			);
 
 			conflicts.push(...unresolvedConflicts);
@@ -1118,7 +1820,28 @@ const makeApply = Effect.gen(function* () {
 				discoveredConflicts.length > 0 && unresolvedConflicts.length === 0;
 
 			if (merged.conflicts.length === 0 || conflictsResolved) {
-				if (mergeResolution !== undefined || conflictsResolved)
+				if (
+					conflictsResolved &&
+					discoveredConflicts.some(
+						(conflict) =>
+							resolutionFor(file.path, conflict.label, conflict) === "user",
+					)
+				) {
+					const forgeMerged = yield* mergeSurface(
+						kind,
+						file.path,
+						mergeBase,
+						currentContent,
+						file.content,
+						"forge",
+						() => "forge",
+						syntheticBase,
+					);
+
+					recordDeclined(file.path, merged.merged, forgeMerged.merged);
+				}
+
+				if (mergeResolutionFor(file.path) !== undefined || conflictsResolved)
 					policyReadHashes.set(file.path, currentHash);
 
 				const mergedWrite = { ...file, content: merged.merged };
@@ -1142,9 +1865,28 @@ const makeApply = Effect.gen(function* () {
 					detail: `Resolution Label Unknown: ${label}`,
 				});
 
-		const preflight = classifyPreflight(refusals, conflicts);
-		const refusal = refusals.length === 1 ? refusals[0] : undefined;
+		const preflight = {
+			...classifyPreflight(refusals, conflicts),
+			...(plan.removedRoots === undefined
+				? {}
+				: {
+						outsideRemoval: [
+							...new Set(
+								[
+									...refusals.map((refusal) => refusal.path),
+									...conflicts.map(
+										(conflict) =>
+											conflict.label.split(" -> ")[0] ?? conflict.label,
+									),
+								].filter(
+									(path) => policyFor(path, "accept-forge") !== "accept-forge",
+								),
+							),
+						].sort(),
+					}),
+		};
 
+		const refusal = refusals.length === 1 ? refusals[0] : undefined;
 		if (refusal !== undefined && conflicts.length === 0)
 			return yield* new ApplyError({
 				path: refusal.path,
@@ -1163,7 +1905,19 @@ const makeApply = Effect.gen(function* () {
 		const committedManifest = {
 			...plan.manifest,
 			schemaVersion: 1,
+			cliVersion: cliVersion.version,
 		} satisfies PreflightPhaseContract["result"]["committedManifest"];
+
+		for (const [artifactId, artifact] of Object.entries(committedArtifacts)) {
+			if (!isUserOwnedEnv(artifact.path)) continue;
+			if (artifact.base !== undefined)
+				return yield* new ApplyError({
+					path: artifact.path,
+					reason: "managed-base-forbidden",
+				});
+
+			delete committedArtifacts[artifactId];
+		}
 
 		const committedLockfile = {
 			...plan.lockfile,
@@ -1184,7 +1938,10 @@ const makeApply = Effect.gen(function* () {
 			),
 		);
 
-		for (const [artifactId, content] of Object.entries(plan.baseContents ?? {}))
+		for (const [artifactId, content] of [
+			...Object.entries(plan.baseContents ?? {}),
+			...preservedBaseContents,
+		])
 			pureWritesById.set(artifactId, content);
 
 		const bases: PreflightPhaseContract["result"]["bases"] = new Map();
@@ -1192,7 +1949,7 @@ const makeApply = Effect.gen(function* () {
 			committedLockfile.artifacts,
 		)) {
 			if (artifact.base === undefined) continue;
-			if (!descriptorMatchesArtifact(artifact) || isUserOwnedEnv(artifact.path))
+			if (!descriptorMatchesArtifact(artifact))
 				return yield* new ApplyError({
 					path: artifact.path,
 					reason: "managed-base-forbidden",
@@ -1219,8 +1976,26 @@ const makeApply = Effect.gen(function* () {
 				for (const hash of bases.keys()) {
 					const baseRelative = `.forge/bases/${hash}`;
 					const destination = yield* ensureContained(projectRoot, baseRelative);
-
 					if (!(yield* pathExists(destination, baseRelative))) continue;
+					if (previousBaseHashes.has(hash)) {
+						const info = yield* fs.stat(destination).pipe(
+							Effect.mapError(
+								(cause) =>
+									new ApplyError({
+										path: baseRelative,
+										reason: "file-read-failed",
+										cause,
+									}),
+							),
+						);
+
+						if (info.type === "File") continue;
+
+						return yield* new ApplyError({
+							path: baseRelative,
+							reason: "managed-base-hash-mismatch",
+						});
+					}
 
 					const existing = yield* readFile(destination, baseRelative);
 					if ((yield* hashContent(existing)) !== hash)
@@ -1231,6 +2006,22 @@ const makeApply = Effect.gen(function* () {
 				}
 			},
 		);
+
+		const storedBaseDamaged = Effect.fn("Apply.storedBaseDamaged")(function* (
+			hash: string,
+			destination: string,
+			baseRelative: string,
+		) {
+			if (!previousBaseHashes.has(hash)) return false;
+
+			const existing = yield* Effect.result(
+				readFile(destination, baseRelative),
+			);
+
+			if (Result.isFailure(existing)) return true;
+
+			return (yield* hashContent(existing.success)) !== hash;
+		});
 
 		const revalidatePolicyInputs = Effect.fn("Apply.revalidatePolicyInputs")(
 			function* () {
@@ -1248,6 +2039,17 @@ const makeApply = Effect.gen(function* () {
 						path: relativePath,
 						reason: "managed-file-modified",
 						preflight: {
+							refusals: [
+								{
+									path: relativePath,
+									reason: "managed-file-modified",
+									operation: "write",
+									resolvedBy:
+										requestedPolicy === "refuse"
+											? resolutionFlags
+											: [requestedPolicy],
+								},
+							],
 							hasConflicts: false,
 							hasManagedRemovals: false,
 							hasManagedRefusals: true,
@@ -1332,7 +2134,6 @@ const makeApply = Effect.gen(function* () {
 			State
 		> = Effect.gen(function* () {
 			const stagedWrites: StagingPhaseContract["result"]["writes"] = [];
-
 			for (const write of writesToApply)
 				stagedWrites.push({
 					path: write.path,
@@ -1340,12 +2141,24 @@ const makeApply = Effect.gen(function* () {
 				});
 
 			const stagedBases: StagingPhaseContract["result"]["bases"] = [];
-
 			for (const [hash, content] of bases)
 				stagedBases.push({
 					hash,
 					stagedPath: yield* stageWrite(`bases/${hash}`, content),
 				});
+
+			for (const change of declined)
+				yield* stageWrite(`declined/${change.path}.diff`, change.diff);
+
+			const stagedDeclined =
+				declined.length === 0
+					? undefined
+					: yield* ensureContained(projectRoot, `${stagingRelative}/declined`);
+
+			const declinedDirectory = yield* ensureContained(
+				projectRoot,
+				".forge/declined",
+			);
 
 			const stagedManifest: StagingPhaseContract["result"]["manifestPath"] =
 				yield* stageWrite(
@@ -1384,7 +2197,24 @@ const makeApply = Effect.gen(function* () {
 					),
 				);
 
-			for (const relativePath of removalsToApply) {
+			for (const move of pending) {
+				const from = yield* ensureContained(projectRoot, move.from);
+				const to = yield* ensureContained(projectRoot, move.to);
+				yield* fs.makeDirectory(dirname(to), { recursive: true }).pipe(
+					Effect.andThen(fs.rename(from, to)),
+					Effect.mapError(
+						(cause) =>
+							new ApplyError({
+								path: move.from,
+								reason: "directory-move-failed",
+								cause,
+							}),
+					),
+				);
+			}
+
+			for (const source of removalsToApply) {
+				const relativePath = relocatePath(source, pendingChanges);
 				const fullPath = yield* ensureContained(projectRoot, relativePath);
 				if (!(yield* pathExists(fullPath, relativePath))) continue;
 
@@ -1401,7 +2231,11 @@ const makeApply = Effect.gen(function* () {
 			}
 
 			for (const staged of stagedWrites) {
-				const fullPath = yield* ensureContained(projectRoot, staged.path);
+				const fullPath = yield* ensureContained(
+					projectRoot,
+					relocatePath(staged.path, pendingChanges),
+				);
+
 				yield* fs.makeDirectory(dirname(fullPath), { recursive: true }).pipe(
 					Effect.mapError(
 						(cause) =>
@@ -1444,7 +2278,11 @@ const makeApply = Effect.gen(function* () {
 			for (const staged of stagedBases) {
 				const baseRelative = `.forge/bases/${staged.hash}`;
 				const destination = yield* ensureContained(projectRoot, baseRelative);
-				if (yield* pathExists(destination, baseRelative)) continue;
+				if (
+					(yield* pathExists(destination, baseRelative)) &&
+					!(yield* storedBaseDamaged(staged.hash, destination, baseRelative))
+				)
+					continue;
 
 				yield* fs.rename(staged.stagedPath, destination).pipe(
 					Effect.mapError(
@@ -1504,6 +2342,20 @@ const makeApply = Effect.gen(function* () {
 			yield* State.garbageCollectBases(projectRoot, committedLockfile).pipe(
 				Effect.catchTag("StateError", () => Effect.void),
 			);
+
+			const reportsSaved = yield* fs
+				.remove(declinedDirectory, { recursive: true, force: true })
+				.pipe(
+					Effect.andThen(
+						stagedDeclined === undefined
+							? Effect.void
+							: fs.rename(stagedDeclined, declinedDirectory),
+					),
+					Effect.as(true),
+					Effect.orElseSucceed(() => false),
+				);
+
+			return { reportsSaved };
 		}).pipe(
 			Effect.ensuring(
 				fs
@@ -1512,7 +2364,7 @@ const makeApply = Effect.gen(function* () {
 			),
 		);
 
-		yield* commit;
+		const { reportsSaved } = yield* commit;
 
 		const rootPath = resolve(projectRoot);
 		const realRoot = yield* fs
@@ -1520,7 +2372,10 @@ const makeApply = Effect.gen(function* () {
 			.pipe(Effect.orElseSucceed(() => null));
 
 		for (const relativePath of realRoot === null ? [] : removalsToApply) {
-			let directory = dirname(resolve(projectRoot, relativePath));
+			let directory = dirname(
+				resolve(projectRoot, relocatePath(relativePath, pendingChanges)),
+			);
+
 			while (
 				directory !== rootPath &&
 				directory.startsWith(`${rootPath}${sep}`)
@@ -1541,9 +2396,23 @@ const makeApply = Effect.gen(function* () {
 				);
 
 				if (!removed) break;
+
 				directory = dirname(directory);
 			}
 		}
+
+		return {
+			released: released.sort(),
+			retained: retained.sort(),
+			dropped: dropped.sort((left, right) =>
+				left.path.localeCompare(right.path),
+			),
+			declined: declined
+				.map((change) =>
+					reportsSaved ? change : { ...change, diffPath: undefined },
+				)
+				.sort((left, right) => left.path.localeCompare(right.path)),
+		} satisfies ApplyResult;
 	});
 
 	return { applyPlan };

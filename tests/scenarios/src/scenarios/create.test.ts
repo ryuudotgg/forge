@@ -1,10 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	createProject,
 	pathExists,
 	readJson,
+	runForge,
 	tryRunForge,
 	withScenarioWorkspace,
 	writeJson,
@@ -13,7 +14,6 @@ import {
 async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 	const entries = await readdir(join(root, prefix), { withFileTypes: true });
 	const files: string[] = [];
-
 	for (const entry of entries) {
 		if (entry.name === ".forge") continue;
 
@@ -26,7 +26,294 @@ async function listProjectFiles(root: string, prefix = ""): Promise<string[]> {
 	return files.sort();
 }
 
+async function snapshotTree(root: string) {
+	const entries = await readdir(root, { recursive: true, withFileTypes: true });
+	const files = entries
+		.filter((entry) => entry.isFile())
+		.map((entry) => relative(root, join(entry.parentPath, entry.name)))
+		.sort();
+
+	return Object.fromEntries(
+		await Promise.all(
+			files.map(async (file) => [
+				file,
+				(await readFile(join(root, file))).toString("base64"),
+			]),
+		),
+	);
+}
+
+async function rerunCreate(workspaceRoot: string) {
+	const configPath = join(workspaceRoot, "forge.config.json");
+
+	await writeJson(configPath, {
+		name: "acme",
+		packageManager: "pnpm",
+		path: "./project",
+		platforms: ["web"],
+		slug: "acme",
+		web: "nextjs",
+	});
+
+	return await tryRunForge(
+		workspaceRoot,
+		["create", "--config", configPath, "--no-install", "--no-git"],
+		{ workspaceRoot },
+	);
+}
+
 describe("create", () => {
+	it("ends a non interactive create with the next commands", async () => {
+		await withScenarioWorkspace("create-completion", async (workspace) => {
+			const result = await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			expect(result.stdout).toContain(
+				'We created acme in ./project. Run "cd ./project", then "pnpm install" to install its dependencies.',
+			);
+		});
+	}, 120_000);
+
+	it("creates an opted-in admin with RPC and auth clients", async () => {
+		await withScenarioWorkspace(
+			"create-admin-api-client",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "tanstack-router",
+					backend: "hono",
+					rpc: "trpc",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				});
+
+				const readText = (path: string) =>
+					readFile(join(workspace.projectRoot, path), "utf8");
+
+				expect(await readText("apps/admin/trpc/react.tsx")).toContain(
+					"NEXT_PUBLIC_SERVER_URL",
+				);
+
+				expect(await readText("apps/admin/lib/auth-client.ts")).toContain(
+					"env.NEXT_PUBLIC_SERVER_URL",
+				);
+
+				expect(await readText("apps/admin/app/providers.tsx")).toContain(
+					"TRPCReactProvider",
+				);
+
+				expect(await readText("apps/server/src/routes/trpc.ts")).toContain(
+					"origin: webOrigins,",
+				);
+
+				expect(await readText("apps/server/src/routes/auth.ts")).toContain(
+					"origin: webOrigins,",
+				);
+
+				expect(await readText("packages/auth/src/index.ts")).toContain(
+					"trustedOrigins: webOrigins,",
+				);
+
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/admin/app/api")),
+				).toBe(false);
+			},
+		);
+	});
+
+	it("points a self-hosted admin auth client at the primary origin", async () => {
+		await withScenarioWorkspace(
+			"create-self-admin-client",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "nextjs",
+					backend: "self",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "nextjs", client: true }],
+				});
+
+				const readText = (path: string) =>
+					readFile(join(workspace.projectRoot, path), "utf8");
+
+				expect(await readText("apps/admin/env.ts")).toContain(
+					'NEXT_PUBLIC_SERVER_URL:\n      process.env.NODE_ENV === "production"\n        ? z.url()\n        : z.url().default("http://localhost:3000")',
+				);
+
+				expect(await readText("apps/admin/lib/auth-client.ts")).toContain(
+					"env.NEXT_PUBLIC_SERVER_URL",
+				);
+
+				expect(await readText("packages/auth/env.ts")).toContain(
+					"export const webOrigins = originList({\n  APP_ORIGIN: env.APP_ORIGIN,\n  WEB_URLS: env.WEB_URLS,\n});",
+				);
+
+				expect(await readText("apps/web/lib/api-cors.ts")).toContain(
+					'headers.set("Access-Control-Allow-Credentials", "true");',
+				);
+
+				expect(
+					await pathExists(join(workspace.projectRoot, "apps/admin/app/api")),
+				).toBe(false);
+			},
+		);
+	});
+
+	it.each([
+		{ web: "nextjs", sourceRoot: "" },
+		{ web: "react-router", sourceRoot: "app/" },
+		{ web: "tanstack-start", sourceRoot: "src/" },
+	])("creates $web with an oRPC Hono client", async ({ web, sourceRoot }) => {
+		await withScenarioWorkspace(
+			`create-orpc-hono-${web}`,
+			async (workspace) => {
+				await createProject(workspace, {
+					backend: "hono",
+					packageManager: "pnpm",
+					rpc: "orpc",
+					web,
+				});
+
+				const client = await readFile(
+					join(workspace.projectRoot, `apps/web/${sourceRoot}orpc/client.ts`),
+					"utf8",
+				);
+
+				expect(client).toContain(
+					"export const client: RouterClient<AppRouter>",
+				);
+
+				expect(client).toContain("createTanstackQueryUtils(client)");
+				expect(
+					await pathExists(
+						join(workspace.projectRoot, `apps/web/${sourceRoot}orpc/react.tsx`),
+					),
+				).toBe(true);
+			},
+		);
+	});
+
+	it("creates a Next.js secondary app with a TanStack Router primary", async () => {
+		await withScenarioWorkspace(
+			"create-mixed-secondary-web-app",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "tanstack-router",
+					backend: "hono",
+					rpc: "trpc",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					style: "tailwind",
+					linter: "biome",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				});
+
+				const adminRoot = join(workspace.projectRoot, "apps/admin");
+				const admin = await readJson<{ scripts: { dev: string } }>(
+					join(adminRoot, "package.json"),
+				);
+
+				expect(await readJson(join(adminRoot, "forge.json"))).toHaveProperty(
+					"framework",
+					"nextjs",
+				);
+
+				expect(admin.scripts.dev).toBe("pnpm with-env next dev --port 3002");
+				expect(
+					await readJson(
+						join(workspace.projectRoot, "packages/ui/components.json"),
+					),
+				).toHaveProperty("rsc", true);
+			},
+		);
+	});
+
+	it("creates a secondary web app without primary API wiring", async () => {
+		await withScenarioWorkspace(
+			"create-secondary-web-app",
+			async (workspace) => {
+				await createProject(workspace, {
+					web: "tanstack-router",
+					backend: "hono",
+					rpc: "trpc",
+					authentication: "better-auth",
+					orm: "drizzle",
+					database: "sqlite",
+					style: "tailwind",
+					linter: "biome",
+					packageManager: "pnpm",
+					webApps: [{ name: "admin", framework: "tanstack-router" }],
+				});
+
+				const adminRoot = join(workspace.projectRoot, "apps/admin");
+				const webRoot = join(workspace.projectRoot, "apps/web");
+				const admin = await readJson<{
+					name: string;
+					dependencies: Record<string, string>;
+					scripts: { dev: string };
+				}>(join(adminRoot, "package.json"));
+
+				const web = await readJson<{
+					dependencies: Record<string, string>;
+					scripts: { dev: string };
+				}>(join(webRoot, "package.json"));
+
+				expect(await pathExists(adminRoot)).toBe(true);
+				expect(admin.name).toBe("@acme/admin");
+				expect(admin.scripts.dev).toBe(
+					"pnpm with-env vite dev --port 3002 --strictPort",
+				);
+				expect(web.scripts.dev).toBe(
+					"pnpm with-env vite dev --port 3000 --strictPort",
+				);
+				expect(await readJson(join(webRoot, "forge.json"))).toHaveProperty(
+					"role",
+					"primary",
+				);
+
+				expect(
+					await readJson(join(adminRoot, "forge.json")),
+				).not.toHaveProperty("role");
+
+				for (const name of ["@acme/trpc", "@acme/auth", "@acme/db"])
+					expect(admin.dependencies).not.toHaveProperty(name);
+
+				expect(await pathExists(join(adminRoot, "src/trpc"))).toBe(false);
+				expect(
+					await pathExists(join(adminRoot, "src/lib/auth-client.ts")),
+				).toBe(false);
+
+				expect(
+					await readFile(
+						join(workspace.projectRoot, "apps/server/env.ts"),
+						"utf8",
+					),
+				).not.toContain("WEB_URLS");
+
+				expect(
+					await readFile(
+						join(workspace.projectRoot, "packages/auth/src/index.ts"),
+						"utf8",
+					),
+				).not.toContain("WEB_URLS");
+
+				expect(await pathExists(join(webRoot, "src/trpc/react.tsx"))).toBe(
+					true,
+				);
+
+				expect(web.dependencies).toHaveProperty("@acme/trpc");
+			},
+		);
+	});
+
 	it("creates a standalone Hono backend at its API slot paths", async () => {
 		await withScenarioWorkspace("create-hono", async (workspace) => {
 			await createProject(workspace, {
@@ -55,6 +342,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/server/forge.json"));
+
 			expect(serverConfig).toMatchObject({
 				framework: "hono",
 				slots: {
@@ -93,6 +381,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/server/forge.json"));
+
 			expect(serverConfig).toMatchObject({
 				framework: "fastify",
 				slots: {
@@ -131,6 +420,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/server/forge.json"));
+
 			expect(serverConfig).toMatchObject({
 				framework: "express",
 				slots: {
@@ -166,6 +456,7 @@ describe("create", () => {
 				slots: Record<string, string>;
 				type: string;
 			}>(join(workspace.projectRoot, "apps/worker/forge.json"));
+
 			expect(workerConfig).toMatchObject({
 				framework: "hono",
 				slots: {},
@@ -245,6 +536,7 @@ describe("create", () => {
 			const lockfile = await readJson<{
 				artifacts: Record<string, { path: string }>;
 			}>(join(workspace.projectRoot, ".forge/lock.json"));
+
 			const gitignore = await readFile(
 				join(workspace.projectRoot, ".gitignore"),
 				"utf-8",
@@ -287,7 +579,9 @@ describe("create", () => {
 				.map((artifact) => artifact.path)
 				.sort();
 
-			expect(artifactPaths).toEqual(projectFiles);
+			expect(artifactPaths).toEqual(
+				projectFiles.filter((path) => path !== ".env"),
+			);
 
 			expect(appConfig).toMatchObject({ framework: "nextjs", type: "app" });
 			expect(uiConfig).toMatchObject({
@@ -350,6 +644,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/web/forge.json"));
+
 			expect(appConfig).toMatchObject({
 				framework: "react-router",
 				slots: {
@@ -399,6 +694,7 @@ describe("create", () => {
 				framework: string;
 				slots: Record<string, string>;
 			}>(join(workspace.projectRoot, "apps/web/forge.json"));
+
 			expect(appConfig.framework).toBe("tanstack-router");
 			expect(appConfig.slots).toEqual({
 				layout: "src/routes/__root.tsx",
@@ -471,5 +767,56 @@ describe("create", () => {
 				);
 			},
 		);
+	}, 120_000);
+
+	it("refuses a target that already holds a Forge project", async () => {
+		await withScenarioWorkspace("create-occupied-forge", async (workspace) => {
+			await createProject(workspace, {
+				packageManager: "pnpm",
+				web: "nextjs",
+			});
+
+			await runForge(
+				workspace.projectRoot,
+				["add", "lefthook", "--no-install"],
+				{
+					workspaceRoot: workspace.workspaceRoot,
+				},
+			);
+
+			const before = await snapshotTree(workspace.projectRoot);
+			expect(before["lefthook.yml"]).toBeDefined();
+
+			const result = await rerunCreate(workspace.workspaceRoot);
+
+			expect(result.exitCode).not.toBe(0);
+			expect(result.stdout + result.stderr).toContain(
+				'"./project" already holds a Forge project. Run forge add or forge update inside it instead.',
+			);
+
+			expect(await snapshotTree(workspace.projectRoot)).toEqual(before);
+		});
+	}, 120_000);
+
+	it("refuses a target that holds the user's own files", async () => {
+		await withScenarioWorkspace("create-occupied-user", async (workspace) => {
+			await writeJson(join(workspace.projectRoot, "package.json"), {
+				name: "mine",
+			});
+
+			const before = await snapshotTree(workspace.projectRoot);
+			const result = await rerunCreate(workspace.workspaceRoot);
+			const output = result.stdout + result.stderr;
+
+			expect(result.exitCode).not.toBe(0);
+			expect(output).toContain(
+				'"./project" already holds package.json. Pick a new or empty directory, or run forge init inside it to adopt your project.',
+			);
+
+			expect(output).not.toMatch(
+				/Generation Failed|--accept-forge|--keep-user/,
+			);
+			expect(await snapshotTree(workspace.projectRoot)).toEqual(before);
+		});
 	}, 120_000);
 });

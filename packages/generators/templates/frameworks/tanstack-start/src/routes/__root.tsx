@@ -1,9 +1,5 @@
 import appCss from "@__SLUG__/ui/globals.css?url";
-import {
-  HeadContent,
-  Scripts,
-  createRootRoute,
-} from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { Providers } from "../providers";
@@ -18,7 +14,10 @@ export const Route = createRootRoute({
       },
       { title: "__PROJECT_NAME__" },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+      { rel: "stylesheet", href: appCss },
+    ],
   }),
   shellComponent: RootDocument,
 });

@@ -1,4 +1,4 @@
-__DB_IMPORT____AUTH_TYPE_IMPORT__import { initTRPC, TRPCError } from "@trpc/server";
+__AUTH_TYPE_IMPORT____DB_IMPORT__import { initTRPC, TRPCError } from "@trpc/server";
 import SuperJSON from "superjson";
 import { ZodError, z } from "zod";
 

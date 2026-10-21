@@ -4,6 +4,7 @@ import type { CommandProbe } from "./command";
 import type { AppConfig, ModuleId, PackageConfig, Slots } from "./config";
 import { GeneratorError, RegistryError } from "./errors";
 import type { Dependency } from "./operations";
+import type { ImportOrder } from "./sort/imports";
 
 const coreMajorVersion = Number.parseInt(
 	packageJson.version.split(".")[0] ?? "",
@@ -54,7 +55,10 @@ export const projectSurfaceNames = {
 	rootTsconfig: "rootTsconfig",
 	workspaceConfig: "workspaceConfig",
 	biomeConfig: "biomeConfig",
+	oxlintConfig: "oxlintConfig",
+	oxfmtConfig: "oxfmtConfig",
 	gitignore: "gitignore",
+	gitattributes: "gitattributes",
 	rootEnv: "rootEnv",
 	rootEnvExample: "rootEnvExample",
 } as const;
@@ -205,6 +209,7 @@ export interface ManagedTextSurfaceContribution {
 	readonly surface: ManagedSurfaceName;
 	readonly content: string;
 	readonly priority?: number;
+	readonly update?: "starter";
 }
 
 export interface ManagedJsonSurfaceContribution {
@@ -258,7 +263,12 @@ export interface LeafTextFileContribution {
 	readonly target: TargetRef;
 	readonly path: string | SlotPath;
 	readonly content: string;
+	readonly update?: FileUpdate;
+	readonly generated?: boolean;
+	readonly mergeKind?: "yaml";
 }
+
+export type FileUpdate = "write-once" | "starter";
 
 export type Contribution<Capability extends CapabilityId = CapabilityId> =
 	| EnsureModuleContribution
@@ -300,7 +310,7 @@ export function surfaceText(
 	target: TargetRef,
 	surface: ManagedSurfaceName,
 	content: string,
-	options?: { readonly priority?: number },
+	options?: { readonly priority?: number; readonly update?: "starter" },
 ): ManagedTextSurfaceContribution {
 	return {
 		_tag: "ManagedTextSurfaceContribution",
@@ -308,6 +318,7 @@ export function surfaceText(
 		surface,
 		content,
 		priority: options?.priority,
+		...(options?.update === undefined ? {} : { update: options.update }),
 	};
 }
 
@@ -396,8 +407,29 @@ export function leafTextFile(
 	target: TargetRef,
 	path: string | SlotPath,
 	content: string,
+	options:
+		| {
+				readonly update?: FileUpdate;
+				readonly generated?: boolean;
+				readonly mergeKind?: never;
+		  }
+		| {
+				readonly update?: never;
+				readonly generated?: boolean;
+				readonly mergeKind: "yaml";
+		  } = {},
 ): LeafTextFileContribution {
-	return { _tag: "LeafTextFileContribution", target, path, content };
+	return {
+		_tag: "LeafTextFileContribution",
+		target,
+		path,
+		content,
+		...(options.update === undefined ? {} : { update: options.update }),
+		...(options.generated === true ? { generated: true } : {}),
+		...(options.mergeKind === undefined
+			? {}
+			: { mergeKind: options.mergeKind }),
+	};
 }
 
 export function resolveSlotPath(
@@ -785,7 +817,6 @@ function throwRecipeMarkerInvalidError(
 
 function validateRecipeMarkers(recipe: TemplateRecipeDefinition): void {
 	const replacementKeys = new Map<string, string>();
-
 	for (const [name, declaration] of Object.entries(recipe.markers)) {
 		if (!recipeMarkerNamePattern.test(name))
 			throwRecipeMarkerInvalidError(
@@ -870,6 +901,7 @@ export function validateTemplateRecipes(
 
 	for (const recipe of recipes) {
 		validateRecipeMarkers(recipe);
+
 		for (const asset of recipe.assets)
 			validateAssetVariants(recipe, asset, frameworks);
 	}
@@ -1031,6 +1063,13 @@ export interface TemplateDefinition<
 	) => ContributionResult;
 }
 
+export interface AddonSwitching {
+	readonly reformat: {
+		readonly bin: string;
+		readonly args: ReadonlyArray<string>;
+	};
+}
+
 export interface AddonDefinition<
 	Config,
 	Id extends AddonId = AddonId,
@@ -1043,6 +1082,8 @@ export interface AddonDefinition<
 	readonly version: string;
 	readonly category: GeneratorCategory;
 	readonly exclusive: boolean;
+	readonly switching?: AddonSwitching;
+	readonly importOrder?: ImportOrder;
 	readonly dependencies: ReadonlyArray<DependencyRef>;
 	readonly targetMode: TargetMode;
 	readonly target?: (
@@ -1135,6 +1176,8 @@ export function defineAddon<
 	readonly version: string;
 	readonly category: GeneratorCategory;
 	readonly exclusive: boolean;
+	readonly switching?: AddonSwitching;
+	readonly importOrder?: ImportOrder;
 	readonly dependencies?: ReadonlyArray<DependencyRef>;
 	readonly targetMode: TargetMode;
 	readonly target?: (
@@ -1201,7 +1244,6 @@ export function defineRegistry<Config>(
 	for (const framework of registry.frameworks) {
 		const uniqueSlots = new Set(framework.slots);
 		const hasEmptySlot = framework.slots.some((slot) => slot.length === 0);
-
 		if (
 			framework.slots.length === 0 ||
 			hasEmptySlot ||
@@ -1222,7 +1264,6 @@ export function defineRegistry<Config>(
 	const adapterKeys = new Set<string>();
 	for (const adapter of adapters) {
 		const key = `${adapter.addon}:${adapter.framework}`;
-
 		if (adapterKeys.has(key))
 			throw new RegistryError({
 				reason: "adapter-duplicate",
@@ -1312,7 +1353,6 @@ export function deriveAddonFrameworks<Config>(
 
 	const declaredFrameworks = appCompatibility?.frameworks;
 	const frameworks: FrameworkId[] = [];
-
 	for (const framework of declaredFrameworks ?? [])
 		if (!frameworks.includes(framework)) frameworks.push(framework);
 

@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import {
 	access,
+	appendFile,
 	mkdir,
 	mkdtemp,
 	readFile,
@@ -9,13 +11,17 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { expect } from "vitest";
+import { basename, dirname, join, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
+import { Schema } from "effect";
+import { expect, inject } from "vitest";
 
-export const forgeCliPath = resolve(
-	process.cwd(),
-	"..",
-	"..",
+const turboCacheSummaryPattern = /^\s*Cached:\s+(\d+ cached, \d+ total)/m;
+
+export const repoRoot = resolve(process.cwd(), "..", "..");
+
+export const forgeCliPath = join(
+	repoRoot,
 	"packages",
 	"cli",
 	"dist",
@@ -33,15 +39,29 @@ export interface ScenarioProject {
 	readonly workspaceRoot: string;
 }
 
-export function forgeEnvironment(workspaceRoot: string): NodeJS.ProcessEnv {
-	const cacheRoot = join(workspaceRoot, ".cache");
+function reportTurboCache(
+	workspace: ScenarioProject,
+	script: "build" | "typecheck",
+	result: ForgeCommandResult,
+) {
+	const stdout = stripVTControlCharacters(result.stdout);
+	const summary =
+		stdout.match(turboCacheSummaryPattern)?.[1] ?? "no cache summary";
 
+	const project =
+		expect.getState().currentTestName ?? basename(workspace.workspaceRoot);
+
+	console.log(`turbo ${script}: ${summary} (${project})`);
+}
+
+export function forgeEnvironment(workspaceRoot: string): NodeJS.ProcessEnv {
 	return {
 		COREPACK_HOME:
 			process.env.COREPACK_HOME ??
 			join(homedir(), ".cache", "node", "corepack"),
-		FORGE_CACHE_DIR: join(cacheRoot, "forge"),
-		XDG_CACHE_HOME: join(cacheRoot, "xdg"),
+		FORGE_CACHE_DIR: join(workspaceRoot, ".cache", "forge"),
+		XDG_CACHE_HOME: inject("xdgCacheHome"),
+		pnpm_config_prefer_offline: "true",
 		// Yarn defaults to immutable installs when CI is set, but scenario
 		// installs create the lockfile for freshly scaffolded projects.
 		YARN_ENABLE_IMMUTABLE_INSTALLS: "0",
@@ -57,12 +77,13 @@ export async function withScenarioWorkspace<T>(
 	);
 
 	const projectRoot = join(workspaceRoot, "project");
-
 	try {
 		await mkdir(projectRoot, { recursive: true });
 		return await run({ projectRoot, workspaceRoot });
 	} finally {
+		const startedAt = Date.now();
 		await rm(workspaceRoot, { force: true, recursive: true });
+		await recordCommandTiming("teardown", [], startedAt);
 	}
 }
 
@@ -93,38 +114,66 @@ export async function runCommand(
 		readonly input?: string;
 	},
 ): Promise<ForgeCommandResult> {
-	return await new Promise((resolvePromise, rejectPromise) => {
-		const child = spawn(command, args, {
-			cwd: options.cwd,
-			env: { ...process.env, ...options.env },
-		});
+	const startedAt = Date.now();
 
-		let stdout = "";
-		let stderr = "";
-
-		child.stdout.on("data", (chunk: Buffer | string) => {
-			stdout += chunk.toString();
-		});
-
-		child.stderr.on("data", (chunk: Buffer | string) => {
-			stderr += chunk.toString();
-		});
-
-		child.on("error", (error) => {
-			rejectPromise(error);
-		});
-
-		child.on("close", (code) => {
-			resolvePromise({
-				exitCode: code ?? 0,
-				stderr,
-				stdout,
+	const result = await new Promise<ForgeCommandResult>(
+		(resolvePromise, rejectPromise) => {
+			const child = spawn(command, args, {
+				cwd: options.cwd,
+				env: { ...process.env, ...options.env },
 			});
-		});
 
-		if (options.input) child.stdin.write(options.input);
-		child.stdin.end();
-	});
+			let stdout = "";
+			let stderr = "";
+
+			child.stdout.on("data", (chunk: Buffer | string) => {
+				stdout += chunk.toString();
+			});
+
+			child.stderr.on("data", (chunk: Buffer | string) => {
+				stderr += chunk.toString();
+			});
+
+			child.on("error", (error) => {
+				rejectPromise(error);
+			});
+
+			child.on("close", (code) => {
+				resolvePromise({
+					exitCode: code ?? 1,
+					stderr,
+					stdout,
+				});
+			});
+
+			if (options.input) child.stdin.write(options.input);
+			child.stdin.end();
+		},
+	);
+
+	await recordCommandTiming(command, args, startedAt);
+
+	return result;
+}
+
+async function recordCommandTiming(
+	command: string,
+	args: ReadonlyArray<string>,
+	startedAt: number,
+) {
+	const path = process.env.FORGE_SMOKE_TIMINGS;
+	if (!path) return;
+
+	const timing = {
+		args,
+		case: expect.getState().currentTestName ?? "",
+		command: basename(command),
+		durationMs: Date.now() - startedAt,
+		startedAt,
+	};
+
+	await mkdir(dirname(path), { recursive: true });
+	await appendFile(path, `${JSON.stringify(timing)}\n`);
 }
 
 export async function tryRunForge(
@@ -162,7 +211,6 @@ export async function runForge(
 	},
 ) {
 	const result = await tryRunForge(cwd, args, options);
-
 	if (result.exitCode !== 0)
 		throw new Error(
 			`forge ${args.join(" ")} failed with code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
@@ -182,16 +230,18 @@ export async function createProject(
 ) {
 	const configPath = join(workspace.workspaceRoot, "forge.config.json");
 
-	await writeJson(configPath, {
+	const createConfig = {
 		name: "acme",
 		path: "./project",
 		platforms: ["web"],
 		runtime: "Node.js",
 		slug: "acme",
 		...config,
-	});
+	};
 
-	await runForge(
+	await writeJson(configPath, createConfig);
+
+	const result = await runForge(
 		workspace.workspaceRoot,
 		[
 			"create",
@@ -206,6 +256,18 @@ export async function createProject(
 			workspaceRoot: workspace.workspaceRoot,
 		},
 	);
+
+	const recordDirectory = process.env.FORGE_RECORD_CONFIGS;
+	if (recordDirectory)
+		await writeJson(
+			join(
+				recordDirectory,
+				`${basename(workspace.workspaceRoot)}-${randomUUID()}.json`,
+			),
+			createConfig,
+		);
+
+	return result;
 }
 
 export async function addAddon(
@@ -216,7 +278,7 @@ export async function addAddon(
 		readonly env?: NodeJS.ProcessEnv;
 	},
 ) {
-	await runForge(projectRoot, ["add", addonId], {
+	return await runForge(projectRoot, ["add", addonId], {
 		cliPath: options?.cliPath,
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
@@ -231,7 +293,7 @@ export async function removeAddon(
 		readonly env?: NodeJS.ProcessEnv;
 	},
 ) {
-	await runForge(projectRoot, ["remove", addonId], {
+	return await runForge(projectRoot, ["remove", addonId], {
 		cliPath: options?.cliPath,
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
@@ -250,6 +312,121 @@ export async function updateProject(
 		env: options?.env,
 		workspaceRoot: dirname(projectRoot),
 	});
+}
+
+export async function expectRun(
+	workspace: ScenarioProject,
+	command: string,
+	args: ReadonlyArray<string>,
+) {
+	const result = await runCommand(command, args, {
+		cwd: workspace.projectRoot,
+		env: forgeEnvironment(workspace.workspaceRoot),
+	});
+
+	expect(
+		result.exitCode,
+		`${command} ${args.join(" ")} failed\n${result.stdout}\n${result.stderr}`,
+	).toBe(0);
+
+	return result;
+}
+
+export async function expectCleanTree(workspace: ScenarioProject) {
+	const status = await expectRun(workspace, "git", ["status", "--porcelain"]);
+	expect(status.stdout).toBe("");
+}
+
+export async function commitFixture(workspace: ScenarioProject) {
+	await expectRun(workspace, "git", ["add", "."]);
+	await expectRun(workspace, "git", [
+		"-c",
+		"user.name=Forge",
+		"-c",
+		"user.email=forge@example.com",
+		"-c",
+		"commit.gpgsign=false",
+		"-c",
+		"core.hooksPath=/dev/null",
+		"commit",
+		"-qm",
+		"fixture",
+	]);
+}
+
+const randomSecretPattern = /^(?:AUTH_SECRET|WORKER_SECRET)=.*$/gm;
+
+const installConfigFiles = [
+	"package.json",
+	"pnpm-workspace.yaml",
+	".npmrc",
+	".yarnrc.yml",
+	"bunfig.toml",
+];
+
+const TurboTaskSchema = Schema.StructWithRest(
+	Schema.Struct({
+		cache: Schema.optional(Schema.Boolean),
+		inputs: Schema.optional(Schema.Array(Schema.String)),
+	}),
+	[Schema.Record(Schema.String, Schema.Unknown)],
+);
+
+const TurboConfigSchema = Schema.StructWithRest(
+	Schema.Struct({
+		globalDependencies: Schema.optional(Schema.Array(Schema.String)),
+		globalEnv: Schema.optional(Schema.Array(Schema.String)),
+		tasks: Schema.optional(Schema.Record(Schema.String, TurboTaskSchema)),
+	}),
+	[Schema.Record(Schema.String, Schema.Unknown)],
+);
+
+const decodeTurboConfig = Schema.decodeUnknownSync(TurboConfigSchema);
+
+// Turbo hashes the random forge.json ids but never the root .env that dotenv feeds builds.
+async function replayableTurboEnvironment(
+	workspace: ScenarioProject,
+): Promise<NodeJS.ProcessEnv> {
+	const config = decodeTurboConfig(
+		JSON.parse(
+			await readFile(join(workspace.projectRoot, "turbo.json"), "utf-8"),
+		),
+	);
+
+	const tasks = Object.fromEntries(
+		Object.entries(config.tasks ?? {}).map(([name, task]) => [
+			name,
+			task.cache === false
+				? task
+				: {
+						...task,
+						inputs: [...(task.inputs ?? ["$TURBO_DEFAULT$"]), "!forge.json"],
+					},
+		]),
+	);
+
+	const configPath = join(workspace.workspaceRoot, "turbo.json");
+	await writeJson(configPath, {
+		...config,
+		globalDependencies: [
+			...(config.globalDependencies ?? []),
+			...installConfigFiles,
+		],
+		globalEnv: [...(config.globalEnv ?? []), "FORGE_SMOKE_ENV_DIGEST"],
+		tasks,
+	});
+
+	const env = await readFile(
+		join(workspace.projectRoot, ".env"),
+		"utf-8",
+	).catch(() => "");
+
+	return {
+		FORGE_SMOKE_ENV_DIGEST: createHash("sha256")
+			.update(env.replace(randomSecretPattern, ""))
+			.digest("hex"),
+		TURBO_ROOT_TURBO_JSON: configPath,
+	};
 }
 
 const installArgsFor: Record<
@@ -282,6 +459,58 @@ const buildArgsFor: Record<
 	yarn: ["build"],
 };
 
+const lintDiagnosticPattern = /Found [1-9]\d* (?:warning|info)/;
+
+export function lintScriptsFor(
+	manifest: { readonly config?: { readonly linter?: string } },
+	scripts: Readonly<Record<string, string>> | undefined,
+): ReadonlyArray<string> {
+	const linter = manifest.config?.linter;
+	if (linter !== undefined && scripts?.check === undefined)
+		throw new Error(`Missing Check Script: ${linter}`);
+
+	return ["check", "check:ws"].filter((script) => scripts?.[script]);
+}
+
+export function lintScriptFailure(
+	script: string,
+	result: ForgeCommandResult,
+): string | undefined {
+	if (result.exitCode !== 0)
+		return `${script} failed with code ${result.exitCode}`;
+
+	const output = stripVTControlCharacters(`${result.stdout}\n${result.stderr}`);
+	if (lintDiagnosticPattern.test(output))
+		return `${script} reported warnings or infos`;
+
+	return undefined;
+}
+
+async function expectLintScriptsPass(
+	workspace: ScenarioProject,
+	pm: "pnpm" | "npm" | "yarn" | "bun",
+) {
+	const manifest = await readJson<{
+		readonly config?: { readonly linter?: string };
+	}>(join(workspace.projectRoot, ".forge", "manifest.json"));
+
+	const { scripts } = await readJson<{
+		readonly scripts?: Readonly<Record<string, string>>;
+	}>(join(workspace.projectRoot, "package.json"));
+
+	for (const script of lintScriptsFor(manifest, scripts)) {
+		const result = await runCommand(pm, ["run", script], {
+			cwd: workspace.projectRoot,
+			env: forgeEnvironment(workspace.workspaceRoot),
+		});
+
+		expect(
+			lintScriptFailure(script, result),
+			`${pm} run ${script}\n${result.stdout}\n${result.stderr}`,
+		).toBeUndefined();
+	}
+}
+
 export async function expectInstallAndTypecheck(
 	workspace: ScenarioProject,
 	pm: "pnpm" | "npm" | "yarn" | "bun",
@@ -296,10 +525,17 @@ export async function expectInstallAndTypecheck(
 		`${pm} install failed with code ${installResult.exitCode}\n${installResult.stdout}\n${installResult.stderr}`,
 	).toBe(0);
 
+	await expectLintScriptsPass(workspace, pm);
+
 	const result = await runCommand(pm, typecheckArgsFor[pm], {
 		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
+		env: {
+			...forgeEnvironment(workspace.workspaceRoot),
+			...(await replayableTurboEnvironment(workspace)),
+		},
 	});
+
+	reportTurboCache(workspace, "typecheck", result);
 
 	expect(
 		result.exitCode,
@@ -307,13 +543,14 @@ export async function expectInstallAndTypecheck(
 	).toBe(0);
 }
 
-export async function expectInstallBuildAndTypecheck(
+export async function expectInstallAndBuild(
 	workspace: ScenarioProject,
 	pm: "pnpm" | "npm" | "yarn" | "bun",
+	installEnv?: NodeJS.ProcessEnv,
 ) {
 	const installResult = await runCommand(pm, installArgsFor[pm], {
 		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
+		env: { ...forgeEnvironment(workspace.workspaceRoot), ...installEnv },
 	});
 
 	expect(
@@ -321,25 +558,75 @@ export async function expectInstallBuildAndTypecheck(
 		`${pm} install failed with code ${installResult.exitCode}\n${installResult.stdout}\n${installResult.stderr}`,
 	).toBe(0);
 
+	await expectLintScriptsPass(workspace, pm);
+
 	const buildResult = await runCommand(pm, buildArgsFor[pm], {
 		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
+		env: {
+			...forgeEnvironment(workspace.workspaceRoot),
+			...(await replayableTurboEnvironment(workspace)),
+		},
 	});
+
+	reportTurboCache(workspace, "build", buildResult);
 
 	expect(
 		buildResult.exitCode,
 		`${pm} build failed with code ${buildResult.exitCode}\n${buildResult.stdout}\n${buildResult.stderr}`,
 	).toBe(0);
 
+	return installResult;
+}
+
+export async function expectProductionInstall(workspace: ScenarioProject) {
+	const result = await runCommand(
+		"pnpm",
+		[
+			"install",
+			"--prod",
+			"--frozen-lockfile",
+			"--config.confirm-modules-purge=false",
+		],
+		{
+			cwd: workspace.projectRoot,
+			env: forgeEnvironment(workspace.workspaceRoot),
+		},
+	);
+
+	expect(
+		result.exitCode,
+		`Production Install Failed: code ${result.exitCode}\n${result.stdout}\n${result.stderr}`,
+	).toBe(0);
+
+	expect(
+		await pathExists(join(workspace.projectRoot, "node_modules/turbo")),
+		"Production Install Kept Dev Tools: node_modules/turbo",
+	).toBe(false);
+}
+
+export async function expectInstallBuildAndTypecheck(
+	workspace: ScenarioProject,
+	pm: "pnpm" | "npm" | "yarn" | "bun",
+	installEnv?: NodeJS.ProcessEnv,
+) {
+	const installResult = await expectInstallAndBuild(workspace, pm, installEnv);
+
 	const typecheckResult = await runCommand(pm, typecheckArgsFor[pm], {
 		cwd: workspace.projectRoot,
-		env: forgeEnvironment(workspace.workspaceRoot),
+		env: {
+			...forgeEnvironment(workspace.workspaceRoot),
+			...(await replayableTurboEnvironment(workspace)),
+		},
 	});
+
+	reportTurboCache(workspace, "typecheck", typecheckResult);
 
 	expect(
 		typecheckResult.exitCode,
 		`${pm} typecheck failed with code ${typecheckResult.exitCode}\n${typecheckResult.stdout}\n${typecheckResult.stderr}`,
 	).toBe(0);
+
+	return installResult;
 }
 
 export async function renameModuleRoot(

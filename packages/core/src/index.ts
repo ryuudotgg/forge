@@ -4,9 +4,14 @@ export type {
 	ApplyPlan,
 	ApplyRefusal,
 	ApplyResolution,
+	ApplyResult,
 	ConflictResolution,
+	DeclinedChange,
+	DepartingAddons,
+	DroppedEdit,
 	FormatApplyErrorOptions,
 	PlannedWrite,
+	ResolutionFlag,
 	ResolutionPolicy,
 } from "./apply";
 export {
@@ -21,6 +26,7 @@ export type {
 	AdapterModule,
 	AddonDefinition,
 	AddonId,
+	AddonSwitching,
 	AppCompatibility,
 	CapabilityId,
 	Compatibility,
@@ -29,6 +35,7 @@ export type {
 	DependencyRef,
 	EnsuredModuleTarget,
 	EnsureModuleContribution,
+	FileUpdate,
 	FrameworkDefinition,
 	FrameworkId,
 	GeneratorCategory,
@@ -113,6 +120,7 @@ export {
 	validateTemplateRecipes,
 	variantAsset,
 } from "./authoring";
+export { CliVersion, compareCliVersions } from "./cli-version";
 export { CommandProbe, readPersistedCommandVersions } from "./command";
 export type {
 	AppConfig,
@@ -127,6 +135,7 @@ export {
 	AppConfigSchema,
 	ConfigSchema,
 	ConfigStore,
+	GITIGNORED_MODULE_DIRS,
 	ModuleIdSchema,
 	PackageConfigSchema,
 	SlotsSchema,
@@ -139,15 +148,20 @@ export type {
 	Runtime,
 } from "./environment";
 export {
+	buildPackageManagerCheck,
 	checkPackageManager,
+	checkPackageManagerInstalled,
 	checkRuntime,
 	dependencyFormatFor,
 	Environment,
 	isPackageManager,
 	packageManagerAddDevCommand,
 	packageManagerCommand,
+	packageManagerExecCommand,
+	packageManagerInstallCommand,
 	packageManagerRemoveCommand,
 	packageManagers,
+	packageManagerViewCommand,
 	runtimeCommand,
 	runtimes,
 } from "./environment";
@@ -163,6 +177,7 @@ export {
 	ModuleIdGenerationError,
 	PlannerError,
 	PlannerErrors,
+	Refusal,
 	RegistryError,
 	RegistryErrors,
 	RendererError,
@@ -172,6 +187,14 @@ export {
 } from "./errors";
 export type { FormatJsonOptions } from "./format/json";
 export { formatJson } from "./format/json";
+export type { ReferenceHit, ReferenceToken, WorkingTreeStatus } from "./git";
+export {
+	GitError,
+	referenceHits,
+	trackedFiles,
+	trackedReferenceHits,
+	workingTreeStatus,
+} from "./git";
 export { hashContentHex } from "./hash";
 export type { FormattedSchemaIssue } from "./json";
 export {
@@ -184,6 +207,7 @@ export { envResidue, threeWayMergeEnv } from "./merge/env";
 export type { JsonMergeResult } from "./merge/json";
 export {
 	deepMerge,
+	formatJsonPath,
 	jsonResidue,
 	mergeJson,
 	threeWayMergeJson,
@@ -196,6 +220,7 @@ export {
 	threeWayMergeLines,
 	threeWayMergeSections,
 } from "./merge/lines";
+export { threeWayMergeYaml } from "./merge/yaml";
 export type {
 	Dependency,
 	DependencyFormat,
@@ -212,6 +237,8 @@ export type {
 	ProjectPlan,
 } from "./planner";
 export { Planner } from "./planner";
+export type { DirectoryMove } from "./relocation";
+export { moveModules } from "./relocation";
 export type {
 	ModuleBucketTarget,
 	ProjectBucketTarget,
@@ -220,10 +247,12 @@ export type {
 	SurfaceRenderContribution,
 } from "./renderer";
 export { Renderer } from "./renderer";
+export type { ImportOrder } from "./sort/imports";
 export type {
 	ArtifactBase,
 	ArtifactIndex,
 	ArtifactMergeKind,
+	FileMergeKind,
 	InstallRecord,
 	InstallTarget,
 	Lockfile,

@@ -1,6 +1,13 @@
 {
 	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
-	"extends": ["config:recommended", "customManagers:biomeVersions"],
+	"extends": [
+		"config:recommended",
+		"customManagers:biomeVersions",
+		"helpers:pinGitHubActionDigests"
+	],
+	"github-actions": {
+		"managerFilePatterns": ["/^\\.depot/workflows/[^/]+\\.ya?ml$/"]
+	},
 	"labels": ["dependencies"],
 	"lockFileMaintenance": {
 		"enabled": true,
@@ -25,8 +32,9 @@
 				"/^packages/generators/templates/tooling/github/[^/]+\\.yml$/"
 			],
 			"matchStrings": [
-				"uses:\\s+(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentValue>v\\d+)"
-			]
+				"uses:\\s+(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentDigest>[0-9a-f]{40})\\s+#\\s+(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+			],
+			"autoReplaceStringTemplate": "uses: {{depName}}@{{newDigest}} # {{newValue}}"
 		}
 	],
 	"packageRules": [
@@ -36,12 +44,11 @@
 		},
 		{
 			"groupName": "effect",
-			"matchPackageNames": ["effect", "@effect/**", "!@effect/tsgo"],
-			"matchUpdateTypes": ["minor", "patch"]
+			"matchPackageNames": ["effect", "@effect/**"]
 		},
 		{
 			"addLabels": ["framework-major"],
-			"matchPackageNames": ["effect", "@effect/**", "!@effect/tsgo"],
+			"matchPackageNames": ["effect", "@effect/**"],
 			"matchUpdateTypes": ["major"]
 		},
 		{
@@ -52,20 +59,34 @@
 			"matchUpdateTypes": ["minor", "patch"]
 		},
 		{
+			"groupName": "scaffolded versions",
+			"matchDepTypes": ["pnpm.catalog.scaffold"],
+			"matchUpdateTypes": ["minor", "patch"]
+		},
+		{
 			"addLabels": ["framework-major"],
 			"matchFileNames": ["packages/generators/src/versions.ts"],
 			"matchManagers": ["custom.regex"],
 			"matchUpdateTypes": ["major"]
 		},
 		{
-			"groupName": "scaffolded actions",
+			"groupName": "github actions",
+			"matchManagers": ["github-actions"]
+		},
+		{
+			"groupName": "github actions",
+			"matchFileNames": ["packages/generators/templates/tooling/github/*.yml"]
+		},
+		{
 			"matchFileNames": [
-				"packages/generators/templates/tooling/github/*.yml"
-			]
+				"packages/generators/templates/**",
+				"!packages/generators/templates/tooling/github/*.yml"
+			],
+			"pinDigests": false
 		}
 	],
 	"rangeStrategy": "bump",
-	"rebaseWhen": "behind-base-branch",
+	"rebaseWhen": "conflicted",
 	"minimumReleaseAge": "1440 minutes",
 	"reviewers": ["ryuudotgg"],
 	"vulnerabilityAlerts": {

@@ -29,9 +29,11 @@ describe("ui-library", () => {
 			const uiComponents = await readJson<ComponentsJson>(
 				join(workspace.projectRoot, "packages/ui/components.json"),
 			);
+
 			const appComponents = await readJson<ComponentsJson>(
 				join(workspace.projectRoot, "apps/web/components.json"),
 			);
+
 			const ui = await readJson<PackageJson>(
 				join(workspace.projectRoot, "packages/ui/package.json"),
 			);
@@ -52,9 +54,11 @@ describe("ui-library", () => {
 			const uiComponents = await readJson<ComponentsJson>(
 				join(workspace.projectRoot, "packages/ui/components.json"),
 			);
+
 			const appComponents = await readJson<ComponentsJson>(
 				join(workspace.projectRoot, "apps/web/components.json"),
 			);
+
 			const ui = await readJson<PackageJson>(
 				join(workspace.projectRoot, "packages/ui/package.json"),
 			);

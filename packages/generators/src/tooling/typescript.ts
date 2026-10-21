@@ -4,7 +4,7 @@ import {
 	leafTextFile,
 	projectTarget,
 	surfaceJson,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import {
 	frameworksInPlay,
@@ -35,6 +35,7 @@ const typescript = defineAddon<ForgeConfig, "typescript">({
 				esModuleInterop: true,
 				incremental: false,
 				isolatedModules: true,
+				...(config.emailProvider === undefined ? {} : { jsx: "react-jsx" }),
 				lib: ["ESNext", "DOM", "DOM.Iterable"],
 				module: "ESNext",
 				moduleDetection: "force",

@@ -1,5 +1,5 @@
 {
-	"name": "@ryuujs/scenarios",
+	"name": "@ryuugg/scenarios",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -9,11 +9,14 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@ryuujs/core": "workspace:*",
-		"@ryuujs/tsconfig": "workspace:*",
+		"@effect/platform-node": "catalog:effect",
+		"@ryuugg/core": "workspace:*",
+		"@ryuugg/generators": "workspace:*",
+		"@ryuugg/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"effect": "catalog:effect",
 		"typescript": "catalog:dev",
+		"vite": "catalog:dev",
 		"vitest": "catalog:dev"
 	}
 }

@@ -3,6 +3,7 @@ import {
 	appendLines,
 	type ConflictResolution,
 	envResidue,
+	formatJson,
 	jsonResidue,
 	mergeJson,
 	parseSections,
@@ -12,6 +13,78 @@ import {
 	threeWayMergeLines,
 	threeWayMergeSections,
 } from "../src/index";
+import { appendMissingLines } from "../src/merge/lines";
+
+describe("append missing lines", () => {
+	it("appends a blank line without rewriting user CRLF or blank lines", () => {
+		const current = "# User\r\n\r\n*.png binary\r\n\r\n";
+		const incoming = "# Forge state\n.forge/** -text\n";
+
+		expect(appendMissingLines(current, incoming)).toBe(
+			`${current}\n${incoming}`,
+		);
+
+		expect(appendMissingLines("*.png binary", incoming)).toBe(
+			`*.png binary\n\n${incoming}`,
+		);
+	});
+
+	it("returns current bytes when incoming nonblank lines already exist", () => {
+		const current = "# User\r\n# Forge state\r\n\r\n.forge/** -text\r\n";
+
+		expect(
+			appendMissingLines(current, "# Forge state\n.forge/** -text\n"),
+		).toBe(current);
+	});
+
+	it("moves an overridden Forge stanza last without duplicating its header", () => {
+		const current =
+			"*.png binary\r\n\r\n# Forge state\r\n.forge/** -text\r\n\r\n# User\r\n* text=auto\r\n";
+
+		const incoming = "# Forge state\n.forge/** -text\n";
+		const adopted = appendMissingLines(current, incoming);
+
+		expect(adopted).toBe(
+			`*.png binary\r\n\r\n# User\r\n* text=auto\r\n\n${incoming}`,
+		);
+
+		expect(
+			threeWayMergeSections(
+				incoming,
+				adopted,
+				"# Forge state\n.forge/** -text\n*.lock -text\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged:
+				"*.png binary\n\n# User\n* text=auto\n\n# Forge state\n.forge/** -text\n*.lock -text\n",
+		});
+	});
+
+	it.each(["", " \r\n\t\n"])("replaces blank current content %j", (current) => {
+		const incoming = "# Forge state\n.forge/** -text\n";
+		expect(appendMissingLines(current, incoming)).toBe(incoming);
+	});
+});
+
+describe("section merge order", () => {
+	it("keeps the current file's section order so the Forge rule stays last", () => {
+		const base = "# Forge state\n.forge/** -text\n";
+		const current =
+			"# User\n* text=auto\n*.png binary\n\n# Forge state\n.forge/** -text\n";
+
+		expect(threeWayMergeSections(base, current, base).merged).toBe(current);
+		expect(
+			threeWayMergeSections(
+				base,
+				current,
+				"# Forge state\n.forge/** -text\n*.lock -text\n",
+			).merged,
+		).toBe(
+			"# User\n* text=auto\n*.png binary\n\n# Forge state\n.forge/** -text\n*.lock -text\n",
+		);
+	});
+});
 
 describe("merge helpers", () => {
 	it("deep merges objects and de-duplicates arrays", () => {
@@ -61,6 +134,139 @@ describe("merge helpers", () => {
 			plugins: ["base"],
 			scripts: { test: "vitest" },
 		});
+	});
+
+	it("preserves app additions in their original json key order", () => {
+		const base = {
+			$schema: "https://turborepo.com/schema.json",
+			ui: "tui",
+			tasks: { build: { dependsOn: ["^build"] } },
+		};
+
+		const current = {
+			$schema: base.$schema,
+			ui: base.ui,
+			agentGuidance: false,
+			tasks: base.tasks,
+		};
+
+		const { merged, conflicts } = threeWayMergeJson(base, current, base);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(formatJson(current));
+		expect(Object.keys(merged)).toEqual(Object.keys(current));
+	});
+
+	it("places incoming keys after surviving neighbours in app order", () => {
+		const { merged, conflicts } = threeWayMergeJson(
+			{ removedFirst: true, anchor: true, removed: true, tail: true },
+			{ anchor: true, app: true, tail: true },
+			{
+				removedFirst: true,
+				first: true,
+				anchor: true,
+				removed: true,
+				added: true,
+				next: true,
+				tail: true,
+			},
+		);
+
+		expect(conflicts).toEqual([]);
+		expect(Object.keys(merged)).toEqual([
+			"first",
+			"anchor",
+			"added",
+			"next",
+			"app",
+			"tail",
+		]);
+	});
+
+	it("places incoming keys after surviving neighbours in nested app order", () => {
+		const { merged, conflicts } = threeWayMergeJson(
+			{
+				tasks: { removedFirst: true, anchor: true, removed: true, tail: true },
+			},
+			{ tasks: { anchor: true, app: true, tail: true } },
+			{
+				tasks: {
+					removedFirst: true,
+					first: true,
+					anchor: true,
+					removed: true,
+					added: true,
+					next: true,
+					tail: true,
+				},
+			},
+		);
+
+		expect(conflicts).toEqual([]);
+
+		const tasks = merged.tasks;
+		if (typeof tasks !== "object" || tasks === null)
+			throw new Error("Expected Merged Tasks Object");
+
+		expect(Object.keys(tasks)).toEqual([
+			"first",
+			"anchor",
+			"added",
+			"next",
+			"app",
+			"tail",
+		]);
+	});
+
+	it("follows incoming json key order when the app is unchanged", () => {
+		const base = { alpha: true, beta: true, gamma: true };
+		const incoming = { gamma: true, alpha: true, beta: true };
+
+		const { merged, conflicts } = threeWayMergeJson(base, base, incoming);
+
+		expect(conflicts).toEqual([]);
+		expect(Object.keys(merged)).toEqual(Object.keys(incoming));
+	});
+
+	it("keeps a nested app reorder when the template changes a value", () => {
+		const { merged, conflicts } = threeWayMergeJson(
+			{ config: { alpha: 1, beta: 2 } },
+			{ config: { beta: 2, alpha: 1 } },
+			{ config: { alpha: 3, beta: 2 } },
+		);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(
+			formatJson({ config: { beta: 2, alpha: 3 } }),
+		);
+	});
+
+	it("keeps __proto__ keys as own entries at every level", () => {
+		const config = Object.fromEntries([
+			["__proto__", 1],
+			["normal", 2],
+		]);
+
+		const json = Object.fromEntries([
+			["__proto__", { nested: true }],
+			["config", config],
+		]);
+
+		const { merged, conflicts } = threeWayMergeJson(json, json, json);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(formatJson(json));
+		expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+	});
+
+	it("follows a nested template reorder when the app is unchanged", () => {
+		const base = { config: { alpha: 1, beta: 2 } };
+		const incoming = { config: { beta: 2, alpha: 1 } };
+
+		const { merged, conflicts } = threeWayMergeJson(base, base, incoming);
+
+		expect(conflicts).toEqual([]);
+		expect(formatJson(merged)).toBe(formatJson(incoming));
 	});
 
 	it("three-way merges independent json changes and reports scalar conflicts", () => {
@@ -202,6 +408,7 @@ describe("merge helpers", () => {
 			conflicts: [["commands"]],
 			merged: { commands: ["build --forge"] },
 		});
+
 		expect(
 			threeWayMergeJson(
 				{ commands: ["build --fast"] },
@@ -209,6 +416,7 @@ describe("merge helpers", () => {
 				{ commands: ["build --user"] },
 			),
 		).toMatchObject({ conflicts: [["commands"]] });
+
 		expect(
 			threeWayMergeJson(
 				{ commands: ["build", "test"] },
@@ -442,6 +650,7 @@ describe("merge helpers", () => {
 		expect(parseSections(`${banner}\nmine/\n`)).toEqual([
 			{ header: banner, lines: ["mine/"] },
 		]);
+
 		expect(
 			threeWayMergeSections(
 				"# Build\ndist/\n",
@@ -452,6 +661,7 @@ describe("merge helpers", () => {
 			conflicts: [],
 			merged: "# Build\ndist/\ncoverage/\n\n# ===\n# Custom stuff\nmine/\n",
 		});
+
 		expect(
 			threeWayMergeSections(
 				"# Empty\n# Banner line\n",
@@ -459,6 +669,7 @@ describe("merge helpers", () => {
 				"# Empty\n# Banner line\n",
 			),
 		).toEqual({ conflicts: [], merged: "# Empty\n# Banner line\n" });
+
 		expect(
 			threeWayMergeSections(
 				"# Empty\n# Next\nvalue\n",
@@ -466,6 +677,7 @@ describe("merge helpers", () => {
 				"# Empty\n# Next\nvalue\n",
 			),
 		).toEqual({ conflicts: [], merged: "# Empty\n# Next\nvalue\n" });
+
 		expect(sectionResidue("", "# User header\n# Second line\n")).toBe(
 			"# User header\n# Second line\n",
 		);
@@ -511,6 +723,7 @@ describe("merge helpers", () => {
 			"# Build\nb\na\n",
 			"# Build\na\nb\nc\n",
 		);
+
 		expect(result.conflicts).not.toEqual([]);
 	});
 
@@ -520,6 +733,7 @@ describe("merge helpers", () => {
 			"# Build\na\nlocal\n# Build\nb\n",
 			"# Build\na\n# Build\nb\nincoming\n",
 		);
+
 		expect(result.merged).toContain("# Build\nb\nincoming\n");
 		expect(result.merged.match(/# Build/g)).toHaveLength(2);
 	});
@@ -546,6 +760,108 @@ describe("merge helpers", () => {
 		).toBe("# Build\n.cache/\n");
 	});
 
+	it("keeps an edited env header above its variable", () => {
+		const result = threeWayMergeEnv(
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n",
+			"# Auth (generate with openssl)\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n",
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\nDATABASE_POOL=\n",
+		);
+
+		expect(result.merged).toBe(
+			"# Auth (generate with openssl)\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\nDATABASE_POOL=\n",
+		);
+
+		expect(result.conflicts).toEqual([]);
+		expect(result.merged.split("\n")).not.toContain("# Auth");
+	});
+
+	it("keeps user lines above the first forge section", () => {
+		const result = threeWayMergeSections(
+			"# Build\ndist/\n\n# Test\ncoverage/\n",
+			"local1\nlocal2\n\n# Build\ndist/\n\n# Test\ncoverage/\n",
+			"# Build\ndist/\n\n# Test\ncoverage/\n.nyc/\n",
+		);
+
+		expect(result.merged).toBe(
+			"local1\nlocal2\n\n# Build\ndist/\n\n# Test\ncoverage/\n.nyc/\n",
+		);
+
+		expect(result.conflicts).toEqual([]);
+	});
+
+	it("keeps a moved env variable in the user's section", () => {
+		const result = threeWayMergeEnv(
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n",
+			"# Auth\n\n# Database\nDATABASE_URL=\nAUTH_SECRET=\n",
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\nDATABASE_POOL=\n",
+		);
+
+		expect(result.merged).toBe(
+			"# Auth\n\n# Database\nDATABASE_URL=\nDATABASE_POOL=\nAUTH_SECRET=\n",
+		);
+
+		expect(result.conflicts).toEqual([]);
+		expect(
+			result.merged.split("\n").filter((line) => line === "AUTH_SECRET="),
+		).toHaveLength(1);
+	});
+
+	it("keeps both appended env sections and forge's separator", () => {
+		const result = threeWayMergeEnv(
+			"# Auth\nAUTH_SECRET=\n",
+			"# Auth\nAUTH_SECRET=\n# Local\nLOCAL=value\n",
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n",
+		);
+
+		expect(result.merged).toBe(
+			"# Auth\nAUTH_SECRET=\n\n# Database\nDATABASE_URL=\n# Local\nLOCAL=value\n",
+		);
+
+		expect(result.conflicts).toEqual([]);
+	});
+
+	it("follows a forge env section move the user never touched", () => {
+		const untouched = "# A\nA=\n\n# B\nB=\n";
+		expect(
+			threeWayMergeEnv(untouched, untouched, "# B\nB=\n\n# A\nA=\n"),
+		).toEqual({ conflicts: [], merged: "# B\nB=\n\n# A\nA=\n" });
+	});
+
+	it("keeps an edited env header with its variable when forge moves it", () => {
+		const merged = threeWayMergeEnv(
+			"# A\nA=\n# B\nB=\n",
+			"# A\nA=\n# B user\nB=\n",
+			"# B\nB=\n# A\nA=\nN=\n",
+		).merged;
+
+		expect(merged).toContain("# B user\nB=\n");
+		expect(merged.split("\n")).not.toContain("# B");
+		expect(merged.split("\n").filter((line) => line === "B=")).toHaveLength(1);
+	});
+
+	it("keeps unsectioned user lines above a new leading section", () => {
+		expect(
+			threeWayMergeSections(
+				"baseignore\n# Build\ndist/\n",
+				"baseignore\nlocalignore\n# Build\ndist/\n",
+				"# New\nnewignore\n# Build\ndist/\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "localignore\n\n# New\nnewignore\n\n# Build\ndist/\n",
+		});
+	});
+
+	it("keeps forge variables under a header both sides inserted", () => {
+		expect(
+			threeWayMergeEnv(
+				"BASE=\n",
+				"BASE=\n# Shared\nUSER=\n",
+				"BASE=\n# Shared\nFORGE=\n",
+			),
+		).toEqual({ conflicts: [], merged: "BASE=\n# Shared\nFORGE=\nUSER=\n" });
+	});
+
 	it("merges env examples by variable name", () => {
 		expect(
 			threeWayMergeEnv(
@@ -569,6 +885,57 @@ describe("merge helpers", () => {
 		).toEqual({ conflicts: [], merged: "EDITED=user\n" });
 	});
 
+	it("keeps user-deleted env variables and their comments deleted", () => {
+		expect(
+			threeWayMergeEnv(
+				'AUTH_SECRET=old\n# Cookie domain\nAUTH_COOKIE_DOMAIN=""\nDATABASE_URL=old\n',
+				"AUTH_SECRET=old\nDATABASE_URL=old\n",
+				'AUTH_SECRET=old\n# Cookie domain\nAUTH_COOKIE_DOMAIN=""\nDATABASE_URL=old\n',
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "AUTH_SECRET=old\nDATABASE_URL=old\n",
+		});
+	});
+
+	it("keeps user-deleted env variables deleted when forge changes their values", () => {
+		expect(
+			threeWayMergeEnv(
+				'AUTH_SECRET=old\n# Cookie domain\nAUTH_COOKIE_DOMAIN=""\nDATABASE_URL=old\n',
+				"AUTH_SECRET=old\nDATABASE_URL=old\n",
+				'AUTH_SECRET=old\n# Cookie domain\nAUTH_COOKIE_DOMAIN="example.com"\nDATABASE_URL=old\n',
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "AUTH_SECRET=old\nDATABASE_URL=old\n",
+		});
+	});
+
+	it("restores a deleted env variable when forge wins its duplicate conflict", () => {
+		expect(
+			threeWayMergeEnv("VALUE=old\n", "", "VALUE=one\nVALUE=two\n", "forge")
+				.merged,
+		).toBe("VALUE=two\n");
+
+		expect(
+			threeWayMergeEnv("VALUE=old\n", "", "VALUE=one\nVALUE=two\n", "user")
+				.merged,
+		).toBe("");
+	});
+
+	it("adds new forge env variables while keeping user-edited values", () => {
+		expect(
+			threeWayMergeEnv(
+				"EDITED=old\n",
+				"EDITED=user\n",
+				"EDITED=old\nADDED=new\n",
+			),
+		).toEqual({
+			conflicts: [],
+			merged: "EDITED=user\nADDED=new\n",
+		});
+	});
+
 	it("uses new forge env values when users left the base untouched", () => {
 		expect(
 			threeWayMergeEnv("VALUE=old\n", "VALUE=old\n", "VALUE=new\n"),
@@ -582,12 +949,14 @@ describe("merge helpers", () => {
 		expect(envResidue("FORGE=old\n", "FORGE=user\nUSER=value\n")).toBe(
 			"FORGE=user\nUSER=value\n",
 		);
+
 		expect(
 			envResidue(
 				"# Forge\nFORGE=old\n",
 				"# Forge\nFORGE=old\n# User note\nUSER=value\n",
 			),
 		).toBe("# User note\nUSER=value\n");
+
 		expect(envResidue("VALUE=old\n", "VALUE=old\n")).toBe("");
 	});
 
@@ -610,6 +979,7 @@ describe("merge helpers", () => {
 			],
 			merged: "VALUE=forge\n",
 		});
+
 		expect(envResidue("VALUE=old\n", "VALUE=user-one\nVALUE=user-two\n")).toBe(
 			"VALUE=user-one\nVALUE=user-two\n",
 		);
@@ -624,6 +994,7 @@ describe("merge helpers", () => {
 		expect(
 			threeWayMergeSections(baseLines, userLines, forgeLines, "user").merged,
 		).toBe("# Build\nbuild/\n\n# Cache\n.local-cache/\n\n# Test\ncoverage/\n");
+
 		expect(
 			threeWayMergeSections(baseLines, userLines, forgeLines, "forge").merged,
 		).toBe("# Build\noutput/\n\n# Cache\n.local-cache/\n\n# Test\ncoverage/\n");
@@ -631,10 +1002,12 @@ describe("merge helpers", () => {
 		const baseEnv = "VALUE=old\nUNCHANGED=old\n";
 		const userEnv =
 			"VALUE=user-one\nVALUE=user-two\nUNCHANGED=old\nUSER_ONLY=value\n";
+
 		const forgeEnv = "VALUE=forge\nUNCHANGED=new\nFORGE_ONLY=value\n";
 		expect(threeWayMergeEnv(baseEnv, userEnv, forgeEnv, "user").merged).toBe(
 			"VALUE=user-two\nUNCHANGED=new\nFORGE_ONLY=value\nUSER_ONLY=value\n",
 		);
+
 		expect(threeWayMergeEnv(baseEnv, userEnv, forgeEnv, "forge").merged).toBe(
 			"VALUE=forge\nUNCHANGED=new\nFORGE_ONLY=value\nUSER_ONLY=value\n",
 		);
@@ -645,6 +1018,7 @@ describe("merge helpers", () => {
 			["Build -> dist/", "user"],
 			["Cache -> .cache/", "forge"],
 		]);
+
 		expect(
 			threeWayMergeSections(
 				"# Build\ndist/\n\n# Cache\n.cache/\n",
@@ -659,6 +1033,7 @@ describe("merge helpers", () => {
 			["duplicate variable FIRST", "user"],
 			["duplicate variable SECOND", "forge"],
 		]);
+
 		expect(
 			threeWayMergeEnv(
 				"FIRST=old\nSECOND=old\n",
@@ -675,6 +1050,7 @@ describe("merge helpers", () => {
 			["Sec -> shared", "user"],
 			["Sec -> shared (2nd)", "forge"],
 		]);
+
 		const result = threeWayMergeSections(
 			"# Sec\nkeep\nshared\nmid\nshared\ntail\n",
 			"# Sec\nkeep\nuser-one\nmid\nuser-two\ntail\n",
@@ -707,11 +1083,13 @@ describe("merge helpers", () => {
 		const base = "BEFORE=old\nVALUE=old\nAFTER=old\n";
 		const user =
 			"BEFORE=old\nVALUE=user-one\nVALUE=user-two\nAFTER=old\nUSER_ONLY=value\n";
+
 		const forge = "BEFORE=new\nVALUE=forge-one\nVALUE=forge-two\nAFTER=new\n";
 
 		expect(threeWayMergeEnv(base, user, forge, "user").merged).toBe(
 			"BEFORE=new\nVALUE=user-two\nAFTER=new\nUSER_ONLY=value\n",
 		);
+
 		expect(threeWayMergeEnv(base, user, forge, "forge").merged).toBe(
 			"BEFORE=new\nVALUE=forge-two\nAFTER=new\nUSER_ONLY=value\n",
 		);
@@ -726,6 +1104,7 @@ describe("merge helpers", () => {
 				"forge",
 			).merged,
 		).toBe("");
+
 		expect(
 			threeWayMergeEnv(
 				"VALUE=old\n",
@@ -744,6 +1123,7 @@ describe("merge helpers", () => {
 		expect(
 			threeWayMergeJson(base, user, forge, { resolution: "user" }).merged,
 		).toEqual(user);
+
 		expect(
 			threeWayMergeJson(base, user, forge, { resolution: "forge" }).merged,
 		).toEqual(forge);
@@ -757,6 +1137,7 @@ describe("merge helpers", () => {
 		expect(
 			threeWayMergeJson(base, user, forge, { resolution: "user" }).merged,
 		).toEqual(user);
+
 		expect(
 			threeWayMergeJson(base, user, forge, { resolution: "forge" }).merged,
 		).toEqual(forge);

@@ -1,4 +1,4 @@
-import { formatSchemaError } from "@ryuujs/core";
+import { formatSchemaError } from "@ryuugg/core";
 import { Result, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { assembleSchema } from "../src/config/schema";
@@ -6,7 +6,6 @@ import { steps } from "../src/steps";
 import { defineStep } from "../src/steps/types";
 
 const configSchema = assembleSchema(steps);
-
 function decodeConfig(input: unknown) {
 	return Schema.decodeUnknownResult(configSchema)(input);
 }
@@ -18,6 +17,460 @@ function decodeMessages(result: ReturnType<typeof decodeConfig>) {
 }
 
 describe("assembleSchema", () => {
+	it.each([
+		{
+			config: { webName: "vault" },
+			sentence: "A web app name needs a web framework.",
+		},
+		{
+			config: { web: "nextjs", webName: "Vault" },
+			sentence:
+				"Vault isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+		},
+		{
+			config: { web: "nextjs", webName: "server" },
+			sentence: "server is reserved. Pick another name for this web app.",
+		},
+		{
+			config: {
+				web: "nextjs",
+				webName: "site",
+				webApps: [{ name: "site", framework: "nextjs" }],
+			},
+			sentence: "site names both the primary web app and a secondary one.",
+		},
+		{
+			config: {
+				web: "nextjs",
+				webApps: [{ name: "web", framework: "nextjs" }],
+			},
+			sentence: "web names both the primary web app and a secondary one.",
+		},
+		{
+			config: {
+				web: "nextjs",
+				webApps: [
+					{ name: "site", framework: "nextjs" },
+					{ name: "site", framework: "nextjs" },
+				],
+			},
+			sentence: "site is used by more than one web app.",
+		},
+	])(
+		"checks primary names and project uniqueness: $sentence",
+		({ config, sentence }) => {
+			expect(
+				decodeMessages(decodeConfig({ name: "Acme", slug: "acme", ...config })),
+			).toEqual([
+				sentence,
+				...(config.webName === "Vault" ||
+				config.webName === "server" ||
+				sentence === "site is used by more than one web app."
+					? ["Expected undefined"]
+					: []),
+			]);
+		},
+	);
+
+	it("allows a secondary named web with a custom primary", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webName: "vault",
+			webApps: [{ name: "web", framework: "tanstack-router" }],
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
+	it.each([["passkey"], ["passkey", "passkey"]])(
+		"refuses passkey-only methods %j",
+		(...authMethods) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authMethods,
+				web: "nextjs",
+			});
+
+			expect(decodeMessages(result)).toEqual([
+				"Passkeys need another sign-in method to create accounts.",
+			]);
+		},
+	);
+
+	it("refuses passkeys with only an Expo app", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods: ["email-password", "passkey"],
+			platforms: ["mobile"],
+			mobile: "expo",
+		});
+
+		expect(decodeMessages(result)).toEqual(["Passkeys need a web app."]);
+	});
+
+	it("accepts passkeys with another method and a web app", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods: ["email-password", "passkey"],
+			web: "nextjs",
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
+	it.each(["email-otp", "magic-link"])(
+		"requires an email provider for %s",
+		(method) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authMethods: [method],
+			});
+
+			expect(decodeMessages(result)).toEqual([
+				"Email OTP and magic link need an email provider.",
+			]);
+		},
+	);
+
+	it.each(["resend", "postmark", "smtp"])(
+		"accepts email methods with %s",
+		(emailProvider) => {
+			for (const authMethods of [
+				["email-otp"],
+				["magic-link"],
+				["email-otp", "magic-link"],
+			]) {
+				const result = decodeConfig({
+					name: "Acme",
+					slug: "acme",
+					authentication: "better-auth",
+					authMethods,
+					emailProvider,
+				});
+
+				expect(decodeMessages(result)).toEqual([]);
+				expect(Result.getOrThrow(result)).toMatchObject({
+					authMethods,
+					emailProvider,
+				});
+			}
+		},
+	);
+
+	it("rejects duplicate secondary web app names", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [
+				{ name: "admin", framework: "nextjs" },
+				{ name: "admin", framework: "nextjs" },
+			],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"admin is used by more than one web app.",
+		);
+	});
+
+	it("rejects a secondary taking the default primary name", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [{ name: "web", framework: "nextjs" }],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"web names both the primary web app and a secondary one.",
+		);
+	});
+
+	it.each([
+		{
+			webApps: [{ name: "admin", framework: "nextjs", port: 70000 }],
+			message: "admin needs a port between 1 and 65535.",
+		},
+		{
+			webApps: [{ name: "admin", framework: "nextjs", port: 3002.5 }],
+			message: "admin needs a port between 1 and 65535.",
+		},
+		{
+			webApps: [
+				{ name: "admin", framework: "nextjs", port: 3004 },
+				{ name: "docs", framework: "nextjs", port: 3004 },
+			],
+			message: "admin and docs both use port 3004.",
+		},
+		{
+			webApps: [{ name: "admin", framework: "nextjs", port: 3000 }],
+			message: "web and admin both use port 3000.",
+		},
+		{
+			webApps: [
+				{ name: "admin", framework: "nextjs", port: 3003 },
+				{ name: "docs", framework: "nextjs" },
+			],
+			message: "admin and docs both use port 3003.",
+		},
+	])("rejects the secondary ports in $message", ({ webApps, message }) => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps,
+		});
+
+		expect(decodeMessages(result)).toContain(message);
+	});
+
+	it.each(["hono", "express", "fastify"])(
+		"keeps port 3001 for the %s API server",
+		(backend) => {
+			const result = decodeConfig({
+				backend,
+				name: "Acme",
+				slug: "acme",
+				web: "nextjs",
+				webApps: [{ name: "admin", framework: "nextjs", port: 3001 }],
+			});
+
+			expect(decodeMessages(result)).toContain(
+				"admin can't use port 3001, which the API server uses.",
+			);
+		},
+	);
+
+	it("lets a secondary use port 3001 when no API server runs", () => {
+		const result = decodeConfig({
+			backend: "self",
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [{ name: "docs", framework: "nextjs", port: 3001 }],
+		});
+
+		expect(Result.getOrThrow(result)).toMatchObject({
+			webApps: [{ name: "docs", port: 3001 }],
+		});
+	});
+
+	it("accepts explicit secondary ports beside positional ones", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [
+				{ name: "admin", framework: "nextjs", port: 3002 },
+				{ name: "docs", framework: "nextjs" },
+				{ name: "site", framework: "nextjs", port: 3004 },
+			],
+		});
+
+		expect(Result.getOrThrow(result)).toMatchObject({
+			webApps: [{ port: 3002 }, { name: "docs" }, { port: 3004 }],
+		});
+	});
+
+	it("accepts a secondary framework different from the primary", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "nextjs",
+			webApps: [{ name: "admin", framework: "react-router" }],
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
+	it("requires a primary framework for secondary web apps", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			webApps: [{ name: "admin", framework: "nextjs" }],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"Secondary web apps need a web framework.",
+		);
+	});
+
+	it("accepts secondary apps using the primary framework", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			web: "tanstack-router",
+			webApps: [{ name: "admin", framework: "tanstack-router" }],
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
+	it("accepts an empty secondary list without a primary framework", () => {
+		expect(
+			Result.isSuccess(
+				decodeConfig({ name: "Acme", slug: "acme", webApps: [] }),
+			),
+		).toBe(true);
+	});
+
+	it.each(["two-factor", "organization", "admin", "polar"])(
+		"rejects %s without Better Auth",
+		(plugin) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authPlugins: [plugin],
+			});
+
+			expect(decodeMessages(result)).toContain(
+				"Authentication plugins need Better Auth.",
+			);
+		},
+	);
+
+	it.each([
+		{ plugin: "username", label: "Username" },
+		{ plugin: "two-factor", label: "Two-factor" },
+	])(
+		"rejects $plugin without the email-password method",
+		({ plugin, label }) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authMethods: ["google", "apple"],
+				authPlugins: [plugin],
+			});
+
+			expect(decodeMessages(result)).toContain(
+				`${label} needs this sign-in method: Email and password.`,
+			);
+		},
+	);
+
+	it.each([
+		{
+			authMethods: ["email-password", "email-otp"],
+			message:
+				"Two-factor doesn't work with Email OTP, because that sign-in skips the second factor.",
+		},
+		{
+			authMethods: ["email-password", "magic-link", "email-otp"],
+			message:
+				"Two-factor doesn't work with Magic link or Email OTP, because those sign-ins skip the second factor.",
+		},
+	])(
+		"refuses two-factor beside email sign-ins $authMethods",
+		({ authMethods, message }) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authMethods,
+				authPlugins: ["two-factor", "organization"],
+				emailProvider: "resend",
+			});
+
+			expect(decodeMessages(result)).toEqual([message]);
+		},
+	);
+
+	it.each([
+		{
+			authPlugins: ["two-factor", "organization"],
+			authMethods: ["email-password"],
+		},
+		{
+			authPlugins: ["organization"],
+			authMethods: ["email-password", "email-otp", "magic-link"],
+			emailProvider: "resend",
+		},
+		{ authPlugins: ["organization"], authMethods: ["google"] },
+		{ authPlugins: ["organization"] },
+		{ authPlugins: ["username"], authMethods: ["email-password"] },
+		{ authPlugins: ["admin"], authMethods: ["google", "apple"] },
+		{ authPlugins: ["polar"], authMethods: ["google"] },
+		{ authPlugins: ["polar"] },
+		{ authPlugins: [], authMethods: ["google"] },
+	])("accepts compatible auth plugins %j", (config) => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			...config,
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
+	it.each([
+		{ backend: "self", web: "nextjs", valid: false },
+		{ backend: "hono", valid: true },
+		{ mobile: "expo", valid: true },
+	])(
+		"checks username against resolved default methods %j",
+		({ valid, ...config }) => {
+			const result = decodeConfig({
+				name: "Acme",
+				slug: "acme",
+				authentication: "better-auth",
+				authPlugins: ["username"],
+				...config,
+			});
+
+			expect(Result.isSuccess(result)).toBe(valid);
+		},
+	);
+
+	it.each(
+		[[], ["unknown"], ["google", "unknown"]].map((authMethods) => ({
+			authMethods,
+		})),
+	)("rejects invalid auth methods $authMethods", ({ authMethods }) => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods,
+		});
+
+		expect(Result.isFailure(result)).toBe(true);
+	});
+
+	it("rejects methods without Better Auth", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authMethods: ["google"],
+		});
+
+		expect(decodeMessages(result)).toContain(
+			"Authentication methods need Better Auth.",
+		);
+	});
+
+	it("accepts methods with Better Auth", () => {
+		const result = decodeConfig({
+			name: "Acme",
+			slug: "acme",
+			authentication: "better-auth",
+			authMethods: ["email-password", "google", "apple"],
+		});
+
+		expect(Result.isSuccess(result)).toBe(true);
+	});
+
 	it("decodes a complete create config", () => {
 		const result = decodeConfig({
 			name: "Acme",
@@ -127,10 +580,12 @@ describe("assembleSchema", () => {
 			path: "./acme",
 			platforms: ["web"],
 			web: "nextjs",
-			linter: "oxc",
+			linter: "eslint-prettier",
 		});
 
-		expect(decodeMessages(result)).toContain("We don't support Oxc yet.");
+		expect(decodeMessages(result)).toContain(
+			"We don't support ESLint + Prettier yet.",
+		);
 	});
 
 	it("rejects unavailable style frameworks with a friendly sentence", () => {
@@ -171,6 +626,7 @@ describe("assembleSchema", () => {
 				shouldRun: () => true,
 				execute: async () => undefined,
 			});
+
 			const frameworkStep = defineStep<string>({
 				id: platform,
 				group: "platforms",
@@ -178,6 +634,7 @@ describe("assembleSchema", () => {
 				shouldRun: () => true,
 				execute: async () => undefined,
 			});
+
 			const result = Schema.decodeResult(
 				assembleSchema([platformStep, frameworkStep]),
 			)({ platforms: [platform] });
@@ -259,7 +716,6 @@ describe("assembleSchema", () => {
 
 	it("spreads schema shape fields from null-key steps into the struct", () => {
 		const result = decodeConfig({ name: "Acme", slug: "acme" });
-
 		expect(Result.getOrThrow(result)).toEqual({ name: "Acme", slug: "acme" });
 	});
 

@@ -15,9 +15,8 @@ vi.mock("@clack/prompts", () => ({
 	multiselect: promptMocks.multiselect,
 }));
 
-vi.mock("@ryuujs/generators", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/generators")>();
-
+vi.mock("@ryuugg/generators", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/generators")>();
 	return {
 		...original,
 		getCatalogEntry: catalogMocks.getCatalogEntry,
@@ -25,15 +24,13 @@ vi.mock("@ryuujs/generators", async (importOriginal) => {
 });
 
 const generators =
-	await vi.importActual<typeof import("@ryuujs/generators")>(
-		"@ryuujs/generators",
+	await vi.importActual<typeof import("@ryuugg/generators")>(
+		"@ryuugg/generators",
 	);
 
 function rawConfig(entries: Record<string, unknown>): PartialConfig {
 	const config: PartialConfig = {};
-
 	for (const [key, value] of Object.entries(entries)) config[key] = value;
-
 	return config;
 }
 
@@ -121,9 +118,9 @@ describe("addons step", () => {
 		catalogMocks.getCatalogEntry.mockImplementation((id: string) => {
 			const entry = generators.getCatalogEntry(id);
 			if (entry === undefined || id !== "lefthook") return entry;
-
 			return { ...entry, hidden: true };
 		});
+
 		promptMocks.multiselect.mockResolvedValue([]);
 
 		await expect(addonsStep.execute({}, true)).resolves.toEqual([]);
@@ -145,9 +142,7 @@ describe("addons step", () => {
 
 	it("skips without prompting when no catalog entry is available", async () => {
 		catalogMocks.getCatalogEntry.mockReturnValue(undefined);
-
 		await expect(addonsStep.execute({}, true)).resolves.toBe(SKIP);
-
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 	});
 });

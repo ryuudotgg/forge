@@ -3,14 +3,15 @@ import type {
 	AddonDefinition,
 	Contribution,
 	FrameworkDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	defineFramework,
+	GITIGNORED_MODULE_DIRS,
 	moduleCapabilities,
 	moduleTarget,
 	slotPath,
 	templateModuleTarget,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
@@ -22,6 +23,7 @@ import {
 	gitignore,
 	loadAddonDefinition,
 	nativewind,
+	oxc,
 	shared,
 	tailwind,
 	trpc,
@@ -31,6 +33,7 @@ import { honoFramework } from "../src/frameworks/hono";
 import { nextjsFramework } from "../src/frameworks/nextjs";
 import { reactRouterFramework } from "../src/frameworks/react-router";
 import { tanstackStartFramework } from "../src/frameworks/tanstack-start";
+import { firstPartyRegistry } from "../src/registry/first-party";
 import { readTemplate } from "../src/template";
 import { versions } from "../src/versions";
 import { plannedDefinitionIds } from "./planner-harness";
@@ -164,6 +167,7 @@ function projectDependencySurface(contributions: ReadonlyArray<Contribution>) {
 		contributions,
 		"ManagedDependenciesSurfaceContribution",
 	).find((contribution) => contribution.target._tag === "ProjectTarget");
+
 	if (!found) throw new Error("Missing Dependency Surface: project");
 
 	return found;
@@ -208,6 +212,7 @@ describe("better-auth addon", () => {
 				},
 				[honoFramework],
 			);
+
 			const client = leafFile(contributions, "src/client.ts");
 			expect(client.content).toContain(serverUrl);
 			expect(client.content).toContain('credentials: "include"');
@@ -253,10 +258,12 @@ describe("better-auth addon", () => {
 			_tag: "EnsuredModuleTarget",
 			moduleKey: "auth",
 		});
+
 		expect(index.content).toContain('import { db } from "@acme/db/client";');
 		expect(index.content).toContain(
 			'prismaAdapter(db, { provider: "postgresql" })',
 		);
+
 		expect(index.content).not.toMatch(placeholderPattern);
 	});
 
@@ -276,6 +283,7 @@ describe("better-auth addon", () => {
 		expect(index.content).toContain(
 			'import { accounts, sessions, users, verifications } from "@acme/db/schema";',
 		);
+
 		expect(index.content).not.toMatch(placeholderPattern);
 	});
 
@@ -292,6 +300,7 @@ describe("better-auth addon", () => {
 		expect(rootEnv[0]?.lines[0]).toBe(
 			"# @use pnpm dlx @better-auth/cli secret",
 		);
+
 		expect(rootEnv[0]?.lines[1]).toMatch(/^AUTH_SECRET="[0-9a-f]{64}"$/);
 
 		const secondRootEnv = linesSurfaces(
@@ -304,6 +313,7 @@ describe("better-auth addon", () => {
 			"rootEnv",
 			"Better Auth",
 		);
+
 		expect(secondRootEnv[0]?.lines[1]).not.toBe(rootEnv[0]?.lines[1]);
 
 		const rootEnvExample = linesSurfaces(
@@ -311,6 +321,7 @@ describe("better-auth addon", () => {
 			"rootEnvExample",
 			"Better Auth",
 		);
+
 		expect(rootEnvExample).toHaveLength(1);
 		expect(rootEnvExample[0]?.lines).toContain('AUTH_SECRET=""');
 
@@ -321,6 +332,7 @@ describe("better-auth addon", () => {
 			slug: "acme",
 			web: "nextjs",
 		});
+
 		const npmEnv = linesSurfaces(npmContributions, "rootEnv", "Better Auth");
 		expect(npmEnv[0]?.lines[0]).toBe("# @use npx @better-auth/cli secret");
 	});
@@ -338,12 +350,15 @@ describe("better-auth addon", () => {
 				typeof contribution.path !== "string" &&
 				contribution.path.slot === "auth",
 		);
+
 		if (!route) throw new Error("Missing Leaf File: auth slot");
+
 		expect(route.target).toEqual({
 			_tag: "ResolvedModuleTarget",
 			moduleId: "abcde",
 			moduleRoot: "apps/web",
 		});
+
 		expect(route.path).toEqual(
 			slotPath(
 				{
@@ -354,6 +369,7 @@ describe("better-auth addon", () => {
 				"auth",
 			),
 		);
+
 		expect(route.content).toContain('import { auth } from "@acme/auth";');
 
 		const webDependencies = moduleDependencySurface(contributions, "web");
@@ -371,7 +387,6 @@ describe("better-auth addon", () => {
 
 	it("renders TanStack Start handlers and cookie plugins for both ORMs", () => {
 		const authOrms: ReadonlyArray<"drizzle" | "prisma"> = ["drizzle", "prisma"];
-
 		for (const orm of authOrms) {
 			const contributions = betterAuthContributions(
 				{
@@ -383,11 +398,13 @@ describe("better-auth addon", () => {
 				},
 				tanstackStartFramework,
 			);
+
 			const index = leafFile(contributions, "src/index.ts");
 
 			expect(index.content, orm).toContain(
 				'import { tanstackStartCookies } from "better-auth/tanstack-start";',
 			);
+
 			expect(index.content, orm).toContain("plugins: [tanstackStartCookies()]");
 			expect(index.content, orm).not.toContain("nextCookies");
 
@@ -396,11 +413,13 @@ describe("better-auth addon", () => {
 					typeof contribution.path !== "string" &&
 					contribution.path.slot === "auth",
 			);
+
 			if (!route) throw new Error("Missing Leaf File: auth slot");
 
 			expect(route.content, orm).toContain(
 				'// Loads the server-route type augmentation for createFileRoute.\nimport "@tanstack/react-start";',
 			);
+
 			expect(route.content, orm).toContain('createFileRoute("/api/auth/$")');
 			expect(route.content, orm).toContain("return auth.handler(request);");
 			expect(route.content, orm).not.toContain("toNextJsHandler");
@@ -409,7 +428,6 @@ describe("better-auth addon", () => {
 
 	it("renders Next.js cookie plugins for both ORMs", () => {
 		const authOrms: ReadonlyArray<"drizzle" | "prisma"> = ["drizzle", "prisma"];
-
 		for (const orm of authOrms) {
 			const contributions = betterAuthContributions({
 				authentication: "better-auth",
@@ -418,18 +436,19 @@ describe("better-auth addon", () => {
 				slug: "acme",
 				web: "nextjs",
 			});
+
 			const index = leafFile(contributions, "src/index.ts");
 
 			expect(index.content, orm).toContain(
 				'import { nextCookies } from "better-auth/next-js";',
 			);
+
 			expect(index.content, orm).toContain("plugins: [nextCookies()],");
 		}
 	});
 
 	it("renders React Router handlers without a framework cookie plugin", () => {
 		const authOrms: ReadonlyArray<"drizzle" | "prisma"> = ["drizzle", "prisma"];
-
 		for (const orm of authOrms) {
 			const contributions = betterAuthContributions(
 				{
@@ -441,6 +460,7 @@ describe("better-auth addon", () => {
 				},
 				reactRouterFramework,
 			);
+
 			const index = leafFile(contributions, "src/index.ts");
 			expect(index.content, orm).not.toContain("tanstackStartCookies");
 			expect(index.content, orm).not.toContain("nextCookies");
@@ -451,11 +471,13 @@ describe("better-auth addon", () => {
 					typeof contribution.path !== "string" &&
 					contribution.path.slot === "auth",
 			);
+
 			if (!route) throw new Error("Missing Leaf File: auth slot");
 
 			expect(route.content, orm).toContain(
 				'import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";',
 			);
+
 			expect(route.content, orm).toContain("return auth.handler(request);");
 			expect(route.content, orm).not.toContain("createFileRoute");
 		}
@@ -467,6 +489,7 @@ describe("better-auth addon", () => {
 				(dependency) => dependency.type === "template",
 			),
 		).toBe(false);
+
 		expect(
 			trpc.dependencies.some((dependency) => dependency.type === "template"),
 		).toBe(false);
@@ -517,6 +540,7 @@ describe("trpc addon", () => {
 		const names = dependencies.dependencies.map(
 			(dependency) => dependency.name,
 		);
+
 		expect(names).not.toContain("@acme/db");
 	});
 
@@ -527,12 +551,14 @@ describe("trpc addon", () => {
 			slug: "acme",
 			web: "nextjs",
 		};
+
 		const contributions = adapterContributionsOf(
 			"trpc",
 			config,
 			nextjsFramework,
 			{ trpc: "app/api/trpc/[trpc]/route.ts" },
 		);
+
 		const target = moduleTarget({
 			config: {
 				id: "abcde",
@@ -546,7 +572,6 @@ describe("trpc addon", () => {
 		});
 
 		const paths = ["trpc/query-client.ts", "trpc/server.ts", "trpc/react.tsx"];
-
 		for (const path of paths) {
 			const file = leafFile(contributions, path);
 			expect(file.target, path).toEqual(target);
@@ -562,6 +587,7 @@ describe("trpc addon", () => {
 				typeof contribution.path !== "string" &&
 				contribution.path.slot === "trpc",
 		);
+
 		expect(route?.path).toEqual(slotPath(target, "trpc"));
 	});
 });
@@ -581,6 +607,7 @@ describe("typescript addon", () => {
 			contributions,
 			"tooling/tsconfig/package.json",
 		);
+
 		expect(parseJson(packageJson.content)).toEqual({
 			name: "@acme/tsconfig",
 			private: true,
@@ -616,6 +643,7 @@ describe("typescript addon", () => {
 			contributions,
 			"tooling/tsconfig/react-library.json",
 		);
+
 		expect(parseJson(reactLibrary.content)).toMatchObject({
 			extends: "./base.json",
 			compilerOptions: { jsx: "react-jsx" },
@@ -640,11 +668,13 @@ describe("typescript addon", () => {
 				},
 			},
 		});
+
 		const contributions = contributionsOf(
 			typescript,
 			{ slug: "acme", web: "tanstack-start" },
 			[framework],
 		);
+
 		const paths = ofTag(contributions, "LeafTextFileContribution").map(
 			(contribution) => contribution.path,
 		);
@@ -693,6 +723,7 @@ describe("gitignore addon", () => {
 			"gitignore",
 			"Build",
 		);
+
 		expect(bare[0]?.lines).toEqual(baseLines);
 
 		const nextjs = linesSurfaces(
@@ -700,13 +731,35 @@ describe("gitignore addon", () => {
 			"gitignore",
 			"Build",
 		);
-		expect(nextjs[0]?.lines).toEqual([...baseLines, ".next/"]);
+
+		expect(nextjs[0]?.lines).toEqual([...baseLines, ".next/", "next-env.d.ts"]);
+
+		const secondaryNextjs = linesSurfaces(
+			contributionsOf(
+				gitignore,
+				{
+					web: "react-router",
+					webApps: [{ name: "admin", framework: "nextjs" }],
+				},
+				[nextjsFramework, reactRouterFramework],
+			),
+			"gitignore",
+			"Build",
+		);
+
+		expect(secondaryNextjs[0]?.lines).toEqual([
+			...baseLines,
+			".react-router/",
+			".next/",
+			"next-env.d.ts",
+		]);
 
 		const expo = linesSurfaces(
 			contributionsOf(gitignore, { mobile: "expo" }),
 			"gitignore",
 			"Build",
 		);
+
 		expect(expo[0]?.lines).toEqual([...baseLines, ".expo/"]);
 	});
 
@@ -721,6 +774,7 @@ describe("gitignore addon", () => {
 			slots: [],
 			tsconfigPreset: { content: {}, name: "tanstack-start" },
 		});
+
 		const build = linesSurfaces(
 			contributionsOf(gitignore, { web: "tanstack-start" }, [framework]),
 			"gitignore",
@@ -736,6 +790,25 @@ describe("gitignore addon", () => {
 			".tanstack/",
 			".output/",
 		]);
+	});
+
+	it("matches the folders module discovery skips", () => {
+		const staticLines = ofTag(
+			contributionsOf(gitignore, {}, []),
+			"ManagedLinesSurfaceContribution",
+		)
+			.filter((contribution) => contribution.surface === "gitignore")
+			.flatMap((contribution) => contribution.lines);
+
+		const frameworkLines = firstPartyRegistry.frameworks.flatMap(
+			(framework) => framework.ignoreDirs,
+		);
+
+		const folders = [...staticLines, ...frameworkLines]
+			.filter((line) => line.endsWith("/"))
+			.map((line) => line.slice(0, -1));
+
+		expect(new Set(folders)).toEqual(new Set(GITIGNORED_MODULE_DIRS));
 	});
 
 	it("emits the static sections exactly once", () => {
@@ -756,7 +829,10 @@ describe("gitignore addon", () => {
 
 describe("lefthook addon", () => {
 	it("emits only the pre-commit hook without commitlint", () => {
-		const contributions = contributionsOf(lefthook, { addons: ["lefthook"] });
+		const contributions = contributionsOf(lefthook, {
+			addons: ["lefthook"],
+			linter: "biome",
+		});
 
 		expect(leafFile(contributions, "lefthook.yml").content).toBe(
 			`pre-commit:
@@ -769,6 +845,7 @@ describe("lefthook addon", () => {
 
 	it("prepends the commit-msg hook when commitlint is selected", () => {
 		const contributions = contributionsOf(lefthook, {
+			linter: "biome",
 			addons: ["commitlint", "lefthook"],
 			packageManager: "npm",
 		});
@@ -792,7 +869,10 @@ pre-commit:
 		const scripts = ofTag(contributions, "ManagedScriptsSurfaceContribution");
 		expect(scripts).toHaveLength(1);
 		expect(scripts[0]?.surface).toBe("rootPackageJson");
-		expect(scripts[0]?.scripts).toEqual({ prepare: "lefthook install" });
+		expect(scripts[0]?.scripts).toEqual({
+			prepare:
+				"node -e \"try{require.resolve('lefthook/package.json');process.exit(1)}catch{}\" || lefthook install",
+		});
 
 		expect(projectDependencySurface(contributions).dependencies).toEqual([
 			expect.objectContaining({ name: "lefthook", type: "devDependencies" }),
@@ -812,6 +892,7 @@ describe("vitest addon", () => {
 			_tag: "EnsuredModuleTarget",
 			moduleKey: "web",
 		});
+
 		expect(config.content).toBe(
 			readTemplate("tooling/vitest/vitest.config.ts"),
 		);
@@ -830,12 +911,14 @@ describe("vitest addon", () => {
 				contribution.target._tag === "EnsuredModuleTarget" &&
 				contribution.target.moduleKey === "web",
 		);
+
 		expect(packageScripts?.scripts).toEqual({ test: "vitest run" });
 
 		const rootScripts = ofTag(
 			contributions,
 			"ManagedScriptsSurfaceContribution",
 		).find((contribution) => contribution.target._tag === "ProjectTarget");
+
 		expect(rootScripts?.scripts).toEqual({ test: "turbo run test" });
 
 		expect(moduleDependencySurface(contributions, "web").dependencies).toEqual(
@@ -907,6 +990,7 @@ describe("github-ci addon", () => {
 
 	it("interpolates the npm commands into ci.yml", () => {
 		const contributions = contributionsOf(githubCi, {
+			linter: "biome",
 			addons: ["github-ci"],
 			packageManager: "npm",
 			slug: "acme",
@@ -971,6 +1055,7 @@ describe("shared addon", () => {
 				_tag: "EnsuredModuleTarget",
 				moduleKey: "shared",
 			});
+
 			expect(file.content, name).toBe(
 				readTemplate(`shared/packages/shared/src/${name}.ts`),
 			);
@@ -990,17 +1075,157 @@ describe("shared addon", () => {
 	});
 });
 
+describe("oxc addon", () => {
+	it("contributes both configs, catalog dependencies and scripts", () => {
+		const contributions = contributionsOf(oxc, { linter: "oxc" });
+		expect(contributions).toHaveLength(4);
+		expect(jsonSurface(contributions, "oxlintConfig").value).toMatchObject({
+			plugins: ["typescript", "unicorn", "oxc", "import", "react"],
+			categories: { correctness: "error" },
+			rules: {
+				"no-unused-vars": [
+					"warn",
+					{ argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+				],
+			},
+			ignorePatterns: expect.arrayContaining(["routeTree.gen.ts"]),
+		});
+
+		expect(jsonSurface(contributions, "oxfmtConfig").value).toMatchObject({
+			printWidth: 80,
+			trailingComma: "all",
+			sortPackageJson: false,
+			sortImports: {
+				newlinesBetween: false,
+				partitionByNewline: true,
+				groups: [
+					"builtin",
+					"external",
+					["internal", "subpath"],
+					["parent", "sibling", "index"],
+					"unknown",
+				],
+			},
+			ignorePatterns: expect.arrayContaining(["routeTree.gen.ts"]),
+		});
+
+		expect(projectDependencySurface(contributions).dependencies).toEqual([
+			expect.objectContaining({
+				name: "oxlint",
+				version: versions.oxlint.version,
+				type: "devDependencies",
+			}),
+			expect.objectContaining({
+				name: "oxfmt",
+				version: versions.oxfmt.version,
+				type: "devDependencies",
+			}),
+		]);
+
+		expect(
+			ofTag(contributions, "ManagedScriptsSurfaceContribution")[0]?.scripts,
+		).toEqual({
+			check: "oxlint && oxfmt --check",
+			"check:fix": "oxlint --fix && oxfmt",
+		});
+	});
+
+	it.each([
+		{ packageManager: "pnpm", exec: "pnpm exec", run: "pnpm check:fix" },
+		{ packageManager: "npm", exec: "npx", run: "npm run check:fix --" },
+		{ packageManager: "Yarn", exec: "yarn exec", run: "yarn check:fix" },
+		{ packageManager: "Bun", exec: "bunx", run: "bun run check:fix" },
+	] satisfies ReadonlyArray<{
+		packageManager: ForgeConfig["packageManager"];
+		exec: string;
+		run: string;
+	}>)(
+		"renders staged hooks for $packageManager",
+		({ packageManager, exec, run }) => {
+			const oxcHooks = leafFile(
+				contributionsOf(lefthook, {
+					addons: ["lefthook"],
+					linter: "oxc",
+					packageManager,
+				}),
+				"lefthook.yml",
+			).content;
+
+			expect(oxcHooks).toBe(
+				`pre-commit:\n  jobs:\n    - run: ${exec} oxlint --fix --no-error-on-unmatched-pattern {staged_files}\n    - run: ${exec} oxfmt --no-error-on-unmatched-pattern {staged_files}\n    - run: git update-index --again\n`,
+			);
+
+			const biomeHooks = leafFile(
+				contributionsOf(lefthook, {
+					addons: ["lefthook"],
+					linter: "biome",
+					packageManager,
+				}),
+				"lefthook.yml",
+			).content;
+
+			expect(biomeHooks).toBe(
+				`pre-commit:\n  jobs:\n    - run: ${run} --staged --no-errors-on-unmatched\n    - run: git update-index --again\n`,
+			);
+		},
+	);
+
+	it("omits linter hooks and CI checks without a linter", () => {
+		expect(
+			leafFile(
+				contributionsOf(lefthook, { addons: ["lefthook"] }),
+				"lefthook.yml",
+			).content,
+		).toBe("{}\n");
+
+		const hooks = leafFile(
+			contributionsOf(lefthook, { addons: ["lefthook", "commitlint"] }),
+			"lefthook.yml",
+		).content;
+
+		expect(hooks).toBe(
+			readTemplate("tooling/lefthook/commit-msg.yml").replace(
+				"__COMMITLINT_COMMAND__",
+				"pnpm exec commitlint",
+			),
+		);
+
+		const ci = leafFile(
+			contributionsOf(githubCi, { addons: ["github-ci"] }),
+			".github/workflows/ci.yml",
+		).content;
+
+		expect(ci).not.toContain("- name: Format & Lint");
+		expect(ci).toContain("run: pnpm check:ws");
+	});
+});
+
 describe("biome addon", () => {
+	it("contributes its own check scripts", () => {
+		expect(
+			ofTag(
+				contributionsOf(biome, { linter: "biome" }),
+				"ManagedScriptsSurfaceContribution",
+			)[0]?.scripts,
+		).toEqual({ check: "biome check .", "check:fix": "biome check --write ." });
+	});
+
 	it("pins the biome config surface and dev dependency", () => {
 		const contributions = contributionsOf(biome, { linter: "biome" });
-		expect(contributions).toHaveLength(2);
+		expect(contributions).toHaveLength(3);
 
 		const config = jsonSurface(contributions, "biomeConfig");
 		expect(config.target).toEqual({ _tag: "ProjectTarget" });
 		expect(config.value).toMatchObject({
 			vcs: { enabled: true, clientKind: "git" },
 			formatter: { indentStyle: "space", indentWidth: 2 },
+			linter: { rules: { preset: "recommended" } },
 			css: { parser: { tailwindDirectives: true } },
+		});
+
+		expect(config.value).not.toHaveProperty("linter.rules.recommended");
+		expect(config.value).toMatchObject({
+			files: { includes: expect.arrayContaining(["!**/routeTree.gen.ts"]) },
 		});
 
 		expect(projectDependencySurface(contributions).dependencies).toEqual([
@@ -1028,22 +1253,72 @@ describe("commitlint addon", () => {
 			"@commitlint/config-conventional",
 			"@commitlint/types",
 		]);
+
 		for (const dependency of dependencies)
 			expect(dependency.type).toBe("devDependencies");
 	});
 });
 
 describe("vscode addon", () => {
-	it("copies both editor files from the templates", () => {
+	it.each(["biome", "oxc"] satisfies ReadonlyArray<ForgeConfig["linter"]>)(
+		"renders settings for %s",
+		(linter) => {
+			const contributions = contributionsOf(vscode, {
+				addons: ["vscode"],
+				linter,
+			});
+
+			const extension = linter === "biome" ? "biomejs.biome" : "oxc.oxc-vscode";
+			const settings = leafFile(contributions, ".vscode/settings.json").content;
+			const extensions = leafFile(
+				contributions,
+				".vscode/extensions.json",
+			).content;
+
+			expect(JSON.parse(settings)).toHaveProperty(
+				"editor.defaultFormatter",
+				extension,
+			);
+
+			expect(JSON.parse(extensions)).toEqual({
+				recommendations: [
+					extension,
+					"bradlc.vscode-tailwindcss",
+					"typescriptteam.native-preview",
+					"yoavbls.pretty-ts-errors",
+				],
+			});
+
+			expect(settings).toContain(`"editor.defaultFormatter": "${extension}"`);
+			expect(settings).toContain(`"source.fixAll.${linter}": "explicit"`);
+
+			if (linter === "biome") {
+				expect(settings).toBe(
+					'{\n  "editor.defaultFormatter": "biomejs.biome",\n  "[markdown]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },\n  "[mdx]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },\n  "[yaml]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },\n  "editor.formatOnSave": true,\n  "editor.codeActionsOnSave": { "source.fixAll.biome": "explicit" },\n  "files.associations": { "*.css": "tailwindcss", "*.json": "jsonc" },\n  "tailwindCSS.experimental.classRegex": [\n    ["cva\\\\(([^)]*)\\\\)", "[\\"\'`]([^\\"\'`]*).*?[\\"\'`]"],\n    ["cx\\\\(([^)]*)\\\\)", "(?:\'|\\"|`)([^\']*)(?:\'|\\"|`)"]\n  ],\n  "tailwindCSS.classFunctions": ["cn", "cva", "cx"],\n  "js/ts.experimental.useTsgo": true,\n  "js/ts.tsdk.path": "./node_modules/typescript"\n}\n',
+				);
+
+				expect(extensions).toBe(
+					'{\n  "recommendations": [\n    "biomejs.biome",\n    "bradlc.vscode-tailwindcss",\n    "typescriptteam.native-preview",\n    "yoavbls.pretty-ts-errors"\n  ]\n}\n',
+				);
+			}
+
+			expect(settings.includes('"[markdown]"')).toBe(linter === "biome");
+			expect(settings.includes('"[mdx]"')).toBe(linter === "biome");
+			expect(settings.includes('"[yaml]"')).toBe(linter === "biome");
+			expect(
+				leafFile(contributions, ".vscode/extensions.json").content,
+			).toContain(extension);
+		},
+	);
+
+	it("renders both editor files without a linter", () => {
 		const contributions = contributionsOf(vscode, { addons: ["vscode"] });
 		expect(contributions).toHaveLength(2);
 
 		for (const path of [".vscode/settings.json", ".vscode/extensions.json"]) {
 			const file = leafFile(contributions, path);
-			expect(file.content, path).toBe(
-				readTemplate(`tooling/vscode/${path.replace(".vscode/", "")}`),
-			);
-			expect(() => parseJson(file.content), path).not.toThrow();
+			expect(file.content).not.toContain("biome");
+			expect(() => JSON.parse(file.content), path).not.toThrow();
 		}
 	});
 });

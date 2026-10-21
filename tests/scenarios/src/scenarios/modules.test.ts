@@ -42,9 +42,11 @@ describe("module identity", () => {
 			expect(manifest.modules[beforeRename.id]?.root).toBe(
 				"packages/design-system",
 			);
+
 			expect(await pathExists(join(workspace.projectRoot, "packages/ui"))).toBe(
 				false,
 			);
+
 			expect(Object.keys(manifest.modules)).toHaveLength(2);
 			expect(
 				Object.values(manifest.modules).some(

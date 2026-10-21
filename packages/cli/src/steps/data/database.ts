@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { databases } from "@ryuujs/generators";
+import { databases } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP } from "../types";

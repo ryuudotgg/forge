@@ -3,15 +3,20 @@ import { appRouter, createTRPCContext } from "@__SLUG__/trpc";
 import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { env } from "../../env.js";
+import { webOrigins } from "../../env.js";
 
 export const trpcRoutes = new Hono();
 
 trpcRoutes.use(
   "/api/trpc/*",
   cors({
-    origin: env.WEB_URL,
-    allowHeaders: ["Content-Type", "Authorization", "x-trpc-source"],
+    origin: webOrigins,
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-trpc-source",
+      "trpc-accept",
+    ],
     allowMethods: ["GET", "POST", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,

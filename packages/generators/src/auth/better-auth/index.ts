@@ -1,30 +1,55 @@
 import {
+	type Dependency,
 	defineAddon,
 	ensuredModuleTarget,
 	ensurePackageModule,
 	leafTextFile,
 	projectTarget,
+	Refusal,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
 import {
 	type ApiHostConsumer,
 	apiHostError,
 	apiHostFramework,
 } from "../../api-host";
-import type { ForgeConfig } from "../../config";
+import { authMethods, type ForgeConfig } from "../../config";
 import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
-import { appOrigin } from "../../origins";
+import {
+	appOrigin,
+	hasSecondaryClients,
+	secondaryClientOrigins,
+	standaloneApiOrigin,
+} from "../../origins";
 import { pmDlx, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
-import { renderBetterAuthTemplate } from "./shared";
+import { catalogRef } from "../../versions";
+import { webAppInstances } from "../../web-apps";
+import {
+	authEmailMethods,
+	authSocialProviders,
+	authUsesPasskey,
+} from "../methods";
+import {
+	authPluginEnvEntries,
+	authPluginFiles,
+	authPluginPackages,
+	authPluginsBlockDeclarations,
+	authSendsEmail,
+} from "../plugins";
+import { invitationPageContributions } from "./invitation-page";
+import { renderBetterAuthTemplate, renderSecondaryAuthClient } from "./shared";
+
+const listAnd = new Intl.ListFormat("en", { type: "conjunction" });
 
 const betterAuthConsumer: ApiHostConsumer = {
 	id: "better-auth",
 	name: "Better Auth",
+	slot: "auth",
 };
 
 function generateAuthSecret() {
@@ -54,7 +79,15 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 		const slug = config.slug ?? "my-app";
 
 		if (config.orm === undefined)
-			throw new Error("You need to add an ORM before you can use Better Auth.");
+			throw new Refusal({
+				message: "You need to add an ORM before you can use Better Auth.",
+			});
+
+		const emailMethods = authEmailMethods(config);
+		if (emailMethods.length > 0 && config.emailProvider === undefined)
+			throw new Refusal({
+				message: `${listAnd.format(emailMethods.map((method) => authMethods.label(method)))} ${emailMethods.length === 1 ? "needs" : "need"} an email provider.`,
+			});
 
 		const failure = apiHostError(config, betterAuthConsumer, frameworks);
 		if (failure !== undefined) return Effect.fail(failure);
@@ -62,6 +95,25 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 		const pm = resolvePackageManager(config);
 		const secretCommand = pmDlx(pm, "@better-auth/cli secret");
 		const origin = appOrigin(config);
+		const socialEnvLines = authSocialProviders(config).flatMap(
+			({ envStem }) => [
+				"",
+				`${envStem}_CLIENT_ID=""`,
+				`${envStem}_CLIENT_SECRET=""`,
+			],
+		);
+
+		const pluginEnv = authPluginEnvEntries(config);
+		const pluginEnvLines =
+			pluginEnv.length > 0
+				? ["", ...pluginEnv.map(({ name, example }) => `${name}=${example}`)]
+				: [];
+
+		const secondaryOrigins = secondaryClientOrigins(config);
+		const selfHostedOrigins =
+			secondaryOrigins.length > 0 && standaloneApiOrigin(config) === undefined
+				? [envFileLine("WEB_URLS", secondaryOrigins.join(","))]
+				: [];
 
 		return [
 			ensurePackageModule("auth", "packages/auth", {
@@ -76,14 +128,19 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				type: "module",
 				exports: {
 					".": "./src/index.ts",
+					"./background": "./src/background.ts",
 					"./env": "./env.ts",
 					"./client": "./src/client.ts",
+					"./client-address": "./src/client-address.ts",
 				},
 				scripts: { typecheck: "tsc --noEmit" },
 			}),
 			surfaceJson(ensuredModuleTarget("auth"), "tsconfig", {
 				extends: `@${slug}/tsconfig/base.json`,
 				compilerOptions: {
+					...(authPluginsBlockDeclarations(config)
+						? { declaration: false, declarationMap: false }
+						: {}),
 					types: ["node"],
 					paths: { [`@${slug}/auth/*`]: ["./src/*"] },
 				},
@@ -97,7 +154,22 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					type: "dependencies",
 				},
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
-				{ ...deps.betterAuth, type: "dependencies" },
+				{ ...catalogRef("betterAuth", config), type: "dependencies" },
+				...(authSendsEmail(config)
+					? [
+							{
+								name: `@${slug}/email`,
+								version: "workspace:*",
+								type: "dependencies",
+							} satisfies Dependency,
+						]
+					: []),
+				...authPluginPackages(config, "auth").map(
+					(dependency): Dependency => ({
+						...dependency,
+						type: "dependencies",
+					}),
+				),
 				...(config.mobile === "expo"
 					? [{ ...deps.betterAuthExpo, type: "dependencies" as const }]
 					: []),
@@ -121,6 +193,70 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 				"src/client.ts",
 				renderBetterAuthTemplate(config, "packages/auth/src/client.ts"),
 			),
+			leafTextFile(
+				ensuredModuleTarget("auth"),
+				"src/client-address.ts",
+				renderBetterAuthTemplate(config, "packages/auth/src/client-address.ts"),
+			),
+			leafTextFile(
+				ensuredModuleTarget("auth"),
+				"src/background.ts",
+				renderBetterAuthTemplate(config, "packages/auth/src/background.ts"),
+			),
+			...webAppInstances(config)
+				.filter((instance) => instance.client === true)
+				.flatMap((instance) => {
+					const sourceRoot =
+						instance.framework === "nextjs"
+							? ""
+							: instance.framework === "react-router"
+								? "app/"
+								: "src/";
+
+					const target = ensuredModuleTarget(instance.key);
+					return [
+						leafTextFile(
+							target,
+							`${sourceRoot}lib/auth-client.ts`,
+							renderSecondaryAuthClient(config, instance.framework),
+						),
+						surfaceDependencies(target, "packageJson", [
+							{ ...catalogRef("betterAuth", config), type: "dependencies" },
+							...authPluginPackages(config, "auth").map(
+								(dependency): Dependency => ({
+									...dependency,
+									type: "dependencies",
+								}),
+							),
+						]),
+					];
+				}),
+			...invitationPageContributions(config),
+			...authPluginFiles(config).map((path) =>
+				leafTextFile(
+					ensuredModuleTarget("auth"),
+					path,
+					renderBetterAuthTemplate(config, `packages/auth/${path}`),
+				),
+			),
+			...(hasSecondaryClients(config) && authUsesPasskey(config)
+				? [
+						leafTextFile(
+							ensuredModuleTarget("auth"),
+							"README.md",
+							[
+								"# Passkeys",
+								"",
+								"For apps on different subdomains, set `PASSKEY_RP_ID` in the root `.env` to their shared registrable parent domain. For `https://app.example.com` and `https://admin.example.com`, use `example.com` and include the secondary origin in `WEB_URLS`.",
+								"",
+								"Each app hostname must equal the RP ID or be its subdomain. Unrelated domains cannot share this RP ID. Leave `PASSKEY_RP_ID` empty to use the primary app hostname, including `localhost` during development.",
+								"",
+								"Choose the RP ID before registering passkeys. Existing passkeys remain bound to the RP ID used at registration.",
+								"",
+							].join("\n"),
+						),
+					]
+				: []),
 
 			surfaceLines(
 				projectTarget(),
@@ -129,14 +265,16 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					`# @use ${secretCommand}`,
 					`AUTH_SECRET="${generateAuthSecret()}"`,
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
+					'AUTH_TRUSTED_PROXIES="" # comma separated proxy IPs or CIDRs, proxies must append the client to X-Forwarded-For, empty for direct connections',
+					'AUTH_CLIENT_IP_HEADER="" # only set a header your platform overwrites with the client IP, eg. x-real-ip on Vercel, empty for none',
 					"",
 					envFileLine("APP_ORIGIN", origin),
-					"",
-					'AUTH_GOOGLE_CLIENT_ID=""',
-					'AUTH_GOOGLE_CLIENT_SECRET=""',
-					"",
-					'AUTH_APPLE_CLIENT_ID=""',
-					'AUTH_APPLE_CLIENT_SECRET=""',
+					...selfHostedOrigins,
+					...(hasSecondaryClients(config) && authUsesPasskey(config)
+						? [envFileLine("PASSKEY_RP_ID", "")]
+						: []),
+					...socialEnvLines,
+					...pluginEnvLines,
 				],
 				{ section: "Better Auth" },
 			),
@@ -147,14 +285,16 @@ const betterAuthAddon = defineAddon<ForgeConfig, "better-auth">({
 					`# @use ${secretCommand}`,
 					'AUTH_SECRET=""',
 					'AUTH_COOKIE_DOMAIN="" # empty for localhost, eg. ".example.com"',
+					'AUTH_TRUSTED_PROXIES="" # comma separated proxy IPs or CIDRs, proxies must append the client to X-Forwarded-For, empty for direct connections',
+					'AUTH_CLIENT_IP_HEADER="" # only set a header your platform overwrites with the client IP, eg. x-real-ip on Vercel, empty for none',
 					"",
 					envFileLine("APP_ORIGIN", origin),
-					"",
-					'AUTH_GOOGLE_CLIENT_ID=""',
-					'AUTH_GOOGLE_CLIENT_SECRET=""',
-					"",
-					'AUTH_APPLE_CLIENT_ID=""',
-					'AUTH_APPLE_CLIENT_SECRET=""',
+					...selfHostedOrigins,
+					...(hasSecondaryClients(config) && authUsesPasskey(config)
+						? [envFileLine("PASSKEY_RP_ID", "")]
+						: []),
+					...socialEnvLines,
+					...pluginEnvLines,
 				],
 				{ section: "Better Auth" },
 			),

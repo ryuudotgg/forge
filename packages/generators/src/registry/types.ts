@@ -10,8 +10,8 @@ import type {
 	RegistryUnit,
 	TargetMode,
 	TemplateDefinition,
-} from "@ryuujs/core";
-import { addonDeclaresFramework, deriveAddonFrameworks } from "@ryuujs/core";
+} from "@ryuugg/core";
+import { addonDeclaresFramework, deriveAddonFrameworks } from "@ryuugg/core";
 import { Schema } from "effect";
 import type { ForgeConfig } from "../config";
 
@@ -257,12 +257,14 @@ export function announcedCatalogEntry(
 	name: string,
 	category?: string,
 ): FrameworkCatalogEntry;
+
 export function announcedCatalogEntry(
 	kind: "addon",
 	id: string,
 	name: string,
 	category: string,
 ): AddonCatalogEntry;
+
 export function announcedCatalogEntry(
 	kind: "addon" | "framework",
 	id: string,

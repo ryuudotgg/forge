@@ -11,6 +11,7 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.users.id,
       to: r.sessions.userId,
     }),
+__AUTH_USER_RELATIONS__
   },
 
   accounts: {
@@ -28,4 +29,5 @@ export const relations = defineRelations(schema, (r) => ({
       optional: false,
     }),
   },
+__AUTH_TABLE_RELATIONS__
 }));

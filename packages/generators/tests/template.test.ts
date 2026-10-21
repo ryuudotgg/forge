@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -7,7 +7,7 @@ import {
 	marker,
 	renderRecipeAsset,
 	sharedAsset,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { describe, expect, it } from "vitest";
 import {
 	nextjsFramework,
@@ -21,6 +21,7 @@ const TEMPLATE_DIR = join(
 	"..",
 	"templates",
 );
+
 const ROOT_DIR = join(TEMPLATE_DIR, "..", "..", "..");
 const GITHUB_TEMPLATE_DIR = join(TEMPLATE_DIR, "tooling", "github");
 
@@ -32,16 +33,16 @@ const REPOSITORY_SETUP_ACTION = join(
 	"action.yml",
 );
 
-const readActionMajors = (path: string) => {
-	const actions = new Map<string, string>();
+const REPOSITORY_CI_WORKFLOW = join(ROOT_DIR, ".depot", "workflows", "ci.yml");
 
+const readActionPins = (path: string) => {
+	const actions: Array<[string, string]> = [];
 	for (const match of readFileSync(path, "utf-8").matchAll(
-		/^\s*- uses:\s+(?<depName>[\w.-]+\/[\w.-]+)@v(?<major>\d+)\s*$/gm,
+		/^\s*-? *uses:\s+(?<depName>[\w.-]+\/[\w.-]+)@(?<pin>\S+(?:\s+#\s+\S+)?)\s*$/gm,
 	)) {
 		const depName = match.groups?.depName;
-		const major = match.groups?.major;
-
-		if (depName && major) actions.set(depName, major);
+		const pin = match.groups?.pin;
+		if (depName && pin) actions.push([depName, pin]);
 	}
 
 	return actions;
@@ -70,10 +71,12 @@ describe("interpolate", () => {
 	it("matches recipe rendering byte-for-byte", () => {
 		const template =
 			"// __AUTH_IMPORT__\nexport const __SLUG__ = call(/* __AUTH_ARG__ */ input);\n";
+
 		const asset = sharedAsset("query-client", {
 			template: "api/trpc/web/query-client.ts",
 			destination: inSourceRoot("trpc/query-client.ts"),
 		});
+
 		const recipe = defineTemplateRecipe({
 			addon: "trpc",
 			markers: {
@@ -83,11 +86,13 @@ describe("interpolate", () => {
 			},
 			assets: [asset],
 		});
+
 		const legacyValues = {
 			SLUG: "acme",
 			"// __AUTH_IMPORT__\n": 'import { auth } from "@acme/auth";\n',
 			"/* __AUTH_ARG__ */ ": "auth, ",
 		};
+
 		const rendered = renderRecipeAsset(recipe, asset, nextjsFramework, {
 			markers: {
 				SLUG: legacyValues.SLUG,
@@ -129,32 +134,47 @@ describe("readTemplate", () => {
 });
 
 describe("GitHub Actions templates", () => {
-	it("matches shared action majors with Forge's setup action", () => {
-		const repositoryActions = readActionMajors(REPOSITORY_SETUP_ACTION);
-		const sharedTemplateActions = new Map([
+	const templateNames = readdirSync(GITHUB_TEMPLATE_DIR).filter((name) =>
+		name.endsWith(".yml"),
+	);
+
+	it("pins every action to a commit SHA with its release tag", () => {
+		for (const templateName of templateNames) {
+			const actions = readActionPins(join(GITHUB_TEMPLATE_DIR, templateName));
+			for (const [actionName, pin] of actions)
+				expect(pin, `${templateName} ${actionName}`).toMatch(
+					/^[0-9a-f]{40} # v\d+\.\d+\.\d+$/,
+				);
+		}
+	});
+
+	it("matches the action pins Forge uses itself", () => {
+		const repositoryActions = new Map([
+			...readActionPins(REPOSITORY_CI_WORKFLOW),
+			...readActionPins(REPOSITORY_SETUP_ACTION),
+		]);
+
+		const templateActions = new Map([
+			["ci.yml", ["actions/checkout"]],
 			["setup-action.pnpm.yml", ["pnpm/action-setup", "actions/setup-node"]],
 			["setup-action.npm.yml", ["actions/setup-node"]],
 			["setup-action.bun.yml", ["oven-sh/setup-bun", "actions/setup-node"]],
 			["setup-action.yarn.yml", ["actions/setup-node"]],
 		]);
 
-		for (const [templateName, actionNames] of sharedTemplateActions) {
-			const templateActions = readActionMajors(
-				join(GITHUB_TEMPLATE_DIR, templateName),
-			);
-
+		for (const [templateName, actionNames] of templateActions) {
+			const actions = readActionPins(join(GITHUB_TEMPLATE_DIR, templateName));
 			for (const actionName of actionNames) {
-				const repositoryMajor = repositoryActions.get(actionName);
-				const templateMajor = templateActions.get(actionName);
+				const repositoryPin = repositoryActions.get(actionName);
+				const pins = actions
+					.filter(([name]) => name === actionName)
+					.map(([, pin]) => pin);
 
-				expect(repositoryMajor, `${actionName} is used by Forge`).toBeDefined();
-				expect(
-					templateMajor,
-					`${templateName} uses ${actionName}`,
-				).toBeDefined();
-				expect(templateMajor, `${templateName} ${actionName}`).toBe(
-					repositoryMajor,
-				);
+				expect(repositoryPin, `${actionName} is used by Forge`).toBeDefined();
+				expect(pins, `${templateName} uses ${actionName}`).not.toHaveLength(0);
+
+				for (const pin of pins)
+					expect(pin, `${templateName} ${actionName}`).toBe(repositoryPin);
 			}
 		}
 	});

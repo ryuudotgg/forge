@@ -1,20 +1,27 @@
-import { env } from "@__SLUG__/auth/env";
+import { runInBackground } from "@__SLUG__/auth/background";
+import { clientIpHeader, trustedProxies } from "@__SLUG__/auth/client-address";
+import { __AUTH_ENV_NAMES__ } from "@__SLUG__/auth/env";
+__DB_HELPER_IMPORT__
 import { db } from "@__SLUG__/db/client";
-import { accounts, sessions, users, verifications } from "@__SLUG__/db/schema";
+__ADAPTER_SCHEMA_IMPORT__
+__SCOPED_PLUGIN_IMPORTS__
 import type { BetterAuthOptions } from "better-auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-// __COOKIE_IMPORT__
+// __PLUGIN_IMPORTS__
+__RELATIVE_PLUGIN_IMPORTS__
 
 const SESSION_EXPIRES_IN = 60 * 60 * 24 * 7; // 7 days
 const SESSION_UPDATE_AGE = 60 * 60 * 24; // 1 day
 const SESSION_CACHE_MAX_AGE = 60 * 15; // 15 minutes
+__PLUGIN_CONSTANTS__
 
 const authSecret = getAuthSecret();
-const socialProviders = getSocialProviders();
+// __SOCIAL_DECLARATION__
 const cookieDomain = normalizeCookieDomain(env.AUTH_COOKIE_DOMAIN);
 
 const config = {
+  appName: __APP_NAME__,
   secret: authSecret,
   baseURL: normalizeOrigin(env.APP_ORIGIN),
   // __TRUSTED_ORIGINS__
@@ -26,11 +33,16 @@ const config = {
       account: accounts,
       session: sessions,
       verification: verifications,
+__ADAPTER_MODELS__
     },
   }),
   // __EMAIL_PASSWORD__
 
-  // __COOKIE_PLUGIN__
+  // __PLUGINS__
+
+  // __HOOKS__
+
+  // __DATABASE_HOOKS__
 
   session: {
     expiresIn: SESSION_EXPIRES_IN,
@@ -39,11 +51,16 @@ const config = {
     storeSessionInDatabase: true,
   },
 
-  ...(socialProviders ? { socialProviders } : {}),
+  // __SOCIAL_OPTION__
 
   account: { accountLinking: { enabled: true } },
 
   advanced: {
+    backgroundTasks: { handler: runInBackground },
+    ipAddress: {
+      ipAddressHeaders: [clientIpHeader],
+      trustedProxies,
+    },
     useSecureCookies: env.NODE_ENV !== "development",
     ...(cookieDomain
       ? { crossSubDomainCookies: { enabled: true, domain: cookieDomain } }
@@ -61,32 +78,7 @@ function getAuthSecret() {
   throw new Error("AUTH_SECRET is required");
 }
 
-function getSocialProviders() {
-  const google =
-    env.AUTH_GOOGLE_CLIENT_ID && env.AUTH_GOOGLE_CLIENT_SECRET
-      ? {
-          clientId: env.AUTH_GOOGLE_CLIENT_ID,
-          clientSecret: env.AUTH_GOOGLE_CLIENT_SECRET,
-          redirectURI: `${normalizeOrigin(env.APP_ORIGIN)}/api/auth/callback/google`,
-        }
-      : null;
-
-  const apple =
-    env.AUTH_APPLE_CLIENT_ID && env.AUTH_APPLE_CLIENT_SECRET
-      ? {
-          clientId: env.AUTH_APPLE_CLIENT_ID,
-          clientSecret: env.AUTH_APPLE_CLIENT_SECRET,
-          redirectURI: `${normalizeOrigin(env.APP_ORIGIN)}/api/auth/callback/apple`,
-        }
-      : null;
-
-  if (!google && !apple) return null;
-
-  return {
-    ...(apple ? { apple } : {}),
-    ...(google ? { google } : {}),
-  };
-}
+// __SOCIAL_FUNCTION__
 
 function normalizeOrigin(origin: string) {
   return new URL(origin).origin;

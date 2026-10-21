@@ -1,8 +1,9 @@
 import { log } from "@clack/prompts";
-import { platforms } from "@ryuujs/generators";
+import { platforms } from "@ryuugg/generators";
 import color from "picocolors";
 import { type OptionKey, options, sections } from "../cli";
 import { type SubcommandDef, subcommands } from "../commands/registry";
+import type { Choices } from "./choices";
 
 interface HelpEntry {
 	label: string;
@@ -11,18 +12,15 @@ interface HelpEntry {
 }
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
 function visibleLength(value: string): number {
 	return value.replace(ansiPattern, "").length;
 }
 
 function buildCommandEntries(): HelpEntry[] {
 	const entries: HelpEntry[] = [];
-
 	for (const [name, cmd] of Object.entries<SubcommandDef>(subcommands)) {
 		const label = cmd.default ? "forge [create]" : `forge ${name}`;
 		const command = color.bold(color.cyan(label));
-
 		if (cmd.arg)
 			entries.push({
 				label: `${command} ${color.dim(cmd.arg)}`,
@@ -54,6 +52,7 @@ function formatFlag(key: OptionKey, unavailable: boolean): string {
 				? `-${opt.short}, `
 				: `${color.bold(`-${opt.short}`)}, `
 			: "    ";
+
 	const long = `--${key}`;
 	const arg =
 		opt.type === "string"
@@ -61,8 +60,8 @@ function formatFlag(key: OptionKey, unavailable: boolean): string {
 				? " <value>"
 				: color.dim(" <value>")
 			: "";
-	const soon = unavailable ? color.dim(" (soon)") : "";
 
+	const soon = unavailable ? color.dim(" (soon)") : "";
 	return `${short}${unavailable ? long : color.bold(long)}${arg}${soon}`;
 }
 
@@ -72,15 +71,16 @@ function flagLength(key: OptionKey): number {
 
 function formatChoices(key: OptionKey, unavailable: boolean): string {
 	const opt = options[key];
-	const choices = "choices" in opt ? opt.choices : [];
+	if (!("choices" in opt)) return "";
 
-	return choices
-		.map((choice) =>
+	const choices: Choices<string> = opt.choices;
+	return choices.ids
+		.map((id) =>
 			unavailable
-				? choice.label
-				: choice.available
-					? color.white(choice.label)
-					: color.dim(`${choice.label} (soon)`),
+				? choices.label(id)
+				: choices.available(id)
+					? color.white(choices.label(id))
+					: color.dim(`${choices.label(id)} (soon)`),
 		)
 		.join(unavailable ? " \u00b7 " : color.dim(" \u00b7 "));
 }
@@ -116,13 +116,19 @@ export function printHelp() {
 			const len = flagLength(key);
 			const padding = " ".repeat(maxLen - len + 4);
 
-			const desc =
-				"choices" in opt
-					? formatChoices(key, unavailable)
-					: color.dim(opt.description);
+			const description =
+				section.descriptions?.[key] ??
+				("description" in opt ? opt.description : undefined);
 
-			const row = `    ${flag}${padding}${desc}`;
-			lines.push(unavailable ? color.dim(row) : row);
+			const choices = "choices" in opt ? formatChoices(key, unavailable) : "";
+			const [summary, detail] =
+				description === undefined
+					? [choices, ""]
+					: [color.dim(description), choices];
+
+			const rows = [`    ${flag}${padding}${summary}`];
+			if (detail !== "") rows.push(`${" ".repeat(maxLen + 8)}${detail}`);
+			lines.push(...rows.map((row) => (unavailable ? color.dim(row) : row)));
 		}
 	}
 
@@ -132,6 +138,7 @@ export function printHelp() {
 		`    ${color.bold("forge list")} ${color.dim("auth")}`,
 		`    ${color.bold("forge info")} ${color.dim("drizzle")}`,
 		`    ${color.bold("forge add")} ${color.dim("trpc")}`,
+		`    ${color.bold("forge create")} ${color.dim("--web tanstack-router --web admin=nextjs+client")}`,
 	);
 
 	log.message(`${lines.join("\n")}\n`);

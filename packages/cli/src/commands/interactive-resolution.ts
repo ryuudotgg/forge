@@ -6,7 +6,7 @@ import {
 	type ApplyResolution,
 	type ConflictResolution,
 	describeConflictValue,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import color from "picocolors";
 import { cancel } from "../utils/cancel";
 import { listAnd } from "../utils/list";
@@ -58,6 +58,7 @@ function conflictMessage(conflict: ApplyConflict, path: string): string {
 
 function withProgress(message: string, step: number, total: number): string {
 	if (total < 2) return message;
+
 	const progress = color.dim(`(${step} of ${total})`);
 	const newline = message.indexOf("\n");
 	return newline === -1
@@ -74,6 +75,7 @@ async function selectResolution(
 		{ label: "Keep my value", value: "user" },
 		{ label: "Take Forge's", value: "forge" },
 	];
+
 	if (step < total)
 		options.push(
 			{ label: "Keep my value for all remaining", value: "user-all" },
@@ -112,14 +114,20 @@ export function canResolveInteractively(
 		return false;
 
 	const conflicts = preflight.conflicts ?? [];
-	if ((preflight.refusals ?? []).some((refusal) => !refusal.resolvable))
+
+	if (
+		(preflight.refusals ?? []).some(
+			(refusal) => !refusal.resolvedBy.includes("keep-user"),
+		)
+	)
 		return false;
 
 	const managedWrites = (preflight.refusals ?? []).filter(
 		(refusal) =>
-			refusal.reason === "managed-file-modified" &&
+			(refusal.reason === "managed-file-modified" ||
+				refusal.reason === "managed-base-damaged") &&
 			refusal.operation === "write" &&
-			refusal.resolvable,
+			refusal.resolvedBy.includes("keep-user"),
 	);
 
 	return conflicts.length > 0 || managedWrites.length > 0;
@@ -137,14 +145,19 @@ export async function promptForConflictResolutions(
 	const cells: ConflictCell[] = (preflight.refusals ?? [])
 		.filter(
 			(refusal) =>
-				refusal.reason === "managed-file-modified" &&
+				(refusal.reason === "managed-file-modified" ||
+					refusal.reason === "managed-base-damaged") &&
 				refusal.operation === "write" &&
-				refusal.resolvable,
+				refusal.resolvedBy.includes("keep-user"),
 		)
 		.map((refusal) => ({
 			header: refusal.path,
 			label: refusal.path,
-			message: color.dim("This managed file was modified."),
+			message: color.dim(
+				refusal.reason === "managed-base-damaged"
+					? `${refusal.path}'s stored base under .forge/bases is missing or no longer matches its hash.`
+					: "This managed file was modified.",
+			),
 		}));
 
 	const grouped = new Map<string, ReadonlyArray<ApplyConflict>>();
@@ -164,9 +177,9 @@ export async function promptForConflictResolutions(
 			});
 
 	const decisions: ConflictDecision[] = [];
+
 	let bulk: ConflictResolution | undefined;
 	let header: string | undefined;
-
 	for (const [index, cell] of cells.entries()) {
 		let resolution = bulk;
 		if (resolution === undefined) {
@@ -174,16 +187,19 @@ export async function promptForConflictResolutions(
 				log.info(color.bold(cell.header));
 				header = cell.header;
 			}
+
 			const choice = await selectResolution(
 				cell.message,
 				index + 1,
 				cells.length,
 			);
+
 			if (choice === "user-all" || choice === "forge-all") {
 				bulk = choice === "user-all" ? "user" : "forge";
 				resolution = bulk;
 			} else resolution = choice;
 		}
+
 		decisions.push({
 			label: cell.label,
 			request:

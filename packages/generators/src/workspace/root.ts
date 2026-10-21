@@ -8,8 +8,9 @@ import {
 	runtimeCommand,
 	surfaceDependencies,
 	surfaceJson,
+	surfaceLines,
 	surfaceScripts,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Effect } from "effect";
 import type { ForgeConfig } from "../config";
 import { resolveDatabaseProvider } from "../data/providers";
@@ -112,7 +113,6 @@ function buildContributions(
 		packageJson.workspaces = ["apps/*", "packages/*", "tooling/*"];
 
 	const overrides = packageOverrides(config);
-
 	if (packageManagerCommandName !== "pnpm" && Object.keys(overrides).length > 0)
 		packageJson[
 			packageManagerCommandName === "yarn" ? "resolutions" : "overrides"
@@ -126,8 +126,6 @@ function buildContributions(
 
 	const scripts: Record<string, string> = {
 		build: "turbo run build",
-		check: "biome check .",
-		"check:fix": "biome check --write .",
 		"check:ws": "sherif",
 		dev: "turbo run dev",
 		typecheck: "turbo run typecheck",
@@ -149,6 +147,9 @@ function buildContributions(
 	if (outputs.length > 0) buildTask.outputs = outputs;
 
 	return [
+		surfaceLines(projectTarget(), "gitattributes", [".forge/** -text"], {
+			section: "Forge state",
+		}),
 		surfaceJson(projectTarget(), "rootPackageJson", packageJson),
 		surfaceDependencies(projectTarget(), "rootPackageJson", [
 			tsconfigDevDep,

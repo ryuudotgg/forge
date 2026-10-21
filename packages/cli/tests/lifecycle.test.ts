@@ -1,22 +1,42 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { type InstallRecord, ManifestSchema } from "@ryuujs/core";
-import * as generators from "@ryuujs/generators";
-import { Schema } from "effect";
+import { NodeServices } from "@effect/platform-node";
+import {
+	Apply,
+	type ApplyPlan,
+	CliVersion,
+	CoreLive,
+	type DeclinedChange,
+	type InstallRecord,
+	ManifestSchema,
+	Planner,
+} from "@ryuugg/core";
+import * as generators from "@ryuugg/generators";
+import { Effect, Layer, Schema } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { version as cliVersion } from "../package.json" with { type: "json" };
 import {
 	applyInstalledPlan,
+	applyLifecyclePlan,
 	configuredPackageManager,
+	generatedRemovalPaths,
 	hasProjectDevDependency,
 	loadDiscoveryRegistry,
 	loadManagedProject,
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "../src/commands/lifecycle";
-import { withTempDir, writeJson } from "./lifecycle-fixtures";
+import { malformedConfigIssue } from "../src/config/schema";
+import {
+	failingAddonRegistry,
+	planningFailures,
+	withTempDir,
+	writeJson,
+} from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
 	logError: vi.fn(),
+	logInfo: vi.fn<(message: string) => void>(),
 	logWarn:
 		vi.fn<
 			(
@@ -27,7 +47,12 @@ const promptMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@clack/prompts", () => ({
-	log: { error: promptMocks.logError, warn: promptMocks.logWarn },
+	intro: vi.fn(),
+	log: {
+		error: promptMocks.logError,
+		info: promptMocks.logInfo,
+		warn: promptMocks.logWarn,
+	},
 }));
 
 const decodeManifest = Schema.decodeUnknownSync(ManifestSchema);
@@ -51,14 +76,17 @@ async function scaffoldWebModule(directory: string) {
 		template: { id: "nextjs/base", version: 1 },
 		type: "app",
 	};
+
 	const content = `${JSON.stringify(marker, null, "\t")}\n`;
 	const buffer = await crypto.subtle.digest(
 		"SHA-256",
 		new TextEncoder().encode(content),
 	);
+
 	const hash = Array.from(new Uint8Array(buffer))
 		.map((byte) => byte.toString(16).padStart(2, "0"))
 		.join("");
+
 	await writeJson(join(directory, "apps/web/forge.json"), marker);
 	await writeJson(join(directory, ".forge/lock.json"), {
 		artifacts: {
@@ -74,10 +102,173 @@ async function scaffoldWebModule(directory: string) {
 }
 
 describe("lifecycle", () => {
+	it.each(planningFailures)(
+		"renders planning failure: $message",
+		async ({ failure, message }) => {
+			const loaded = failingAddonRegistry(failure);
+			const registry = vi
+				.spyOn(generators, "loadDefinitionRegistry")
+				.mockReturnValue(loaded);
+
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				await withTempDir("lifecycle-refusal", async (directory) => {
+					await expect(
+						applyInstalledPlan(
+							directory,
+							{ slug: "acme" },
+							[
+								{
+									definitionId: "test-refusal",
+									targets: [{ kind: "project" }],
+								},
+							],
+							commandVersions,
+						),
+					).rejects.toThrow("exit:1");
+				});
+
+				expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(message);
+				expect(exit).toHaveBeenCalledWith(1);
+			} finally {
+				registry.mockRestore();
+				exit.mockRestore();
+			}
+		},
+	);
+
 	beforeEach(() => {
 		promptMocks.logError.mockReset();
 		promptMocks.logWarn.mockReset();
 	});
+
+	it("finds only generated artifacts within complete removal root segments", async () => {
+		await withTempDir("lifecycle-generated-removals", async (directory) => {
+			const config = generators.withWebAppPorts({
+				slug: "acme",
+				web: "tanstack-router",
+				webApps: [{ name: "site", framework: "tanstack-router" }],
+				packageManager: "pnpm",
+			});
+
+			const layer = CoreLive.pipe(
+				Layer.provide(Layer.succeed(CliVersion, { version: cliVersion })),
+				Layer.provideMerge(NodeServices.layer),
+			);
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const planner = yield* Planner;
+					const created = yield* planner.planCreate(
+						directory,
+						config,
+						generators.builtins,
+						commandVersions,
+					);
+
+					yield* Apply.applyPlan(directory, {
+						lockfile: created.lockfile,
+						manifest: created.manifest,
+						removals: created.removals,
+						writes: created.writes.map((write) => ({
+							artifactId: write.artifactId,
+							content: write.content,
+							path: write.path,
+						})),
+					});
+				}).pipe(Effect.provide(layer)),
+			);
+
+			const project = await loadManagedProject(directory, "remove");
+
+			const pathsForRoots = (roots: ReadonlyArray<string>) =>
+				generatedRemovalPaths(
+					directory,
+					project.config,
+					project.manifest.installs,
+					project.manifest.registries,
+					project.modules,
+					project.manifest.modules,
+					roots,
+				);
+
+			await expect(pathsForRoots(["apps/site"])).resolves.toEqual([
+				"apps/site/src/routeTree.gen.ts",
+			]);
+
+			await expect(pathsForRoots(["apps/si"])).resolves.toEqual([]);
+
+			await expect(pathsForRoots(["apps/site", "apps/web"])).resolves.toEqual(
+				expect.arrayContaining([
+					"apps/site/src/routeTree.gen.ts",
+					"apps/web/src/routeTree.gen.ts",
+				]),
+			);
+		});
+	}, 120_000);
+
+	it.each(["add", "remove", "update"])(
+		"refuses %s before planning when the lockfile is missing",
+		async (command) => {
+			await withTempDir("lifecycle-missing-lockfile", async (directory) => {
+				await writeJson(join(directory, ".forge/manifest.json"), {
+					config: { slug: "acme", web: "nextjs" },
+					installs: [],
+					modules: {},
+					schemaVersion: 1,
+				});
+
+				const manifestBefore = await readFile(
+					join(directory, ".forge/manifest.json"),
+					"utf-8",
+				);
+
+				const previousCwd = process.cwd();
+				const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+					throw new Error("exit:1");
+				});
+
+				try {
+					process.chdir(directory);
+					const run = async () => {
+						if (command === "add") {
+							const { runAdd } = await import("../src/commands/add");
+							await runAdd("biome", {});
+						} else if (command === "remove") {
+							const { runRemove } = await import("../src/commands/remove");
+							await runRemove("biome", {});
+						} else {
+							const { runUpdate, UpdateCommand } = await import(
+								"../src/commands/update"
+							);
+
+							await runUpdate({}, UpdateCommand.Default);
+						}
+					};
+
+					await expect(run()).rejects.toThrow("exit:1");
+					expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+					expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(
+						"This project's .forge/lock.json is missing, so Forge can't tell which files it manages. Restore it from version control, or delete the .forge directory and run forge init to adopt the project again.",
+					);
+
+					expect(
+						await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
+					).toBe(manifestBefore);
+
+					await expect(
+						readFile(join(directory, ".forge/lock.json")),
+					).rejects.toMatchObject({ code: "ENOENT" });
+				} finally {
+					process.chdir(previousCwd);
+					exit.mockRestore();
+				}
+			});
+		},
+	);
 
 	it("applies an installed plan and records the install in the manifest", async () => {
 		await withTempDir("lifecycle-apply", async (directory) => {
@@ -93,6 +284,7 @@ describe("lifecycle", () => {
 			const manifest = decodeManifest(
 				await readJson(join(directory, ".forge/manifest.json")),
 			);
+
 			expect(manifest.config).toEqual({ slug: "acme", web: "nextjs" });
 			expect(manifest.installs).toEqual([
 				tailwindInstall,
@@ -113,12 +305,14 @@ describe("lifecycle", () => {
 			await expect(
 				readFile(join(directory, "apps/web/app/layout.tsx"), "utf-8"),
 			).resolves.toContain('import "@acme/ui/globals.css";');
+
 			await expect(
 				readFile(
 					join(directory, "packages/ui/src/styles/globals.css"),
 					"utf-8",
 				),
 			).resolves.toContain('@import "tailwindcss";');
+
 			await expect(
 				readJson(join(directory, ".forge/lock.json")),
 			).resolves.toMatchObject({ artifacts: expect.any(Object) });
@@ -135,6 +329,7 @@ describe("lifecycle", () => {
 			await expect(
 				hasProjectDevDependency(directory, "@acme/forge-sentry"),
 			).resolves.toBe(true);
+
 			await expect(
 				hasProjectDevDependency(directory, "@acme/runtime"),
 			).resolves.toBe(false);
@@ -153,6 +348,7 @@ describe("lifecycle", () => {
 					command: "/usr/bin/true",
 				}),
 			).resolves.toBe(true);
+
 			await expect(
 				runPackageManagerOperation(directory, {
 					args: [],
@@ -189,6 +385,7 @@ describe("lifecycle", () => {
 			expect(
 				loaded.catalog.every((entry) => entry.source === "first-party"),
 			).toBe(true);
+
 			expect(promptMocks.logWarn).not.toHaveBeenCalled();
 		});
 	});
@@ -209,6 +406,7 @@ describe("lifecycle", () => {
 			expect(
 				loaded.catalog.every((entry) => entry.source === "first-party"),
 			).toBe(true);
+
 			expect(promptMocks.logWarn).toHaveBeenCalledWith(
 				"We couldn't load this project's registries (Registry Not Installed: @fixture/missing-registry), so we're showing the first-party catalog.",
 				{ output: process.stderr },
@@ -219,7 +417,8 @@ describe("lifecycle", () => {
 	it("degrades unreadable Forge metadata to first-party data", async () => {
 		await withTempDir("discovery-manifest-failure", async (directory) => {
 			await writeJson(join(directory, ".forge/manifest.json"), {
-				schemaVersion: "invalid",
+				schemaVersion: 1,
+				modules: null,
 			});
 
 			const loaded = await loadDiscoveryRegistry(directory);
@@ -231,6 +430,161 @@ describe("lifecycle", () => {
 				),
 				{ output: process.stderr },
 			);
+		});
+	});
+
+	it.each(["manifest.json", "lock.json"])(
+		"refuses unknown versions in %s without a prefix or discovery fallback",
+		async (filename) => {
+			await withTempDir("lifecycle-unknown-version", async (directory) => {
+				await writeJson(join(directory, ".forge/manifest.json"), {
+					config: { slug: "acme" },
+					installs: [],
+					modules: {},
+					schemaVersion: filename === "manifest.json" ? 99 : 1,
+				});
+
+				await writeJson(join(directory, ".forge/lock.json"), {
+					artifacts: {},
+					schemaVersion: filename === "lock.json" ? 99 : 1,
+				});
+
+				const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+					throw new Error("exit:1");
+				});
+
+				try {
+					await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+						"exit:1",
+					);
+
+					await expect(loadDiscoveryRegistry(directory)).rejects.toThrow(
+						"exit:1",
+					);
+
+					expect(promptMocks.logError).toHaveBeenCalledTimes(2);
+					expect(promptMocks.logError).toHaveBeenCalledWith(
+						"We can't read this project's metadata because it was saved by a different version of Forge.",
+					);
+
+					expect(promptMocks.logWarn).not.toHaveBeenCalled();
+				} finally {
+					exit.mockRestore();
+				}
+			});
+		},
+	);
+
+	it("refuses a project last written by a newer CLI before anything runs", async () => {
+		await withTempDir("lifecycle-newer-cli", async (directory) => {
+			await scaffoldWebModule(directory);
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				cliVersion: "999.0.0",
+				config: { slug: "acme", web: "nextjs" },
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			});
+
+			const manifestBefore = await readFile(
+				join(directory, ".forge/manifest.json"),
+				"utf-8",
+			);
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			try {
+				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(
+					`This project was last changed by Forge 999.0.0, but you're running Forge ${cliVersion}. Run Forge 999.0.0 or newer, for example with "npx @ryuugg/forge@latest", then try again.`,
+				);
+
+				expect(
+					await readFile(join(directory, ".forge/manifest.json"), "utf-8"),
+				).toBe(manifestBefore);
+
+				await expect(loadDiscoveryRegistry(directory)).resolves.toBeDefined();
+				expect(promptMocks.logError).toHaveBeenCalledTimes(1);
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
+	it("refuses an unknown lockfile version even when the manifest is unreadable", async () => {
+		await withTempDir("lifecycle-unknown-lockfile", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				schemaVersion: 1,
+				modules: null,
+			});
+
+			await writeJson(join(directory, ".forge/lock.json"), {
+				artifacts: {},
+				schemaVersion: 99,
+			});
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			try {
+				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+					"exit:1",
+				);
+
+				await expect(loadDiscoveryRegistry(directory)).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledTimes(2);
+				expect(promptMocks.logError).toHaveBeenNthCalledWith(
+					1,
+					"We can't read this project's metadata because it was saved by a different version of Forge.",
+				);
+
+				expect(promptMocks.logError).toHaveBeenNthCalledWith(
+					2,
+					"We can't read this project's metadata because it was saved by a different version of Forge.",
+				);
+
+				expect(promptMocks.logWarn).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		});
+	});
+
+	it("refuses a managed project whose lockfile is corrupt", async () => {
+		await withTempDir("lifecycle-corrupt-lockfile", async (directory) => {
+			await writeJson(join(directory, ".forge/manifest.json"), {
+				config: { slug: "acme" },
+				installs: [],
+				modules: {},
+				schemaVersion: 1,
+			});
+
+			await writeFile(join(directory, ".forge/lock.json"), "{ not json");
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			try {
+				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					expect.stringContaining("Lockfile Parse Failed"),
+				);
+			} finally {
+				exit.mockRestore();
+			}
 		});
 	});
 
@@ -255,6 +609,7 @@ describe("lifecycle", () => {
 					targets: [{ kind: "module", moduleId: "abcde" }],
 				},
 			]);
+
 			expect(project.modules.map((module) => module.root)).toEqual(
 				expect.arrayContaining(["apps/web", "packages/ui"]),
 			);
@@ -270,6 +625,7 @@ describe("lifecycle", () => {
 				[tailwindInstall],
 				commandVersions,
 			);
+
 			const path = join(directory, ".forge/manifest.json");
 			const manifest = decodeManifest(await readJson(path));
 			await writeJson(path, {
@@ -287,12 +643,18 @@ describe("lifecycle", () => {
 				project.manifest.installs,
 				commandVersions,
 			);
+
 			expect(decodeManifest(await readJson(path)).config.backend).toBe("self");
 		});
 	});
 
 	it("normalizes a relative project root before loading the project", async () => {
 		await withTempDir("lifecycle-relative-root", async (directory) => {
+			await writeJson(join(directory, ".forge/lock.json"), {
+				artifacts: {},
+				schemaVersion: 1,
+			});
+
 			await writeJson(join(directory, ".forge/manifest.json"), {
 				config: { slug: "acme" },
 				installs: [],
@@ -305,7 +667,6 @@ describe("lifecycle", () => {
 
 			try {
 				const project = await loadManagedProject(".", "add");
-
 				expect(project.projectRoot).toBe(resolve("."));
 				expect(isAbsolute(project.projectRoot)).toBe(true);
 			} finally {
@@ -313,6 +674,48 @@ describe("lifecycle", () => {
 			}
 		});
 	});
+
+	it.each(
+		["add", "remove", "switch", "auth-choice", "init", "update"].flatMap(
+			(command) =>
+				["site", {}, [null]].map((webApps) => ({ command, webApps })),
+		),
+	)(
+		"refuses malformed webApps in $command before discovery or pairing",
+		async ({ command, webApps }) => {
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("exit:1");
+			});
+
+			const config = { web: "nextjs", webApps };
+
+			try {
+				await withTempDir("lifecycle-malformed-apps", async (directory) => {
+					await writeJson(join(directory, ".forge/lock.json"), {
+						schemaVersion: 1,
+						artifacts: {},
+					});
+
+					await writeJson(join(directory, ".forge/manifest.json"), {
+						schemaVersion: 1,
+						config,
+						installs: [],
+						modules: {},
+					});
+
+					await expect(loadManagedProject(directory, command)).rejects.toThrow(
+						"exit:1",
+					);
+
+					expect(promptMocks.logError).toHaveBeenCalledWith(
+						malformedConfigIssue(config),
+					);
+				});
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
 
 	it("exits when the manifest config is empty", async () => {
 		const exit = vi
@@ -323,6 +726,11 @@ describe("lifecycle", () => {
 
 		try {
 			await withTempDir("lifecycle-legacy", async (directory) => {
+				await writeJson(join(directory, ".forge/lock.json"), {
+					artifacts: {},
+					schemaVersion: 1,
+				});
+
 				await writeJson(join(directory, ".forge/manifest.json"), {
 					config: {},
 					installs: [
@@ -337,6 +745,7 @@ describe("lifecycle", () => {
 				await expect(loadManagedProject(directory, "add")).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(promptMocks.logError).toHaveBeenCalledWith(
 					"We couldn't find a Forge project here. The .forge directory is missing or incomplete.",
 				);
@@ -419,6 +828,7 @@ describe("lifecycle", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"Registry Not Installed: @fixture/missing-registry",
 			);
+
 			expect(promptMocks.logError.mock.calls.flat().join("\n")).not.toContain(
 				"RegistryLoadError",
 			);
@@ -443,6 +853,134 @@ describe("lifecycle", () => {
 				commandVersions,
 			),
 		).rejects.toBe(defect);
+
 		expect(promptMocks.logError).not.toHaveBeenCalled();
 	});
+});
+
+const plan: ApplyPlan = {
+	lockfile: { artifacts: {} },
+	manifest: { config: {}, installs: [], modules: {} },
+	removals: [],
+	writes: [],
+};
+
+describe("applyLifecyclePlan", () => {
+	it.each([
+		{
+			declined: [],
+			message: undefined,
+		},
+		{
+			declined: [
+				{
+					path: "biome.json",
+					diff: "not printed",
+					added: 1,
+					removed: 1,
+					diffPath: ".forge/declined/biome.json.diff",
+				},
+			],
+			message:
+				'We kept your version of 1 file and skipped Forge\'s changes to it:\nbiome.json: 1 line added and 1 removed. Run "cat .forge/declined/biome.json.diff" to see them.',
+		},
+		{
+			declined: [
+				{
+					path: "apps/web/src/auth.ts",
+					diff: "not printed",
+					added: 12,
+					removed: 3,
+					diffPath: ".forge/declined/apps/web/src/auth.ts.diff",
+				},
+				{
+					path: "biome.json",
+					diff: "not printed",
+					added: 1,
+					removed: 1,
+					diffPath: ".forge/declined/biome.json.diff",
+				},
+			],
+			message:
+				'We kept your version of 2 files and skipped Forge\'s changes to them:\napps/web/src/auth.ts: 12 lines added and 3 removed. Run "cat .forge/declined/apps/web/src/auth.ts.diff" to see them.\nbiome.json: 1 line added and 1 removed. Run "cat .forge/declined/biome.json.diff" to see them.',
+		},
+		{
+			declined: [
+				{
+					path: "docs/My Guide.md",
+					diff: "not printed",
+					added: 2,
+					removed: 0,
+					diffPath: ".forge/declined/docs/My Guide.md.diff",
+				},
+			],
+			message:
+				"We kept your version of 1 file and skipped Forge's changes to it:\ndocs/My Guide.md: 2 lines added and 0 removed. Run \"cat '.forge/declined/docs/My Guide.md.diff'\" to see them.",
+		},
+		{
+			declined: [
+				{
+					path: "biome.json",
+					diff: "not printed",
+					added: 1,
+					removed: 1,
+					diffPath: undefined,
+				},
+			],
+			message:
+				"We kept your version of 1 file and skipped Forge's changes to it:\nbiome.json: 1 line added and 1 removed. We couldn't save the full diff.",
+		},
+	] satisfies ReadonlyArray<{
+		declined: DeclinedChange[];
+		message: string | undefined;
+	}>)("reports declined files: $message", async ({ declined, message }) => {
+		const apply = vi
+			.spyOn(Apply, "applyPlan")
+			.mockReturnValue(
+				Effect.succeed({ released: [], retained: [], declined, dropped: [] }),
+			);
+
+		const warn = promptMocks.logWarn;
+		warn.mockClear();
+
+		const result = await applyLifecyclePlan("unused", plan, {});
+		apply.mockRestore();
+
+		expect(result.declined).toEqual(declined);
+
+		if (message === undefined) expect(warn).not.toHaveBeenCalled();
+		else {
+			expect(warn).toHaveBeenCalledExactlyOnceWith(message);
+			expect(message).not.toContain("not printed");
+		}
+	});
+
+	it.each([
+		{
+			released: ["packages/email/src/welcome.tsx"],
+			message:
+				"Forge will leave packages/email/src/welcome.tsx alone from now on, since it has your changes.",
+		},
+		{
+			released: ["a.tsx", "b.tsx"],
+			message:
+				"Forge will leave a.tsx and b.tsx alone from now on, since they have your changes.",
+		},
+	])(
+		"reports released starter files: $message",
+		async ({ released, message }) => {
+			const apply = vi
+				.spyOn(Apply, "applyPlan")
+				.mockReturnValue(
+					Effect.succeed({ released, retained: [], declined: [], dropped: [] }),
+				);
+
+			promptMocks.logInfo.mockClear();
+
+			await applyLifecyclePlan("unused", plan, {});
+			apply.mockRestore();
+
+			expect(promptMocks.logInfo).toHaveBeenCalledExactlyOnceWith(message);
+		},
+	);
 });

@@ -1,5 +1,5 @@
 import { confirm, isCancel, log, text } from "@clack/prompts";
-import { LONG_RUNNING_TIMEOUT_MS, Subprocess } from "@ryuujs/core";
+import { LONG_RUNNING_TIMEOUT_MS, Subprocess } from "@ryuugg/core";
 import { Cause, Effect, Exit, Option } from "effect";
 import { runCliEffect } from "../../runtime";
 import { cancel } from "../../utils/cancel";
@@ -28,7 +28,6 @@ function gitInit(dir: string, message: string) {
 
 async function runGitInit(dir: string, message: string) {
 	const exit = await runCliEffect(gitInit(dir, message));
-
 	if (Exit.isFailure(exit)) {
 		if (Option.isNone(Cause.findErrorOption(exit.cause)))
 			console.error(Cause.squash(exit.cause));
@@ -51,7 +50,6 @@ const gitInitStep = defineStep({
 		if (config.gitInit === false) return SKIP;
 
 		const dir = String(config.path);
-
 		if (!interactive) {
 			await runGitInit(dir, DEFAULT_MESSAGE);
 			return SKIP;

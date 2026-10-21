@@ -5,6 +5,7 @@ export function stripNulls<
 	object: T,
 	entries?: Entries,
 ): Entries extends true ? [string, unknown][] : Record<string, unknown>;
+
 export function stripNulls<T>(array: T[]): NonNullable<T>[];
 export function stripNulls(
 	input: Record<string, unknown> | unknown[],

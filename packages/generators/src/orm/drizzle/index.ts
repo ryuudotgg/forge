@@ -8,9 +8,16 @@ import {
 	surfaceJson,
 	surfaceLines,
 	surfaceScripts,
-} from "@ryuujs/core";
-import type { ForgeConfig } from "../../config";
+} from "@ryuugg/core";
 import {
+	type AuthField,
+	type AuthFieldGroup,
+	authPluginFields,
+	authPluginTables,
+} from "../../auth/plugins";
+import type { Database, ForgeConfig } from "../../config";
+import {
+	drizzleForeignKeys,
 	drizzleKitCredentials,
 	envFileLine,
 	envRuntimeLines,
@@ -18,10 +25,58 @@ import {
 	resolveDatabaseProvider,
 } from "../../data/providers";
 import { deps } from "../../deps";
-import { standaloneApiOrigin } from "../../origins";
 import { pmRun, pmRunIn, resolvePackageManager } from "../../pm";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 import { interpolate, readTemplate } from "../../template";
+import { catalogRef } from "../../versions";
+import { primaryWebAppName } from "../../web-apps";
+import { hostDriverDependencies } from "../host-drivers";
+import {
+	drizzleTableRelations,
+	drizzleUserRelations,
+	renderDrizzleAuthTables,
+} from "./auth-schema";
+
+const authColumnTypes: Record<Database, Record<AuthField["type"], string>> = {
+	postgresql: {
+		string: "text()",
+		boolean: "boolean()",
+		date: "timestamp({ withTimezone: true })",
+	},
+	mysql: {
+		string: "text()",
+		boolean: "boolean()",
+		date: "timestamp({ fsp: 3 })",
+	},
+	sqlite: {
+		string: "text()",
+		boolean: 'integer({ mode: "boolean" })',
+		date: 'integer({ mode: "timestamp_ms" })',
+	},
+};
+
+function drizzleAuthFields(
+	groups: ReadonlyArray<AuthFieldGroup>,
+	dialect: Database,
+	indent: string,
+): string {
+	return groups
+		.map((group) => {
+			const columns = group.map((field) => {
+				const column =
+					dialect === "mysql" && field.type === "string" && field.unique
+						? "varchar({ length: 255 })"
+						: authColumnTypes[dialect][field.type];
+				const unique = field.unique ? ".unique()" : "";
+				const defaultValue = field.default === false ? ".default(false)" : "";
+
+				return `${indent}${field.name}: ${column}${unique}${defaultValue},\n`;
+			});
+
+			return `\n${columns.join("")}`;
+		})
+		.join("");
+}
 
 const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 	id: "drizzle",
@@ -40,22 +95,35 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 		const provider = resolveDatabaseProvider(config);
 
 		const usesAuth = config.authentication === "better-auth";
-		const usesCredentials = standaloneApiOrigin(config) !== undefined;
-		// Each schema template nests its columns differently, so the marker
-		// carries the indentation and the leading newline keys them apart.
-		const passwordField = (indent: string) =>
-			usesCredentials ? `\n${indent}password: text(),\n` : "\n";
+		const userFields = authPluginFields(config, "user");
+		const sessionFields = authPluginFields(config, "session");
+		const tables = authPluginTables(config);
 		const vars = {
 			SLUG: slug,
 			AUTH_EXPORT: usesAuth ? 'export * from "./auth";\n' : "",
+			"__AUTH_USER_RELATIONS__\n": drizzleUserRelations(tables),
+			"__AUTH_TABLE_RELATIONS__\n": drizzleTableRelations(tables),
 			DATABASE_TYPE: provider.drizzle.databaseType,
 			DRIZZLE_DRIVER: provider.drizzle.driver,
 			ENV_RUNTIME: envRuntimeLines(provider.envVars),
 			ENV_SERVER: envServerLines(provider.envVars),
 			KIT_CREDENTIALS: drizzleKitCredentials(provider.drizzle),
 			KIT_DIALECT: provider.drizzle.kitDialect,
-			"\n    // __PASSWORD_FIELD__\n": passwordField("    "),
-			"\n  // __PASSWORD_FIELD__\n": passwordField("  "),
+			"  // __USER_PLUGIN_FIELDS__\n": drizzleAuthFields(
+				userFields,
+				provider.dialect,
+				"  ",
+			),
+			"\n    // __SESSION_PLUGIN_FIELDS__\n": `\n${drizzleAuthFields(
+				sessionFields,
+				provider.dialect,
+				"    ",
+			)}`,
+			"\n  // __SESSION_PLUGIN_FIELDS__\n": `\n${drizzleAuthFields(
+				sessionFields,
+				provider.dialect,
+				"  ",
+			)}`,
 		};
 
 		const render = (path: string) =>
@@ -100,7 +168,7 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			}),
 			surfaceDependencies(ensuredModuleTarget("db"), "packageJson", [
 				...provider.drizzle.runtimeDeps.map((key) => ({
-					...deps[key],
+					...catalogRef(key, config),
 					type: "dependencies" as const,
 				})),
 				{ ...deps.t3OssEnvCore, type: "dependencies" },
@@ -113,7 +181,7 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 					type: "devDependencies",
 				},
 				...provider.drizzle.devDeps.map((key) => ({
-					...deps[key],
+					...catalogRef(key, config),
 					type: "devDependencies" as const,
 				})),
 				{ ...deps.typesNode, type: "devDependencies" },
@@ -173,8 +241,13 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 						leafTextFile(
 							ensuredModuleTarget("db"),
 							"src/schema/auth.ts",
-							render(
-								`packages/db/src/schema/${provider.drizzle.schemaTemplates.auth}.ts`,
+							renderDrizzleAuthTables(
+								render(
+									`packages/db/src/schema/${provider.drizzle.schemaTemplates.auth}.ts`,
+								),
+								tables,
+								provider.dialect,
+								drizzleForeignKeys(provider),
 							),
 						),
 					]
@@ -183,14 +256,19 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			...(config.web === undefined
 				? []
 				: [
-						surfaceDependencies(ensuredModuleTarget("web"), "packageJson", [
-							{
-								name: `@${slug}/db`,
-								version: "workspace:*",
-								type: "dependencies",
-							},
-						]),
+						surfaceDependencies(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							[
+								{
+									name: `@${slug}/db`,
+									version: "workspace:*",
+									type: "dependencies",
+								},
+							],
+						),
 					]),
+			...hostDriverDependencies(config, provider.drizzle.runtimeDeps),
 
 			surfaceLines(
 				projectTarget(),
@@ -215,12 +293,16 @@ const drizzle = defineAddon<ForgeConfig, "drizzle", "nextjs">({
 			...(config.web === undefined
 				? []
 				: [
-						surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
-							"db:generate": pmRunIn(pm, dbPackage, "generate"),
-							"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
-							"db:push": pmRunIn(pm, dbPackage, "push"),
-							"db:studio": pmRunIn(pm, dbPackage, "studio"),
-						}),
+						surfaceScripts(
+							ensuredModuleTarget(primaryWebAppName(config)),
+							"packageJson",
+							{
+								"db:generate": pmRunIn(pm, dbPackage, "generate"),
+								"db:migrate": pmRunIn(pm, dbPackage, "migrate"),
+								"db:push": pmRunIn(pm, dbPackage, "push"),
+								"db:studio": pmRunIn(pm, dbPackage, "studio"),
+							},
+						),
 					]),
 		];
 	},

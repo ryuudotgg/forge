@@ -1,5 +1,5 @@
 import { isCancel, select } from "@clack/prompts";
-import { catalogs as catalogChoices } from "@ryuujs/generators";
+import { catalogs as catalogChoices } from "@ryuugg/generators";
 import { Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import { defineStep, SKIP, type Skip } from "../types";

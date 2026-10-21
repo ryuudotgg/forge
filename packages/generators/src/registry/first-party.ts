@@ -1,4 +1,14 @@
-import { defineRegistry } from "@ryuujs/core";
+import { defineRegistry } from "@ryuugg/core";
+import orpc, { orpcMetadata } from "../api/orpc";
+import {
+	orpcNextjsAdapters,
+	orpcNextjsRecipe,
+	orpcRequestAdapters,
+	orpcRequestRecipe,
+	orpcStandaloneAdapters,
+	orpcStandaloneRecipe,
+	orpcWebRecipe,
+} from "../api/orpc/recipe";
 import trpc, { trpcMetadata } from "../api/trpc";
 import {
 	trpcAdapters,
@@ -30,9 +40,11 @@ import {
 	linters,
 	mobileFrameworks,
 	nativeStyleFrameworks,
+	rpcProviders,
 	styleFrameworks,
 	webFrameworks,
 } from "../config";
+import email, { emailMetadata } from "../email";
 import expoBaseTemplate, {
 	expoBaseTemplateMetadata,
 	expoFramework,
@@ -74,6 +86,7 @@ import tanstackStartBaseTemplate, {
 	tanstackStartFrameworkMetadata,
 } from "../frameworks/tanstack-start";
 import biome, { biomeMetadata } from "../linters/biome";
+import oxc, { oxcMetadata } from "../linters/oxc";
 import drizzle, { drizzleMetadata } from "../orm/drizzle";
 import prisma, { prismaMetadata } from "../orm/prisma";
 import shared, { sharedMetadata } from "../shared";
@@ -113,6 +126,9 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		...betterAuthFastifyAdapters,
 		...betterAuthExpressAdapters,
 		...uiAdapters,
+		...orpcNextjsAdapters,
+		...orpcStandaloneAdapters,
+		...orpcRequestAdapters,
 	],
 	frameworks: [
 		expoFramework,
@@ -141,6 +157,7 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		bun,
 		typescript,
 		biome,
+		oxc,
 		gitignore,
 		commitlint,
 		lefthook,
@@ -148,16 +165,22 @@ export const firstPartyRegistry = defineRegistry<ForgeConfig>({
 		vscode,
 		githubCi,
 		shared,
+		email,
 		ui,
 		nativewind,
 		tailwind,
 		trpc,
+		orpc,
 		drizzle,
 		prisma,
 		betterAuth,
 		worker,
 	],
 	recipes: [
+		orpcNextjsRecipe,
+		orpcStandaloneRecipe,
+		orpcRequestRecipe,
+		orpcWebRecipe,
 		trpcRecipe,
 		trpcExpoRecipe,
 		trpcHonoRecipe,
@@ -212,6 +235,7 @@ export const firstPartyCatalog = [
 		firstPartyRegistry.adapters,
 	),
 	addonCatalogEntry(biome, biomeMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(oxc, oxcMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(gitignore, gitignoreMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(
 		commitlint,
@@ -223,6 +247,7 @@ export const firstPartyCatalog = [
 	addonCatalogEntry(vscode, vscodeMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(githubCi, githubCiMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(shared, sharedMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(email, emailMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(ui, uiMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(
 		nativewind,
@@ -231,6 +256,7 @@ export const firstPartyCatalog = [
 	),
 	addonCatalogEntry(tailwind, tailwindMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(trpc, trpcMetadata, firstPartyRegistry.adapters),
+	addonCatalogEntry(orpc, orpcMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(drizzle, drizzleMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(prisma, prismaMetadata, firstPartyRegistry.adapters),
 	addonCatalogEntry(
@@ -288,5 +314,10 @@ export const firstPartyCatalog = [
 		.filter((id) => !linters.available(id))
 		.map((id) =>
 			announcedCatalogEntry("addon", id, linters.label(id), "linter"),
+		),
+	...rpcProviders.ids
+		.filter((id) => !rpcProviders.available(id))
+		.map((id) =>
+			announcedCatalogEntry("addon", id, rpcProviders.label(id), "addon"),
 		),
 ] as const satisfies ReadonlyArray<CatalogEntry>;

@@ -1,14 +1,14 @@
 import { log } from "@clack/prompts";
-import { Apply, ApplyError, formatApplyError, Planner } from "@ryuujs/core";
+import { Apply, ApplyError, formatApplyError, Planner } from "@ryuugg/core";
 import {
-	authenticationProviders,
-	type ForgeConfig,
 	loadDefinitionRegistry,
-	orms,
 	probeWorkspaceCommandVersions,
-} from "@ryuujs/generators";
+	withWebAppPorts,
+} from "@ryuugg/generators";
 import { Effect } from "effect";
+import { ormIssue } from "../config/schema";
 import { runCliEffectValue } from "../runtime";
+import { refusalMessage } from "../utils/refusal";
 import type { PartialConfig } from "./types";
 import { defineStep, SKIP } from "./types";
 
@@ -21,17 +21,22 @@ const generateStep = defineStep({
 	shouldRun: () => true,
 
 	async execute(config: PartialConfig) {
-		if (
-			authenticationProviders.normalize(config.authentication) ===
-				"better-auth" &&
-			!orms.normalize(config.orm)
-		) {
-			log.error("You need to add an ORM before you can use Better Auth.");
+		const issue = ormIssue(config);
+		if (issue !== undefined) {
+			log.error(issue);
 			process.exit(1);
 		}
 
 		const projectRoot = String(config.path ?? ".");
-		const forgeConfig: ForgeConfig = config;
+		const { webApps, webName, ...rest } = config;
+		const forgeConfig = withWebAppPorts({
+			...rest,
+			...(webApps === undefined ||
+			(Array.isArray(webApps) && webApps.length === 0)
+				? {}
+				: { webApps }),
+			...(webName === undefined || webName === "web" ? {} : { webName }),
+		});
 
 		try {
 			const loadedRegistry = await loadDefinitionRegistry();
@@ -63,12 +68,16 @@ const generateStep = defineStep({
 				}),
 			);
 		} catch (error) {
+			const refusal = refusalMessage(error);
+			if (refusal !== undefined) throw new Error(refusal);
+
 			const message =
 				error instanceof ApplyError
-					? formatApplyError(error)
+					? formatApplyError(error, { includeResolutionGuidance: false })
 					: error instanceof Error
 						? error.message
 						: String(error);
+
 			throw new Error(`Generation Failed: ${message}`);
 		}
 

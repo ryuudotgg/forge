@@ -1,0 +1,140 @@
+import { confirm, isCancel, text } from "@clack/prompts";
+import { formatSchemaError } from "@ryuugg/core";
+import {
+	loadDefinitionRegistry,
+	primaryWebAppName,
+	reservedWebAppNames,
+	webAppNamesIssue,
+} from "@ryuugg/generators";
+import { Result, Schema } from "effect";
+import { cancel } from "../../utils/cancel";
+import { defineStep, SKIP } from "../types";
+import { selectWebFramework, webSchema } from "./web";
+
+const reservedNames = new Set<string>(reservedWebAppNames);
+export function webAppNameRuleIssue(name: string) {
+	if (name === "") return "Give this web app a name.";
+
+	if (!/^[a-z][a-z0-9-]*$/.test(name))
+		return `${name} isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.`;
+
+	if (reservedNames.has(name))
+		return `${name} is reserved. Pick another name for this web app.`;
+}
+
+export const webAppNameSchema = Schema.String.check(
+	Schema.makeFilter(webAppNameRuleIssue),
+);
+
+export const webAppsSchema = Schema.Array(
+	Schema.Struct({
+		name: webAppNameSchema,
+		framework: webSchema,
+		client: Schema.optional(Schema.Boolean),
+		port: Schema.optional(Schema.Number),
+	}),
+).check(
+	Schema.makeFilter((apps) => {
+		const nameIssue = webAppNamesIssue({ webApps: apps });
+		if (nameIssue !== undefined) return nameIssue;
+
+		const portOwners = new Map<number, string>();
+		for (const app of apps) {
+			if (app.port === undefined) continue;
+
+			if (!Number.isInteger(app.port) || app.port < 1 || app.port > 65535)
+				return `${app.name} needs a port between 1 and 65535.`;
+
+			const owner = portOwners.get(app.port);
+			if (owner !== undefined)
+				return `${owner} and ${app.name} both use port ${app.port}.`;
+
+			portOwners.set(app.port, app.name);
+		}
+	}),
+);
+
+export function webAppsIssueMessage(error: Schema.SchemaError) {
+	return formatSchemaError(error)
+		.map((issue) => issue.message)
+		.join(" ");
+}
+
+export function webAppNameIssue(name: string, addonIds: ReadonlyArray<string>) {
+	if (addonIds.includes(name))
+		return `${name} is an addon id. Pick another name for this web app.`;
+}
+
+export function firstPartyAddonIds() {
+	return loadDefinitionRegistry().registry.addons.map((addon) => addon.id);
+}
+
+export default defineStep<typeof webAppsSchema.Type>({
+	id: "webApps",
+	group: "platforms",
+	configKey: "webApps",
+	schema: webAppsSchema,
+	dependencies: ["web", "webName"],
+	shouldRun: (config) => !!config.platforms?.includes("web"),
+	async execute(config, interactive) {
+		if (!interactive) return SKIP;
+
+		const apps: Array<(typeof webAppsSchema.Type)[number]> = [];
+		const addonIds = firstPartyAddonIds();
+
+		for (;;) {
+			const more = await confirm({
+				message: "Do you want to add another web app?",
+				initialValue: false,
+			});
+
+			if (isCancel(more)) cancel();
+			if (!more) return apps.length === 0 ? SKIP : apps;
+
+			const name = await text({
+				message: "What is the name of this web app?",
+				validate(value) {
+					const result = Schema.decodeUnknownResult(webAppsSchema)([
+						...apps,
+						{ name: value ?? "", framework: "nextjs" },
+					]);
+
+					if (Result.isFailure(result))
+						return webAppsIssueMessage(result.failure);
+
+					return (
+						webAppNameIssue(value ?? "", addonIds) ??
+						webAppNamesIssue({
+							web: config.web,
+							webName: primaryWebAppName(config),
+							webApps: result.success,
+						})
+					);
+				},
+			});
+
+			if (isCancel(name)) cancel();
+
+			const framework = await selectWebFramework(
+				`Which web framework should ${name} use?`,
+				false,
+			);
+
+			const client = await confirm({
+				message: `Mark ${name} as an API client?`,
+				initialValue: false,
+			});
+
+			if (isCancel(client)) cancel();
+
+			const result = Schema.decodeUnknownResult(webAppsSchema)([
+				...apps,
+				{ name, framework, ...(client ? { client: true } : {}) },
+			]);
+
+			if (Result.isFailure(result)) throw result.failure;
+
+			apps.push(...result.success.slice(apps.length));
+		}
+	},
+});

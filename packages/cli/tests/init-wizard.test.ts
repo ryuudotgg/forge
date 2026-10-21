@@ -1,15 +1,19 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
-import { Apply, State } from "@ryuujs/core";
+import { Apply, CliVersion, State } from "@ryuugg/core";
 import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModuleMappingProposal } from "../src/commands/adoption";
 import {
+	choosePrimaryWebRoot,
 	confirmDetection,
 	confirmMappings,
+	initSteps,
 	runInit,
 } from "../src/commands/init";
+import { assembleSchema } from "../src/config";
+import { SKIP } from "../src/steps/types";
 import { withTempDir, writeJson, writeText } from "./lifecycle-fixtures";
 
 async function webFixture(directory: string) {
@@ -17,10 +21,12 @@ async function webFixture(directory: string) {
 		name: "Acme Root",
 		private: true,
 	});
+
 	await writeText(
 		join(directory, "pnpm-workspace.yaml"),
 		"packages:\n  - 'apps/*'\n",
 	);
+
 	await writeJson(join(directory, "apps/web/package.json"), {
 		dependencies: { next: "^16.0.0", react: "^19.0.0" },
 		name: "@acme/web",
@@ -34,6 +40,7 @@ const promptMocks = vi.hoisted(() => ({
 	isCancel: vi.fn(),
 	note: vi.fn(),
 	multiselect: vi.fn(),
+	select: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -45,16 +52,33 @@ vi.mock("@clack/prompts", () => ({
 	multiselect: promptMocks.multiselect,
 	note: promptMocks.note,
 	outro: vi.fn(),
+	select: promptMocks.select,
 }));
 
 describe("init wizard", () => {
 	beforeEach(() => {
 		promptMocks.confirm.mockReset();
 		promptMocks.error.mockReset();
+
 		promptMocks.isCancel.mockReset();
 		promptMocks.isCancel.mockReturnValue(false);
 		promptMocks.multiselect.mockReset();
 		promptMocks.note.mockReset();
+		promptMocks.select.mockReset();
+	});
+
+	it("keeps adopted web apps without offering new ones", async () => {
+		const initStepList = initSteps({});
+		const webAppsStep = initStepList.find((step) => step.id === "webApps");
+
+		expect(
+			await webAppsStep?.execute({ platforms: ["web"], web: "nextjs" }, true),
+		).toBe(SKIP);
+
+		expect(promptMocks.confirm).not.toHaveBeenCalled();
+		expect(Object.keys(assembleSchema(initStepList).fields)).toContain(
+			"webApps",
+		);
 	});
 
 	it("refuses pre-existing Forge directories without deleting their contents", async () => {
@@ -64,19 +88,59 @@ describe("init wizard", () => {
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(runInit({ yes: true }, directory)).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(promptMocks.error).toHaveBeenCalledWith(
 					'A ".forge" directory already exists here. You need to remove it before running forge init.',
 				);
+
 				expect(await readFile(junk, "utf-8")).toBe("keep me\n");
 			} finally {
 				exit.mockRestore();
 			}
 		});
 	});
+
+	it.each(["manifest.json", "lock.json", "state.json"])(
+		"refuses unknown versions in %s before adopting",
+		async (filename) => {
+			await withTempDir("init-unknown-version", async (directory) => {
+				const path = join(directory, ".forge", filename);
+				await writeJson(
+					path,
+					filename === "state.json"
+						? {
+								manifest: { schemaVersion: 1, modules: {} },
+								lockfile: { schemaVersion: 99, artifacts: {} },
+							}
+						: { schemaVersion: 99, modules: {}, artifacts: {} },
+				);
+
+				const before = await readFile(path);
+				const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+					throw new Error("exit:1");
+				});
+
+				try {
+					await expect(runInit({ yes: true }, directory)).rejects.toThrow(
+						"exit:1",
+					);
+
+					expect(promptMocks.error).toHaveBeenCalledExactlyOnceWith(
+						"We can't read this project's metadata because it was saved by a different version of Forge.",
+					);
+
+					expect(await readFile(path)).toEqual(before);
+				} finally {
+					exit.mockRestore();
+				}
+			});
+		},
+	);
 
 	it("explains how to recover an interrupted initial commit", async () => {
 		await withTempDir("init-stranded-state", async (directory) => {
@@ -98,9 +162,20 @@ describe("init wizard", () => {
 							: fileSystem.rename(oldPath, newPath),
 				})),
 			).pipe(Layer.provide(nodeLayer));
-			const failingLayer = Layer.mergeAll(Apply.Default, State.Default).pipe(
-				Layer.provide(fileSystemLayer),
-			);
+
+			const failingLayer = Layer.mergeAll(
+				Apply.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+				State.Default.pipe(
+					Layer.provide(
+						Layer.succeed(CliVersion, { version: "test-cli-version" }),
+					),
+				),
+			).pipe(Layer.provide(fileSystemLayer));
+
 			const applyError = await Effect.runPromise(
 				Effect.flip(
 					Apply.applyPlan(directory, {
@@ -111,17 +186,21 @@ describe("init wizard", () => {
 					}).pipe(Effect.provide(failingLayer)),
 				),
 			);
+
 			expect(applyError).toMatchObject({
 				message: "Atomic Lockfile Write Failed",
 				path: ".forge/lock.json",
 			});
+
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(runInit({ yes: true }, directory)).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(promptMocks.error).toHaveBeenCalledWith(
 					'A previous Forge adoption stopped before it finished. You need to delete the ".forge" directory, then run forge init again.',
 				);
@@ -137,10 +216,42 @@ describe("init wizard", () => {
 			await runInit({ "dry-run": true, yes: true }, directory);
 
 			const [report] = promptMocks.note.mock.calls[0] ?? [];
-			expect(report).toContain("name=Acme Root");
-			expect(report).toContain("slug=acme-root");
+			expect(report).toContain('"name": "Acme Root"');
+			expect(report).toContain('"slug": "acme-root"');
 		});
 	});
+
+	it.each(["email-otp", "magic-link"])(
+		"rejects %s before adopting an email dependency",
+		async (method) => {
+			await withTempDir("init-email-method", async (directory) => {
+				await webFixture(directory);
+				const configPath = join(directory, "forge.init.json");
+				await writeJson(configPath, {
+					addons: [],
+					authentication: "better-auth",
+					authMethods: [method],
+					emailProvider: "resend",
+					catalogs: "flat",
+					linter: "biome",
+					modules: [{ kind: "web-app", root: "apps/web" }],
+					name: "Acme",
+					packageManager: "pnpm",
+					path: ".",
+					platforms: ["web"],
+					runtime: "Node.js",
+					slug: "acme",
+					web: "nextjs",
+				});
+
+				await expect(
+					runInit({ config: configPath }, directory),
+				).rejects.toThrow(
+					"Email OTP and magic link aren't supported when adopting a project.",
+				);
+			});
+		},
+	);
 
 	it("presents unmanaged marker conflicts with init-specific guidance", async () => {
 		await withTempDir("init-marker-conflict", async (directory) => {
@@ -160,13 +271,16 @@ describe("init wizard", () => {
 				slug: "acme",
 				web: "nextjs",
 			});
+
 			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 				throw new Error("exit:1");
 			});
+
 			try {
 				await expect(
 					runInit({ config: configPath }, directory),
 				).rejects.toThrow("exit:1");
+
 				expect(promptMocks.error).toHaveBeenCalledWith(
 					"We couldn't adopt this project. Forge cannot safely update these files:\napps/web/forge.json already exists and is not managed by Forge.\nMove or delete it, then run forge init again.",
 				);
@@ -180,16 +294,19 @@ describe("init wizard", () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation(() => {
 			throw new Error("cancelled");
 		});
+
 		try {
 			promptMocks.confirm.mockResolvedValue(true);
 			promptMocks.isCancel.mockReturnValueOnce(true);
 			await expect(
 				confirmDetection({
 					catalogEntries: [],
+					commandPins: {},
 					config: { runtime: "Node.js" },
 					modules: [],
 					tooling: {},
 					versions: [],
+					webApps: [],
 				}),
 			).rejects.toThrow("cancelled");
 
@@ -216,10 +333,12 @@ describe("init wizard", () => {
 
 		const config = await confirmDetection({
 			catalogEntries: [],
+			commandPins: {},
 			config: { packageManager: "pnpm", runtime: "Node.js" },
 			modules: [],
 			tooling: {},
 			versions: [],
+			webApps: [],
 		});
 
 		expect(config).toEqual({ packageManager: "pnpm" });
@@ -227,9 +346,103 @@ describe("init wizard", () => {
 			initialValue: true,
 			message: "We detected packageManager as pnpm. Use it?",
 		});
+
 		expect(promptMocks.confirm).toHaveBeenNthCalledWith(2, {
 			initialValue: true,
 			message: "We detected runtime as Node.js. Use it?",
+		});
+	});
+
+	it("asks which web app is primary when apps/web isn't adopted", async () => {
+		promptMocks.select.mockResolvedValue("apps/frontend");
+
+		await expect(
+			choosePrimaryWebRoot(
+				[
+					{ kind: "web-app", root: "apps/admin" },
+					{ kind: "web-app", root: "apps/frontend" },
+					{ kind: "db", root: "packages/db" },
+				],
+				[
+					{
+						rpcPackages: [],
+						frameworks: ["react-router"],
+						root: "apps/admin",
+						scriptPort: { kind: "absent" },
+					},
+					{
+						rpcPackages: [],
+						frameworks: ["nextjs"],
+						root: "apps/frontend",
+						scriptPort: { kind: "absent" },
+					},
+				],
+				true,
+			),
+		).resolves.toBe("apps/frontend");
+
+		expect(promptMocks.select).toHaveBeenCalledExactlyOnceWith({
+			message: "Which web app is the primary app?",
+			options: [
+				{ label: "apps/admin (React Router)", value: "apps/admin" },
+				{ label: "apps/frontend (Next.js)", value: "apps/frontend" },
+			],
+		});
+
+		await expect(
+			choosePrimaryWebRoot(
+				[
+					{ kind: "web-app", root: "apps/site" },
+					{ kind: "web-app", root: "apps/web" },
+				],
+				[],
+				true,
+			),
+		).resolves.toBe("apps/web");
+
+		expect(promptMocks.select).toHaveBeenCalledTimes(1);
+	});
+
+	it("writes nothing when the primary web app prompt is cancelled", async () => {
+		await withTempDir("init-primary-cancel", async (directory) => {
+			await writeJson(join(directory, "package.json"), { name: "acme" });
+			await writeText(
+				join(directory, "pnpm-workspace.yaml"),
+				"packages:\n  - 'apps/*'\n",
+			);
+
+			await writeJson(join(directory, "apps/admin/package.json"), {
+				dependencies: { "react-router": "^7.0.0" },
+			});
+
+			await writeJson(join(directory, "apps/frontend/package.json"), {
+				dependencies: { next: "^16.0.0" },
+			});
+
+			promptMocks.multiselect.mockResolvedValue([
+				"apps/admin",
+				"apps/frontend",
+			]);
+
+			promptMocks.select.mockResolvedValue(Symbol("cancel"));
+			promptMocks.isCancel.mockImplementation(
+				(value: unknown) => typeof value === "symbol",
+			);
+
+			const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+				throw new Error("cancelled");
+			});
+
+			try {
+				await expect(runInit({}, directory)).rejects.toThrow("cancelled");
+				expect(promptMocks.select).toHaveBeenCalledOnce();
+				expect(promptMocks.confirm).not.toHaveBeenCalled();
+				await expect(
+					readFile(join(directory, ".forge/manifest.json")),
+				).rejects.toThrow();
+			} finally {
+				exit.mockRestore();
+			}
 		});
 	});
 
@@ -251,6 +464,7 @@ describe("init wizard", () => {
 		await expect(confirmMappings(proposals)).resolves.toEqual([
 			{ kind: "web-app", root: "apps/web" },
 		]);
+
 		expect(promptMocks.multiselect).toHaveBeenCalledWith({
 			initialValues: ["apps/web", "packages/db"],
 			message: "Which proposed module mappings do you want Forge to adopt?",

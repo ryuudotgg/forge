@@ -28,7 +28,7 @@ describe("registry-era definition failures", () => {
 	});
 
 	it("uses the stable fallback slug in registry-era UI metadata", () => {
-		expect(uiComponentsJson({}, true)).toMatchObject({
+		expect(uiComponentsJson({})).toMatchObject({
 			aliases: {
 				components: "@my-app/ui/components",
 				hooks: "@my-app/ui/hooks",

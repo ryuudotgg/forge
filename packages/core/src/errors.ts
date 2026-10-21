@@ -8,7 +8,12 @@ function formatCause(cause: unknown) {
 
 const optionalCause = Schema.optional(Schema.Defect());
 
+export class Refusal extends Schema.TaggedError<Refusal>()("Refusal", {
+	message: Schema.String,
+}) {}
+
 const GeneratorErrorReason = Schema.Literals([
+	"refused",
 	"definition-failed",
 	"api-host-required",
 	"framework-template-required",
@@ -34,6 +39,7 @@ const GeneratorErrorFields = Schema.Struct({
 type GeneratorErrorPayload = typeof GeneratorErrorFields.Type;
 
 const generatorRequiredFields = {
+	refused: ["detail"],
 	"definition-failed": ["detail"],
 	"api-host-required": ["generatorName", "frameworkName"],
 	"framework-template-required": ["generatorName"],
@@ -68,6 +74,7 @@ export class GeneratorError extends Schema.TaggedError<GeneratorError>()(
 }
 
 const generatorMessages = {
+	refused: (error: GeneratorError) => error.detail ?? "",
 	"definition-failed": (error: GeneratorError) =>
 		`Definition Failed: ${error.detail ?? ""}`,
 	"api-host-required": (error: GeneratorError) =>
@@ -335,16 +342,20 @@ export class ModuleConfigError extends Schema.TaggedError<ModuleConfigError>()(
 }
 
 const moduleConfigMessages = {
-	"not-found": () => "Module Config Not Found",
-	"read-failed": () => "Module Config Read Failed",
+	"not-found": (error: ModuleConfigError) =>
+		`Module Config Not Found: ${error.filePath}`,
+	"read-failed": (error: ModuleConfigError) =>
+		`Module Config Read Failed: ${error.filePath}`,
 	"parse-failed": (error: ModuleConfigError) =>
-		`Module Config Parse Failed: ${error.detail ?? ""}`,
+		`Module Config Parse Failed: ${error.filePath}: ${error.detail ?? ""}`,
 	invalid: (error: ModuleConfigError) =>
-		`Invalid Module Config\n${(error.issues ?? [])
+		`Invalid Module Config: ${error.filePath}\n${(error.issues ?? [])
 			.map((issue) => `  ${issue}`)
 			.join("\n")}`,
-	"directory-failed": () => "Module Config Directory Failed",
-	"write-failed": () => "Module Config Write Failed",
+	"directory-failed": (error: ModuleConfigError) =>
+		`Module Config Directory Failed: ${error.filePath}`,
+	"write-failed": (error: ModuleConfigError) =>
+		`Module Config Write Failed: ${error.filePath}`,
 } satisfies Record<
 	typeof ModuleConfigErrorReason.Type,
 	(error: ModuleConfigError) => string
@@ -360,7 +371,7 @@ export class DuplicateModuleIdError extends Schema.TaggedError<DuplicateModuleId
 	},
 ) {
 	override get message() {
-		return "Duplicate Module Id";
+		return `${this.firstPath} and ${this.secondPath} both use module id "${this.moduleId}". Delete the copy, or give it its own five letter id.`;
 	}
 }
 
@@ -374,6 +385,8 @@ export class ModuleIdGenerationError extends Schema.TaggedError<ModuleIdGenerati
 }
 
 const StateErrorReason = Schema.Literals([
+	"schema-version-unknown",
+	"cli-version-older",
 	"manifest-parse-failed",
 	"manifest-invalid",
 	"lockfile-parse-failed",
@@ -387,6 +400,7 @@ const StateErrorReason = Schema.Literals([
 	"manifest-directory-failed",
 	"manifest-write-failed",
 	"lockfile-read-failed",
+	"lockfile-missing",
 	"lockfile-directory-failed",
 	"lockfile-write-failed",
 	"base-hash-invalid",
@@ -402,6 +416,8 @@ const StateErrorFields = Schema.Struct({
 	filePath: Schema.String,
 	reason: StateErrorReason,
 	detail: Schema.optional(Schema.String),
+	projectCliVersion: Schema.optional(Schema.String),
+	runningCliVersion: Schema.optional(Schema.String),
 	issues: Schema.optional(Schema.Array(Schema.String)),
 	cause: optionalCause,
 });
@@ -409,6 +425,8 @@ const StateErrorFields = Schema.Struct({
 type StateErrorPayload = typeof StateErrorFields.Type;
 
 const stateRequiredFields = {
+	"schema-version-unknown": [],
+	"cli-version-older": ["projectCliVersion", "runningCliVersion"],
 	"manifest-parse-failed": ["detail"],
 	"manifest-invalid": ["issues"],
 	"lockfile-parse-failed": ["detail"],
@@ -422,6 +440,7 @@ const stateRequiredFields = {
 	"manifest-directory-failed": [],
 	"manifest-write-failed": [],
 	"lockfile-read-failed": [],
+	"lockfile-missing": [],
 	"lockfile-directory-failed": [],
 	"lockfile-write-failed": [],
 	"base-hash-invalid": [],
@@ -455,7 +474,13 @@ export class StateError extends Schema.TaggedError<StateError>()(
 	}
 }
 
+export const UNKNOWN_STATE_VERSION_MESSAGE =
+	"We can't read this project's metadata because it was saved by a different version of Forge.";
+
 const stateMessages = {
+	"schema-version-unknown": () => UNKNOWN_STATE_VERSION_MESSAGE,
+	"cli-version-older": (error: StateError) =>
+		`This project was last changed by Forge ${error.projectCliVersion ?? ""}, but you're running Forge ${error.runningCliVersion ?? ""}. Run Forge ${error.projectCliVersion ?? ""} or newer, for example with "npx @ryuugg/forge@latest", then try again.`,
 	"manifest-parse-failed": (error: StateError) =>
 		`Manifest Parse Failed: ${error.detail ?? ""}`,
 	"manifest-invalid": (error: StateError) =>
@@ -481,6 +506,8 @@ const stateMessages = {
 	"manifest-directory-failed": () => "Manifest Directory Failed",
 	"manifest-write-failed": () => "Manifest Write Failed",
 	"lockfile-read-failed": () => "Lockfile Read Failed",
+	"lockfile-missing": () =>
+		"This project's .forge/lock.json is missing, so Forge can't tell which files it manages. Restore it from version control, or delete the .forge directory and run forge init to adopt the project again.",
 	"lockfile-directory-failed": () => "Lockfile Directory Failed",
 	"lockfile-write-failed": () => "Lockfile Write Failed",
 	"base-hash-invalid": () => "Invalid Base Hash",
@@ -515,7 +542,6 @@ const PlannerErrorReason = Schema.Literals([
 	"definition-dependency-inactive",
 	"definition-cycle-detected",
 	"adapter-target-must-be-module",
-	"adapter-target-app-missing",
 	"adapter-framework-missing",
 	"module-key-conflict",
 	"module-root-conflict",
@@ -548,12 +574,11 @@ const plannerRequiredFields = {
 	"ensured-app-module-conflict": [],
 	"ensured-package-module-conflict": [],
 	"ensured-module-conflict": [],
-	"multiple-templates-selected": ["category"],
+	"multiple-templates-selected": ["category", "detail"],
 	"definition-dependency-missing": [],
 	"definition-dependency-inactive": [],
 	"definition-cycle-detected": [],
 	"adapter-target-must-be-module": [],
-	"adapter-target-app-missing": [],
 	"adapter-framework-missing": [],
 	"module-key-conflict": ["detail"],
 	"module-root-conflict": [],
@@ -598,12 +623,11 @@ const plannerMessages = {
 	"ensured-app-module-conflict": () => "Ensured App Module Conflict",
 	"ensured-package-module-conflict": () => "Ensured Package Module Conflict",
 	"ensured-module-conflict": () => "Ensured Module Conflict",
-	"multiple-templates-selected": () => "Multiple Templates Selected",
+	"multiple-templates-selected": (error: PlannerError) => error.detail ?? "",
 	"definition-dependency-missing": () => "Definition Dependency Missing",
 	"definition-dependency-inactive": () => "Definition Dependency Inactive",
 	"definition-cycle-detected": () => "Definition Cycle Detected",
 	"adapter-target-must-be-module": () => "Adapter Target Must Be Module",
-	"adapter-target-app-missing": () => "Adapter Target App Missing",
 	"adapter-framework-missing": () => "Adapter Framework Missing",
 	"module-key-conflict": (error: PlannerError) => error.detail ?? "",
 	"module-root-conflict": () => "Module Root Conflict",
@@ -638,17 +662,25 @@ export class RendererError extends Schema.TaggedError<RendererError>()(
 }
 
 export const ApplyRefusalReason = Schema.Literals([
+	"move-source-missing",
+	"move-destination-exists",
 	"managed-file-modified",
+	"managed-base-damaged",
 	"unmanaged-file-exists",
 ]);
+
 export type ApplyRefusalReason = typeof ApplyRefusalReason.Type;
 
 const ApplyErrorReason = Schema.Literals([
+	"move-source-missing",
+	"move-destination-exists",
+	"directory-move-failed",
 	"path-escapes-project-root",
 	"content-hash-failed",
 	"file-read-failed",
 	"json-parse-failed",
 	"managed-file-modified",
+	"managed-base-damaged",
 	"managed-base-read-failed",
 	"resolution-label-unknown",
 	"unmanaged-file-exists",
@@ -677,6 +709,9 @@ const ApplyPreflightSchema = Schema.Struct({
 				base: Schema.Unknown,
 				forge: Schema.Unknown,
 				label: Schema.String,
+				resolvedBy: Schema.Array(
+					Schema.Literals(["keep-user", "accept-forge"]),
+				),
 				user: Schema.Unknown,
 			}),
 		),
@@ -686,10 +721,13 @@ const ApplyPreflightSchema = Schema.Struct({
 	hasManagedRefusals: Schema.Boolean,
 	hasUnmanagedRefusals: Schema.Boolean,
 	hasUnmanagedRemovals: Schema.Boolean,
+	outsideRemoval: Schema.optional(Schema.Array(Schema.String)),
 	refusals: Schema.optional(
 		Schema.Array(
 			Schema.Struct({
-				resolvable: Schema.Boolean,
+				resolvedBy: Schema.Array(
+					Schema.Literals(["keep-user", "accept-forge"]),
+				),
 				reason: ApplyRefusalReason,
 				operation: Schema.Literals(["removal", "write"]),
 				path: Schema.String,
@@ -709,11 +747,15 @@ const ApplyErrorFields = Schema.Struct({
 type ApplyErrorPayload = typeof ApplyErrorFields.Type;
 
 const applyRequiredFields = {
+	"move-source-missing": [],
+	"move-destination-exists": [],
+	"directory-move-failed": [],
 	"path-escapes-project-root": [],
 	"content-hash-failed": [],
 	"file-read-failed": [],
 	"json-parse-failed": [],
 	"managed-file-modified": [],
+	"managed-base-damaged": [],
 	"managed-base-read-failed": [],
 	"resolution-label-unknown": ["detail"],
 	"unmanaged-file-exists": [],
@@ -758,12 +800,18 @@ export class ApplyError extends Schema.TaggedError<ApplyError>()(
 }
 
 const applyMessages = {
+	"move-source-missing": () => "Move Source Missing",
+	"move-destination-exists": () => "Move Destination Exists",
+	"directory-move-failed": (error: ApplyError) =>
+		`We couldn't move ${error.path}. Run forge update again. Do not restore the folders with Git.`,
 	"path-escapes-project-root": () => "Path Escapes Project Root",
 	"content-hash-failed": () => "Content Hash Failed",
 	"file-read-failed": () => "File Read Failed",
 	"json-parse-failed": () => "Managed JSON Parse Failed",
 	"managed-file-modified": () => "Managed File Modified",
-	"managed-base-read-failed": () => "Managed Base Read Failed",
+	"managed-base-damaged": () => "Managed Base Damaged",
+	"managed-base-read-failed": (error: ApplyError) =>
+		`Managed Base Read Failed: ${error.path}`,
 	"resolution-label-unknown": (error: ApplyError) => error.detail ?? "",
 	"unmanaged-file-exists": () => "Unmanaged File Exists",
 	"preflight-failed": (error: ApplyError) => error.detail ?? "",
@@ -794,6 +842,7 @@ export const PlannerErrors = Schema.Union([
 	RendererError,
 	StateError,
 ]);
+
 export type PlannerErrors = typeof PlannerErrors.Type;
 
 export const ApplyErrors = Schema.Union([ApplyError, StateError]);

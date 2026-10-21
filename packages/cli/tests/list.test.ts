@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import type { CatalogEntry } from "@ryuujs/generators";
-import { listCatalogEntries } from "@ryuujs/generators";
+import type { CatalogEntry } from "@ryuugg/generators";
+import { listCatalogEntries } from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadDiscoveryRegistry } from "../src/commands/lifecycle";
 import {
@@ -45,20 +45,25 @@ describe("forge list builders", () => {
 		expect(output.indexOf("Frameworks")).toBeLessThan(
 			output.indexOf("Templates"),
 		);
+
 		expect(output.indexOf("Templates")).toBeLessThan(output.indexOf("Addons"));
 		expect(output.indexOf("Addons")).toBeLessThan(
 			output.indexOf("Coming Soon"),
 		);
+
 		expect(output).toContain("React Router");
 		expect(output).toContain(
 			"React Router       react-router          Managed React Router app host.",
 		);
+
 		expect(output).toContain(
 			"TanStack Router    tanstack-router       Managed TanStack Router single-page app host.",
 		);
+
 		expect(output).toContain(
 			"Base               react-router/base     Base React Router template.",
 		);
+
 		expect(output).toContain("Auth.js");
 		expect(output).toContain("authjs                [addon]");
 		expect(output).not.toContain("Root Workspace");
@@ -69,6 +74,7 @@ describe("forge list builders", () => {
 		const queried = selectListEntries(catalog, {
 			query: "authentication",
 		});
+
 		const frameworks = selectListEntries(catalog, {
 			kind: "framework",
 			query: "",
@@ -149,9 +155,11 @@ describe("forge list builders", () => {
 		expect(buildListOutput(entries, { query: "" })).toContain(
 			"Future (experimental)  future  Try the future.",
 		);
+
 		expect(buildListOutput(entries, { query: "" })).toContain(
 			"1 entry. Run forge info <id> for details.",
 		);
+
 		expect(buildListOutput([], { query: "" })).toContain(
 			"0 entries. Run forge info <id> for details.",
 		);
@@ -162,7 +170,17 @@ describe("forge list builders", () => {
 		expect(parseCatalogKind("framework")).toBe("framework");
 		expect(parseCatalogKind("template")).toBe("template");
 		expect(parseCatalogKind(undefined)).toBeUndefined();
-		expect(() => parseCatalogKind("plugin")).toThrow("Catalog Kind Invalid");
+		expect(() => parseCatalogKind("plugin")).toThrow(
+			"plugin isn't a catalog kind. Use addon, framework, or template.",
+		);
+
+		expect(() => parseCatalogKind(true)).toThrow(
+			"true isn't a catalog kind. Use addon, framework, or template.",
+		);
+
+		expect(() => parseCatalogKind(["addon", "framework"])).toThrow(
+			"addon,framework isn't a catalog kind. Use addon, framework, or template.",
+		);
 	});
 
 	it("builds the stable JSON envelope without hidden entries", () => {
@@ -173,11 +191,13 @@ describe("forge list builders", () => {
 		expect(
 			envelope.entries.every((entry) => typeof entry.available === "boolean"),
 		).toBe(true);
+
 		expect(JSON.stringify(envelope)).not.toContain("docsUrl");
 		expect(JSON.parse(JSON.stringify(envelope))).toEqual(envelope);
 		expect(
 			envelope.entries.every((entry) => typeof entry.source === "string"),
 		).toBe(true);
+
 		expect(drizzle).toMatchInlineSnapshot(`
 			{
 			  "entries": [
@@ -259,13 +279,13 @@ describe("forge list builders", () => {
 		const loaded = await loadDiscoveryFixture();
 		const envelope = buildListEnvelope(loaded.catalog, { query: "" });
 		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-
 		try {
 			await runList(undefined, { json: true }, () => Promise.resolve(loaded));
 
 			expect(consoleLog).toHaveBeenCalledWith(
 				JSON.stringify(envelope, null, "\t"),
 			);
+
 			expect(JSON.parse(JSON.stringify(envelope))).toEqual(envelope);
 			expect(envelope.entries.every((entry) => entry.source.length > 0)).toBe(
 				true,
@@ -292,8 +312,10 @@ describe("forge list builders", () => {
 				.mockImplementation((message: unknown) => {
 					if (typeof message !== "string")
 						throw new Error("Expected string JSON output");
+
 					stdout.push(message);
 				});
+
 			promptMocks.logWarn.mockImplementation((message, options) => {
 				expect(options.output).toBe(process.stderr);
 				stderr.push(message);
@@ -311,9 +333,11 @@ describe("forge list builders", () => {
 			expect(JSON.parse(stdout[0] ?? "")).toEqual(
 				buildListEnvelope(listCatalogEntries(), { query: "" }),
 			);
+
 			expect(stderr).toEqual([
 				"We couldn't load this project's registries (Registry Not Installed: @fixture/missing-registry), so we're showing the first-party catalog.",
 			]);
+
 			expect(promptMocks.logWarn).toHaveBeenCalledTimes(1);
 		});
 	});
@@ -330,6 +354,7 @@ describe("forge list builders", () => {
 					"\t",
 				),
 			);
+
 			expect(promptMocks.logMessage).not.toHaveBeenCalled();
 		} finally {
 			consoleLog.mockRestore();

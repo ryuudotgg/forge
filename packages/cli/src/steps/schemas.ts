@@ -1,15 +1,22 @@
 export { addonsSchema as addons } from "./addons/select";
 export { authenticationCustomUISchema as authenticationCustomUI } from "./auth/custom-ui";
+export { authMethodsSchema as authMethods } from "./auth/methods";
+export { authPluginsSchema as authPlugins } from "./auth/plugins";
 export { authenticationSchema as authentication } from "./auth/provider";
 export { backendSchema as backend } from "./backend/framework";
 export { rpcSchema as rpc } from "./backend/rpc";
 export { databaseSchema as database } from "./data/database";
 export { databaseProviderSchema as databaseProvider } from "./data/database-provider";
 export { ormSchema as orm } from "./data/orm";
+export { emailProviderSchema as emailProvider } from "./email/provider";
 export { desktopSchema as desktop } from "./platforms/desktop";
 export { mobileSchema as mobile } from "./platforms/mobile";
 export { platformsSchema as platforms } from "./platforms/select";
 export { webSchema as web } from "./platforms/web";
+export {
+	webAppNameSchema as webName,
+	webAppsSchema as webApps,
+} from "./platforms/web-apps";
 export { catalogsSchema as catalogs } from "./project/catalogs";
 export { linterSchema as linter } from "./project/linter";
 export { nameSchema as name, slugSchema as slug } from "./project/name";

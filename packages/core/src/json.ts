@@ -34,31 +34,41 @@ function formatExpected(
 	switch (ast._tag) {
 		case "String":
 			return "string";
+
 		case "Number":
 			return "number";
+
 		case "Boolean":
 			return "boolean";
+
 		case "Unknown":
 			return "unknown";
+
 		case "Undefined":
 			return "undefined";
+
 		case "Literal":
 			return typeof ast.literal === "string"
 				? JSON.stringify(ast.literal)
 				: String(ast.literal);
+
 		case "Union": {
 			const members = ast.types.map((member) => formatExpected(member));
 			return members.every((member) => member !== undefined)
 				? members.join(" | ")
 				: undefined;
 		}
+
 		case "Arrays": {
 			if (ast.elements.length > 0 || ast.rest.length !== 1) return undefined;
+
 			const memberAst = ast.rest[0];
 			if (memberAst === undefined) return undefined;
+
 			const member = formatExpected(memberAst);
 			return member === undefined ? undefined : `ReadonlyArray<${member}>`;
 		}
+
 		case "Objects": {
 			if (hasEncodedProperty(ast))
 				return position === "leaf"
@@ -73,6 +83,7 @@ function formatExpected(
 						: `readonly ${String(property.name)}${property.type.context?.isOptional === true ? "?" : ""}: ${expected}`;
 				})
 				.filter((property): property is string => property !== undefined);
+
 			const indexes = ast.indexSignatures
 				.map((index) => {
 					const parameter = formatExpected(index.parameter);
@@ -82,12 +93,14 @@ function formatExpected(
 						: `readonly [x: ${parameter}]: ${expected}`;
 				})
 				.filter((index): index is string => index !== undefined);
+
 			const fields = [...properties, ...indexes];
 			return fields.length ===
 				ast.propertySignatures.length + ast.indexSignatures.length
 				? `{ ${fields.join("; ")} }`
 				: undefined;
 		}
+
 		default:
 			return undefined;
 	}
@@ -106,12 +119,15 @@ function formatLeaf(issue: SchemaIssue.Leaf): string {
 		const message = SchemaIssue.defaultLeafHook(issue);
 		return message === "Missing key" ? "is missing" : message;
 	}
+
 	if (issue._tag === "InvalidType") {
 		const message = SchemaIssue.defaultLeafHook(issue);
 		if (typeof issue.ast.annotations?.message === "string") return message;
+
 		const expected = formatExpected(issue.ast, "leaf");
 		return expected === undefined ? message : `Expected ${expected}`;
 	}
+
 	return SchemaIssue.defaultLeafHook(issue);
 }
 
@@ -136,19 +152,25 @@ function walkIssue(
 					},
 				];
 			}
+
 			return walkIssue(issue.issue, path);
 		}
+
 		case "Encoding":
 			return walkIssue(issue.issue, path);
+
 		case "Pointer":
 			return walkIssue(issue.issue, [...path, ...issue.path]);
+
 		case "Composite":
 			return issue.issues.flatMap((child) => walkIssue(child, path));
+
 		case "AnyOf": {
 			if (issue.issues.length > 0) {
 				const formatted = issue.issues.flatMap((child) =>
 					walkIssue(child, path),
 				);
+
 				const additional = flattenUnionMembers(issue.ast.types)
 					.filter(
 						(member) =>
@@ -157,6 +179,7 @@ function walkIssue(
 					.flatMap((member) => {
 						const expected = formatExpected(member);
 						if (expected === undefined) return [];
+
 						const message = `Expected ${expected}`;
 						return formatted.some(
 							(formattedIssue) =>
@@ -169,13 +192,16 @@ function walkIssue(
 							? []
 							: [{ message, path }];
 					});
+
 				return [...formatted, ...additional];
 			}
+
 			const unionMembers = flattenUnionMembers(issue.ast.types);
 			const members = unionMembers.map((member) => ({
 				expected: formatExpected(member),
 				isObject: member._tag === "Objects",
 			}));
+
 			const objectCount = members.filter((member) => member.isObject).length;
 			if (
 				objectCount < 2 &&
@@ -185,11 +211,13 @@ function walkIssue(
 					message: `Expected ${member.expected ?? "unknown"}`,
 					path,
 				}));
+
 			return fallbackFormatter(issue).issues.map((formatted) => ({
 				message: formatted.message,
 				path,
 			}));
 		}
+
 		default:
 			return [{ message: formatLeaf(issue), path }];
 	}
@@ -213,8 +241,10 @@ function valueAtPath(
 			!Object.hasOwn(current, key)
 		)
 			return { found: false };
+
 		current = Reflect.get(current, key);
 	}
+
 	return { found: true, value: current };
 }
 
@@ -229,10 +259,12 @@ function formatActual(value: unknown) {
 
 function formatMessage(message: string, actual: unknown) {
 	if (actual === undefined || !message.startsWith("Expected ")) return message;
+
 	const expected = message
 		.slice("Expected ".length)
 		.split(" | ")
 		.filter((member) => member !== "undefined");
+
 	return expected.length === 0 ? message : `Expected ${expected.join(" | ")}`;
 }
 
@@ -243,6 +275,7 @@ export function formatSchemaError(
 	return walkIssue(error.issue, []).map((issue) => {
 		const actual: ValueAtPathResult =
 			input === noInput ? { found: false } : valueAtPath(input, issue.path);
+
 		return {
 			message:
 				actual.found && issue.message.startsWith("Expected ")
@@ -254,7 +287,11 @@ export function formatSchemaError(
 }
 
 export function formatSchemaIssues(error: Schema.SchemaError, input?: unknown) {
-	return formatSchemaError(error, input).map((issue) =>
+	return schemaIssueLines(formatSchemaError(error, input));
+}
+
+function schemaIssueLines(issues: ReadonlyArray<FormattedSchemaIssue>) {
+	return issues.map((issue) =>
 		issue.path.length > 0
 			? `${issue.path.join(".")}: ${issue.message}`
 			: issue.message,
@@ -273,6 +310,7 @@ export function decodeJsonString<
 		readonly onValidationError: (
 			issues: ReadonlyArray<string>,
 			cause: unknown,
+			structuredIssues: ReadonlyArray<FormattedSchemaIssue>,
 		) => ValidationError;
 	},
 ): EffectType<S["Type"], ParseError | ValidationError, S["DecodingServices"]> {
@@ -285,10 +323,15 @@ export function decodeJsonString<
 			),
 	}).pipe(
 		Effect.flatMap((parsed) =>
-			Schema.decodeUnknownEffect(schema)(parsed).pipe(
-				Effect.mapError((error) =>
-					options.onValidationError(formatSchemaIssues(error, parsed), error),
-				),
+			Schema.decodeUnknownEffect(schema)(parsed, { errors: "all" }).pipe(
+				Effect.mapError((error) => {
+					const structuredIssues = formatSchemaError(error, parsed);
+					return options.onValidationError(
+						schemaIssueLines(structuredIssues),
+						error,
+						structuredIssues,
+					);
+				}),
 			),
 		),
 	);

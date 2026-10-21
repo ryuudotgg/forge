@@ -2,7 +2,7 @@ import {
 	defineAddon,
 	moduleCapabilities,
 	templateModuleTarget,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
 import type { FirstPartyAddonMetadata } from "../../registry/types";
 

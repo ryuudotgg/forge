@@ -1,0 +1,218 @@
+name: Smoke
+
+on:
+  push:
+    branches: ["main"]
+
+  pull_request:
+
+  merge_group:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 4 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  FORCE_COLOR: 3
+  DO_NOT_TRACK: true
+
+  # https://turborepo.org/docs/core-concepts/remote-caching
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+
+jobs:
+  changes:
+    name: Detect Smoke Changes
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: depot-ubuntu-latest
+    permissions:
+      contents: read
+
+    outputs:
+      relevant: ${{ steps.changes.outputs.relevant }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect Relevant Changes
+        id: changes
+        run: |
+          relevant=false
+
+          if ! diff_output=$(git -c core.quotePath=false diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"); then
+            echo '::error::git diff failed to compute changed paths' >&2
+            exit 1
+          fi
+
+          while IFS= read -r changed_path; do
+            [ -z "$changed_path" ] && continue
+            case "$changed_path" in
+              packages/cli/tests/* | packages/core/tests/* | packages/generators/tests/*)
+                continue
+                ;;
+              .depot/workflows/smoke.yml | package.json | .nvmrc | tooling/github/setup/* | packages/cli/* | packages/core/* | packages/generators/* | pnpm-lock.yaml | pnpm-workspace.yaml | tests/scenarios/package.json | tests/scenarios/turbo.json | tests/scenarios/vitest.config.ts | tests/scenarios/src/scenarios/*.smoke.test.ts | tests/scenarios/src/utils/* | tests/scenarios/scripts/* | examples/registry-package/*)
+                relevant=true
+                break
+                ;;
+            esac
+          done <<< "$diff_output"
+
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+
+  smoke:
+    name: Install Smoke (${{ matrix.shard }}/2)
+    needs: [changes]
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.changes.result == 'failure' || needs.changes.outputs.relevant == 'true') }}
+    runs-on: depot-ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      mysql:
+        image: mysql:26.7@sha256:625f74ddf93652d9d0f8d4ea7d741b9189554a5e96d27bb770abd0902d89c6e3
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pmysql"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Build CLI
+        run: pnpm build --filter=@ryuugg/forge
+
+      - name: Smoke Test
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install- ${{ github.event_name != 'merge_group' && 'src/scenarios/multi-pm.smoke.test.ts' || '' }} --shard=${{ matrix.shard }}/2 --maxWorkers=3 --reporter=default --reporter=github-actions --reporter=json --outputFile.json=.cache/install-smoke.json
+        env:
+          FORGE_SMOKE: "1"
+          FORGE_SMOKE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          FORGE_SMOKE_MYSQL_URL: mysql://root:mysql@127.0.0.1:3306
+          FORGE_SMOKE_TIMINGS: .cache/install-smoke-timings.jsonl
+          TURBO_FORCE: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+
+      - name: Smoke Timing Report
+        if: ${{ !cancelled() }}
+        run: node tests/scenarios/scripts/smoke-report.mts tests/scenarios/.cache/install-smoke.json tests/scenarios/.cache/install-smoke-timings.jsonl
+
+      - name: Upload Smoke Report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: install-smoke-report-${{ matrix.shard }}
+          path: |
+            tests/scenarios/.cache/install-smoke.json
+            tests/scenarios/.cache/install-smoke-timings.jsonl
+
+      - name: Tarball Smoke
+        if: ${{ matrix.shard == 1 }}
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/tarball.smoke.test.ts
+        env:
+          FORGE_SMOKE: "1"
+
+      - name: Registry Smoke
+        if: ${{ matrix.shard == 1 }}
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/registry.smoke.test.ts
+        env:
+          FORGE_SMOKE: "1"
+
+  email-upgrade:
+    name: Email Starter Upgrade
+    needs: [changes]
+    if: ${{ always() && (github.event_name != 'pull_request' || needs.changes.result == 'failure' || needs.changes.outputs.relevant == 'true') }}
+    runs-on: depot-ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Build Current CLI
+        run: pnpm build --filter=@ryuugg/forge
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: baseline
+          ref: cd5d3788329c6c8b885c1c4f8ff05ef78ad12081
+
+      - name: Build Baseline CLI in Isolation
+        working-directory: baseline
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build --filter=./packages/cli
+
+      - name: Verify Email Starter Upgrade
+        run: pnpm --filter @ryuugg/scenarios exec vitest run src/scenarios/install-email.smoke.test.ts -t "upgrades baseline email starters to the current design" --reporter=default --reporter=json --outputFile.json=.cache/email-upgrade.json
+        env:
+          FORGE_SMOKE: "1"
+          FORGE_SMOKE_BASELINE_CLI: ${{ github.workspace }}/baseline/packages/cli/dist/index.mjs
+
+      - name: Verify Email Starter Upgrade Ran
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const report = JSON.parse(readFileSync("tests/scenarios/.cache/email-upgrade.json", "utf8"));
+
+          if (!(report.numPassedTests >= 1 && report.numFailedTests === 0)) {
+            throw new Error("Email Starter Upgrade Did Not Run");
+          }
+          NODE
+
+  gate:
+    name: Install Smoke Gate
+    needs: [smoke, email-upgrade]
+    if: ${{ always() }}
+    runs-on: depot-ubuntu-latest
+    permissions: {}
+
+    steps:
+      - name: Verify Smoke Result
+        run: |
+          if [[ "$SMOKE_RESULT" == "failure" || "$SMOKE_RESULT" == "cancelled" ]]; then
+            echo "Install Smoke Result: $SMOKE_RESULT."
+            exit 1
+          fi
+
+          if [[ "$EMAIL_UPGRADE_RESULT" == "failure" || "$EMAIL_UPGRADE_RESULT" == "cancelled" ]]; then
+            echo "Email Starter Upgrade Result: $EMAIL_UPGRADE_RESULT."
+            exit 1
+          fi
+        env:
+          SMOKE_RESULT: ${{ needs.smoke.result }}
+          EMAIL_UPGRADE_RESULT: ${{ needs.email-upgrade.result }}

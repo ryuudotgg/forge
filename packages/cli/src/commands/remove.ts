@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import {
 	confirm,
 	intro,
@@ -10,27 +11,43 @@ import {
 	type InstallRecord,
 	isAddonCompatibleWithModule,
 	packageManagerRemoveCommand,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	type AddonCatalogEntry,
+	authChoice,
+	authChoiceLabel,
+	authEmailMethods,
+	authMethods,
 	configWithoutInstall,
 	type ForgeConfig,
 	findRemovalBlockers,
+	hasAuthChoice,
 	type LoadedDefinitionRegistry,
 	loadAddonDefinition,
+	primaryWebAppName,
 	RegistryLoadError,
-} from "@ryuujs/generators";
+	removeWebAppConfig,
+	resolveAuthMethods,
+	webFrameworks,
+} from "@ryuugg/generators";
 import { cancel } from "../utils/cancel";
+import { completionLine } from "../utils/completion";
 import { listAnd } from "../utils/list";
+import { reportRetainedFiles } from "../utils/retained";
+import { removedClientEnvMessage } from "../utils/web-apps";
+import { runAuthChoiceChange } from "./auth-choice";
+import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
+	generatedRemovalPaths,
 	hasProjectDevDependency,
 	loadManagedProject,
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "./lifecycle";
 import { type ResolutionArguments, resolutionArguments } from "./resolution";
+import { secondaryAppModules } from "./secondary-apps";
 
 function moduleLabel(
 	moduleId: string,
@@ -84,6 +101,32 @@ function assertNoRemovalBlockers(
 	);
 
 	const label = addon.category === "orm" ? "the ORM" : addon.name;
+	const emailMethods = addon.id === "email" ? authEmailMethods(config) : [];
+	if (emailMethods.length > 0) {
+		const methods = listAnd.format(
+			emailMethods.map((method) => authMethods.label(method)),
+		);
+
+		const commands = listAnd.format(
+			emailMethods.map((method) => `forge remove ${method}`),
+		);
+
+		const keepsSignIn = resolveAuthMethods(config).some(
+			(method) => !emailMethods.includes(method) && method !== "passkey",
+		);
+
+		const next = keepsSignIn
+			? `Run ${commands} first.`
+			: `Run forge add email-password, then ${commands}.`;
+
+		log.error(
+			emailMethods.length === 1
+				? `We can't remove email until you remove this sign-in method: ${methods}. ${next}`
+				: `We can't remove email until you remove these sign-in methods: ${methods}. ${next}`,
+		);
+
+		process.exit(1);
+	}
 
 	if (blockers.frameworks.length > 0) {
 		log.error(
@@ -286,9 +329,306 @@ async function promptForInstalledAddonId(
 	return String(selectedAddon);
 }
 
+function resolveAppRemoval(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	app: NonNullable<ForgeConfig["webApps"]>[number],
+) {
+	const modules = secondaryAppModules(project, app);
+	const [module] = modules;
+	if (module !== undefined)
+		return modules.length === 1
+			? { ids: [module.id], modules, roots: [module.root] }
+			: undefined;
+
+	const discoveredIds = new Set(project.modules.map((entry) => entry.id));
+	const missingRecords = Object.entries(project.manifest.modules).flatMap(
+		([id, record]) =>
+			record.root === undefined || discoveredIds.has(id)
+				? []
+				: [{ id, root: record.root }],
+	);
+
+	const canonicalRecords = missingRecords.filter(
+		(record) => record.root === `apps/${app.name}`,
+	);
+
+	const records =
+		canonicalRecords.length > 0
+			? canonicalRecords
+			: missingRecords.filter((record) => basename(record.root) === app.name);
+
+	if (records.length > 1) return undefined;
+
+	return {
+		ids: records.map((record) => record.id),
+		modules: [],
+		roots: records.map((record) => record.root),
+	};
+}
+
+async function removeWebApp(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	requestedId: string,
+	values: Record<string, string | boolean | string[] | undefined>,
+) {
+	const config: ForgeConfig = project.config;
+	const apps = config.webApps ?? [];
+	const primaryName = primaryWebAppName(config);
+	const primary = project.modules.find(
+		(module) =>
+			module.root === `apps/${primaryName}` ||
+			(module.type === "app" && module.role === "primary"),
+	);
+
+	if (
+		requestedId === primaryName ||
+		(requestedId === "primary" &&
+			!apps.some((app) => app.name === requestedId)) ||
+		requestedId === `apps/${primaryName}` ||
+		(primary !== undefined && requestedId === primary.id)
+	) {
+		log.error("We can't remove the primary web app.");
+		process.exit(1);
+	}
+
+	let selectedApp = apps.find((app) => {
+		const modules = secondaryAppModules(project, app);
+		return (
+			requestedId === app.name ||
+			requestedId === `apps/${app.name}` ||
+			modules.some((module) => requestedId === module.id)
+		);
+	});
+
+	if (
+		selectedApp === undefined &&
+		webFrameworks.ids.some((id) => id === requestedId)
+	) {
+		const matchingApps = apps.filter((app) => app.framework === requestedId);
+
+		if (project.config.web === requestedId) {
+			log.error(
+				"We can't remove the primary web app. Pass a secondary app name instead.",
+			);
+
+			process.exit(1);
+		}
+
+		if (matchingApps.length === 1) selectedApp = matchingApps[0];
+		else if (matchingApps.length > 1) {
+			if (values.yes === true || !isInteractiveLifecycleSession()) {
+				log.error("Pass the name of the secondary web app you want to remove.");
+				process.exit(1);
+			}
+
+			const result = await select({
+				message: "Which web app do you want to remove?",
+				options: matchingApps.map((app) => ({
+					label: app.name,
+					value: app.name,
+				})),
+			});
+
+			if (isCancel(result)) cancel();
+			selectedApp = matchingApps.find((app) => app.name === result);
+		}
+	}
+
+	if (selectedApp === undefined) return false;
+
+	const removal = resolveAppRemoval(project, selectedApp);
+	if (removal === undefined) {
+		log.error(
+			`We can't identify one managed web app named "${selectedApp.name}".`,
+		);
+
+		process.exit(1);
+	}
+
+	if (
+		removal.modules.some(
+			(module) => module.type === "app" && module.role === "primary",
+		)
+	) {
+		log.error("We can't remove the primary web app.");
+		process.exit(1);
+	}
+
+	const nextConfig = removeWebAppConfig(config, selectedApp.name);
+	const options = resolutionArguments(values)[0] ?? {};
+	if (removal.ids.length === 0) {
+		const { retained } = await applyInstalledPlan(
+			project.projectRoot,
+			nextConfig,
+			project.manifest.installs,
+			undefined,
+			project.manifest.registries,
+			options,
+			{
+				modules: project.modules,
+				records: project.manifest.modules,
+				removedRoots: [],
+			},
+		);
+
+		reportWebAppRemoval(selectedApp, config, nextConfig, retained, []);
+		return true;
+	}
+
+	const removedModuleRoots = new Set(
+		removal.modules.map((module) => module.root),
+	);
+
+	const removalRootRelocations = Object.fromEntries(
+		removal.modules.flatMap((module) => {
+			const previousRoot = project.manifest.modules[module.id]?.root;
+			return previousRoot === undefined || previousRoot === module.root
+				? []
+				: [[previousRoot, module.root]];
+		}),
+	);
+
+	const nextInstalls = project.manifest.installs
+		.map((install) => removeTargets(install, removal.ids))
+		.filter((install): install is InstallRecord => install !== undefined);
+
+	const currentGeneratedPaths =
+		removal.modules.length === 0
+			? []
+			: await generatedRemovalPaths(
+					project.projectRoot,
+					config,
+					project.manifest.installs,
+					project.manifest.registries,
+					project.modules,
+					project.manifest.modules,
+					removal.roots,
+				);
+
+	const relocations = Object.entries(removalRootRelocations);
+
+	const generatedRemovals = currentGeneratedPaths.map((path) => {
+		const relocation = relocations.find(
+			([, currentRoot]) =>
+				path === currentRoot || path.startsWith(`${currentRoot}/`),
+		);
+
+		return relocation === undefined
+			? path
+			: `${relocation[0]}${path.slice(relocation[1].length)}`;
+	});
+
+	const { retained } = await applyInstalledPlan(
+		project.projectRoot,
+		nextConfig,
+		nextInstalls,
+		undefined,
+		project.manifest.registries,
+		options,
+		{
+			...(generatedRemovals.length === 0 ? {} : { generatedRemovals }),
+			modules: project.modules.filter(
+				(module) => !removedModuleRoots.has(module.root),
+			),
+			records: project.manifest.modules,
+			...(Object.keys(removalRootRelocations).length === 0
+				? {}
+				: { removalRootRelocations }),
+			removedRoots: removal.roots,
+		},
+	);
+
+	reportWebAppRemoval(selectedApp, config, nextConfig, retained, removal.roots);
+	return true;
+}
+
+function reportWebAppRemoval(
+	app: NonNullable<ForgeConfig["webApps"]>[number],
+	previousConfig: ForgeConfig,
+	nextConfig: ForgeConfig,
+	retained: ReadonlyArray<string>,
+	removedRoots: ReadonlyArray<string>,
+) {
+	log.success(`We removed the ${app.name} web app.`);
+
+	if (app.client === true)
+		log.info(removedClientEnvMessage(previousConfig, nextConfig, app.name));
+
+	reportRetainedFiles(retained);
+
+	const retainedRoots = removedRoots.filter((root) =>
+		retained.includes(`${root}/package.json`),
+	);
+
+	if (retainedRoots.length > 0)
+		log.info(
+			retainedRoots.length === 1
+				? `${retainedRoots[0]} is still a workspace package, so delete the folder to finish the removal.`
+				: `${listAnd.format(retainedRoots)} are still workspace packages, so delete those folders to finish the removal.`,
+		);
+}
+
+function installedAddonNamed(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	loaded: LoadedDefinitionRegistry,
+	name: string,
+) {
+	const config: ForgeConfig = project.config;
+	if (!(config.webApps ?? []).some((app) => app.name === name))
+		return undefined;
+
+	if (
+		project.manifest.installs.some((install) => install.definitionId === name)
+	)
+		return {
+			kind: "addon",
+			name:
+				loaded.registry.addons.find((addon) => addon.id === name)?.name ?? name,
+		};
+
+	if (loaded.descriptors.some((descriptor) => descriptor.id === name))
+		return undefined;
+
+	const choice = authChoice(name);
+	return choice !== undefined && hasAuthChoice(config, choice)
+		? {
+				kind: choice.kind,
+				name: authChoiceLabel(choice),
+			}
+		: undefined;
+}
+
+async function chooseWebAppOverAddon(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	loaded: LoadedDefinitionRegistry,
+	name: string,
+	values: Record<string, string | boolean | string[] | undefined>,
+) {
+	const addon = installedAddonNamed(project, loaded, name);
+	if (
+		addon === undefined ||
+		values.yes === true ||
+		!isInteractiveLifecycleSession()
+	)
+		return true;
+
+	const label = `${addon.name} ${addon.kind === "method" ? "sign-in method" : addon.kind}`;
+	const choice = await select({
+		message: `Do you want to remove the ${name} web app or the ${label}?`,
+		initialValue: "app",
+		options: [
+			{ label: `The ${name} web app`, value: "app" },
+			{ label: `The ${label}`, value: "addon" },
+		],
+	});
+
+	if (isCancel(choice)) cancel();
+	return choice === "app";
+}
+
 export async function runRemove(
 	addonId: string | undefined,
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 ) {
 	const resolution = resolutionArguments(values);
 	const project = await loadManagedProject(".", "remove");
@@ -296,6 +636,46 @@ export async function runRemove(
 		project.projectRoot,
 		project.manifest.registries ?? [],
 	);
+
+	if (
+		addonId !== undefined &&
+		(await chooseWebAppOverAddon(project, loadedRegistry, addonId, values)) &&
+		(await removeWebApp(project, addonId, values))
+	) {
+		const installedAddon = installedAddonNamed(
+			project,
+			loadedRegistry,
+			addonId,
+		);
+
+		if (
+			installedAddon !== undefined &&
+			(values.yes === true || !isInteractiveLifecycleSession())
+		)
+			log.info(
+				installedAddon.kind === "addon"
+					? `The ${installedAddon.name} addon is still installed. Run forge remove without a name to choose it.`
+					: `The ${installedAddon.name} ${installedAddon.kind === "method" ? "sign-in method" : "plugin"} is still set up. Run forge remove ${addonId} again to remove it.`,
+			);
+
+		return;
+	}
+
+	const choice = addonId === undefined ? undefined : authChoice(addonId);
+	const removableIds = new Set([
+		...project.manifest.installs.map((install) => install.definitionId),
+		...loadedRegistry.descriptors.map((entry) => entry.id),
+	]);
+
+	if (
+		choice !== undefined &&
+		addonId !== undefined &&
+		!removableIds.has(addonId) &&
+		!removableIds.has(choice.id)
+	) {
+		await runAuthChoiceChange(project, choice, "remove", values);
+		return;
+	}
 
 	const resolvedAddonId =
 		addonId ??
@@ -397,7 +777,6 @@ export async function runRemove(
 	}
 
 	let nextInstalls = project.manifest.installs;
-
 	if (install.targets.some((target) => target.kind === "project"))
 		nextInstalls = nextInstalls.filter(
 			(entry) => entry.definitionId !== resolvedAddonId,
@@ -434,11 +813,12 @@ export async function runRemove(
 	const removedEverywhere = !nextInstalls.some(
 		(entry) => entry.definitionId === resolvedAddonId,
 	);
+
 	const nextConfig = removedEverywhere
 		? configWithoutInstall(project.config, resolvedAddonId)
 		: project.config;
 
-	if (removedEverywhere) {
+	if (removedEverywhere)
 		assertNoRemovalBlockers(
 			addon,
 			nextConfig,
@@ -446,7 +826,6 @@ export async function runRemove(
 			project,
 			loadedRegistry,
 		);
-	}
 
 	const registryIds = project.manifest.registries;
 	const descriptor = loadedRegistry.descriptors.find((entry) =>
@@ -490,14 +869,39 @@ export async function runRemove(
 		}
 	}
 
-	if (deregistered) return;
+	const remainingTargets = new Set(
+		nextInstalls
+			.find((entry) => entry.definitionId === resolvedAddonId)
+			?.targets.flatMap((target) =>
+				target.kind === "module" ? [target.moduleId] : [],
+			),
+	);
 
-	await applyInstalledPlan(
+	const removedLabels = install.targets.flatMap((target) =>
+		target.kind === "module" && !remainingTargets.has(target.moduleId)
+			? [moduleLabel(target.moduleId, project.modules)]
+			: [],
+	);
+
+	const removed = removedEverywhere
+		? `We removed ${addon.name}.`
+		: `We removed ${addon.name} from ${listAnd.format(removedLabels)}.`;
+
+	if (deregistered) {
+		log.success(removed);
+		return;
+	}
+
+	const applied = await applyInstalledPlan(
 		project.projectRoot,
 		nextConfig,
 		nextInstalls,
 		undefined,
 		registryIds,
 		...resolution,
+	);
+
+	log.success(
+		completionLine(removed, applied, configuredPackageManager(nextConfig)),
 	);
 }

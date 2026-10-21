@@ -6,6 +6,7 @@ import type {
 	DefinitionRegistry,
 	EnsuredModuleTarget,
 	EnsureModuleContribution,
+	FileUpdate,
 	ModuleTarget,
 	ResolvedModuleTarget,
 	SlotPath,
@@ -49,11 +50,19 @@ import {
 	type TargetingPhaseContract,
 } from "./planner-evaluation";
 import {
+	type DirectoryMove,
+	moveModules,
+	previousLockfileAtNextRoots,
+	relocateInstalls,
+	rootChanges,
+} from "./relocation";
+import {
 	type RenderBucket,
 	type RenderedArtifact,
 	Renderer,
 	type SurfaceRenderContribution,
 } from "./renderer";
+import { sortScopedImports } from "./sort/imports";
 import {
 	type InstallRecord,
 	type InstallTarget,
@@ -124,6 +133,17 @@ export function retargetAdoptedContribution(
 						...contribution,
 						moduleKey: instanceModuleKey,
 						root: module.root,
+						module:
+							contribution.module.type === "app" && module.type === "app"
+								? {
+										...contribution.module,
+										role:
+											moduleKey === instanceModuleKey ||
+											module.root === contribution.root
+												? contribution.module.role
+												: module.role,
+									}
+								: contribution.module,
 					}
 				: contribution;
 
@@ -166,6 +186,183 @@ export function retargetAdoptedContribution(
 	}
 }
 
+function isAppEnsure(
+	contribution: Contribution,
+): contribution is EnsureModuleContribution {
+	return (
+		contribution._tag === "EnsureModuleContribution" &&
+		contribution.module.type === "app"
+	);
+}
+
+function ensuredPackageName(
+	entry: EvaluationPhaseContract["evaluated"][number],
+	moduleKey: string,
+) {
+	for (const contribution of entry.contributions)
+		if (
+			contribution._tag === "ManagedJsonSurfaceContribution" &&
+			contribution.surface === "packageJson" &&
+			contribution.target._tag === "EnsuredModuleTarget" &&
+			contribution.target.moduleKey === moduleKey &&
+			typeof contribution.value.name === "string"
+		)
+			return contribution.value.name;
+
+	return undefined;
+}
+
+function retargetMovedApps(
+	entry: EvaluationPhaseContract["evaluated"][number],
+	modules: ReadonlyArray<DiscoveredModule>,
+): EvaluationPhaseContract["evaluated"][number] {
+	const ensures = entry.contributions.filter(isAppEnsure);
+	const ensuredRoots = new Set(ensures.map((ensure) => ensure.root));
+
+	const candidates = modules.filter(
+		(module) =>
+			module.type === "app" &&
+			module.template.id === entry.definitionId &&
+			!ensuredRoots.has(module.root),
+	);
+
+	let contributions = entry.contributions;
+	for (const ensure of ensures) {
+		if (modules.some((module) => module.root === ensure.root)) continue;
+
+		const packageName = ensuredPackageName(entry, ensure.moduleKey);
+		const moved = candidates.filter(
+			(module) =>
+				module.template.version === ensure.module.template.version &&
+				((packageName !== undefined && module.packageName === packageName) ||
+					(ensure.module.type === "app" &&
+						ensure.module.role === "primary" &&
+						module.type === "app" &&
+						module.role === "primary")),
+		);
+
+		const [module] = moved;
+		if (module === undefined || moved.length !== 1) continue;
+
+		contributions = contributions.map((contribution) =>
+			retargetAdoptedContribution(
+				contribution,
+				ensure.moduleKey,
+				module,
+				ensure.moduleKey,
+			),
+		);
+	}
+
+	return { ...entry, contributions };
+}
+
+function contributionTargets(
+	contribution: Contribution,
+): ReadonlyArray<TargetRef> {
+	switch (contribution._tag) {
+		case "EnsureModuleContribution":
+			return [];
+
+		case "LeafTextFileContribution":
+			return typeof contribution.path === "string"
+				? [contribution.target]
+				: [contribution.target, contribution.path.target];
+
+		case "ManagedDependenciesSurfaceContribution":
+		case "ManagedJsonSurfaceContribution":
+		case "ManagedLinesSurfaceContribution":
+		case "ManagedScriptsSurfaceContribution":
+		case "ManagedTextSurfaceContribution":
+		case "ModuleCapabilitiesContribution":
+			return [contribution.target];
+	}
+}
+
+interface UnresolvedTemplateInstances {
+	readonly keys: ReadonlySet<string>;
+	readonly templateIds: ReadonlySet<string>;
+}
+
+function unresolvedTemplateInstances<ConfigValue>(
+	evaluated: EvaluationPhaseContract["evaluated"],
+	registry: DefinitionRegistry<ConfigValue>,
+	moduleIdsByKey: ReadonlyMap<string, ModuleId>,
+	discovered: ReadonlyArray<DiscoveredModule>,
+	additions: ReadonlyArray<TemplateAddition>,
+): UnresolvedTemplateInstances {
+	const templateIds = new Set(
+		registry.templates.map((template) => template.id),
+	);
+
+	const discoveredIds = new Set<ModuleId>(
+		discovered.map((module) => module.id),
+	);
+
+	const additionRoots = new Set(additions.map((addition) => addition.root));
+	const ensures = evaluated.flatMap((entry) =>
+		entry.contributions.flatMap((contribution) =>
+			contribution._tag === "EnsureModuleContribution"
+				? [{ contribution, definitionId: entry.definitionId }]
+				: [],
+		),
+	);
+
+	const resolvedKeys = new Set(
+		ensures
+			.filter(({ contribution, definitionId }) => {
+				const moduleId = moduleIdsByKey.get(contribution.moduleKey);
+				return (
+					!templateIds.has(definitionId) ||
+					additionRoots.has(contribution.root) ||
+					(moduleId !== undefined && discoveredIds.has(moduleId))
+				);
+			})
+			.map(({ contribution }) => contribution.moduleKey),
+	);
+
+	const unresolved = ensures.filter(
+		({ contribution }) => !resolvedKeys.has(contribution.moduleKey),
+	);
+
+	const resolvedTemplateIds = new Set(
+		ensures
+			.filter(({ contribution }) => resolvedKeys.has(contribution.moduleKey))
+			.map(({ definitionId }) => definitionId),
+	);
+
+	return {
+		keys: new Set(unresolved.map(({ contribution }) => contribution.moduleKey)),
+		templateIds: new Set(
+			unresolved
+				.map(({ definitionId }) => definitionId)
+				.filter((definitionId) => !resolvedTemplateIds.has(definitionId)),
+		),
+	};
+}
+
+function withoutUnresolvedInstances(
+	evaluated: EvaluationPhaseContract["evaluated"],
+	unresolved: UnresolvedTemplateInstances,
+): EvaluationPhaseContract["evaluated"] {
+	const targetsUnresolved = (target: TargetRef) =>
+		(target._tag === "EnsuredModuleTarget" &&
+			unresolved.keys.has(target.moduleKey)) ||
+		(target._tag === "TemplateModuleTarget" &&
+			[...unresolved.templateIds].some((templateId) =>
+				templateMatchesId(target.template.id, templateId),
+			));
+
+	return evaluated.map((entry) => ({
+		...entry,
+		contributions: entry.contributions.filter((contribution) =>
+			contribution._tag === "EnsureModuleContribution"
+				? !unresolved.keys.has(contribution.moduleKey)
+				: !contributionTargets(contribution).some(targetsUnresolved),
+		),
+	}));
+}
+
 function expandAdoptedTemplateEvaluations<ConfigValue>(
 	evaluated: EvaluationPhaseContract["evaluated"],
 	registry: DefinitionRegistry<ConfigValue>,
@@ -177,8 +374,23 @@ function expandAdoptedTemplateEvaluations<ConfigValue>(
 		registry.templates.map((template) => template.id),
 	);
 
+	const hasPrimaryInstance = evaluated.some((entry) =>
+		entry.contributions.some(
+			(contribution) =>
+				isAppEnsure(contribution) &&
+				contribution.module.type === "app" &&
+				contribution.module.role === "primary",
+		),
+	);
+
 	return evaluated.flatMap((entry) => {
 		if (!templateIds.has(entry.definitionId)) return [entry];
+
+		if (
+			hasPrimaryInstance ||
+			entry.contributions.filter(isAppEnsure).length > 1
+		)
+			return [retargetMovedApps(entry, modules)];
 
 		const ensured = entry.contributions.find(
 			(contribution) => contribution._tag === "EnsureModuleContribution",
@@ -186,12 +398,20 @@ function expandAdoptedTemplateEvaluations<ConfigValue>(
 
 		if (ensured?.module.type !== "app") return [entry];
 
-		const matchingModules = modules.filter(
-			(module) =>
-				module.type === "app" &&
-				module.template.id === entry.definitionId &&
-				module.template.version === ensured.module.template.version,
-		);
+		const matchingModules = modules
+			.filter(
+				(module) =>
+					module.type === "app" &&
+					module.template.id === entry.definitionId &&
+					module.template.version === ensured.module.template.version,
+			)
+			.sort(
+				(left, right) =>
+					Number(right.type === "app" && right.role === "primary") -
+						Number(left.type === "app" && left.role === "primary") ||
+					Number(right.root === ensured.root) -
+						Number(left.root === ensured.root),
+			);
 
 		if (matchingModules.length === 0) return [entry];
 
@@ -242,15 +462,20 @@ export interface PlannedFile {
 	readonly definitionIds: ReadonlyArray<string>;
 	readonly kind: "file" | "surface";
 	readonly path: string;
+	readonly update?: FileUpdate;
 	readonly target: RenderBucket;
 	readonly targetKey: string;
 }
 
 export interface ProjectPlan {
+	readonly directoryMoves?: ReadonlyArray<DirectoryMove>;
+	readonly generatedRemovals?: ReadonlyArray<string>;
 	readonly dependencyNames: Readonly<Record<string, ReadonlyArray<string>>>;
 	readonly lockfile: Lockfile;
 	readonly manifest: Manifest;
+	readonly removalRootRelocations?: Readonly<Record<string, string>>;
 	readonly removals: ReadonlyArray<string>;
+	readonly removedRoots?: ReadonlyArray<string>;
 	readonly writes: ReadonlyArray<PlannedFile>;
 }
 
@@ -279,7 +504,6 @@ function collectDependencyNames<ConfigValue>(
 	definitions: ReadonlyArray<Definition<ConfigValue>>,
 ): ProjectPlan["dependencyNames"] {
 	const directNames = new Map<string, Set<string>>();
-
 	for (const input of inputs) {
 		if (input.contribution._tag !== "ManagedDependenciesSurfaceContribution")
 			continue;
@@ -306,7 +530,6 @@ function collectDependencyNames<ConfigValue>(
 			for (const dependency of definition.dependencies) {
 				const dependencyDefinition = definitionsById.get(dependency.id);
 				if (dependencyDefinition === undefined) continue;
-
 				for (const name of collect(dependencyDefinition.id)) names.add(name);
 			}
 
@@ -327,9 +550,19 @@ function collectDependencyNames<ConfigValue>(
 	);
 }
 
+interface TemplateAddition {
+	readonly framework: string;
+	readonly root: string;
+}
+
 export interface InstalledPlanningSeed {
+	readonly directoryMoves?: ReadonlyArray<DirectoryMove>;
+	readonly generatedRemovals?: ProjectPlan["generatedRemovals"];
+	readonly additions?: ReadonlyArray<TemplateAddition>;
 	readonly modules: ReadonlyArray<DiscoveredModule>;
 	readonly records: Manifest["modules"];
+	readonly removalRootRelocations?: ProjectPlan["removalRootRelocations"];
+	readonly removedRoots?: ProjectPlan["removedRoots"];
 }
 
 function templateMatchesId(templateId: string, moduleTemplateId: string) {
@@ -390,6 +623,7 @@ function cloneModule(
 						id: module.id,
 						type: "app",
 						framework: module.framework,
+						...(module.role === undefined ? {} : { role: module.role }),
 						template: module.template,
 						slots: { ...module.slots },
 					}
@@ -416,7 +650,6 @@ function mergeEnsuredModule(
 	onDiskSlots: Slots,
 ): Effect.Effect<ManagedModuleRecord, PlannerError> {
 	const nextConfig = ensured.module;
-
 	if (!existing)
 		return Effect.succeed({
 			config: withModuleId(nextConfig, moduleId),
@@ -543,6 +776,11 @@ function buildTargetCandidates<ConfigValue>(
 				(addon.target?.(config, module.config) ?? true) &&
 				isAddonCompatibleWithModule(addon, module.config, frameworks, adapters),
 		)
+		.sort(
+			(left, right) =>
+				Number(right.config.type === "app" && right.config.role === "primary") -
+				Number(left.config.type === "app" && left.config.role === "primary"),
+		)
 		.map(
 			(module): InstallTarget => ({
 				kind: "module",
@@ -572,7 +810,6 @@ export function mergeInstallRecords(installs: ReadonlyArray<InstallRecord>) {
 		};
 
 		const targets = [...existing.targets];
-
 		for (const target of install.targets) {
 			const key = installTargetKey(target);
 			if (targets.some((entry) => installTargetKey(entry) === key)) continue;
@@ -617,27 +854,33 @@ const makePlanner = Effect.gen(function* () {
 		const templates = registry.templates.filter((entry) => entry.when(config));
 		const templatesByCategory = new Map<
 			string,
-			TemplateDefinition<ConfigValue>[]
+			Map<string, TemplateDefinition<ConfigValue>[]>
 		>();
 
 		for (const template of templates) {
-			const category = templatesByCategory.get(template.category) ?? [];
-			category.push(template);
+			const category =
+				templatesByCategory.get(template.category) ??
+				new Map<string, TemplateDefinition<ConfigValue>[]>();
+
+			const matchingTemplates = category.get(template.framework) ?? [];
+			matchingTemplates.push(template);
+			category.set(template.framework, matchingTemplates);
 			templatesByCategory.set(template.category, category);
 		}
 
-		for (const [category, matchingTemplates] of templatesByCategory)
-			if (matchingTemplates.length > 1)
-				return Effect.fail(
-					new PlannerError({
-						path: "registry",
-						reason: "multiple-templates-selected",
-						category,
-					}),
-				);
+		for (const [category, frameworks] of templatesByCategory)
+			for (const [framework, matchingTemplates] of frameworks)
+				if (matchingTemplates.length > 1)
+					return Effect.fail(
+						new PlannerError({
+							path: "registry",
+							reason: "multiple-templates-selected",
+							category,
+							detail: `Multiple Templates Selected: ${framework} in ${category}: ${new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(matchingTemplates.map((template) => template.id))}`,
+						}),
+					);
 
 		const directAddons = registry.addons.filter((entry) => entry.when(config));
-
 		return Effect.succeed({
 			directAddons,
 			templates,
@@ -651,7 +894,6 @@ const makePlanner = Effect.gen(function* () {
 	): Effect.Effect<void, GeneratorError> =>
 		Effect.gen(function* () {
 			let firstFailure: GeneratorError | undefined;
-
 			for (const template of templates) {
 				const framework = registry.frameworks.find(
 					(entry) => entry.id === template.framework,
@@ -667,6 +909,7 @@ const makePlanner = Effect.gen(function* () {
 				);
 
 				if (Result.isSuccess(result)) return;
+
 				firstFailure ??= result.failure;
 			}
 
@@ -785,7 +1028,6 @@ const makePlanner = Effect.gen(function* () {
 					const direct = byRoot.get(contribution.root);
 					const keyedId = byKey.get(contribution.moduleKey);
 					const keyed = keyedId ? byId.get(keyedId) : undefined;
-
 					if (direct && keyed && direct.id !== keyed.id)
 						return yield* new PlannerError({
 							path: contribution.root,
@@ -803,6 +1045,7 @@ const makePlanner = Effect.gen(function* () {
 							contribution,
 							entry.definitionId,
 						);
+
 					const moduleId = existing
 						? existing.id
 						: yield* configStore.generateId(usedIds);
@@ -842,7 +1085,17 @@ const makePlanner = Effect.gen(function* () {
 			evaluated.map((entry) => entry.definitionId),
 		);
 
-		const initialModules = discovered.flatMap((module) => {
+		const previousOrder = new Map(
+			Object.keys(existingModules).map((id, index) => [id, index]),
+		);
+
+		const orderedDiscovered = [...discovered].sort(
+			(left, right) =>
+				(previousOrder.get(left.id) ?? previousOrder.size) -
+				(previousOrder.get(right.id) ?? previousOrder.size),
+		);
+
+		const initialModules = orderedDiscovered.flatMap((module) => {
 			const existing = existingModules[module.id];
 			const definitionIds = existing?.definitionIds ?? [];
 			const keepDiscovered =
@@ -975,7 +1228,6 @@ const makePlanner = Effect.gen(function* () {
 			selectedTargets: TargetingPhaseContract["result"]["selectedTargets"],
 		) {
 			const byId = new Map(modules.map((module) => [module.id, module]));
-
 			for (const entry of evaluated)
 				for (const contribution of entry.contributions)
 					if (contribution._tag === "ModuleCapabilitiesContribution") {
@@ -1018,7 +1270,6 @@ const makePlanner = Effect.gen(function* () {
 		selectedTargets: TargetingPhaseContract["result"]["selectedTargets"],
 	) {
 		const collected: SurfaceRenderContribution[] = [];
-
 		for (const entry of evaluated)
 			for (const contribution of entry.contributions) {
 				if (
@@ -1063,6 +1314,9 @@ const makePlanner = Effect.gen(function* () {
 				readonly bucket: RenderBucket;
 				readonly content: string;
 				readonly definitionIds: ReadonlyArray<string>;
+				readonly update?: FileUpdate;
+				readonly generated: boolean;
+				readonly mergeKind?: "yaml";
 			}
 		>();
 
@@ -1136,6 +1390,8 @@ const makePlanner = Effect.gen(function* () {
 						if (
 							sameTarget &&
 							existing.content === contribution.content &&
+							existing.mergeKind === contribution.mergeKind &&
+							existing.update === contribution.update &&
 							existing.definitionIds.includes(entry.definitionId)
 						)
 							continue;
@@ -1150,6 +1406,13 @@ const makePlanner = Effect.gen(function* () {
 						bucket: target,
 						content: contribution.content,
 						definitionIds: [entry.definitionId],
+						...(contribution.update === undefined
+							? {}
+							: { update: contribution.update }),
+						generated: contribution.generated === true,
+						...(contribution.mergeKind === undefined
+							? {}
+							: { mergeKind: contribution.mergeKind }),
 					});
 				}
 			}
@@ -1160,6 +1423,9 @@ const makePlanner = Effect.gen(function* () {
 				content: file.content,
 				generators: file.definitionIds,
 				path: filePath(path),
+				...(file.update === undefined ? {} : { update: file.update }),
+				...(file.generated ? { generated: true } : {}),
+				...(file.mergeKind === undefined ? {} : { mergeKind: file.mergeKind }),
 			}),
 		);
 	});
@@ -1213,7 +1479,6 @@ const makePlanner = Effect.gen(function* () {
 		leafFiles: RenderPlanningPhaseContract["result"]["leafFiles"],
 	) {
 		const artifacts: Record<string, LockfileArtifact> = {};
-
 		for (const artifact of renderedSurfaces) {
 			const hash = yield* hashString(artifact.content);
 			const mergeKind = artifact.mergeKind;
@@ -1236,6 +1501,7 @@ const makePlanner = Effect.gen(function* () {
 				hash,
 				kind: "surface",
 				path: artifact.path,
+				...(artifact.update === "starter" ? { update: "starter" } : {}),
 			};
 		}
 
@@ -1262,10 +1528,21 @@ const makePlanner = Effect.gen(function* () {
 					: `module:${file.bucket.moduleId}`;
 
 			artifacts[`${targetKey}:file:${path}`] = {
+				...(file.mergeKind === undefined
+					? {}
+					: {
+							base: {
+								hash,
+								mergeKind: file.mergeKind,
+								semanticsVersion: SURFACE_MERGE_SEMANTICS_VERSION,
+							},
+						}),
+				...(file.generated === true ? { generated: true } : {}),
 				definitionIds: [...file.generators],
 				hash,
 				kind: "file",
 				path,
+				...(file.update === "starter" ? { update: "starter" } : {}),
 			};
 		}
 
@@ -1279,7 +1556,6 @@ const makePlanner = Effect.gen(function* () {
 	) =>
 		Effect.gen(function* () {
 			const writes: PlannedFile[] = [];
-
 			for (const module of modules)
 				writes.push({
 					artifactId: `module:${module.id}:file:forge.json`,
@@ -1301,6 +1577,7 @@ const makePlanner = Effect.gen(function* () {
 					definitionIds: artifact.definitionIds,
 					kind: "surface",
 					path: artifact.path,
+					...(artifact.update === undefined ? {} : { update: artifact.update }),
 					target: artifact.bucket,
 					targetKey:
 						artifact.bucket.kind === "project"
@@ -1318,6 +1595,7 @@ const makePlanner = Effect.gen(function* () {
 					definitionIds: file.generators,
 					kind: "file",
 					path: String(file.path),
+					...(file.update === undefined ? {} : { update: file.update }),
 					target: file.bucket,
 					targetKey:
 						file.bucket.kind === "project"
@@ -1349,10 +1627,12 @@ const makePlanner = Effect.gen(function* () {
 		intent: PlanIntent<ConfigValue>,
 		seed?: InstalledPlanningSeed,
 	) {
-		const discovered =
+		const discovered = moveModules(
 			seed === undefined
 				? yield* configStore.discover(projectRoot)
-				: seed.modules;
+				: seed.modules,
+			seed?.directoryMoves ?? [],
+		);
 
 		const existingManifest = yield* state.readManifestOrDefault(projectRoot);
 		const existingLockfile = yield* state.readLockfile(projectRoot);
@@ -1366,14 +1646,19 @@ const makePlanner = Effect.gen(function* () {
 								(install) => install.definitionId === addon.id,
 							),
 						),
-						templates: registry.templates.filter((template) =>
-							discovered.some(
-								(module) =>
-									module.type === "app" &&
-									module.framework === template.framework &&
-									templateMatchesId(template.id, module.template.id) &&
-									module.template.version === template.version,
-							),
+						templates: registry.templates.filter(
+							(template) =>
+								(template.when(intent.config) &&
+									(seed?.additions ?? []).some(
+										(addition) => addition.framework === template.framework,
+									)) ||
+								discovered.some(
+									(module) =>
+										module.type === "app" &&
+										module.framework === template.framework &&
+										templateMatchesId(template.id, module.template.id) &&
+										module.template.version === template.version,
+								),
 						),
 					};
 
@@ -1442,20 +1727,45 @@ const makePlanner = Effect.gen(function* () {
 				commandProbe,
 			);
 
+		const adoptedEvaluations = expandAdoptedTemplateEvaluations(
+			baseEvaluated,
+			registry,
+			discovered,
+		);
+
+		const previousRecords = seed?.records ?? existingManifest.modules;
+		const resolvedModules = yield* collectModules(
+			discovered,
+			previousRecords,
+			adoptedEvaluations,
+		);
+
+		const unresolved: UnresolvedTemplateInstances =
+			intent._tag === "Create"
+				? { keys: new Set(), templateIds: new Set() }
+				: unresolvedTemplateInstances(
+						adoptedEvaluations,
+						registry,
+						resolvedModules.moduleIdsByKey,
+						discovered,
+						seed?.additions ?? [],
+					);
+
 		const evaluated: EvaluationPhaseContract["evaluated"] =
-			expandAdoptedTemplateEvaluations(baseEvaluated, registry, discovered);
+			unresolved.keys.size === 0
+				? adoptedEvaluations
+				: withoutUnresolvedInstances(adoptedEvaluations, unresolved);
 
 		const {
 			ensuredIds,
 			moduleIdsByKey,
 			modules: mergedModules,
 			onDiskSlots,
-		} = yield* collectModules(
-			discovered,
-			seed?.records ?? existingManifest.modules,
-			evaluated,
-		);
+		} = unresolved.keys.size === 0
+			? resolvedModules
+			: yield* collectModules(discovered, previousRecords, evaluated);
 
+		const discoveredIds = new Set(discovered.map((module) => module.id));
 		const baseInstalls =
 			intent._tag === "Create"
 				? selection.directAddons.map((addon) => ({
@@ -1468,7 +1778,49 @@ const makePlanner = Effect.gen(function* () {
 							registry.adapters,
 						),
 					}))
-				: intent.installs;
+				: intent.installs.map((install) => {
+						const addon = registry.addons.find(
+							(entry) => entry.id === install.definitionId,
+						);
+
+						if (addon?.targetMode !== "multiple") return install;
+
+						const candidates = buildTargetCandidates(
+							addon,
+							intent.config,
+							mergedModules,
+							registry.frameworks,
+							registry.adapters,
+						);
+
+						const installedIds = new Set(
+							install.targets.flatMap((target) =>
+								target.kind === "module" ? [target.moduleId] : [],
+							),
+						);
+
+						const existingTargets = candidates.filter(
+							(target) =>
+								target.kind === "module" && discoveredIds.has(target.moduleId),
+						);
+
+						if (
+							existingTargets.length === 0 ||
+							existingTargets.some(
+								(target) =>
+									target.kind === "module" &&
+									!installedIds.has(target.moduleId),
+							)
+						)
+							return install;
+
+						const newTargets = candidates.filter(
+							(target) =>
+								target.kind === "module" && !discoveredIds.has(target.moduleId),
+						);
+
+						return { ...install, targets: [...install.targets, ...newTargets] };
+					});
 
 		const evaluatedDefinitionIds = new Set(
 			evaluated.map((entry) => entry.definitionId),
@@ -1491,6 +1843,7 @@ const makePlanner = Effect.gen(function* () {
 					registry.adapters,
 				),
 			}));
+
 		const defaultCreateInstalls = [
 			...baseInstalls,
 			...dependencyAdapterInstalls,
@@ -1571,6 +1924,7 @@ const makePlanner = Effect.gen(function* () {
 			...genericEvaluations,
 			...adapterEvaluations,
 		];
+
 		const { moduleIdsByKey: allModuleIdsByKey, modules: adapterMergedModules } =
 			yield* applyAdapterEnsures(
 				adapterEvaluations,
@@ -1599,25 +1953,52 @@ const makePlanner = Effect.gen(function* () {
 		const dependencyNames: RenderPlanningPhaseContract["result"]["dependencyNames"] =
 			collectDependencyNames(managedInputs, definitions);
 
+		const importOrder = registry.addons.find(
+			(addon) =>
+				addon.importOrder !== undefined &&
+				allEvaluated.some((entry) => entry.definitionId === addon.id),
+		)?.importOrder;
+
+		const ordered = <
+			Artifact extends { readonly path: string; readonly content: string },
+		>(
+			artifacts: ReadonlyArray<Artifact>,
+		): ReadonlyArray<Artifact> =>
+			importOrder === undefined
+				? artifacts
+				: artifacts.map((artifact) => ({
+						...artifact,
+						content: sortScopedImports(
+							artifact.path,
+							artifact.content,
+							importOrder,
+						),
+					}));
+
 		const renderedSurfaces: RenderPlanningPhaseContract["result"]["renderedSurfaces"] =
-			yield* renderer.render(
-				managedInputs,
-				modules.map((module) => ({ ...module.config, root: module.root })),
-				dependencyFormatFor(intent.config.packageManager),
-				registry.frameworks,
+			ordered(
+				yield* renderer.render(
+					managedInputs,
+					modules.map((module) => ({ ...module.config, root: module.root })),
+					dependencyFormatFor(intent.config.packageManager),
+					registry.frameworks,
+				),
 			);
 
 		const leafFiles: RenderPlanningPhaseContract["result"]["leafFiles"] =
-			yield* collectLeafFiles(
-				allEvaluated,
-				modules,
-				allModuleIdsByKey,
-				selectedTargets,
+			ordered(
+				yield* collectLeafFiles(
+					allEvaluated,
+					modules,
+					allModuleIdsByKey,
+					selectedTargets,
+				),
 			);
 
 		const writes: RenderPlanningPhaseContract["result"]["writes"] =
 			yield* buildWrites(modules, renderedSurfaces, leafFiles);
-		const manifest: RenderPlanningPhaseContract["result"]["manifest"] =
+
+		const builtManifest: RenderPlanningPhaseContract["result"]["manifest"] =
 			yield* buildManifest(
 				intent.config,
 				defaultCreateInstalls.filter((install) => install.targets.length > 0),
@@ -1630,24 +2011,55 @@ const makePlanner = Effect.gen(function* () {
 					: existingManifest.registryDescriptors,
 			);
 
+		const changes = rootChanges(
+			existingManifest.modules,
+			builtManifest.modules,
+		);
+
+		const manifest = {
+			...builtManifest,
+			installs: relocateInstalls(builtManifest.installs, changes),
+		};
+
+		for (const move of seed?.directoryMoves ?? [])
+			if (manifest.modules[move.moduleId]?.root !== move.to)
+				return yield* Effect.die(
+					new Error(`Directory Move Mismatch: ${move.from}`),
+				);
+
 		const lockfile: RenderPlanningPhaseContract["result"]["lockfile"] =
 			yield* buildLockfile(modules, renderedSurfaces, leafFiles);
 
 		const previousPaths = new Set(
-			Object.values(existingLockfile.artifacts).map(
-				(artifact) => artifact.path,
-			),
+			Object.values(
+				previousLockfileAtNextRoots(
+					existingLockfile,
+					existingManifest.modules,
+					manifest.modules,
+				).artifacts,
+			).map((artifact) => artifact.path),
 		);
 
 		const nextPaths = new Set(writes.map((write) => write.path));
 
 		const removals = [...previousPaths].filter((path) => !nextPaths.has(path));
-
 		return {
+			...(seed?.directoryMoves === undefined
+				? {}
+				: { directoryMoves: seed.directoryMoves }),
 			dependencyNames,
 			lockfile,
 			manifest,
+			...(seed?.generatedRemovals === undefined
+				? {}
+				: { generatedRemovals: seed.generatedRemovals }),
+			...(seed?.removalRootRelocations === undefined
+				? {}
+				: { removalRootRelocations: seed.removalRootRelocations }),
 			removals,
+			...(seed?.removedRoots === undefined
+				? {}
+				: { removedRoots: seed.removedRoots }),
 			writes,
 		} satisfies ProjectPlan;
 	});

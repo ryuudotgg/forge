@@ -1,15 +1,17 @@
-import { type Contribution, ensuredModuleTarget } from "@ryuujs/core";
+import { type Contribution, ensuredModuleTarget } from "@ryuugg/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
 import { loadDefinitionRegistry } from "../src";
 import { reactRouterFramework } from "../src/frameworks/react-router";
 import { versions } from "../src/versions";
+import { plannedProject } from "./planner-harness";
 
 const template = (() => {
 	const found = loadDefinitionRegistry().registry.templates.find(
 		(entry) => entry.id === "react-router/base",
 	);
+
 	if (!found) throw new Error("Template Not Found: react-router/base");
 	return found;
 })();
@@ -20,6 +22,7 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 		config,
 		frameworks: [reactRouterFramework],
 	});
+
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: react-router/base");
 
@@ -84,7 +87,7 @@ describe("react-router/base template", () => {
 			buildOutputs: ["build/**"],
 			configFile: "react-router.config.ts",
 			ignoreDirs: [".react-router/"],
-			slots: ["layout", "page", "api", "trpc", "auth"],
+			slots: ["layout", "page", "api", "trpc", "auth", "orpc"],
 			tsconfigPreset: {
 				name: "react-router",
 				content: {
@@ -97,6 +100,7 @@ describe("react-router/base template", () => {
 				},
 			},
 		});
+
 		expect(
 			reactRouterFramework.tsconfigPreset.content.compilerOptions,
 		).not.toHaveProperty("rootDirs");
@@ -106,6 +110,7 @@ describe("react-router/base template", () => {
 			slug: "acme",
 			web: "react-router",
 		});
+
 		const ensure = must(
 			contributions.find(byTag("EnsureModuleContribution")),
 			"web module",
@@ -117,6 +122,7 @@ describe("react-router/base template", () => {
 			id: "react-router/base",
 			version: 1,
 		});
+
 		expect(ensure.module.slots).toEqual({
 			layout: "app/root.tsx",
 			page: "app/routes/home.tsx",
@@ -141,17 +147,25 @@ export default {
 } satisfies Config;
 `,
 		);
+
 		expect(textSurface(contributions, "layout").content).toContain(
 			'import type { Route } from "./+types/root";',
 		);
+
 		expect(textSurface(contributions, "page").content).toContain(
 			">Acme App</h1>",
 		);
+
 		expect(leafFile(contributions, "env.ts").content).toContain(
 			'return lifecycleEvent === "check" || lifecycleEvent === "typegen";',
 		);
+
+		expect(textSurface(contributions, "layout").content).toContain(
+			'{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" }',
+		);
+
 		expect(leafFile(contributions, "public/favicon.svg").content).toContain(
-			"<svg",
+			"<title>App icon</title>",
 		);
 	});
 
@@ -160,6 +174,7 @@ export default {
 			contributionsFor({ slug: "acme", web: "react-router" }),
 			"vite.config.ts",
 		);
+
 		expect(withoutTailwind.content).toBe(`import "./env";
 
 import { reactRouter } from "@react-router/dev/vite";
@@ -179,6 +194,7 @@ export default defineConfig({
 			}),
 			"vite.config.ts",
 		);
+
 		expect(withTailwind.content).toBe(`import "./env";
 
 import { reactRouter } from "@react-router/dev/vite";
@@ -197,16 +213,16 @@ export default defineConfig({
 			leafFile(contributionsFor(config), "app/routes.ts").content;
 
 		expect(routeContent({ web: "react-router" })).toBe(
-			`import { type RouteConfig, index } from "@react-router/dev/routes";
+			`import { index, type RouteConfig } from "@react-router/dev/routes";
 
-export default [
-  index("routes/home.tsx"),
-] satisfies RouteConfig;
+export default [index("routes/home.tsx")] satisfies RouteConfig;
 `,
 		);
+
 		expect(routeContent({ rpc: "trpc", web: "react-router" })).toContain(
 			'  route("api/trpc/*", "routes/api.trpc.$.ts"),',
 		);
+
 		expect(
 			routeContent({ authentication: "better-auth", web: "react-router" }),
 		).toContain('  route("api/auth/*", "routes/api.auth.$.ts"),');
@@ -216,8 +232,9 @@ export default [
 			rpc: "trpc",
 			web: "react-router",
 		});
+
 		expect(both).toBe(
-			`import { type RouteConfig, index, route } from "@react-router/dev/routes";
+			`import { index, type RouteConfig, route } from "@react-router/dev/routes";
 
 export default [
   index("routes/home.tsx"),
@@ -226,6 +243,7 @@ export default [
 ] satisfies RouteConfig;
 `,
 		);
+
 		expect(both.indexOf('route("api/trpc/*"')).toBeLessThan(
 			both.indexOf('route("api/auth/*"'),
 		);
@@ -244,6 +262,7 @@ export default [
 			contributionsFor({ slug: "acme", web: "react-router" }),
 			"app/providers.tsx",
 		);
+
 		expect(bare.target).toEqual(ensuredModuleTarget("web"));
 		expect(bare.content).not.toContain("trpc:");
 		expect(bare.content).not.toContain("TRPCReactProvider");
@@ -252,9 +271,11 @@ export default [
 			contributionsFor({ rpc: "trpc", slug: "acme", web: "react-router" }),
 			"app/providers.tsx",
 		);
+
 		expect(withTrpc.content).toContain(
 			'import { TRPCReactProvider } from "@/trpc/react";',
 		);
+
 		expect(withTrpc.content).toContain("trpc: TRPCReactProvider,");
 		expect(withTrpc.content).not.toMatch(/__[A-Z_]+__/);
 	});
@@ -264,10 +285,12 @@ export default [
 			slug: "acme",
 			web: "react-router",
 		});
+
 		const dependencySurface = must(
 			contributions.find(byTag("ManagedDependenciesSurfaceContribution")),
 			"packageJson dependencies",
 		);
+
 		const dependencyVersions = new Map(
 			dependencySurface.dependencies.map((entry) => [
 				entry.name,
@@ -276,18 +299,9 @@ export default [
 		);
 
 		const versionKeys: ReadonlyArray<
-			| "reactRouter"
-			| "reactRouterDev"
-			| "reactRouterNode"
-			| "reactRouterServe"
-			| "isbot"
-		> = [
-			"reactRouter",
-			"reactRouterDev",
-			"reactRouterNode",
-			"reactRouterServe",
-			"isbot",
-		];
+			"reactRouter" | "reactRouterDev" | "reactRouterNode" | "srvx" | "isbot"
+		> = ["reactRouter", "reactRouterDev", "reactRouterNode", "srvx", "isbot"];
+
 		for (const key of versionKeys)
 			expect(dependencyVersions.get(versions[key].name)).toBe(
 				versions[key].version,
@@ -297,12 +311,15 @@ export default [
 			contributions.find(byTag("ManagedScriptsSurfaceContribution")),
 			"packageJson scripts",
 		);
+
 		expect(scripts.scripts).toEqual({
 			build: "pnpm with-env react-router build",
 			dev: "pnpm with-env react-router dev",
-			postinstall: "pnpm typegen",
+			postinstall:
+				"node -e \"try{require.resolve('@react-router/dev/package.json');process.exit(1)}catch{}\" || pnpm typegen",
 			pretypecheck: "pnpm with-env react-router typegen",
-			start: "pnpm with-env react-router-serve ./build/server/index.js",
+			start:
+				"dotenv -e .env.production -e ../../.env -v NODE_ENV=production -- node server.mjs",
 			typecheck: "tsc --noEmit",
 			typegen: "pnpm with-env react-router typegen",
 			"with-env": "dotenv -e ../../.env --",
@@ -324,5 +341,96 @@ export default [
 				".react-router/types/**/*",
 			],
 		});
+	});
+});
+
+describe("react-router API routes", () => {
+	const bareRoutes = `import { index, type RouteConfig } from "@react-router/dev/routes";
+
+export default [index("routes/home.tsx")] satisfies RouteConfig;
+`;
+
+	it.each([
+		{ backend: "hono", rpc: "trpc" },
+		{ backend: "hono", rpc: undefined },
+		{ backend: "express", rpc: "trpc" },
+		{ backend: "fastify", rpc: undefined },
+	] as const)(
+		"lists no API routes beside a $backend server with rpc $rpc",
+		async ({ backend, rpc }) => {
+			const plan = await plannedProject({
+				slug: "acme",
+				web: "react-router",
+				backend,
+				...(rpc === undefined ? {} : { rpc }),
+				authentication: "better-auth",
+				orm: "drizzle",
+				database: "sqlite",
+			});
+
+			expect(
+				plan.writes.find((write) => write.path === "apps/web/app/routes.ts")
+					?.content,
+			).toBe(bareRoutes);
+
+			expect(
+				plan.writes
+					.map((write) => write.path)
+					.filter((path) => path.startsWith("apps/web/app/routes/api.")),
+			).toEqual([]);
+		},
+	);
+
+	it("lists only the invitation page beside a Hono server with organizations", async () => {
+		const plan = await plannedProject({
+			slug: "acme",
+			web: "react-router",
+			backend: "hono",
+			authentication: "better-auth",
+			authMethods: ["email-password"],
+			authPlugins: ["organization"],
+			orm: "drizzle",
+			database: "sqlite",
+		});
+
+		expect(
+			plan.writes.find((write) => write.path === "apps/web/app/routes.ts")
+				?.content,
+		).toBe(`import { index, type RouteConfig, route } from "@react-router/dev/routes";
+
+export default [
+  index("routes/home.tsx"),
+  route("accept-invitation/:id", "routes/accept-invitation.tsx"),
+] satisfies RouteConfig;
+`);
+
+		expect(
+			plan.writes.some(
+				(write) => write.path === "apps/web/app/routes/accept-invitation.tsx",
+			),
+		).toBe(true);
+	});
+
+	it("lists API routes only on a self-hosted primary beside a React Router client", async () => {
+		const plan = await plannedProject({
+			slug: "acme",
+			web: "react-router",
+			backend: "self",
+			rpc: "trpc",
+			authentication: "better-auth",
+			orm: "drizzle",
+			database: "sqlite",
+			webApps: [{ name: "admin", framework: "react-router", client: true }],
+		});
+
+		const routes = (app: string) =>
+			plan.writes.find((write) => write.path === `apps/${app}/app/routes.ts`)
+				?.content;
+
+		expect(routes("web")).toContain(
+			'  route("api/trpc/*", "routes/api.trpc.$.ts"),\n  route("api/auth/*", "routes/api.auth.$.ts"),\n',
+		);
+
+		expect(routes("admin")).toBe(bareRoutes);
 	});
 });

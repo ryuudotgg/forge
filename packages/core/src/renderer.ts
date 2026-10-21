@@ -61,6 +61,7 @@ export interface RenderedArtifact {
 	readonly kind: "surface";
 	readonly mergeKind?: SurfaceMergeKind;
 	readonly path: ReturnType<typeof filePath>;
+	readonly update?: "starter";
 }
 
 function resolveSurfaceMergeKind(
@@ -69,10 +70,12 @@ function resolveSurfaceMergeKind(
 ): SurfaceMergeKind | undefined {
 	const value = String(path);
 	if (value.endsWith("/.env") || value === ".env") return undefined;
-
 	if (tags.has("ManagedTextSurfaceContribution")) return undefined;
 	if (tags.has("ManagedLinesSurfaceContribution")) {
 		if (value.endsWith("/.gitignore") || value === ".gitignore") return "lines";
+		if (value.endsWith("/.gitattributes") || value === ".gitattributes")
+			return "lines";
+
 		if (value.endsWith("/.env.example") || value === ".env.example")
 			return "env";
 
@@ -98,7 +101,6 @@ function applyDependencies(
 	format: DependencyFormat,
 ): Record<string, unknown> {
 	const result = { ...json };
-
 	for (const dep of dependencies) {
 		const section = dep.type;
 		const existing =
@@ -141,8 +143,17 @@ function resolveProjectSurfacePath(surface: ProjectSurfaceName) {
 		case "biomeConfig":
 			return filePath("biome.json");
 
+		case "oxlintConfig":
+			return filePath(".oxlintrc.json");
+
+		case "oxfmtConfig":
+			return filePath(".oxfmtrc.json");
+
 		case "gitignore":
 			return filePath(".gitignore");
+
+		case "gitattributes":
+			return filePath(".gitattributes");
 
 		case "rootEnv":
 			return filePath(".env");
@@ -181,7 +192,6 @@ function resolveAppSurfacePath(
 		default: {
 			const slotPath = module.slots[surface];
 			if (!slotPath) throw new Error("Module Slot Missing");
-
 			return filePath(`${module.root}/${slotPath}`);
 		}
 	}
@@ -201,7 +211,6 @@ function resolvePackageSurfacePath(
 		default: {
 			const slotPath = module.slots[surface];
 			if (!slotPath) throw new Error("Module Slot Missing");
-
 			return filePath(`${module.root}/${slotPath}`);
 		}
 	}
@@ -276,7 +285,6 @@ function renderTextSurface(inputs: ReadonlyArray<SurfaceRenderContribution>) {
 
 function renderLinesSurface(inputs: ReadonlyArray<SurfaceRenderContribution>) {
 	let content = "";
-
 	for (const input of sortInputs(inputs))
 		if (input.contribution._tag === "ManagedLinesSurfaceContribution")
 			content = appendLines(
@@ -295,7 +303,6 @@ function renderJsonSurface(
 	format: DependencyFormat,
 ) {
 	let json: Record<string, unknown> = {};
-
 	for (const input of sortJsonInputs(inputs)) {
 		switch (input.contribution._tag) {
 			case "ManagedJsonSurfaceContribution": {
@@ -349,7 +356,6 @@ const makeRenderer = Effect.succeed({
 				);
 
 				const groups = new Map<string, SurfaceRenderContribution[]>();
-
 				for (const input of inputs) {
 					const key = buildKey(input.bucket, input.contribution.surface);
 					const existing = groups.get(key) ?? [];
@@ -358,7 +364,6 @@ const makeRenderer = Effect.succeed({
 				}
 
 				const rendered: RenderedArtifact[] = [];
-
 				for (const entries of groups.values()) {
 					const first = entries[0];
 					if (!first) continue;
@@ -406,6 +411,13 @@ const makeRenderer = Effect.succeed({
 								? first.contribution.surface
 								: `${first.contribution.surface}`,
 						kind: "surface",
+						...(entries.every(
+							(entry) =>
+								entry.contribution._tag === "ManagedTextSurfaceContribution" &&
+								entry.contribution.update === "starter",
+						)
+							? { update: "starter" }
+							: {}),
 						...(mergeKind === undefined ? {} : { mergeKind }),
 						path,
 					});

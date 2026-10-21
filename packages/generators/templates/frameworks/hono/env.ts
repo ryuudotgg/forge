@@ -5,10 +5,10 @@ export const env = createEnv({
   server: {
     NODE_ENV: z
       .enum(["development", "test", "production"])
-      .default("development"),
-    PORT: z.coerce.number().int().positive().default(3001),
+      .default("production"),
 
-    WEB_URL: z.url().default("__WEB_ORIGIN__"),
+    PORT: z.coerce.number().int().positive().default(3001),
+    WEB_URL: z.url(),
   },
 
   runtimeEnv: process.env,

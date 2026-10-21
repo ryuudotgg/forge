@@ -1,4 +1,7 @@
-export type ParsedValues = Record<string, string | boolean | undefined>;
+export type ParsedValues = Record<
+	string,
+	string | boolean | string[] | undefined
+>;
 
 export interface SubcommandDef {
 	readonly description: string;

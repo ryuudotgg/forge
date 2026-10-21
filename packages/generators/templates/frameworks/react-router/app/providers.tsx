@@ -8,7 +8,6 @@ const dataProviders: { default: ElementType; trpc?: ElementType } = {
 };
 
 const DataProvider = dataProviders.trpc ?? dataProviders.default;
-
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider

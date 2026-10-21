@@ -18,6 +18,7 @@ export const sessions = snakeCase.table(
 
     ipAddress: text(),
     userAgent: text(),
+    // __SESSION_PLUGIN_FIELDS__
 
     createdAt: integer({ mode: "timestamp_ms" }).notNull().default(unixepochMs),
     updatedAt: integer({ mode: "timestamp_ms" })
@@ -48,7 +49,7 @@ export const accounts = snakeCase.table(
     idToken: text(),
 
     scope: text(),
-    // __PASSWORD_FIELD__
+    password: text(),
 
     createdAt: integer({ mode: "timestamp_ms" }).notNull().default(unixepochMs),
     updatedAt: integer({ mode: "timestamp_ms" })

@@ -1,4 +1,4 @@
-import { GeneratorError } from "@ryuujs/core";
+import { GeneratorError } from "@ryuugg/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { orchestrate } from "../src/orchestrator";
 import backendStep from "../src/steps/backend/framework";
@@ -91,12 +91,12 @@ describe("backend step", () => {
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"We don't support Convex yet.",
 		);
+
 		expect(promptMocks.select).toHaveBeenCalledTimes(2);
 	});
 
 	it("skips when none is selected", async () => {
 		promptMocks.select.mockResolvedValue("none");
-
 		await expect(backendStep.execute({}, true)).resolves.toBe(SKIP);
 	});
 
@@ -111,7 +111,7 @@ describe("backend step", () => {
 			promptMocks.select.mockResolvedValue(Symbol.for("clack:cancel"));
 			promptMocks.isCancel.mockReturnValue(true);
 
-			await expect(backendStep.execute({}, true)).rejects.toThrow("exit:0");
+			await expect(backendStep.execute({}, true)).rejects.toThrow("exit:1");
 
 			expect(promptMocks.cancel).toHaveBeenCalledWith(
 				"You've extinguished the forge.",
@@ -123,6 +123,53 @@ describe("backend step", () => {
 });
 
 describe("rpc step", () => {
+	it("names every web app in the RPC prompt", async () => {
+		promptMocks.isCancel.mockReturnValue(false);
+		promptMocks.select.mockResolvedValue("trpc");
+
+		await rpcStep.execute(
+			{
+				web: "tanstack-router",
+				webApps: [
+					{ name: "admin", framework: "nextjs", client: true },
+					{ name: "docs", framework: "react-router" },
+				],
+			},
+			true,
+		);
+
+		expect(promptMocks.select).toHaveBeenCalledWith(
+			expect.objectContaining({
+				message:
+					"Do you want to use an RPC API with web (TanStack Router), admin (Next.js), and docs (React Router)?",
+			}),
+		);
+	});
+
+	it("validates an RPC label like its canonical id", () => {
+		const config = rawConfig({
+			backend: "self",
+			web: "tanstack-router",
+			rpc: "tRPC",
+		});
+
+		for (const value of ["trpc", "tRPC"]) {
+			expect(() => rpcStep.validate?.(value, config)).toThrow(
+				"tRPC needs a backend. TanStack Router can't host it; add a backend framework.",
+			);
+
+			expect(() =>
+				rpcStep.validate?.(value, { backend: "hono" }),
+			).not.toThrow();
+		}
+
+		expect(config.rpc).toBe("tRPC");
+	});
+
+	it("ignores an unknown RPC value during validation", () => {
+		expect(() => rpcStep.validate?.("grpc", { mobile: "expo" })).not.toThrow();
+	});
+
 	beforeEach(() => {
 		promptMocks.cancel.mockReset();
 		promptMocks.isCancel.mockReset();
@@ -141,10 +188,12 @@ describe("rpc step", () => {
 		expect(rpcStep.shouldRun({ backend: "self", web: "tanstack-router" })).toBe(
 			false,
 		);
+
 		expect(rpcStep.shouldRun({ backend: "self", web: "nextjs" })).toBe(true);
 		expect(rpcStep.shouldRun({ backend: "self", web: "react-router" })).toBe(
 			true,
 		);
+
 		expect(rpcStep.shouldRun({ backend: "self", web: "tanstack-start" })).toBe(
 			true,
 		);
@@ -160,6 +209,7 @@ describe("rpc step", () => {
 			schema: null,
 			shouldRun: () => true,
 		};
+
 		const initialConfig = {
 			backend: "self" as const,
 			rpc: "trpc" as const,
@@ -175,12 +225,12 @@ describe("rpc step", () => {
 		).rejects.toThrow(
 			"tRPC needs a backend. TanStack Router can't host it; add a backend framework.",
 		);
+
 		expect(generate).not.toHaveBeenCalled();
 	});
 
 	it("refuses a mobile-only rpc without an API host", () => {
 		let error: unknown;
-
 		try {
 			rpcStep.validate?.("trpc", {
 				mobile: "expo",
@@ -196,6 +246,7 @@ describe("rpc step", () => {
 			generatorId: "trpc",
 			reason: "api-host-required",
 		});
+
 		expect(error).toHaveProperty(
 			"message",
 			"tRPC needs a backend. The selected web framework can't host it; add a backend framework.",
@@ -204,7 +255,6 @@ describe("rpc step", () => {
 
 	it("accepts a canonical rpc id without prompting", async () => {
 		await expect(rpcStep.execute({ rpc: "trpc" }, false)).resolves.toBe("trpc");
-
 		expect(promptMocks.select).not.toHaveBeenCalled();
 	});
 
@@ -225,6 +275,7 @@ describe("rpc step", () => {
 			message: "Do you want to use an RPC API with Next.js?",
 			options: [
 				{ label: "tRPC", value: "trpc" },
+				{ label: "oRPC", value: "orpc" },
 				{ label: "None", value: "none" },
 			],
 		});
@@ -239,6 +290,7 @@ describe("rpc step", () => {
 			message: "Do you want to use an RPC API?",
 			options: [
 				{ label: "tRPC", value: "trpc" },
+				{ label: "oRPC", value: "orpc" },
 				{ label: "None", value: "none" },
 			],
 		});
@@ -246,7 +298,6 @@ describe("rpc step", () => {
 
 	it("skips when none is selected", async () => {
 		promptMocks.select.mockResolvedValue("none");
-
 		await expect(rpcStep.execute({}, true)).resolves.toBe(SKIP);
 	});
 });

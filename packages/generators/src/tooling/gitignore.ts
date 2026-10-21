@@ -1,4 +1,4 @@
-import { defineAddon, projectTarget, surfaceLines } from "@ryuujs/core";
+import { defineAddon, projectTarget, surfaceLines } from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import {
 	frameworkIgnoreDirs,
@@ -20,6 +20,7 @@ const gitignore = defineAddon<ForgeConfig, "gitignore">({
 		buildLines.push(
 			...frameworkIgnoreDirs(frameworksInPlay(config, frameworks)),
 		);
+
 		return [
 			surfaceLines(projectTarget(), "gitignore", ["node_modules/"], {
 				section: "Dependencies",

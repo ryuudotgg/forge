@@ -10,26 +10,42 @@ import {
 	surfaceScripts,
 	surfaceText,
 	type TemplateDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
+import { selfHostedCorsContributions } from "../../client-cors";
 import type { ForgeConfig } from "../../config";
 import { deps } from "../../deps";
-import { nextServerEnvMarkers } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import { hasSecondaryClients, nextServerEnvMarkers } from "../../origins";
+import { installHook, pmRun, resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
-import { interpolate, readTemplate } from "../../template";
+import { rpcDescriptor } from "../../rpc";
+import { interpolate, readTemplate, replaceAnchor } from "../../template";
+import { catalogRef } from "../../versions";
+import {
+	type WebAppInstance,
+	webAppInstances,
+	webAppRenderConfig,
+} from "../../web-apps";
+
+const nextjsSlots = {
+	layout: "app/layout.tsx",
+	page: "app/page.tsx",
+	api: "app/api",
+	trpc: "app/api/trpc/[trpc]/route.ts",
+	auth: "app/api/auth/[...all]/route.ts",
+};
 
 export const nextjsFramework: FrameworkDefinition<"nextjs"> = defineFramework({
 	id: "nextjs",
 	configFile: "next.config.ts",
 	clientEnvPrefix: "NEXT_PUBLIC_",
 	buildOutputs: [".next/**", "!.next/cache/**"],
-	ignoreDirs: [".next/"],
+	ignoreDirs: [".next/", "next-env.d.ts"],
 	name: "Next.js",
 	sourceRoot: "",
-	slots: ["layout", "page", "api", "trpc", "auth"],
+	slots: [...Object.keys(nextjsSlots), "orpc"],
 	tsconfigPreset: {
 		name: "nextjs",
 		content: {
@@ -77,8 +93,12 @@ const nextjsBaseTemplate: TemplateDefinition<
 		{ id: "typescript", type: "addon" },
 		{ id: "ui", type: "addon" },
 	],
-	when: (config) => config.web === "nextjs",
-	contribute: ({ config }) => buildContributions(config),
+	when: (config) =>
+		webAppInstances(config).some((instance) => instance.framework === "nextjs"),
+	contribute: ({ config }) =>
+		webAppInstances(config)
+			.filter((instance) => instance.framework === "nextjs")
+			.flatMap((instance) => buildContributions(config, instance)),
 });
 
 export const nextjsBaseTemplateMetadata = {
@@ -93,7 +113,8 @@ export const nextjsBaseTemplateMetadata = {
 	summary: "Base Next.js template.",
 } as const satisfies FirstPartyTemplateMetadata;
 
-function buildContributions(config: ForgeConfig) {
+function buildContributions(config: ForgeConfig, instance: WebAppInstance) {
+	const renderConfig = webAppRenderConfig(config, instance);
 	const slug = config.slug ?? "my-app";
 	const projectName = config.name ?? slug;
 
@@ -101,29 +122,34 @@ function buildContributions(config: ForgeConfig) {
 	const vars = { PROJECT_NAME: projectName, SLUG: slug };
 
 	const transpilePackages = [`@${slug}/ui`];
+	if (renderConfig.orm !== undefined) transpilePackages.push(`@${slug}/db`);
 
-	if (config.orm !== undefined) transpilePackages.push(`@${slug}/db`);
-	if (config.rpc === "trpc") transpilePackages.push(`@${slug}/trpc`);
-	if (config.authentication === "better-auth")
+	if (renderConfig.rpc !== undefined)
+		transpilePackages.push(`@${slug}/${config.rpc}`);
+
+	if (instance.primary && renderConfig.authentication === "better-auth")
 		transpilePackages.push(`@${slug}/auth`);
 
-	const transpileList = transpilePackages
-		.sort()
-		.map((name) => `"${name}"`)
-		.join(", ");
+	const transpileNames = transpilePackages.sort().map((name) => `"${name}"`);
+	const transpileInline = `[${transpileNames.join(", ")}]`;
 
 	const nextConfig = interpolate(
 		readTemplate("frameworks/nextjs/next.config.ts"),
-		{ TRANSPILE_PACKAGES: `[${transpileList}]` },
+		{
+			TRANSPILE_PACKAGES:
+				`  transpilePackages: ${transpileInline},`.length <= 80
+					? transpileInline
+					: `[\n${transpileNames.map((name) => `    ${name},`).join("\n")}\n  ]`,
+		},
 	);
 
 	const webEnv = interpolate(
 		readTemplate("frameworks/nextjs/env.ts"),
-		nextServerEnvMarkers(config),
+		nextServerEnvMarkers(config, instance),
 	);
 
 	const webPackageJson: Record<string, unknown> = {
-		name: `@${slug}/web`,
+		name: instance.packageName,
 		version: "0.1.0",
 		private: true,
 		type: "module",
@@ -155,8 +181,8 @@ function buildContributions(config: ForgeConfig) {
 			type: "dependencies" as const,
 		},
 		{ ...deps.next, type: "dependencies" as const },
-		{ ...deps.react, type: "dependencies" as const },
-		{ ...deps.reactDom, type: "dependencies" as const },
+		{ ...catalogRef("react", config), type: "dependencies" as const },
+		{ ...catalogRef("reactDom", config), type: "dependencies" as const },
 		{ ...deps.serverOnly, type: "dependencies" as const },
 		{ ...deps.nextThemes, type: "dependencies" as const },
 		{ ...deps.zod, type: "dependencies" as const },
@@ -169,65 +195,118 @@ function buildContributions(config: ForgeConfig) {
 		{ ...deps.typesNode, type: "devDependencies" as const },
 		{ ...deps.typesReact, type: "devDependencies" as const },
 		{ ...deps.typesReactDom, type: "devDependencies" as const },
-		{ ...deps.dotenvCli, type: "devDependencies" as const },
+		{ ...deps.dotenvCli, type: "dependencies" as const },
 		{ ...deps.typescript, type: "devDependencies" as const },
 	];
 
-	const usesTrpc = config.rpc === "trpc";
+	const rpc = rpcDescriptor(renderConfig);
 	const providers = interpolate(
 		readTemplate("frameworks/nextjs/app/providers.tsx"),
 		{
-			PROVIDER_IMPORTS: usesTrpc
-				? '\nimport { TRPCReactProvider } from "@/trpc/react";'
-				: "",
-			PROVIDER_CHILDREN: usesTrpc
-				? "<TRPCReactProvider>{children}</TRPCReactProvider>"
-				: "{children}",
+			PROVIDER_IMPORTS:
+				rpc !== undefined
+					? `\nimport { ${rpc.client.component} } from "${rpc.client.module}";`
+					: "",
+			PROVIDER_CHILDREN:
+				rpc !== undefined
+					? `<${rpc.client.component}>{children}</${rpc.client.component}>`
+					: "{children}",
 		},
 	);
 
 	return [
-		ensureAppModule("web", "apps/web", {
+		ensureAppModule(instance.key, instance.root, {
 			framework: "nextjs",
 			template: { id: "nextjs/base", version: 1 },
-			slots: {
-				layout: "app/layout.tsx",
-				page: "app/page.tsx",
-				api: "app/api",
-				trpc: "app/api/trpc/[trpc]/route.ts",
-				auth: "app/api/auth/[...all]/route.ts",
-			},
+			slots: instance.primary
+				? {
+						...nextjsSlots,
+						...(renderConfig.rpc === "orpc" &&
+						(config.backend === undefined || config.backend === "self")
+							? { orpc: "app/api/orpc/[[...rest]]/route.ts" }
+							: {}),
+					}
+				: { layout: nextjsSlots.layout, page: nextjsSlots.page },
+			...(instance.role === undefined ? {} : { role: instance.role }),
 		}),
 
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"layout",
 			interpolate(readTemplate("frameworks/nextjs/app/layout.tsx"), vars),
 			{ priority: 0 },
 		),
 		surfaceText(
-			ensuredModuleTarget("web"),
+			ensuredModuleTarget(instance.key),
 			"page",
 			interpolate(readTemplate("frameworks/nextjs/app/page.tsx"), vars),
-			{ priority: 0 },
+			{ priority: 0, update: "starter" },
 		),
-		surfaceText(ensuredModuleTarget("web"), "frameworkConfig", nextConfig),
-		surfaceJson(ensuredModuleTarget("web"), "tsconfig", webTsconfig),
-		surfaceJson(ensuredModuleTarget("web"), "packageJson", webPackageJson),
-		surfaceDependencies(ensuredModuleTarget("web"), "packageJson", appDeps),
-		surfaceScripts(ensuredModuleTarget("web"), "packageJson", {
+		surfaceText(
+			ensuredModuleTarget(instance.key),
+			"frameworkConfig",
+			nextConfig,
+		),
+		surfaceJson(ensuredModuleTarget(instance.key), "tsconfig", webTsconfig),
+		surfaceJson(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			webPackageJson,
+		),
+		surfaceDependencies(
+			ensuredModuleTarget(instance.key),
+			"packageJson",
+			appDeps,
+		),
+		surfaceScripts(ensuredModuleTarget(instance.key), "packageJson", {
 			build: pmRun(pm, "with-env", "next build"),
-			dev: pmRun(pm, "with-env", "next dev"),
-			postinstall: pmRun(pm, "typegen"),
+			dev: pmRun(
+				pm,
+				"with-env",
+				instance.primary ? "next dev" : `next dev --port ${instance.port}`,
+			),
+			postinstall: installHook("typescript", pmRun(pm, "typegen")),
 			pretypecheck: pmRun(pm, "with-env", "next typegen"),
-			start: pmRun(pm, "with-env", "next start"),
+			start: pmRun(
+				pm,
+				"with-env",
+				instance.primary ? "next start" : `next start --port ${instance.port}`,
+			),
 			typecheck: "tsc --noEmit",
 			typegen: pmRun(pm, "with-env", "next typegen"),
 			"with-env": "dotenv -e ../../.env --",
 		}),
 
-		leafTextFile(ensuredModuleTarget("web"), "env.ts", webEnv),
-		leafTextFile(ensuredModuleTarget("web"), "app/providers.tsx", providers),
+		leafTextFile(ensuredModuleTarget(instance.key), "env.ts", webEnv),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"app/providers.tsx",
+			providers,
+		),
+		leafTextFile(
+			ensuredModuleTarget(instance.key),
+			"app/icon.svg",
+			readTemplate("frameworks/favicon.svg"),
+			{ update: "starter" },
+		),
+		...selfHostedCorsContributions(config, instance),
+		...(instance.primary &&
+		(config.backend === undefined || config.backend === "self") &&
+		hasSecondaryClients(config)
+			? [
+					leafTextFile(
+						ensuredModuleTarget(instance.key),
+						"proxy.ts",
+						renderConfig.rpc === "orpc"
+							? replaceAnchor(
+									readTemplate("frameworks/nextjs/proxy.ts"),
+									'"/api/trpc/:path*"',
+									'"/api/orpc/:path*"',
+								)
+							: readTemplate("frameworks/nextjs/proxy.ts"),
+					),
+				]
+			: []),
 	];
 }
 

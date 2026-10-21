@@ -1,0 +1,16 @@
+export const houseIgnores = [
+	"node_modules",
+	".next",
+	".turbo",
+	".vercel",
+	".expo",
+	".cache",
+	".forge",
+	"coverage",
+	"dist",
+	"build",
+	"out",
+	".env",
+	".env.*",
+	"routeTree.gen.ts",
+] as const;

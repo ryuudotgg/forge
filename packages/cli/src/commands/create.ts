@@ -1,22 +1,32 @@
 import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
-import { formatSchemaError } from "@ryuujs/core";
+import { formatSchemaError } from "@ryuugg/core";
+import { webAppNamesIssue } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
-import { buildFlagOverrides } from "../cli";
+import { buildFlagOverrides, decodeChoice, options } from "../cli";
+import { acceptedConfigKeys, droppedValueIssue } from "../config/schema";
 import { orchestrate } from "../orchestrator";
 import { presets } from "../presets";
 import { steps } from "../steps";
+import {
+	firstPartyAddonIds,
+	webAppNameIssue,
+	webAppNameRuleIssue,
+	webAppsIssueMessage,
+	webAppsSchema,
+} from "../steps/platforms/web-apps";
 import type { PartialConfig } from "../steps/types";
+import { editDistance } from "../utils/edit-distance";
 import { listOr } from "../utils/list";
 
 export async function runCreate(
-	values: Record<string, string | boolean | undefined>,
+	values: Record<string, string | boolean | string[] | undefined>,
 ) {
-	let initialConfig: PartialConfig = {};
+	const overrides = buildFlagOverrides(values);
 
+	let initialConfig: PartialConfig = {};
 	if (values.preset) {
 		const presetName = values.preset;
-
 		if (typeof presetName !== "string" || !(presetName in presets)) {
 			log.error(
 				`We couldn't find this preset. You can use: ${listOr.format(Object.keys(presets))}.`,
@@ -30,7 +40,6 @@ export async function runCreate(
 
 	if (values.config && typeof values.config === "string") {
 		let parsed: unknown;
-
 		try {
 			parsed = JSON.parse(readFileSync(values.config, "utf-8"));
 		} catch {
@@ -44,7 +53,6 @@ export async function runCreate(
 		const configSchema = Schema.Record(Schema.String, Schema.Unknown);
 
 		const configResult = Schema.decodeUnknownResult(configSchema)(parsed);
-
 		if (Result.isFailure(configResult)) {
 			const issues = formatSchemaError(configResult.failure, parsed);
 			const message = issues
@@ -59,10 +67,105 @@ export async function runCreate(
 			process.exit(1);
 		}
 
-		initialConfig = { ...initialConfig, ...configResult.success };
+		const acceptedKeys = acceptedConfigKeys(steps);
+		const unknownKeys = Object.keys(configResult.success).filter(
+			(key) => !acceptedKeys.includes(key),
+		);
+
+		for (const key of unknownKeys) {
+			const alias = Object.entries(options).flatMap(([flag, option]) =>
+				flag === key && "configKey" in option && option.configKey !== key
+					? [option.configKey]
+					: [],
+			)[0];
+
+			const suggestion =
+				alias ??
+				acceptedKeys.reduce((closest, candidate) =>
+					editDistance(key.toLowerCase(), candidate.toLowerCase()) <
+					editDistance(key.toLowerCase(), closest.toLowerCase())
+						? candidate
+						: closest,
+				);
+
+			log.error(
+				`Your config file sets ${JSON.stringify(key)}, which isn't a setting. Did you mean ${JSON.stringify(suggestion)}?`,
+			);
+		}
+
+		if (unknownKeys.length !== 0) process.exit(1);
+
+		const config = { ...configResult.success };
+		for (const option of Object.values(options)) {
+			if (!("choices" in option)) continue;
+
+			const key = option.configKey;
+			if (config[key] !== undefined && overrides[key] === undefined)
+				config[key] = decodeChoice(option.choices, config[key], {
+					configKey: key,
+				});
+		}
+
+		const configuredWebApps = Schema.decodeUnknownResult(
+			Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
+		)(config.webApps);
+
+		if (Result.isSuccess(configuredWebApps) && overrides.webApps === undefined)
+			config.webApps = configuredWebApps.success.map((app, index) =>
+				app.framework === undefined
+					? app
+					: {
+							...app,
+							framework: decodeChoice(options.web.choices, app.framework, {
+								configKey: `webApps[${index}].framework`,
+							}),
+						},
+			);
+
+		initialConfig = { ...initialConfig, ...config };
 	}
 
-	initialConfig = { ...initialConfig, ...buildFlagOverrides(values) };
+	initialConfig = { ...initialConfig, ...overrides };
+	if (typeof initialConfig.webName === "string") {
+		const issue =
+			webAppNameRuleIssue(initialConfig.webName) ??
+			webAppNameIssue(initialConfig.webName, firstPartyAddonIds());
+
+		if (issue !== undefined) {
+			log.error(issue);
+			process.exit(1);
+		}
+	}
+
+	const droppedIssue = droppedValueIssue(initialConfig);
+	if (droppedIssue !== undefined) {
+		log.error(droppedIssue);
+		process.exit(1);
+	}
+
+	const configuredApps = Schema.decodeUnknownResult(webAppsSchema)(
+		initialConfig.webApps ?? [],
+	);
+
+	if (Result.isFailure(configuredApps)) {
+		log.error(webAppsIssueMessage(configuredApps.failure));
+		process.exit(1);
+	}
+
+	if (Result.isSuccess(configuredApps)) {
+		const addonIds = firstPartyAddonIds();
+		const issue =
+			webAppNamesIssue({ ...initialConfig, webApps: configuredApps.success }) ??
+			configuredApps.success
+				.map((app) => webAppNameIssue(app.name, addonIds))
+				.find((entry) => entry !== undefined);
+
+		if (issue !== undefined) {
+			log.error(issue);
+			process.exit(1);
+		}
+	}
+
 	if (values["no-install"] === true) initialConfig.installDeps = false;
 	if (values["no-git"] === true) initialConfig.gitInit = false;
 

@@ -4,22 +4,28 @@ import {
 	type DiscoveredModule,
 	defineAdapter,
 	defineAddon,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
+import * as generators from "@ryuugg/generators";
 import {
 	type ForgeConfig,
 	type LoadedDefinitionRegistry,
 	listVisibleAddons,
 	loadDefinitionRegistry,
 	type RegistryUnit,
-} from "@ryuujs/generators";
+	reservedWebAppNames,
+} from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runAdd } from "../src/commands/add";
 import {
 	adminModule,
 	appModule,
+	failingAddonRegistry,
 	managedProject,
 	packageModule,
+	planningFailures,
 	reactRouterModule,
+	withTempDir,
+	writeText,
 } from "./lifecycle-fixtures";
 
 function registryFixture(options: {
@@ -31,7 +37,6 @@ function registryFixture(options: {
 }): LoadedDefinitionRegistry {
 	const base = options.base ?? loadDefinitionRegistry();
 	const addons = options.addons ?? [];
-
 	return {
 		catalog: [
 			...base.catalog,
@@ -80,9 +85,11 @@ const packageManagerCommands: ReadonlyArray<
 
 const promptMocks = vi.hoisted(() => ({
 	cancel: vi.fn(),
+	confirm: vi.fn(),
 	intro: vi.fn(),
 	isCancel: vi.fn((_value: unknown) => false),
 	logError: vi.fn(),
+	logInfo: vi.fn(),
 	logSuccess: vi.fn(),
 	logWarn: vi.fn(),
 	multiselect: vi.fn(),
@@ -102,12 +109,24 @@ const lifecycleMocks = vi.hoisted(() => ({
 	runPackageManagerOperation: vi.fn(),
 }));
 
+const releaseMocks = vi.hoisted(() => ({
+	resolveRegistryRelease: vi.fn(),
+}));
+
+const switchMocks = vi.hoisted(() => ({ runSwitch: vi.fn() }));
+
+vi.mock("../src/commands/switch", () => ({
+	runSwitch: switchMocks.runSwitch,
+}));
+
 vi.mock("@clack/prompts", () => ({
 	cancel: promptMocks.cancel,
+	confirm: promptMocks.confirm,
 	intro: promptMocks.intro,
 	isCancel: promptMocks.isCancel,
 	log: {
 		error: promptMocks.logError,
+		info: promptMocks.logInfo,
 		success: promptMocks.logSuccess,
 		warn: promptMocks.logWarn,
 	},
@@ -126,8 +145,12 @@ vi.mock("../src/commands/lifecycle", () => ({
 	runPackageManagerOperation: lifecycleMocks.runPackageManagerOperation,
 }));
 
-vi.mock("@ryuujs/generators", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@ryuujs/generators")>();
+vi.mock("../src/commands/registry-release", () => ({
+	resolveRegistryRelease: releaseMocks.resolveRegistryRelease,
+}));
+
+vi.mock("@ryuugg/generators", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@ryuugg/generators")>();
 	const { multiTargetAddon, singleTargetAddon } = await import(
 		"./lifecycle-fixtures"
 	);
@@ -146,25 +169,520 @@ vi.mock("@ryuujs/generators", async (importOriginal) => {
 });
 
 describe("add command", () => {
+	it("adds a secondary named web beside a named primary", async () => {
+		const project = managedProject({
+			config: { slug: "acme", web: "nextjs", webName: "vault" },
+			modules: [
+				{ ...appModule, root: "apps/vault", packageName: "@acme/vault" },
+			],
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+		await runAdd("nextjs", { name: "web", yes: true, "no-install": true });
+
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			project.projectRoot,
+			{
+				...project.config,
+				webApps: [{ name: "web", framework: "nextjs", port: 3002 }],
+			},
+			project.manifest.installs,
+			undefined,
+			undefined,
+			{},
+			{
+				additions: [{ framework: "nextjs", root: "apps/web" }],
+				modules: project.modules,
+				records: project.manifest.modules,
+			},
+		);
+	});
+
+	it("refuses an addition that takes the custom primary's name", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ config: { web: "nextjs", webName: "vault" } }),
+		);
+
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		try {
+			await expect(
+				runAdd("nextjs", { name: "vault", yes: true }),
+			).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"vault names both the primary web app and a secondary one.",
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it.each([false, true])(
+		"prompts for an app name and handles cancellation %s",
+		async (cancelled) => {
+			const stdin = process.stdin.isTTY;
+			const stdout = process.stdout.isTTY;
+			const ci = process.env.CI;
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			process.stdin.isTTY = true;
+			process.stdout.isTTY = true;
+			delete process.env.CI;
+
+			const project = managedProject();
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+			promptMocks.text.mockResolvedValue(cancelled ? Symbol("cancel") : "site");
+			promptMocks.isCancel.mockReturnValue(cancelled);
+
+			try {
+				if (cancelled) {
+					await expect(runAdd("nextjs", {})).rejects.toThrow("exit:1");
+					expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+				} else {
+					await runAdd("nextjs", {});
+
+					expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+						".",
+						{
+							slug: "acme",
+							web: "nextjs",
+							webApps: [{ name: "site", framework: "nextjs", port: 3002 }],
+						},
+						[],
+						undefined,
+						undefined,
+						{},
+						{
+							additions: [{ framework: "nextjs", root: "apps/site" }],
+							modules: project.modules,
+							records: project.manifest.modules,
+						},
+					);
+				}
+
+				expect(promptMocks.text).toHaveBeenCalledWith(
+					expect.objectContaining({
+						message: "What is the name of this web app?",
+						validate: expect.any(Function),
+					}),
+				);
+
+				const validate = promptMocks.text.mock.calls[0]?.[0].validate;
+				expect(validate?.("biome")).toBe(
+					"biome is an addon id. Pick another name for this web app.",
+				);
+
+				expect(validate?.("email")).toBe(
+					"email is reserved. Pick another name for this web app.",
+				);
+
+				expect(validate?.("Bad_Name")).toBe(
+					"Bad_Name isn't a valid web app name. Start with a lowercase letter and use only lowercase letters, numbers and hyphens.",
+				);
+			} finally {
+				exit.mockRestore();
+				process.stdin.isTTY = stdin;
+				process.stdout.isTTY = stdout;
+
+				if (ci === undefined) delete process.env.CI;
+				else process.env.CI = ci;
+
+				promptMocks.isCancel.mockReturnValue(false);
+			}
+		},
+	);
+
+	it("requires an app name outside an interactive session", async () => {
+		const stdin = process.stdin.isTTY;
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		process.stdin.isTTY = false;
+		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+		try {
+			await expect(runAdd("nextjs", {})).rejects.toThrow("exit:1");
+			expect(promptMocks.text).not.toHaveBeenCalled();
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+			process.stdin.isTTY = stdin;
+		}
+	});
+
+	it.each(["nextjs", "react-router", "tanstack-router", "tanstack-start"])(
+		"adds a named %s app without changing existing installs",
+		async (framework) => {
+			const project = managedProject({
+				installs: [
+					{
+						definitionId: "tailwind",
+						targets: [{ kind: "module", moduleId: appModule.id }],
+					},
+				],
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runAdd(framework, {
+				name: "site",
+				yes: true,
+				"no-install": true,
+				client: true,
+			});
+
+			expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+				project.projectRoot,
+				{
+					...project.config,
+					webApps: [{ name: "site", framework, client: true, port: 3002 }],
+				},
+				project.manifest.installs,
+				undefined,
+				undefined,
+				{},
+				{
+					additions: [{ framework, root: "apps/site" }],
+					modules: project.modules,
+					records: project.manifest.modules,
+				},
+			);
+
+			expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
+			expect(promptMocks.logSuccess.mock.calls).toEqual([
+				["We added the site web app."],
+			]);
+
+			expect(promptMocks.logInfo.mock.calls).toEqual([
+				[
+					'Add http://localhost:3002 to WEB_URLS in .env so site can call the API. With only local apps, that makes WEB_URLS="http://localhost:3002".',
+				],
+			]);
+		},
+	);
+
+	it.each([
+		{
+			client: true,
+			info: [
+				[
+					'Add http://localhost:3004 to WEB_URLS in .env so portal can call the API. With only local apps, that makes WEB_URLS="http://localhost:3002,http://localhost:3004".',
+				],
+			],
+		},
+		{ client: false, info: [] },
+	])(
+		"stamps existing ports and names every client when adding a client $client app",
+		async ({ client, info }) => {
+			const project = managedProject({
+				config: {
+					slug: "acme",
+					web: "nextjs",
+					webApps: [
+						{ name: "admin", framework: "nextjs", client: true },
+						{ name: "docs", framework: "nextjs" },
+					],
+				},
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runAdd("tanstack-router", {
+				name: "portal",
+				yes: true,
+				...(client ? { client: true } : {}),
+			});
+
+			expect(lifecycleMocks.applyInstalledPlan.mock.calls[0]?.[1]).toEqual({
+				slug: "acme",
+				web: "nextjs",
+				webApps: [
+					{ name: "admin", framework: "nextjs", client: true, port: 3002 },
+					{ name: "docs", framework: "nextjs", port: 3003 },
+					{
+						name: "portal",
+						framework: "tanstack-router",
+						...(client ? { client: true } : {}),
+						port: 3004,
+					},
+				],
+			});
+
+			expect(promptMocks.logSuccess.mock.calls).toEqual([
+				["We added the portal web app."],
+			]);
+
+			expect(promptMocks.logInfo.mock.calls).toEqual(info);
+		},
+	);
+
+	it("prints nothing when the add fails to apply", async () => {
+		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+		lifecycleMocks.applyInstalledPlan.mockRejectedValue(new Error("exit:1"));
+
+		await expect(
+			runAdd("nextjs", { name: "site", yes: true, client: true }),
+		).rejects.toThrow("exit:1");
+
+		expect(promptMocks.logSuccess).not.toHaveBeenCalled();
+		expect(promptMocks.logInfo).not.toHaveBeenCalled();
+	});
+
+	it.each(["web", "server", "auth", "../site", "Site", "site"])(
+		"rejects reserved, invalid or duplicate app name %s",
+		async (name) => {
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			try {
+				lifecycleMocks.loadManagedProject.mockResolvedValue(
+					managedProject({
+						config: {
+							web: "nextjs",
+							webApps: [{ name: "site", framework: "nextjs" }],
+						},
+					}),
+				);
+
+				await expect(runAdd("nextjs", { name, yes: true })).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
+
+	it("refuses every addon id in the project registry as an app name", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		const firstParty = loadDefinitionRegistry();
+		const projectAddon = defineAddon<ForgeConfig>({
+			id: "sentry",
+			name: "Sentry",
+			version: "1.0.0",
+			category: "tooling",
+			exclusive: false,
+			targetMode: "multiple",
+			when: () => false,
+			contribute: () => [],
+		});
+
+		lifecycleMocks.loadProjectRegistry.mockResolvedValue({
+			...firstParty,
+			descriptors: [
+				{
+					apiVersion: 1,
+					id: "@acme/forge-sentry",
+					source: "npm",
+					units: [{ id: projectAddon.id, kind: "addon" }],
+					version: "1.0.0",
+				},
+			],
+			registry: {
+				...firstParty.registry,
+				addons: [...firstParty.registry.addons, projectAddon],
+			},
+		});
+
+		const addonIds = [
+			...firstParty.registry.addons.map((addon) => addon.id),
+			projectAddon.id,
+		];
+
+		const namedLikeAddons = addonIds.filter(
+			(id) =>
+				/^[a-z][a-z0-9-]*$/.test(id) &&
+				!reservedWebAppNames.some((name) => name === id),
+		);
+
+		expect(namedLikeAddons).toEqual(
+			expect.arrayContaining(["biome", "tailwind", "sentry"]),
+		);
+
+		try {
+			for (const id of addonIds) {
+				lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+				promptMocks.logError.mockReset();
+
+				await expect(runAdd("nextjs", { name: id, yes: true })).rejects.toThrow(
+					"exit:1",
+				);
+
+				if (namedLikeAddons.includes(id))
+					expect(promptMocks.logError).toHaveBeenCalledWith(
+						`${id} is an addon id. Pick another name for this web app.`,
+					);
+			}
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("requires an app name with --yes", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
+
+			await expect(runAdd("nextjs", { yes: true })).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"Pass --name to name the web app you want to add.",
+			);
+
+			expect(promptMocks.text).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("refuses a secondary without a primary web app", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		try {
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({ config: {}, modules: [] }),
+			);
+
+			await expect(runAdd("nextjs", { name: "site" })).rejects.toThrow(
+				"exit:1",
+			);
+
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"You need a primary web app before adding another web app.",
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("refuses an unmanaged app directory", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		try {
+			await withTempDir("add-web-app", async (projectRoot) => {
+				await writeText(`${projectRoot}/apps/site/README.md`, "Unmanaged app");
+				lifecycleMocks.loadManagedProject.mockResolvedValue({
+					...managedProject(),
+					projectRoot,
+				});
+
+				await expect(runAdd("nextjs", { name: "site" })).rejects.toThrow(
+					"exit:1",
+				);
+
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					'We can\'t add "site" because apps/site already exists.',
+				);
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			});
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it.each(planningFailures)(
+		"prints planning failure: $message",
+		async ({ failure, message }) => {
+			const loaded = failingAddonRegistry(failure);
+			const registry = vi
+				.spyOn(generators, "loadDefinitionRegistry")
+				.mockReturnValue(loaded);
+
+			const lifecycle = await vi.importActual<
+				typeof import("../src/commands/lifecycle")
+			>("../src/commands/lifecycle");
+
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({ config: { slug: "acme" }, modules: [] }),
+			);
+
+			lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
+			lifecycleMocks.applyInstalledPlan.mockImplementation(
+				(...args: Parameters<typeof lifecycle.applyInstalledPlan>) =>
+					lifecycle.applyInstalledPlan(args[0], args[1], args[2], {
+						node: "22.11.0",
+						pnpm: "10.12.1",
+					}),
+			);
+
+			try {
+				await expect(runAdd("test-refusal", {})).rejects.toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(message);
+				expect(exit).toHaveBeenCalledWith(1);
+			} finally {
+				registry.mockRestore();
+				exit.mockRestore();
+			}
+		},
+	);
+
 	beforeEach(() => {
+		switchMocks.runSwitch.mockReset();
+
 		lifecycleMocks.applyInstalledPlan.mockReset();
+		lifecycleMocks.applyInstalledPlan.mockResolvedValue({
+			dependenciesChanged: false,
+			declined: [],
+			dropped: [],
+			retained: [],
+		});
+
 		lifecycleMocks.configuredPackageManager.mockReset();
 		lifecycleMocks.hasProjectDevDependency.mockReset();
+
 		lifecycleMocks.loadManagedProject.mockReset();
 		lifecycleMocks.loadProjectRegistry.mockReset();
 		lifecycleMocks.runPackageManagerOperation.mockReset();
+
 		promptMocks.cancel.mockReset();
 		promptMocks.intro.mockReset();
 		promptMocks.isCancel.mockReset();
+
 		promptMocks.logError.mockReset();
+		promptMocks.logInfo.mockReset();
 		promptMocks.logSuccess.mockReset();
 		promptMocks.logWarn.mockReset();
+
 		promptMocks.multiselect.mockReset();
 		promptMocks.select.mockReset();
+
 		promptMocks.spinner.mockReset();
 		promptMocks.spinnerStart.mockReset();
 		promptMocks.spinnerStop.mockReset();
+
 		promptMocks.text.mockReset();
+
 		lifecycleMocks.hasProjectDevDependency.mockResolvedValue(false);
 		lifecycleMocks.configuredPackageManager.mockImplementation(
 			(config: { readonly packageManager?: unknown }) =>
@@ -172,14 +690,72 @@ describe("add command", () => {
 					? config.packageManager
 					: "pnpm",
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(
 			loadDefinitionRegistry(),
 		);
+
 		lifecycleMocks.runPackageManagerOperation.mockResolvedValue(true);
 		promptMocks.spinner.mockImplementation(() => ({
 			start: promptMocks.spinnerStart,
 			stop: promptMocks.spinnerStop,
 		}));
+	});
+
+	it("rejects adding email to an existing project", async () => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ config: { slug: "acme" } }),
+		);
+
+		try {
+			await expect(runAdd("email", {})).rejects.toThrow("exit:1");
+			expect(promptMocks.logError).toHaveBeenCalledWith(
+				"We can't add email to an existing project yet.",
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it("adds oRPC to a Hono host with TanStack Router", async () => {
+		const host: DiscoveredModule = {
+			framework: "hono",
+			id: "hono-host",
+			packageName: "@acme/server",
+			root: "apps/server",
+			slots: { orpc: "src/index.ts" },
+			template: { id: "hono/base", version: 1 },
+			type: "app",
+		};
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({
+				config: { slug: "acme", backend: "hono", web: "tanstack-router" },
+				modules: [host],
+			}),
+		);
+
+		await runAdd("orpc", {});
+
+		expect(promptMocks.logError).not.toHaveBeenCalled();
+		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
+			".",
+			{ slug: "acme", backend: "hono", web: "tanstack-router", rpc: "orpc" },
+			[
+				{
+					definitionId: "orpc",
+					targets: [{ kind: "module", moduleId: host.id }],
+				},
+			],
+			undefined,
+			undefined,
+		);
 	});
 
 	it("installs, registers, reloads, and adds a single-addon registry", async () => {
@@ -193,6 +769,7 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const firstParty = loadDefinitionRegistry();
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
@@ -203,6 +780,7 @@ describe("add command", () => {
 				},
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(firstParty)
 			.mockResolvedValueOnce({
@@ -237,7 +815,7 @@ describe("add command", () => {
 				},
 			});
 
-		await runAdd("@acme/forge-sentry", {});
+		await runAdd("@acme/forge-sentry", { yes: true });
 
 		expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
 			".",
@@ -246,9 +824,11 @@ describe("add command", () => {
 				command: "pnpm",
 			},
 		);
+
 		expect(lifecycleMocks.loadProjectRegistry).toHaveBeenLastCalledWith(".", [
 			"@acme/forge-sentry",
 		]);
+
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{
@@ -265,9 +845,11 @@ describe("add command", () => {
 			undefined,
 			["@acme/forge-sentry"],
 		);
+
 		expect(promptMocks.spinnerStart).toHaveBeenCalledWith(
 			"We're installing @acme/forge-sentry...",
 		);
+
 		expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
 			"We've installed @acme/forge-sentry!",
 		);
@@ -282,14 +864,16 @@ describe("add command", () => {
 				id: "@acme/forge-empty",
 				units: [],
 			});
+
 			lifecycleMocks.loadManagedProject.mockResolvedValue(
 				managedProject({ config: { packageManager, slug: "acme" } }),
 			);
+
 			lifecycleMocks.loadProjectRegistry
 				.mockResolvedValueOnce(before)
 				.mockResolvedValueOnce(after);
 
-			await runAdd("@acme/forge-empty", {});
+			await runAdd("@acme/forge-empty", { yes: true });
 
 			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
 				".",
@@ -322,6 +906,7 @@ describe("add command", () => {
 				contribute: () => [],
 			}),
 		];
+
 		const catalogEntries = addons.map(
 			(addon): LoadedDefinitionRegistry["catalog"][number] => ({
 				available: true,
@@ -339,6 +924,7 @@ describe("add command", () => {
 				targetMode: "multiple",
 			}),
 		);
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(firstParty)
@@ -361,9 +947,10 @@ describe("add command", () => {
 					addons: [...firstParty.registry.addons, ...addons],
 				},
 			});
+
 		promptMocks.select.mockResolvedValue("@acme/replay");
 
-		await runAdd("@acme/forge-sentry", {});
+		await runAdd("@acme/forge-sentry", { yes: true });
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which addon do you want to add?",
@@ -373,6 +960,7 @@ describe("add command", () => {
 				value: entry.id,
 			})),
 		});
+
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", web: "nextjs" },
@@ -401,6 +989,7 @@ describe("add command", () => {
 			template: { id: "tanstack-start/base", version: 1 },
 			type: "app",
 		};
+
 		const sentry = defineAddon<ForgeConfig>({
 			id: "@acme/sentry",
 			name: "Sentry",
@@ -411,11 +1000,13 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const adapter = defineAdapter<ForgeConfig>({
 			addon: "@acme/sentry",
 			framework: "tanstack-start",
 			contribute: () => [],
 		});
+
 		const firstParty = loadDefinitionRegistry();
 		const before: LoadedDefinitionRegistry = {
 			catalog: firstParty.catalog,
@@ -433,6 +1024,7 @@ describe("add command", () => {
 				addons: [...firstParty.registry.addons, sentry],
 			},
 		};
+
 		const after: LoadedDefinitionRegistry = {
 			...before,
 			descriptors: [
@@ -456,6 +1048,7 @@ describe("add command", () => {
 				adapters: [...before.registry.adapters, adapter],
 			},
 		};
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				config: { slug: "acme", web: "tanstack-start" },
@@ -469,11 +1062,12 @@ describe("add command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-sentry-tanstack", {});
+		await runAdd("@acme/forge-sentry-tanstack", { yes: true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -487,6 +1081,7 @@ describe("add command", () => {
 			undefined,
 			["@acme/forge-sentry", "@acme/forge-sentry-tanstack"],
 		);
+
 		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
 			"Sentry now supports TanStack Start.",
 		);
@@ -497,16 +1092,19 @@ describe("add command", () => {
 			id: "@acme/forge-adapter",
 			units: [{ addon: "vitest", framework: "nextjs", kind: "adapter" }],
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ registries: ["@acme/forge-adapter"] }),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 
-		await runAdd("@acme/forge-adapter", {});
+		await runAdd("@acme/forge-adapter", { yes: true });
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"@acme/forge-adapter is already part of this project.",
 		);
+
 		expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 	});
@@ -522,11 +1120,13 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const replay = defineAddon<ForgeConfig>({
 			...sentry,
 			id: "@acme/replay",
 			name: "Replay",
 		});
+
 		const loaded = registryFixture({
 			addons: [sentry, replay],
 			id: "@acme/forge-observability",
@@ -535,13 +1135,15 @@ describe("add command", () => {
 				{ id: replay.id, kind: "addon" },
 			],
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ registries: ["@acme/forge-observability"] }),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 		promptMocks.select.mockResolvedValue(replay.id);
 
-		await runAdd("@acme/forge-observability", {});
+		await runAdd("@acme/forge-observability", { yes: true });
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which addon do you want to add?",
@@ -551,6 +1153,7 @@ describe("add command", () => {
 				value: addon.id,
 			})),
 		});
+
 		expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
 	});
 
@@ -565,11 +1168,13 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const uncataloged = defineAddon<ForgeConfig>({
 			...cataloged,
 			id: "@acme/x",
 			name: "X",
 		});
+
 		const fixture = registryFixture({
 			addons: [cataloged, uncataloged],
 			id: "@acme/forge-observability",
@@ -578,17 +1183,20 @@ describe("add command", () => {
 				{ id: uncataloged.id, kind: "addon" },
 			],
 		});
+
 		const loaded: LoadedDefinitionRegistry = {
 			...fixture,
 			catalog: fixture.catalog.filter((entry) => entry.id !== uncataloged.id),
 		};
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ registries: ["@acme/forge-observability"] }),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 		promptMocks.select.mockResolvedValue(uncataloged.id);
 
-		await runAdd("@acme/forge-observability", {});
+		await runAdd("@acme/forge-observability", { yes: true });
 
 		expect(promptMocks.select).toHaveBeenCalledWith({
 			message: "Which addon do you want to add?",
@@ -601,6 +1209,7 @@ describe("add command", () => {
 				{ label: uncataloged.name, value: uncataloged.id },
 			],
 		});
+
 		expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -628,28 +1237,33 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const nextAdapter = defineAdapter<ForgeConfig>({
 			addon: addon.id,
 			framework: "nextjs",
 			contribute: () => [],
 		});
+
 		const routerAdapter = defineAdapter<ForgeConfig>({
 			addon: addon.id,
 			framework: "react-router",
 			contribute: () => [],
 		});
+
 		const before = registryFixture({
 			adapters: [nextAdapter],
 			addons: [addon],
 			id: "@acme/forge-sentry",
 			units: [{ id: addon.id, kind: "addon" }],
 		});
+
 		const after = registryFixture({
 			adapters: [routerAdapter],
 			base: before,
 			id: "@acme/forge-sentry-router",
 			units: [{ addon: addon.id, framework: "react-router", kind: "adapter" }],
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -662,11 +1276,12 @@ describe("add command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-sentry-router", {});
+		await runAdd("@acme/forge-sentry-router", { yes: true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -693,28 +1308,33 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const nextAdapter = defineAdapter<ForgeConfig>({
 			addon: addon.id,
 			framework: "nextjs",
 			contribute: () => [],
 		});
+
 		const routerAdapter = defineAdapter<ForgeConfig>({
 			addon: addon.id,
 			framework: "react-router",
 			contribute: () => [],
 		});
+
 		const before = registryFixture({
 			adapters: [nextAdapter],
 			addons: [addon],
 			id: "@acme/forge-single",
 			units: [{ id: addon.id, kind: "addon" }],
 		});
+
 		const after = registryFixture({
 			adapters: [routerAdapter],
 			base: before,
 			id: "@acme/forge-single-router",
 			units: [{ addon: addon.id, framework: "react-router", kind: "adapter" }],
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -727,11 +1347,12 @@ describe("add command", () => {
 				registries: ["@acme/forge-single"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-single-router", {});
+		await runAdd("@acme/forge-single-router", { yes: true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -758,22 +1379,26 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const replay = defineAddon<ForgeConfig>({
 			...sentry,
 			id: "@acme/replay",
 			name: "Replay",
 			targetMode: "multiple",
 		});
+
 		const adapter = defineAdapter<ForgeConfig>({
 			addon: sentry.id,
 			framework: "nextjs",
 			contribute: () => [],
 		});
+
 		const before = registryFixture({
 			addons: [sentry],
 			id: "@acme/forge-sentry",
 			units: [{ id: sentry.id, kind: "addon" }],
 		});
+
 		const after = registryFixture({
 			adapters: [adapter],
 			addons: [replay],
@@ -784,17 +1409,19 @@ describe("add command", () => {
 				{ id: replay.id, kind: "addon" },
 			],
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [{ definitionId: sentry.id, targets: [{ kind: "project" }] }],
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-mixed", {});
+		await runAdd("@acme/forge-mixed", { yes: true });
 
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
@@ -809,6 +1436,7 @@ describe("add command", () => {
 			undefined,
 			["@acme/forge-sentry", "@acme/forge-mixed"],
 		);
+
 		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
 			"Sentry now supports Next.js.",
 		);
@@ -821,12 +1449,13 @@ describe("add command", () => {
 			id: "@acme/forge-empty",
 			units: [],
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-empty", {});
+		await runAdd("@acme/forge-empty", { yes: true });
 
 		expect(promptMocks.logWarn).toHaveBeenCalledWith(
 			"@acme/forge-empty doesn't provide anything this project can use yet.",
@@ -844,11 +1473,13 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const before = registryFixture({
 			addons: [addon],
 			id: "@acme/forge-sentry",
 			units: [{ id: addon.id, kind: "addon" }],
 		});
+
 		const adapters = ["nextjs", "react-router"].map((framework) =>
 			defineAdapter<ForgeConfig>({
 				addon: addon.id,
@@ -856,6 +1487,7 @@ describe("add command", () => {
 				contribute: () => [],
 			}),
 		);
+
 		const after = registryFixture({
 			adapters,
 			base: before,
@@ -866,6 +1498,7 @@ describe("add command", () => {
 				kind: "adapter",
 			})),
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [{ definitionId: addon.id, targets: [{ kind: "project" }] }],
@@ -873,11 +1506,12 @@ describe("add command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-sentry-web", {});
+		await runAdd("@acme/forge-sentry-web", { yes: true });
 
 		expect(promptMocks.logSuccess).toHaveBeenCalledTimes(1);
 		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
@@ -896,10 +1530,12 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const routerAddon = defineAddon<ForgeConfig>({
 			...nextAddon,
 			id: "@acme/sentry-router",
 		});
+
 		const before = registryFixture({
 			addons: [nextAddon, routerAddon],
 			id: "@acme/forge-sentry",
@@ -908,6 +1544,7 @@ describe("add command", () => {
 				{ id: routerAddon.id, kind: "addon" },
 			],
 		});
+
 		const adapters = [
 			defineAdapter<ForgeConfig>({
 				addon: nextAddon.id,
@@ -920,6 +1557,7 @@ describe("add command", () => {
 				contribute: () => [],
 			}),
 		];
+
 		const after = registryFixture({
 			adapters,
 			base: before,
@@ -930,6 +1568,7 @@ describe("add command", () => {
 				kind: "adapter",
 			})),
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				installs: [
@@ -940,21 +1579,24 @@ describe("add command", () => {
 				registries: ["@acme/forge-sentry"],
 			}),
 		);
+
 		lifecycleMocks.loadProjectRegistry
 			.mockResolvedValueOnce(before)
 			.mockResolvedValueOnce(after);
 
-		await runAdd("@acme/forge-sentry-web", {});
+		await runAdd("@acme/forge-sentry-web", { yes: true });
 
 		expect(promptMocks.logSuccess).toHaveBeenCalledTimes(2);
 		expect(promptMocks.logSuccess).toHaveBeenNthCalledWith(
 			1,
 			"Sentry now supports Next.js.",
 		);
+
 		expect(promptMocks.logSuccess).toHaveBeenNthCalledWith(
 			2,
 			"Sentry now supports React Router.",
 		);
+
 		expect(promptMocks.logWarn).not.toHaveBeenCalled();
 	});
 
@@ -969,18 +1611,22 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const fixture = registryFixture({
 			addons: [addon],
 			id: "@acme/forge-x",
 			units: [{ id: addon.id, kind: "addon" }],
 		});
+
 		const loaded: LoadedDefinitionRegistry = {
 			...fixture,
 			catalog: fixture.catalog.filter((entry) => entry.id !== addon.id),
 		};
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ registries: ["@acme/forge-x"] }),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(loaded);
 
 		await runAdd(addon.id, {});
@@ -1003,16 +1649,245 @@ describe("add command", () => {
 		try {
 			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
 
-			await expect(runAdd("@acme/pkg@1.0.0", {})).rejects.toThrow("exit:1");
+			await expect(runAdd("@acme/pkg@1.0.0", { yes: true })).rejects.toThrow(
+				"exit:1",
+			);
 
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We can\'t add "@acme/pkg@1.0.0" with a version. Pass the bare package name "@acme/pkg" instead.',
 			);
+
 			expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
 		}
+	});
+
+	describe("registry consent", () => {
+		const exit = () =>
+			vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+		function interactiveSession(ci?: string) {
+			const stdin = process.stdin.isTTY;
+			const stdout = process.stdout.isTTY;
+			process.stdin.isTTY = true;
+			process.stdout.isTTY = true;
+			vi.stubEnv("CI", ci ?? "");
+
+			return () => {
+				process.stdin.isTTY = stdin;
+				process.stdout.isTTY = stdout;
+				vi.unstubAllEnvs();
+			};
+		}
+
+		function emptyRegistryProject() {
+			const before = loadDefinitionRegistry();
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({ config: { packageManager: "pnpm", slug: "acme" } }),
+			);
+
+			lifecycleMocks.loadProjectRegistry
+				.mockResolvedValueOnce(before)
+				.mockResolvedValueOnce(
+					registryFixture({ base: before, id: "@acme/forge-empty", units: [] }),
+				);
+		}
+
+		beforeEach(() => {
+			promptMocks.confirm.mockReset();
+			releaseMocks.resolveRegistryRelease.mockReset();
+			releaseMocks.resolveRegistryRelease.mockResolvedValue({
+				publisher: "acme-bot",
+				version: "2.3.4",
+			});
+		});
+
+		it("installs after the user accepts the id, version and publisher", async () => {
+			const restore = interactiveSession();
+			emptyRegistryProject();
+			promptMocks.confirm.mockResolvedValue(true);
+
+			try {
+				await runAdd("@acme/forge-empty", {});
+			} finally {
+				restore();
+			}
+
+			expect(releaseMocks.resolveRegistryRelease).toHaveBeenCalledWith(
+				".",
+				"pnpm",
+				"@acme/forge-empty",
+			);
+
+			expect(promptMocks.confirm).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message:
+						"@acme/forge-empty 2.3.4 is a third-party package published by acme-bot. Do you want to install it?",
+				}),
+			);
+
+			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
+				".",
+				{
+					args: ["add", "-D", "-w", "@acme/forge-empty@2.3.4"],
+					command: "pnpm",
+				},
+			);
+		});
+
+		it("still asks when the release lookup fails", async () => {
+			const restore = interactiveSession();
+			emptyRegistryProject();
+			releaseMocks.resolveRegistryRelease.mockResolvedValue(undefined);
+			promptMocks.confirm.mockResolvedValue(true);
+
+			try {
+				await runAdd("@acme/forge-empty", {});
+			} finally {
+				restore();
+			}
+
+			expect(promptMocks.confirm).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message:
+						"We couldn't look up @acme/forge-empty, so we can't show its version or publisher. Do you want to install it anyway?",
+				}),
+			);
+
+			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
+				".",
+				{ args: ["add", "-D", "-w", "@acme/forge-empty"], command: "pnpm" },
+			);
+		});
+
+		it("names the version alone when the registry records no publisher", async () => {
+			const restore = interactiveSession();
+			emptyRegistryProject();
+			releaseMocks.resolveRegistryRelease.mockResolvedValue({
+				publisher: undefined,
+				version: "2.3.4",
+			});
+
+			promptMocks.confirm.mockResolvedValue(true);
+
+			try {
+				await runAdd("@acme/forge-empty", {});
+			} finally {
+				restore();
+			}
+
+			expect(promptMocks.confirm).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message:
+						"@acme/forge-empty 2.3.4 is a third-party package. Do you want to install it?",
+				}),
+			);
+		});
+
+		it("exits zero without installing when the user declines", async () => {
+			const restore = interactiveSession();
+			const exitSpy = exit();
+			emptyRegistryProject();
+			promptMocks.confirm.mockResolvedValue(false);
+
+			try {
+				await expect(runAdd("@acme/forge-empty", {})).rejects.toThrow("exit:0");
+				expect(promptMocks.cancel).toHaveBeenCalledWith(
+					"We didn't install @acme/forge-empty.",
+				);
+
+				expect(
+					lifecycleMocks.runPackageManagerOperation,
+				).not.toHaveBeenCalled();
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			} finally {
+				exitSpy.mockRestore();
+				restore();
+			}
+		});
+
+		it("exits nonzero without installing when the user cancels", async () => {
+			const restore = interactiveSession();
+			const exitSpy = exit();
+			emptyRegistryProject();
+			promptMocks.confirm.mockResolvedValue(Symbol.for("clack:cancel"));
+			promptMocks.isCancel.mockReturnValue(true);
+
+			try {
+				await expect(runAdd("@acme/forge-empty", {})).rejects.toThrow("exit:1");
+				expect(promptMocks.cancel).toHaveBeenCalledWith(
+					"We didn't install @acme/forge-empty.",
+				);
+
+				expect(
+					lifecycleMocks.runPackageManagerOperation,
+				).not.toHaveBeenCalled();
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			} finally {
+				exitSpy.mockRestore();
+				restore();
+			}
+		});
+
+		it("refuses under CI without --yes and names the flag", async () => {
+			const restore = interactiveSession("1");
+			const exitSpy = exit();
+			emptyRegistryProject();
+
+			try {
+				await expect(runAdd("@acme/forge-empty", {})).rejects.toThrow("exit:1");
+				expect(promptMocks.logError).toHaveBeenCalledWith(
+					expect.stringContaining("--yes"),
+				);
+
+				expect(promptMocks.confirm).not.toHaveBeenCalled();
+				expect(releaseMocks.resolveRegistryRelease).not.toHaveBeenCalled();
+				expect(
+					lifecycleMocks.runPackageManagerOperation,
+				).not.toHaveBeenCalled();
+			} finally {
+				exitSpy.mockRestore();
+				restore();
+			}
+		});
+
+		it("skips the prompt with --yes", async () => {
+			const restore = interactiveSession("1");
+			emptyRegistryProject();
+
+			try {
+				await runAdd("@acme/forge-empty", { yes: true });
+			} finally {
+				restore();
+			}
+
+			expect(promptMocks.confirm).not.toHaveBeenCalled();
+			expect(lifecycleMocks.runPackageManagerOperation).toHaveBeenCalledWith(
+				".",
+				{ args: ["add", "-D", "-w", "@acme/forge-empty"], command: "pnpm" },
+			);
+		});
+
+		it("does not ask for a package the project already has", async () => {
+			const restore = interactiveSession();
+			emptyRegistryProject();
+			lifecycleMocks.hasProjectDevDependency.mockResolvedValue(true);
+
+			try {
+				await runAdd("@acme/forge-empty", {});
+			} finally {
+				restore();
+			}
+
+			expect(promptMocks.confirm).not.toHaveBeenCalled();
+			expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
+		});
 	});
 
 	it("honors --no-install with a manual command", async () => {
@@ -1030,6 +1905,7 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We can\'t add @acme/forge-sentry without installing it. Run "pnpm add -D -w @acme/forge-sentry" inside the project, then try again.',
 			);
+
 			expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
@@ -1046,14 +1922,18 @@ describe("add command", () => {
 			lifecycleMocks.loadManagedProject.mockResolvedValue(managedProject());
 			lifecycleMocks.runPackageManagerOperation.mockResolvedValue(false);
 
-			await expect(runAdd("@acme/forge-sentry", {})).rejects.toThrow("exit:1");
+			await expect(runAdd("@acme/forge-sentry", { yes: true })).rejects.toThrow(
+				"exit:1",
+			);
 
 			expect(promptMocks.spinnerStop).toHaveBeenCalledWith(
 				"We couldn't install @acme/forge-sentry.",
 			);
+
 			expect(promptMocks.logWarn).toHaveBeenCalledWith(
 				'The install didn\'t finish, so run "pnpm add -D -w @acme/forge-sentry" yourself inside the project, then try again.',
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -1076,6 +1956,7 @@ describe("add command", () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ registries: ["@acme/forge-sentry"] }),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue({
 			catalog: [
 				...firstParty.catalog,
@@ -1108,7 +1989,7 @@ describe("add command", () => {
 			},
 		});
 
-		await runAdd("@acme/forge-sentry", {});
+		await runAdd("@acme/forge-sentry", { yes: true });
 
 		expect(lifecycleMocks.runPackageManagerOperation).not.toHaveBeenCalled();
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
@@ -1135,6 +2016,7 @@ describe("add command", () => {
 			message: "Search for an addon (leave blank to browse).",
 			placeholder: "tailwind, auth, trpc...",
 		});
+
 		expect(promptMocks.select).not.toHaveBeenCalled();
 		expect(promptMocks.multiselect).not.toHaveBeenCalled();
 		expect(lifecycleMocks.loadManagedProject).toHaveBeenCalledWith(".", "add");
@@ -1178,6 +2060,7 @@ describe("add command", () => {
 				value: entry.id,
 			})),
 		});
+
 		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
 			".",
 			{ slug: "acme", style: "tailwind", web: "nextjs" },
@@ -1203,6 +2086,7 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We couldn't find an addon matching that search.",
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -1223,6 +2107,7 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We couldn't find an addon matching that search.",
 			);
+
 			expect(promptMocks.select).not.toHaveBeenCalled();
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
@@ -1245,11 +2130,12 @@ describe("add command", () => {
 				(value: unknown) => value === cancelSentinel,
 			);
 
-			await expect(runAdd(undefined, {})).rejects.toThrow("exit:0");
+			await expect(runAdd(undefined, {})).rejects.toThrow("exit:1");
 
 			expect(promptMocks.cancel).toHaveBeenCalledWith(
 				"You've extinguished the forge.",
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -1288,12 +2174,41 @@ describe("add command", () => {
 		);
 	});
 
+	it.each([false, true])(
+		"switches Biome to Oxc with no-install %s",
+		async (noInstall) => {
+			const project = managedProject({
+				config: { slug: "acme", web: "nextjs", linter: "biome" },
+				installs: [
+					{ definitionId: "biome", targets: [{ kind: "project" }] },
+					{ definitionId: "prisma", targets: [{ kind: "project" }] },
+				],
+			});
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(project);
+
+			await runAdd("oxc", { "no-install": noInstall, "accept-forge": true });
+
+			expect(switchMocks.runSwitch).toHaveBeenCalledExactlyOnceWith(project, {
+				addon: expect.objectContaining({ id: "oxc" }),
+				holder: expect.objectContaining({ id: "biome" }),
+				installs: [
+					{ definitionId: "prisma", targets: [{ kind: "project" }] },
+					{ definitionId: "oxc", targets: [{ kind: "project" }] },
+				],
+				registryIds: undefined,
+				noInstall,
+				resolution: [{ resolutionPolicy: "accept-forge" }],
+			});
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		},
+	);
+
 	it("rejects adding a second orm instead of swapping", async () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation(((
-			code?: string | number | null,
-		) => {
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
 			throw new Error(`exit:${code ?? 0}`);
-		}) as never);
+		});
 
 		try {
 			lifecycleMocks.loadManagedProject.mockResolvedValue(
@@ -1310,7 +2225,9 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"This project already uses Drizzle.",
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			expect(switchMocks.runSwitch).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
 		}
@@ -1331,6 +2248,7 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We can't switch package managers yet.",
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -1352,6 +2270,7 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"You need to add an ORM before you can use Better Auth.",
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -1562,7 +2481,7 @@ describe("add command", () => {
 		);
 	});
 
-	it("keeps config and installs unchanged when re-adding an installed addon", async () => {
+	it("leaves the project untouched when re-adding an installed addon", async () => {
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({
 				config: { slug: "acme", style: "tailwind", web: "nextjs" },
@@ -1574,12 +2493,9 @@ describe("add command", () => {
 
 		await runAdd("tailwind", {});
 
-		expect(lifecycleMocks.applyInstalledPlan).toHaveBeenCalledWith(
-			".",
-			{ slug: "acme", style: "tailwind", web: "nextjs" },
-			[{ definitionId: "tailwind", targets: [{ kind: "project" }] }],
-			undefined,
-			undefined,
+		expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		expect(promptMocks.logInfo).toHaveBeenCalledWith(
+			"Tailwind CSS is already installed.",
 		);
 	});
 
@@ -1600,7 +2516,115 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We couldn\'t find a compatible target for "Mock Single".',
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+	});
+
+	it.each([
+		{ framework: "react-router", name: "React Router" },
+		{ framework: "future-web", name: "Future Web" },
+	])(
+		"names unsupported $framework for an adapter-backed addon",
+		async ({ framework, name }) => {
+			const addon = defineAddon<ForgeConfig>({
+				id: "@acme/adapter-only",
+				name: "Adapter Only",
+				version: "1.0.0",
+				category: "tooling",
+				exclusive: false,
+				targetMode: "single",
+				when: () => false,
+				contribute: () => [],
+			});
+
+			const adapter = defineAdapter<ForgeConfig>({
+				addon: addon.id,
+				framework: "nextjs",
+				contribute: () => [],
+			});
+
+			const registry = registryFixture({
+				id: "@acme/forge-adapter-only",
+				addons: [addon],
+				adapters: [adapter],
+				units: [{ id: addon.id, kind: "addon" }],
+			});
+
+			const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+				throw new Error(`exit:${code ?? 0}`);
+			});
+
+			if (reactRouterModule.type !== "app")
+				throw new Error("Expected app fixture");
+
+			lifecycleMocks.loadManagedProject.mockResolvedValue(
+				managedProject({ modules: [{ ...reactRouterModule, framework }] }),
+			);
+
+			lifecycleMocks.loadProjectRegistry.mockResolvedValue(registry);
+
+			try {
+				await expect(runAdd(addon.id, {})).rejects.toThrow("exit:1");
+
+				expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(
+					`Adapter Only does not support ${name} yet.`,
+				);
+
+				expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+				expect(switchMocks.runSwitch).not.toHaveBeenCalled();
+			} finally {
+				exit.mockRestore();
+			}
+		},
+	);
+
+	it("refuses an adapter-backed addon when no modules are compatible", async () => {
+		const addon = defineAddon<ForgeConfig>({
+			id: "@acme/no-targets",
+			name: "No Targets",
+			version: "1.0.0",
+			category: "tooling",
+			exclusive: false,
+			targetMode: "single",
+			when: () => false,
+			contribute: () => [],
+		});
+
+		const registry = registryFixture({
+			id: "@acme/forge-no-targets",
+			addons: [addon],
+			adapters: [
+				defineAdapter<ForgeConfig>({
+					addon: addon.id,
+					framework: "nextjs",
+					contribute: () => [],
+				}),
+			],
+			units: [{ id: addon.id, kind: "addon" }],
+		});
+
+		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
+			throw new Error(`exit:${code ?? 0}`);
+		});
+
+		lifecycleMocks.loadManagedProject.mockResolvedValue(
+			managedProject({ modules: [packageModule] }),
+		);
+
+		lifecycleMocks.loadProjectRegistry.mockResolvedValue(registry);
+
+		try {
+			await expect(runAdd(addon.id, {})).rejects.toThrow("exit:1");
+
+			expect(promptMocks.logError).toHaveBeenCalledExactlyOnceWith(
+				'We couldn\'t find a compatible target for "No Targets".',
+			);
+
+			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
+			expect(switchMocks.runSwitch).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
 		}
@@ -1619,14 +2643,17 @@ describe("add command", () => {
 			when: () => false,
 			contribute: () => [],
 		});
+
 		const registry = registryFixture({
 			addons: [addon],
 			id: "@acme/forge-admin-only",
 			units: [{ id: addon.id, kind: "addon" }],
 		});
+
 		lifecycleMocks.loadManagedProject.mockResolvedValue(
 			managedProject({ modules: [appModule, adminModule] }),
 		);
+
 		lifecycleMocks.loadProjectRegistry.mockResolvedValue(registry);
 
 		await runAdd(addon.id, {});
@@ -1721,6 +2748,7 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'We couldn\'t find the "missing" addon.',
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();
@@ -1740,6 +2768,7 @@ describe("add command", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				'"Auth.js" isn\'t available yet.',
 			);
+
 			expect(lifecycleMocks.applyInstalledPlan).not.toHaveBeenCalled();
 		} finally {
 			exit.mockRestore();

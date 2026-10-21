@@ -12,4 +12,6 @@ export default defineConfig({
 
 	minify: false,
 	treeshake: true,
+
+	deps: { onlyBundle: ["expo"] },
 });

@@ -18,7 +18,6 @@ function banner() {
 
 	const leftPadding = " ".repeat(Math.max(0, paddingLength));
 	const rightPadding = " ".repeat(edgePadding);
-
 	return console.log(
 		color.red(`
                                   /   \\
@@ -52,7 +51,6 @@ const introStep = defineStep({
 
 	async execute(_config, interactive) {
 		if (!interactive) return SKIP;
-
 		banner();
 		intro(color.inverse(" START THE FORGE "));
 	},

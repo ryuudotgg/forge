@@ -1,4 +1,4 @@
-import { recommendedAddons } from "@ryuujs/generators";
+import { recommendedAddons } from "@ryuugg/generators";
 import type { PartialConfig } from "../steps/types";
 
 export const defaultPreset: PartialConfig = {

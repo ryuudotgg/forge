@@ -5,11 +5,12 @@ import {
 	leafTextFile,
 	surfaceDependencies,
 	surfaceJson,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../config";
 import { deps } from "../deps";
 import { pmDlx, resolvePackageManager } from "../pm";
 import type { FirstPartyAddonMetadata } from "../registry/types";
+import { catalogRef } from "../versions";
 import { renderUiTemplate } from "./shared";
 
 const ui = defineAddon<ForgeConfig, "ui">({
@@ -63,11 +64,10 @@ const ui = defineAddon<ForgeConfig, "ui">({
 			catalog?: string;
 			type: "dependencies" | "devDependencies" | "peerDependencies";
 		}> = [
-			{ ...deps.clsx, type: "dependencies" },
-			{ ...deps.tailwindMerge, type: "dependencies" },
+			{ ...deps.cn, type: "dependencies" },
 			{ ...deps.classVarianceAuthority, type: "dependencies" },
-			{ ...deps.react, type: "dependencies" },
-			{ ...deps.reactDom, type: "dependencies" },
+			{ ...catalogRef("react", config), type: "dependencies" },
+			{ ...catalogRef("reactDom", config), type: "dependencies" },
 			{ ...deps.nextThemes, type: "dependencies" },
 			{ ...deps.sonner, type: "dependencies" },
 			{ ...deps.inputOtp, type: "dependencies" },
@@ -83,9 +83,7 @@ const ui = defineAddon<ForgeConfig, "ui">({
 			{ ...deps.typescript, type: "devDependencies" },
 		];
 
-		if (useBaseUi) {
-			uiDeps.push({ ...deps.baseUiReact, type: "dependencies" });
-		}
+		if (useBaseUi) uiDeps.push({ ...deps.baseUiReact, type: "dependencies" });
 
 		if (useTailwind) {
 			uiDeps.push({ ...deps.tailwindcss, type: "devDependencies" });
@@ -119,11 +117,13 @@ const ui = defineAddon<ForgeConfig, "ui">({
 				ensuredModuleTarget("ui"),
 				"src/styles/globals.css",
 				renderUiTemplate(config, "packages/ui/src/styles/globals.css"),
+				{ update: "starter" },
 			),
 			leafTextFile(
 				ensuredModuleTarget("ui"),
 				"src/components/button.tsx",
 				renderUiTemplate(config, "packages/ui/src/components/button.tsx"),
+				{ update: "starter" },
 			),
 		];
 	},

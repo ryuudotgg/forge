@@ -1,5 +1,5 @@
 import { isCancel, log, select } from "@clack/prompts";
-import { mobileFrameworks, nativeStyleFrameworks } from "@ryuujs/generators";
+import { mobileFrameworks, nativeStyleFrameworks } from "@ryuugg/generators";
 import { Result, Schema } from "effect";
 import { cancel } from "../../utils/cancel";
 import {

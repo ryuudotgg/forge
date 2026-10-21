@@ -1,6 +1,9 @@
-import { formatSchemaError } from "@ryuujs/core";
 import { Result, Schema } from "effect";
-import { assembleSchema, type Config } from "./config/schema";
+import {
+	assembleSchema,
+	type Config,
+	invalidConfigMessage,
+} from "./config/schema";
 import type { PartialConfig, Step } from "./steps/types";
 import { SKIP } from "./steps/types";
 
@@ -21,7 +24,6 @@ export async function orchestrate(
 			if (!step.shouldRun(config)) continue;
 
 			const key = step.configKey === null ? null : (step.configKey ?? step.id);
-
 			if (key !== null && key in config && config[key] !== undefined) {
 				await step.validate?.(config[key], config);
 				continue;
@@ -44,19 +46,8 @@ export async function orchestrate(
 	const decodeConfig = () => {
 		const schema = assembleSchema(steps);
 		const result = Schema.decodeResult(schema)(config);
-
-		if (Result.isFailure(result)) {
-			const issues = formatSchemaError(result.failure, config);
-			const message = issues
-				.map((i) =>
-					i.path.length > 0
-						? `  ${i.path.join(".")}: ${i.message}`
-						: `  ${i.message}`,
-				)
-				.join("\n");
-
-			throw new Error(`Invalid Configuration:\n${message}`);
-		}
+		if (Result.isFailure(result))
+			throw new Error(invalidConfigMessage(result.failure, config));
 
 		return result.success;
 	};

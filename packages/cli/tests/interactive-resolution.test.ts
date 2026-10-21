@@ -6,7 +6,7 @@ import {
 	ApplyError,
 	type ApplyPlan,
 	type LockfileArtifact,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import { Cause } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -50,14 +50,17 @@ function setTTY(isTTY: boolean): () => void {
 		process.stdin,
 		"isTTY",
 	);
+
 	const stdoutDescriptor = Object.getOwnPropertyDescriptor(
 		process.stdout,
 		"isTTY",
 	);
+
 	Object.defineProperty(process.stdin, "isTTY", {
 		configurable: true,
 		value: isTTY,
 	});
+
 	Object.defineProperty(process.stdout, "isTTY", {
 		configurable: true,
 		value: isTTY,
@@ -67,6 +70,7 @@ function setTTY(isTTY: boolean): () => void {
 		if (stdinDescriptor === undefined)
 			Reflect.deleteProperty(process.stdin, "isTTY");
 		else Object.defineProperty(process.stdin, "isTTY", stdinDescriptor);
+
 		if (stdoutDescriptor === undefined)
 			Reflect.deleteProperty(process.stdout, "isTTY");
 		else Object.defineProperty(process.stdout, "isTTY", stdoutDescriptor);
@@ -95,12 +99,14 @@ function conflictError() {
 					base: "tsc",
 					forge: "tsc -b",
 					label: "package.json -> scripts.build",
+					resolvedBy: ["keep-user", "accept-forge"],
 					user: "tsc --watch",
 				},
 				{
 					base: "vite",
 					forge: "vite --port 4000",
 					label: "package.json -> scripts.dev",
+					resolvedBy: ["keep-user", "accept-forge"],
 					user: "vite --host",
 				},
 			],
@@ -114,7 +120,7 @@ function conflictError() {
 					reason: "managed-file-modified",
 					operation: "write",
 					path: "README.md",
-					resolvable: true,
+					resolvedBy: ["keep-user", "accept-forge"],
 				},
 			],
 		},
@@ -125,6 +131,7 @@ async function semanticFixture(directory: string) {
 	const artifactId = "project:surface:rootPackageJson";
 	const base =
 		'{\n\t"scripts": {\n\t\t"build": "tsc",\n\t\t"dev": "vite"\n\t}\n}\n';
+
 	const baseHash = hashContent(base);
 	const artifact: LockfileArtifact = {
 		base: { hash: baseHash, mergeKind: "json", semanticsVersion: 1 },
@@ -133,6 +140,7 @@ async function semanticFixture(directory: string) {
 		kind: "surface",
 		path: "package.json",
 	};
+
 	await applyLifecyclePlan(
 		directory,
 		{
@@ -146,9 +154,11 @@ async function semanticFixture(directory: string) {
 
 	const user =
 		'{\n\t"scripts": {\n\t\t"build": "tsc --watch",\n\t\t"dev": "vite --host"\n\t}\n}\n';
+
 	await writeText(join(directory, "package.json"), user);
 	const incoming =
 		'{\n\t"scripts": {\n\t\t"build": "tsc -b",\n\t\t"dev": "vite --port 4000"\n\t}\n}\n';
+
 	const incomingHash = hashContent(incoming);
 	const plan: ApplyPlan = {
 		lockfile: {
@@ -184,6 +194,7 @@ async function repeatedLineFixture(directory: string) {
 		kind: "surface",
 		path,
 	};
+
 	await applyLifecyclePlan(
 		directory,
 		{
@@ -199,9 +210,9 @@ async function repeatedLineFixture(directory: string) {
 		join(directory, path),
 		"# Sec\nkeep\nuser-one\nmid\nuser-two\ntail\n",
 	);
+
 	const incoming = "# Sec\nkeep\nforge-one\nmid\nforge-two\ntail\n";
 	const incomingHash = hashContent(incoming);
-
 	return {
 		path,
 		plan: {
@@ -229,14 +240,17 @@ describe("interactive resolution", () => {
 	beforeEach(() => {
 		promptMocks.cancel.mockReset();
 		promptMocks.isCancel.mockReset();
+
 		promptMocks.logError.mockReset();
 		promptMocks.logInfo.mockReset();
 		promptMocks.logSuccess.mockReset();
 		promptMocks.logWarn.mockReset();
+
 		promptMocks.select.mockReset();
 		promptMocks.isCancel.mockImplementation(
 			(value: unknown) => value === promptMocks.cancelToken,
 		);
+
 		vi.unstubAllEnvs();
 	});
 
@@ -252,6 +266,7 @@ describe("interactive resolution", () => {
 			["README.md"],
 			["package.json"],
 		]);
+
 		expect(promptMocks.select.mock.calls).toEqual([
 			[
 				{
@@ -274,6 +289,7 @@ describe("interactive resolution", () => {
 				},
 			],
 		]);
+
 		expect(resolution).toEqual({
 			options: {
 				conflictResolutions: {
@@ -293,6 +309,51 @@ describe("interactive resolution", () => {
 		});
 	});
 
+	it.each(["user", "forge"])(
+		"offers %s for a damaged managed base",
+		async (choice) => {
+			const error = new ApplyError({
+				reason: "managed-base-damaged",
+				path: "package.json",
+				preflight: {
+					hasConflicts: false,
+					hasManagedRemovals: false,
+					hasManagedRefusals: true,
+					hasUnmanagedRefusals: false,
+					hasUnmanagedRemovals: false,
+					refusals: [
+						{
+							reason: "managed-base-damaged",
+							operation: "write",
+							path: "package.json",
+							resolvedBy: ["keep-user", "accept-forge"],
+						},
+					],
+				},
+			});
+
+			promptMocks.select.mockResolvedValueOnce(choice);
+
+			expect(canResolveInteractively(error, {})).toBe(true);
+			const resolution = await promptForConflictResolutions(error);
+
+			expect(promptMocks.logInfo.mock.calls).toEqual([["package.json"]]);
+			expect(promptMocks.select.mock.calls).toEqual([
+				[
+					{
+						message:
+							"package.json's stored base under .forge/bases is missing or no longer matches its hash.",
+						options: perCellOptions,
+					},
+				],
+			]);
+
+			expect(resolution.options.conflictResolutions).toEqual({
+				"package.json": { resolution: choice },
+			});
+		},
+	);
+
 	it("applies a bulk choice to every remaining cell", async () => {
 		promptMocks.select
 			.mockResolvedValueOnce("user")
@@ -305,6 +366,7 @@ describe("interactive resolution", () => {
 			["README.md"],
 			["package.json"],
 		]);
+
 		expect(resolution).toEqual({
 			options: {
 				conflictResolutions: {
@@ -370,6 +432,7 @@ describe("interactive resolution", () => {
 						dev: "vite --port 4000",
 					},
 				});
+
 				expect(promptMocks.logSuccess).toHaveBeenCalledWith(
 					"We resolved package.json -> scripts.build with your value and package.json -> scripts.dev with Forge's value.",
 				);
@@ -398,6 +461,7 @@ describe("interactive resolution", () => {
 						dev: "vite --port 4000",
 					},
 				});
+
 				expect(promptMocks.logSuccess).toHaveBeenCalledWith(
 					"We resolved package.json -> scripts.build with Forge's value and package.json -> scripts.dev with Forge's value.",
 				);
@@ -422,6 +486,7 @@ describe("interactive resolution", () => {
 				expect(await readFile(join(directory, path), "utf-8")).toBe(
 					"# Sec\nkeep\nuser-one\nmid\nforge-two\ntail\n",
 				);
+
 				expect(promptMocks.logSuccess).toHaveBeenCalledWith(
 					"We resolved .gitignore -> Sec -> shared with your value and .gitignore -> Sec -> shared (2nd) with Forge's value.",
 				);
@@ -445,6 +510,7 @@ describe("interactive resolution", () => {
 				const { plan } = await semanticFixture(directory);
 				const drifted =
 					'{\n\t"scripts": {\n\t\t"build": "changed-during-prompt",\n\t\t"dev": "vite --host"\n\t}\n}\n';
+
 				promptMocks.select
 					.mockImplementationOnce(async () => {
 						await writeText(join(directory, "package.json"), drifted);
@@ -455,9 +521,11 @@ describe("interactive resolution", () => {
 				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
 					drifted,
 				);
+
 				expect(promptMocks.logSuccess).not.toHaveBeenCalled();
 				expect(promptMocks.logError).toHaveBeenCalledWith(
 					expect.stringContaining("Semantic merge conflicts were found:"),
@@ -491,9 +559,10 @@ describe("interactive resolution", () => {
 				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(promptMocks.select).not.toHaveBeenCalled();
 				expect(promptMocks.logError).toHaveBeenCalledWith(
-					"We couldn't apply this change. Forge cannot safely update these files:\npackage.json was modified after Forge last managed it.\nRun again with --keep-user to keep your edits, or --accept-forge to take Forge's changes.",
+					"We couldn't apply this change. Forge cannot safely update these files:\npackage.json was modified after Forge last managed it.\nNeither flag resolves package.json, so move it out of the way first.",
 				);
 			});
 		} finally {
@@ -516,6 +585,7 @@ describe("interactive resolution", () => {
 			expect(promptMocks.logError).toHaveBeenCalledWith(
 				"We couldn't complete this command because an unexpected error occurred.",
 			);
+
 			expect(stderr).toHaveBeenCalledWith(defect);
 		} finally {
 			exit.mockRestore();
@@ -530,6 +600,7 @@ describe("interactive resolution", () => {
 		const stderr = vi.spyOn(console, "error").mockImplementation((value) => {
 			rendered += inspect(value);
 		});
+
 		const exit = vi
 			.spyOn(process, "exit")
 			.mockImplementation((code?: string | number | null): never => {
@@ -554,6 +625,7 @@ describe("interactive resolution", () => {
 			.mockImplementation((code?: string | number | null): never => {
 				throw new Error(`exit:${code ?? 0}`);
 			});
+
 		promptMocks.select
 			.mockResolvedValueOnce("user")
 			.mockResolvedValueOnce(promptMocks.cancelToken);
@@ -567,17 +639,21 @@ describe("interactive resolution", () => {
 				);
 
 				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
-					"exit:0",
+					"exit:1",
 				);
+
 				expect(promptMocks.cancel).toHaveBeenCalledWith(
 					"You've extinguished the forge.",
 				);
+
 				expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
 					user,
 				);
+
 				expect(
 					await readFile(join(directory, ".forge/lock.json"), "utf-8"),
 				).toBe(lockBefore);
+
 				expect(promptMocks.logSuccess).not.toHaveBeenCalled();
 			});
 		} finally {
@@ -594,6 +670,7 @@ describe("interactive resolution", () => {
 			.mockImplementation((code?: string | number | null): never => {
 				throw new Error(`exit:${code ?? 0}`);
 			});
+
 		promptMocks.select.mockResolvedValueOnce(promptMocks.cancelToken);
 
 		try {
@@ -605,21 +682,26 @@ describe("interactive resolution", () => {
 				);
 
 				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
-					"exit:0",
+					"exit:1",
 				);
+
 				expect(promptMocks.select).toHaveBeenCalledTimes(1);
 				expect(promptMocks.select).toHaveBeenCalledWith(
 					expect.objectContaining({ options: bulkOptions }),
 				);
+
 				expect(promptMocks.cancel).toHaveBeenCalledWith(
 					"You've extinguished the forge.",
 				);
+
 				expect(await readFile(join(directory, "package.json"), "utf-8")).toBe(
 					user,
 				);
+
 				expect(
 					await readFile(join(directory, ".forge/lock.json"), "utf-8"),
 				).toBe(lockBefore);
+
 				expect(promptMocks.logSuccess).not.toHaveBeenCalled();
 			});
 		} finally {
@@ -642,6 +724,7 @@ describe("interactive resolution", () => {
 				await expect(applyLifecyclePlan(directory, plan, {})).rejects.toThrow(
 					"exit:1",
 				);
+
 				expect(promptMocks.select).not.toHaveBeenCalled();
 				expect(promptMocks.logError).toHaveBeenCalledWith(
 					expect.stringContaining(
@@ -663,6 +746,7 @@ describe("interactive resolution", () => {
 
 		const restoreTTY = setTTY(true);
 		vi.stubEnv("CI", "true");
+
 		try {
 			expect(isInteractiveLifecycleSession()).toBe(false);
 
@@ -726,7 +810,7 @@ describe("interactive resolution", () => {
 								reason: "unmanaged-file-exists",
 								operation: "write",
 								path: "README.md",
-								resolvable: true,
+								resolvedBy: ["keep-user", "accept-forge"],
 							},
 						],
 					},
@@ -756,7 +840,7 @@ describe("interactive resolution", () => {
 								reason: "managed-file-modified",
 								operation: "removal",
 								path: "README.md",
-								resolvable: false,
+								resolvedBy: ["accept-forge"],
 							},
 						],
 					},

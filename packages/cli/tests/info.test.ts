@@ -1,5 +1,5 @@
-import type { CatalogEntry } from "@ryuujs/generators";
-import { getCatalogEntry, listCatalogEntries } from "@ryuujs/generators";
+import type { CatalogEntry } from "@ryuugg/generators";
+import { getCatalogEntry, listCatalogEntries } from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildInfoEnvelope,
@@ -14,13 +14,11 @@ import {
 import { withTempDir } from "./lifecycle-fixtures";
 
 const promptMocks = vi.hoisted(() => ({
-	logError: vi.fn(),
 	logMessage: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
 	log: {
-		error: promptMocks.logError,
 		message: promptMocks.logMessage,
 	},
 }));
@@ -32,7 +30,6 @@ function requireEntry(id: string) {
 }
 
 beforeEach(() => {
-	promptMocks.logError.mockReset();
 	promptMocks.logMessage.mockReset();
 });
 
@@ -47,6 +44,7 @@ describe("forge info builders", () => {
 		expect(addon).toContain(
 			"Frameworks:      nextjs, react-router, tanstack-start, hono, fastify, and express",
 		);
+
 		expect(addon).toContain("Required slots:  trpc");
 		expect(framework).toContain("Slots:");
 		expect(template).toContain("Framework:  nextjs");
@@ -250,6 +248,7 @@ describe("forge info builders", () => {
 			requiredSlots: [],
 			source: "@acme/forge-sentry",
 		});
+
 		expect(firstParty.entry).not.toHaveProperty("publisherVersion");
 		expect(firstParty.entry.source).toBe("first-party");
 		expect(JSON.parse(JSON.stringify(thirdParty))).toEqual(thirdParty);
@@ -259,6 +258,7 @@ describe("forge info builders", () => {
 			await runInfo("@acme/sentry", { json: true }, () =>
 				Promise.resolve(loaded),
 			);
+
 			expect(consoleLog).toHaveBeenCalledWith(
 				JSON.stringify(thirdParty, null, "\t"),
 			);
@@ -307,6 +307,7 @@ describe("forge info builders", () => {
 					"\t",
 				),
 			);
+
 			expect(promptMocks.logMessage).toHaveBeenCalledTimes(1);
 		} finally {
 			consoleLog.mockRestore();
@@ -314,24 +315,12 @@ describe("forge info builders", () => {
 	});
 
 	it("reports missing and hidden ids as exact command errors", async () => {
-		const exit = vi.spyOn(process, "exit").mockImplementation((code) => {
-			throw new Error(`exit:${code ?? 0}`);
-		});
+		await expect(runInfo("missing", { json: true })).rejects.toThrow(
+			new Error('We couldn\'t find "missing" in the catalog.'),
+		);
 
-		try {
-			await expect(runInfo("missing", {})).rejects.toThrow("exit:1");
-			await expect(runInfo("root", {})).rejects.toThrow("exit:1");
-
-			expect(promptMocks.logError).toHaveBeenNthCalledWith(
-				1,
-				'We couldn\'t find "missing" in the catalog.',
-			);
-			expect(promptMocks.logError).toHaveBeenNthCalledWith(
-				2,
-				'We couldn\'t find "root" in the catalog.',
-			);
-		} finally {
-			exit.mockRestore();
-		}
+		await expect(runInfo("root", { json: true })).rejects.toThrow(
+			new Error('We couldn\'t find "root" in the catalog.'),
+		);
 	});
 });

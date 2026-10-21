@@ -20,12 +20,14 @@ vi.mock("../src/commands/add", () => ({ runAdd: commandMocks.runAdd }));
 vi.mock("../src/commands/create", () => ({
 	runCreate: commandMocks.runCreate,
 }));
+
 vi.mock("../src/commands/info", () => ({ runInfo: commandMocks.runInfo }));
 vi.mock("../src/commands/init", () => ({ runInit: commandMocks.runInit }));
 vi.mock("../src/commands/list", () => ({ runList: commandMocks.runList }));
 vi.mock("../src/commands/remove", () => ({
 	runRemove: commandMocks.runRemove,
 }));
+
 vi.mock("../src/commands/update", () => ({
 	runUpdate: commandMocks.runUpdate,
 	UpdateCommand: { Default: commandMocks.updateLayer },
@@ -36,6 +38,7 @@ beforeEach(() => {
 	commandMocks.runCreate.mockReset();
 	commandMocks.runInfo.mockReset();
 	commandMocks.runInit.mockReset();
+
 	commandMocks.runList.mockReset();
 	commandMocks.runRemove.mockReset();
 	commandMocks.runUpdate.mockReset();
@@ -47,6 +50,7 @@ describe("command registry", () => {
 		expect(getSubcommand("update")).toBe(subcommands.update);
 		expect(getSubcommand("init")).toBe(subcommands.init);
 		expect(getSubcommand("add")).toBe(subcommands.add);
+
 		expect(getSubcommand("remove")).toBe(subcommands.remove);
 		expect(getSubcommand("list")).toBe(subcommands.list);
 		expect(getSubcommand("info")).toBe(subcommands.info);
@@ -83,7 +87,6 @@ describe("command registry", () => {
 
 	it("forwards values to runInit", async () => {
 		await subcommands.init.run([], { "dry-run": true });
-
 		expect(commandMocks.runInit).toHaveBeenCalledWith({ "dry-run": true });
 	});
 
@@ -101,7 +104,6 @@ describe("command registry", () => {
 
 	it("forwards the addon id and values to runRemove", async () => {
 		await subcommands.remove.run(["tailwind"], {});
-
 		expect(commandMocks.runRemove).toHaveBeenCalledWith("tailwind", {});
 	});
 
@@ -112,6 +114,7 @@ describe("command registry", () => {
 		expect(commandMocks.runList).toHaveBeenCalledWith("auth", {
 			kind: "addon",
 		});
+
 		expect(commandMocks.runInfo).toHaveBeenCalledWith("drizzle", {
 			json: true,
 		});

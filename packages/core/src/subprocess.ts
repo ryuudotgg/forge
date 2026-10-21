@@ -7,7 +7,7 @@ import {
 	type PlatformError,
 	Stream,
 } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { SubprocessError } from "./errors";
 
 export const PROBE_TIMEOUT_MS = 10_000;
@@ -166,8 +166,8 @@ const makeSubprocess = Effect.gen(function* () {
 		const resultOption = yield* execution.pipe(
 			Effect.mapError((cause) => {
 				if (cause instanceof SubprocessError) return cause;
-				const detail = platformErrorDetail(cause);
 
+				const detail = platformErrorDetail(cause);
 				return new SubprocessError({
 					...errorFields(input),
 					reason: "spawn-error",

@@ -1,39 +1,80 @@
-import * as generators from "@ryuujs/generators";
+import * as generators from "@ryuugg/generators";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { version } from "../package.json" with { type: "json" };
 import introStep from "../src/steps/intro";
 import outroStep from "../src/steps/outro";
 import summaryStep from "../src/steps/summary";
 import { SKIP } from "../src/steps/types";
+import { webAppLabels } from "../src/utils/web-apps";
 
 const promptMocks = vi.hoisted(() => ({
 	intro: vi.fn<(message: string) => void>(),
+	logSuccess: vi.fn<(message: string) => void>(),
 	note: vi.fn<(message?: string, title?: string) => void>(),
 	outro: vi.fn<(message?: string) => void>(),
 }));
 
 vi.mock("@clack/prompts", () => ({
 	intro: promptMocks.intro,
+	log: { success: promptMocks.logSuccess },
 	note: promptMocks.note,
 	outro: promptMocks.outro,
 }));
 
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
-
 function stripAnsi(text: string): string {
 	return text.replace(ansiPattern, "");
 }
 
 beforeEach(() => {
 	promptMocks.intro.mockReset();
+	promptMocks.logSuccess.mockReset();
 	promptMocks.note.mockReset();
 	promptMocks.outro.mockReset();
 });
 
 describe("summary step", () => {
+	it("labels a custom primary name even without secondary apps", () => {
+		expect(webAppLabels({ web: "nextjs" })).toEqual(["Next.js"]);
+		expect(webAppLabels({ web: "nextjs", webName: "vault" })).toEqual([
+			"vault (Next.js)",
+		]);
+
+		expect(
+			webAppLabels({
+				web: "nextjs",
+				webName: "vault",
+				webApps: [{ name: "web", framework: "tanstack-router" }],
+			}),
+		).toEqual(["vault (Next.js)", "web (TanStack Router)"]);
+	});
+
+	it("names the primary and every secondary framework", async () => {
+		await summaryStep.execute(
+			{
+				path: "./preview",
+				slug: "acme",
+				web: "tanstack-router",
+				webApps: [
+					{ name: "admin", framework: "nextjs", client: true },
+					{ name: "docs", framework: "react-router" },
+				],
+			},
+			true,
+		);
+
+		const [body] = promptMocks.note.mock.calls[0] ?? [];
+		expect(body).toContain("Framework: TanStack Router");
+		expect(body).toContain(
+			"Web apps: web (TanStack Router), admin (Next.js), and docs (React Router)",
+		);
+
+		expect(body).toContain("apps/admin");
+		expect(body).toContain("apps/docs");
+	});
+
 	it("skips without a note when non-interactive", async () => {
 		await expect(summaryStep.execute({}, false)).resolves.toBe(SKIP);
-
 		expect(promptMocks.note).not.toHaveBeenCalled();
 	});
 
@@ -55,6 +96,7 @@ describe("summary step", () => {
 		expect(body).toContain(
 			"Addons: pnpm Workspace, TypeScript, .gitignore, UI Package",
 		);
+
 		expect(body).toContain("Modules:");
 		expect(body).toContain("apps/web");
 	});
@@ -134,6 +176,7 @@ describe("summary step", () => {
 			expect(String(stderr.mock.calls[0]?.[0])).toContain(
 				"synthetic summary defect",
 			);
+
 			expect(exit).not.toHaveBeenCalled();
 		} finally {
 			loadRegistry.mockRestore();
@@ -146,7 +189,6 @@ describe("summary step", () => {
 describe("intro step", () => {
 	it("prints the banner and starts the forge when interactive", async () => {
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
 		try {
 			await introStep.execute({}, true);
 
@@ -168,10 +210,8 @@ describe("intro step", () => {
 
 	it("skips without a banner when non-interactive", async () => {
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
 		try {
 			await expect(introStep.execute({}, false)).resolves.toBe(SKIP);
-
 			expect(logSpy).not.toHaveBeenCalled();
 		} finally {
 			logSpy.mockRestore();
@@ -194,9 +234,30 @@ describe("outro step", () => {
 		);
 	});
 
-	it("skips when non-interactive", async () => {
-		await expect(outroStep.execute({}, false)).resolves.toBe(SKIP);
+	it("names the project path when non-interactive", async () => {
+		await expect(
+			outroStep.execute({ name: "acme", path: "./acme" }, false),
+		).resolves.toBe(SKIP);
 
 		expect(promptMocks.outro).not.toHaveBeenCalled();
+		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
+			"We created acme in ./acme.",
+		);
+	});
+
+	it("names the next commands when dependencies were not installed", async () => {
+		await outroStep.execute(
+			{
+				installDeps: false,
+				name: "acme",
+				packageManager: "Bun",
+				path: "./my acme",
+			},
+			false,
+		);
+
+		expect(promptMocks.logSuccess).toHaveBeenCalledWith(
+			`We created acme in ./my acme. Run "cd "./my acme"", then "bun install" to install its dependencies.`,
+		);
 	});
 });

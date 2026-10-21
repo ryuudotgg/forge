@@ -11,17 +11,31 @@ import {
 	surfaceLines,
 	surfaceScripts,
 	type TemplateDefinition,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import type { ForgeConfig } from "../../config";
 import { envFileLine } from "../../data/providers";
 import { deps } from "../../deps";
-import { standaloneApiOrigin, webDevOrigin } from "../../origins";
-import { pmRun, resolvePackageManager } from "../../pm";
+import {
+	secondaryClientOrigins,
+	serverCorsHeaders,
+	standaloneApiOrigin,
+	webDevOrigin,
+	withServerEnvOrigins,
+} from "../../origins";
+import { resolvePackageManager } from "../../pm";
 import type {
 	FirstPartyFrameworkMetadata,
 	FirstPartyTemplateMetadata,
 } from "../../registry/types";
+import { rpcCorsHeaders, rpcDescriptor } from "../../rpc";
 import { interpolate, readTemplate } from "../../template";
+import { standaloneServerScripts } from "../server-scripts";
+
+const fastifySlots = {
+	api: "src/routes",
+	trpc: "src/routes/trpc.ts",
+	auth: "src/routes/auth.ts",
+};
 
 export const fastifyFramework: FrameworkDefinition<"fastify"> = defineFramework(
 	{
@@ -30,7 +44,7 @@ export const fastifyFramework: FrameworkDefinition<"fastify"> = defineFramework(
 		ignoreDirs: [],
 		name: "Fastify",
 		sourceRoot: "src",
-		slots: ["api", "trpc", "auth"],
+		slots: [...Object.keys(fastifySlots), "orpc"],
 		tsconfigPreset: {
 			name: "fastify",
 			content: {
@@ -94,25 +108,31 @@ export const fastifyBaseTemplateMetadata: FirstPartyTemplateMetadata = {
 function buildContributions(config: ForgeConfig) {
 	const slug = config.slug ?? "my-app";
 	const pm = resolvePackageManager(config);
-	const usesTrpc = config.rpc === "trpc";
+	const rpc = rpcDescriptor(config);
 	const usesAuth = config.authentication === "better-auth";
+
 	const webOrigin = webDevOrigin(config);
 	const serverOrigin = standaloneApiOrigin(config) ?? webOrigin;
 	const envLines = [
 		envFileLine("WEB_URL", webOrigin),
+		...(secondaryClientOrigins(config).length > 0
+			? [envFileLine("WEB_URLS", secondaryClientOrigins(config).join(","))]
+			: []),
 		envFileLine("VITE_SERVER_URL", serverOrigin),
 		envFileLine("NEXT_PUBLIC_SERVER_URL", serverOrigin),
 	];
+
 	const vars = {
 		SLUG: slug,
-		WEB_ORIGIN: webOrigin,
-		"// __TRPC_IMPORT__\n": usesTrpc
-			? 'import { registerTrpcRoutes } from "./routes/trpc.js";\n'
-			: "",
+		"// __TRPC_IMPORT__\n":
+			rpc !== undefined
+				? `import { ${rpc.routes.register} } from "${rpc.routes.module}";\n`
+				: "",
 		"// __AUTH_IMPORT__\n": usesAuth
 			? 'import { registerAuthRoutes } from "./routes/auth.js";\n'
 			: "",
-		"// __TRPC_ROUTE__\n": usesTrpc ? "registerTrpcRoutes(app);\n" : "",
+		"// __TRPC_ROUTE__\n":
+			rpc !== undefined ? `${rpc.routes.register}(app);\n` : "",
 		"// __AUTH_ROUTE__\n": usesAuth ? "registerAuthRoutes(app);\n" : "",
 	};
 
@@ -120,11 +140,10 @@ function buildContributions(config: ForgeConfig) {
 		ensureAppModule("server", "apps/server", {
 			framework: "fastify",
 			template: { id: "fastify/base", version: 1 },
-			slots: {
-				api: "src/routes",
-				trpc: "src/routes/trpc.ts",
-				auth: "src/routes/auth.ts",
-			},
+			slots:
+				config.rpc === "orpc"
+					? { ...fastifySlots, orpc: "src/routes/orpc.ts" }
+					: fastifySlots,
 		}),
 		surfaceJson(ensuredModuleTarget("server"), "packageJson", {
 			name: `@${slug}/server`,
@@ -150,26 +169,17 @@ function buildContributions(config: ForgeConfig) {
 				version: "workspace:*",
 				type: "devDependencies",
 			},
-			{ ...deps.dotenvCli, type: "devDependencies" },
+			{ ...deps.dotenvCli, type: "dependencies" },
 			{ ...deps.tsdown, type: "devDependencies" },
 			{ ...deps.tsx, type: "devDependencies" },
 			{ ...deps.typesNode, type: "devDependencies" },
 			{ ...deps.typescript, type: "devDependencies" },
 		]),
-		...(config.orm === "drizzle" && config.database === "sqlite"
-			? [
-					surfaceDependencies(ensuredModuleTarget("server"), "packageJson", [
-						{ ...deps.libsqlClient, type: "dependencies" },
-					]),
-				]
-			: []),
-		surfaceScripts(ensuredModuleTarget("server"), "packageJson", {
-			build: pmRun(pm, "with-env", "tsdown"),
-			dev: pmRun(pm, "with-env", "tsx watch src/index.ts"),
-			start: pmRun(pm, "with-env", "node dist/index.js"),
-			typecheck: "tsc --noEmit",
-			"with-env": "dotenv -e ../../.env --",
-		}),
+		surfaceScripts(
+			ensuredModuleTarget("server"),
+			"packageJson",
+			standaloneServerScripts(pm),
+		),
 		surfaceLines(projectTarget(), "rootEnv", envLines, {
 			section: "Fastify",
 		}),
@@ -179,7 +189,13 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("server"),
 			"src/app.ts",
-			interpolate(readTemplate("frameworks/fastify/src/app.ts"), vars),
+			serverCorsHeaders(
+				config,
+				rpcCorsHeaders(
+					config,
+					interpolate(readTemplate("frameworks/fastify/src/app.ts"), vars),
+				),
+			),
 		),
 		leafTextFile(
 			ensuredModuleTarget("server"),
@@ -189,7 +205,10 @@ function buildContributions(config: ForgeConfig) {
 		leafTextFile(
 			ensuredModuleTarget("server"),
 			"env.ts",
-			interpolate(readTemplate("frameworks/fastify/env.ts"), vars),
+			withServerEnvOrigins(
+				config,
+				interpolate(readTemplate("frameworks/fastify/env.ts"), vars),
+			),
 		),
 		leafTextFile(
 			ensuredModuleTarget("server"),

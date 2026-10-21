@@ -1,11 +1,11 @@
 {
-	"name": "@ryuujs/forge",
+	"name": "@ryuugg/forge",
 	"version": "0.0.0",
 	"description": "An all-in-one starter for your next big thing.",
 	"keywords": [
 		"forge"
 	],
-	"homepage": "https://forge.ryuu.gg",
+	"homepage": "https://github.com/ryuudotgg/forge",
 	"bugs": {
 		"url": "https://github.com/ryuudotgg/forge/issues",
 		"email": "contact@ryuu.gg"
@@ -28,33 +28,33 @@
 	"type": "module",
 	"bin": "./dist/index.mjs",
 	"files": [
-		"dist"
+		"dist",
+		"templates"
 	],
 	"scripts": {
 		"build": "tsdown",
 		"check": "biome check",
-		"clean": "git clean -xdf .turbo .cache coverage dist node_modules",
+		"clean": "git clean -xdf .turbo .cache coverage dist node_modules templates",
 		"dev": "tsdown --watch",
 		"start": "node ./dist/index.mjs",
 		"test": "vitest run tests",
 		"test:coverage": "vitest run --coverage",
 		"typecheck": "tsc"
 	},
-	"dependencies": {
+	"devDependencies": {
 		"@clack/core": "catalog:node",
 		"@clack/prompts": "catalog:node",
 		"@effect/platform-node": "catalog:effect",
-		"@ryuujs/core": "workspace:*",
-		"@ryuujs/generators": "workspace:*",
-		"effect": "catalog:effect",
-		"picocolors": "catalog:node"
-	},
-	"devDependencies": {
+		"@effect/platform-node-shared": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
-		"@ryuujs/temper": "workspace:*",
-		"@ryuujs/tsconfig": "workspace:*",
+		"@ryuugg/core": "workspace:*",
+		"@ryuugg/generators": "workspace:*",
+		"@ryuugg/temper": "workspace:*",
+		"@ryuugg/tsconfig": "workspace:*",
 		"@types/node": "catalog:dev",
 		"@vitest/coverage-v8": "catalog:dev",
+		"effect": "catalog:effect",
+		"picocolors": "catalog:node",
 		"tsdown": "catalog:build",
 		"typescript": "catalog:dev",
 		"vitest": "catalog:dev"

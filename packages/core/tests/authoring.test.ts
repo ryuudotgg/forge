@@ -154,6 +154,7 @@ describe("authoring", () => {
 			id: appModule.id,
 			root: "apps/web",
 		});
+
 		const error = await Effect.runPromise(
 			Effect.flip(resolveSlotPath(appModule, slotPath(target, "trpc"))),
 		);
@@ -307,6 +308,7 @@ describe("authoring", () => {
 			when: () => true,
 			contribute: () => [],
 		});
+
 		const adapter = defineAdapter<TestConfig>({
 			addon: "adapter-addon",
 			framework: "nextjs",
@@ -317,6 +319,7 @@ describe("authoring", () => {
 		expect(
 			isAddonCompatibleWithModule(addon, appModule, [framework], [adapter]),
 		).toBe(true);
+
 		expect(
 			isAddonCompatibleWithModule(
 				addon,
@@ -325,6 +328,7 @@ describe("authoring", () => {
 				[adapter],
 			),
 		).toBe(true);
+
 		expect(
 			isAddonCompatibleWithModule(
 				addon,
@@ -333,6 +337,7 @@ describe("authoring", () => {
 				[adapter],
 			),
 		).toBe(false);
+
 		expect(
 			isAddonCompatibleWithModule(addon, packageModule, [framework], [adapter]),
 		).toBe(false);
@@ -342,11 +347,13 @@ describe("authoring", () => {
 		const addon = compatibilityAddon({
 			app: { frameworks: ["nextjs"] },
 		});
+
 		const adapter = defineAdapter<TestConfig>({
 			addon: addon.id,
 			framework: "solid",
 			contribute: () => [],
 		});
+
 		const solidModule: AppConfig = {
 			...appModule,
 			framework: "solid",
@@ -356,9 +363,11 @@ describe("authoring", () => {
 			"nextjs",
 			"solid",
 		]);
+
 		expect(
 			isAddonCompatibleWithModule(addon, appModule, [framework], [adapter]),
 		).toBe(true);
+
 		expect(
 			isAddonCompatibleWithModule(addon, solidModule, [framework], [adapter]),
 		).toBe(true);
@@ -389,6 +398,7 @@ describe("authoring", () => {
 			when: () => true,
 			contribute: () => [],
 		});
+
 		const adapter = defineAdapter<TestConfig>({
 			addon: "trpc",
 			framework: "astro",
@@ -415,6 +425,7 @@ describe("authoring", () => {
 			when: () => true,
 			contribute: () => [],
 		});
+
 		const adapter = defineAdapter<TestConfig>({
 			addon: "trpc",
 			framework: "nextjs",
@@ -443,6 +454,7 @@ describe("authoring", () => {
 			when: () => true,
 			contribute: () => [],
 		});
+
 		const adapter = defineAdapter<TestConfig>({
 			addon: addon.id,
 			framework: "solid",
@@ -570,6 +582,7 @@ describe("authoring", () => {
 			framework: "nextjs",
 			contribute: () => [],
 		});
+
 		const register = () =>
 			defineRegistry({
 				adapters: [adapter],

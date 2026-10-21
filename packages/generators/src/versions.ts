@@ -1,4 +1,7 @@
-import type { ForgeConfig } from "./config";
+import expoNativeModules from "expo/bundledNativeModules.json";
+import expoPackage from "expo/package.json";
+import { authUsesPasskey } from "./auth/methods";
+import type { ForgeConfig, Linter, RpcProvider } from "./config";
 
 export type CatalogGroup =
 	| "Framework"
@@ -11,15 +14,31 @@ export type CatalogGroup =
 	| "Types";
 
 export interface CatalogEntry {
+	readonly rpc?: RpcProvider;
+	readonly linter?: Linter;
 	readonly name: string;
 	readonly version: string;
 	readonly group: CatalogGroup;
+	readonly authMethod?: "passkey";
+	readonly hostDependency?: true;
 }
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 
 export const versions = {
-	biome: { name: "@biomejs/biome", version: "^2.4.16", group: "Tooling" },
+	biome: {
+		name: "@biomejs/biome",
+		version: "2.5.14",
+		group: "Tooling",
+		linter: "biome",
+	},
+	oxlint: {
+		name: "oxlint",
+		version: "1.86.0",
+		group: "Tooling",
+		linter: "oxc",
+	},
+	oxfmt: { name: "oxfmt", version: "0.71.0", group: "Tooling", linter: "oxc" },
 	commitlintCli: {
 		name: "@commitlint/cli",
 		version: "^21.0.2",
@@ -38,7 +57,7 @@ export const versions = {
 	lefthook: { name: "lefthook", version: "^2.1.9", group: "Tooling" },
 	sherif: { name: "sherif", version: "^1.11.1", group: "Tooling" },
 	turbo: { name: "turbo", version: "^2.9.18", group: "Tooling" },
-	typescript: { name: "typescript", version: "^7.0.2", group: "Tooling" },
+	typescript: { name: "typescript", version: "7.0.2", group: "Tooling" },
 	vitest: { name: "vitest", version: "^5.0.0", group: "Tooling" },
 	tsdown: { name: "tsdown", version: "^0.23.0", group: "Tooling" },
 	tsx: { name: "tsx", version: "^4.23.12", group: "Tooling" },
@@ -48,30 +67,30 @@ export const versions = {
 		version: "^1.7.0",
 		group: "Framework",
 	},
-	expo: { name: "expo", version: "~57.0.14", group: "Framework" },
+	expo: { name: "expo", version: expoPackage.version, group: "Framework" },
 	expoConstants: {
 		name: "expo-constants",
-		version: "~57.0.12",
+		version: expoNativeModules["expo-constants"],
 		group: "Framework",
 	},
 	expoLinking: {
 		name: "expo-linking",
-		version: "~57.0.6",
+		version: expoNativeModules["expo-linking"],
 		group: "Framework",
 	},
 	expoRouter: {
 		name: "expo-router",
-		version: "~57.0.14",
+		version: expoNativeModules["expo-router"],
 		group: "Framework",
 	},
 	expoSecureStore: {
 		name: "expo-secure-store",
-		version: "~57.0.1",
+		version: expoNativeModules["expo-secure-store"],
 		group: "Framework",
 	},
 	isbot: { name: "isbot", version: "5.2.2", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
-	hono: { name: "hono", version: "4.13.7", group: "Framework" },
+	hono: { name: "hono", version: "4.13.12", group: "Framework" },
 	honoNodeServer: {
 		name: "@hono/node-server",
 		version: "2.1.1",
@@ -82,7 +101,7 @@ export const versions = {
 		version: "0.4.2",
 		group: "Framework",
 	},
-	fastify: { name: "fastify", version: "5.12.4", group: "Framework" },
+	fastify: { name: "fastify", version: "5.12.5", group: "Framework" },
 	fastifyCors: {
 		name: "@fastify/cors",
 		version: "11.3.0",
@@ -91,23 +110,23 @@ export const versions = {
 	express: { name: "express", version: "5.2.1", group: "Framework" },
 	expressCors: { name: "cors", version: "2.8.6", group: "Framework" },
 
-	next: { name: "next", version: "16.3.5", group: "Framework" },
+	next: { name: "next", version: "16.3.8", group: "Framework" },
 
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
 	reactNative: {
 		name: "react-native",
-		version: "0.87.1",
+		version: expoNativeModules["react-native"],
 		group: "Framework",
 	},
 	reactNativeSafeAreaContext: {
 		name: "react-native-safe-area-context",
-		version: "~5.9.0",
+		version: expoNativeModules["react-native-safe-area-context"],
 		group: "Framework",
 	},
 	reactNativeScreens: {
 		name: "react-native-screens",
-		version: "~4.28.0",
+		version: expoNativeModules["react-native-screens"],
 		group: "Framework",
 	},
 
@@ -126,34 +145,30 @@ export const versions = {
 		version: "8.3.1",
 		group: "Framework",
 	},
-	reactRouterServe: {
-		name: "@react-router/serve",
-		version: "8.3.1",
-		group: "Framework",
-	},
+	srvx: { name: "srvx", version: "1.0.5", group: "Framework" },
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
-		version: "1.170.36",
+		version: "1.170.45",
 		group: "Framework",
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.168.54",
+		version: "1.169.3",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.36",
+		version: "1.167.45",
 		group: "Tooling",
 	},
 	tanstackRouterPlugin: {
 		name: "@tanstack/router-plugin",
-		version: "1.168.38",
+		version: "1.168.47",
 		group: "Tooling",
 	},
 
-	vite: { name: "vite", version: "8.3.0", group: "Tooling" },
+	vite: { name: "vite", version: "8.3.4", group: "Tooling" },
 	viteReact: {
 		name: "@vitejs/plugin-react",
 		version: "6.1.1",
@@ -167,17 +182,17 @@ export const versions = {
 	},
 	reactNativeCss: {
 		name: "react-native-css",
-		version: "^3.0.7",
+		version: "3.1.0-rc.0",
 		group: "Styling",
 	},
 	reactNativeReanimated: {
 		name: "react-native-reanimated",
-		version: "~4.6.0",
+		version: expoNativeModules["react-native-reanimated"],
 		group: "Framework",
 	},
 	reactNativeWorklets: {
 		name: "react-native-worklets",
-		version: "~0.12.0",
+		version: expoNativeModules["react-native-worklets"],
 		group: "Framework",
 	},
 	tailwindcss: { name: "tailwindcss", version: "^4.2.2", group: "Styling" },
@@ -197,6 +212,24 @@ export const versions = {
 		group: "UI",
 	},
 
+	orpcClient: {
+		name: "@orpc/client",
+		version: "1.15.4",
+		rpc: "orpc",
+		group: "Framework",
+	},
+	orpcServer: {
+		name: "@orpc/server",
+		version: "1.15.4",
+		rpc: "orpc",
+		group: "Framework",
+	},
+	orpcTanstackQuery: {
+		name: "@orpc/tanstack-query",
+		version: "1.15.4",
+		rpc: "orpc",
+		group: "Framework",
+	},
 	trpcServer: { name: "@trpc/server", version: "^11.7.1", group: "Framework" },
 	trpcClient: { name: "@trpc/client", version: "^11.7.1", group: "Framework" },
 	trpcReactQuery: {
@@ -235,10 +268,11 @@ export const versions = {
 		name: "@libsql/client",
 		version: "^0.18.0",
 		group: "Database",
+		hostDependency: true,
 	},
 	planetscaleDatabase: {
 		name: "@planetscale/database",
-		version: "^1.20.1",
+		version: "^2.0.0",
 		group: "Database",
 	},
 	mysql2: {
@@ -270,6 +304,7 @@ export const versions = {
 		name: "@prisma/adapter-libsql",
 		version: "^7.8.0",
 		group: "Database",
+		hostDependency: true,
 	},
 	prismaAdapterMariadb: {
 		name: "@prisma/adapter-mariadb",
@@ -285,6 +320,7 @@ export const versions = {
 		name: "@prisma/adapter-better-sqlite3",
 		version: "^7.8.0",
 		group: "Database",
+		hostDependency: true,
 	},
 	pg: {
 		name: "pg",
@@ -314,11 +350,15 @@ export const versions = {
 	},
 	zod: { name: "zod", version: "^4.3.6", group: "Validation & Env" },
 
-	clsx: { name: "clsx", version: "^2.1.1", group: "Utilities" },
+	cn: { name: "cn", version: "^0.4.0", group: "Utilities" },
 	nanoid: { name: "nanoid", version: "^6.0.0", group: "Utilities" },
-	tailwindMerge: {
-		name: "tailwind-merge",
-		version: "^3.5.0",
+	resend: { name: "resend", version: "^6.32.0", group: "Utilities" },
+	postmark: { name: "postmark", version: "^5.1.0", group: "Utilities" },
+	nodemailer: { name: "nodemailer", version: "^10.0.13", group: "Utilities" },
+	reactEmail: { name: "react-email", version: "6.11.0", group: "Utilities" },
+	reactEmailUi: {
+		name: "@react-email/ui",
+		version: "6.11.0",
 		group: "Utilities",
 	},
 	classVarianceAuthority: {
@@ -336,6 +376,22 @@ export const versions = {
 	betterAuth: {
 		name: "better-auth",
 		version: "^1.7.2",
+		group: "Framework",
+	},
+	polarBetterAuth: {
+		name: "@polar-sh/better-auth",
+		version: "^2.0.1",
+		group: "Framework",
+	},
+	betterAuthPasskey: {
+		name: "@better-auth/passkey",
+		version: "1.7.7",
+		group: "Framework",
+		authMethod: "passkey",
+	},
+	polarSdk: {
+		name: "@polar-sh/sdk",
+		version: "^1.0.2",
 		group: "Framework",
 	},
 
@@ -366,10 +422,33 @@ export const versions = {
 
 export type VersionKey = keyof typeof versions;
 
-export function catalogRef(key: VersionKey) {
+const passkeyBetterAuth = {
+	name: "better-auth",
+	version: "1.7.7",
+	group: "Framework",
+} as const satisfies CatalogEntry;
+
+function versionsFor(config: ForgeConfig) {
 	return {
-		name: versions[key].name,
-		version: versions[key].version,
+		...versions,
+		...(authUsesPasskey(config) ? { betterAuth: passkeyBetterAuth } : {}),
+		...(config.mobile === "expo"
+			? {
+					react: { ...versions.react, version: expoNativeModules.react },
+					reactDom: {
+						...versions.reactDom,
+						version: expoNativeModules["react-dom"],
+					},
+				}
+			: {}),
+	};
+}
+
+export function catalogRef(key: VersionKey, config: ForgeConfig = {}) {
+	const entry = versionsFor(config)[key];
+	return {
+		name: entry.name,
+		version: entry.version,
 		catalog: "",
 	};
 }
@@ -385,14 +464,16 @@ const groupOrder: ReadonlyArray<CatalogGroup> = [
 	"Types",
 ];
 
-export function catalogEntries(_config: ForgeConfig): ReadonlyArray<{
+export function catalogEntries(config: ForgeConfig): ReadonlyArray<{
 	readonly group: CatalogGroup;
 	readonly entries: ReadonlyArray<CatalogEntry>;
 }> {
 	const grouped = new Map<CatalogGroup, CatalogEntry[]>();
+	for (const entry of Object.values(versionsFor(config))) {
+		if ("rpc" in entry && entry.rpc !== config.rpc) continue;
+		if ("linter" in entry && entry.linter !== config.linter) continue;
+		if ("authMethod" in entry && !authUsesPasskey(config)) continue;
 
-	for (const key of Object.keys(versions) as VersionKey[]) {
-		const entry = versions[key];
 		const list = grouped.get(entry.group) ?? [];
 		list.push(entry);
 		grouped.set(entry.group, list);

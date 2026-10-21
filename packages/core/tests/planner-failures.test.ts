@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	type AdapterModule,
 	type AddonDefinition,
+	CliVersion,
 	CoreLive,
 	type DefinitionRegistry,
 	defineAddon,
@@ -24,7 +25,10 @@ import { withTempDir } from "./harness";
 
 interface FailureConfig extends Record<string, unknown> {}
 
-const plannerLayer = CoreLive.pipe(Layer.provideMerge(NodeServices.layer));
+const plannerLayer = CoreLive.pipe(
+	Layer.provide(Layer.succeed(CliVersion, { version: "test-cli-version" })),
+	Layer.provideMerge(NodeServices.layer),
+);
 
 function addon(
 	id: string,
@@ -58,6 +62,7 @@ function webRegistry(
 		slots: ["layout"],
 		tsconfigPreset: { content: {}, name: "nextjs" },
 	});
+
 	const template = defineTemplate<FailureConfig>({
 		id: "nextjs/base",
 		framework: "nextjs",
@@ -113,12 +118,13 @@ describe("planner defensive failures", () => {
 				when: () => true,
 				contribute: () => [],
 			});
+
 			const second = defineTemplate<FailureConfig>({
 				...first,
 				id: "second/base",
-				framework: "second",
 				name: "Second",
 			});
+
 			const error = await failure(
 				directory,
 				defineRegistry({
@@ -130,6 +136,45 @@ describe("planner defensive failures", () => {
 
 			expect(error.reason).toBe("multiple-templates-selected");
 			expect(error.category).toBe("web");
+			expect(error.message).toBe(
+				"Multiple Templates Selected: first in web: first/base and second/base",
+			);
+		});
+	});
+
+	it("selects different frameworks in one template category", async () => {
+		await withTempDir("planner-mixed-templates", async (directory) => {
+			const first = defineTemplate<FailureConfig>({
+				id: "first/base",
+				framework: "first",
+				name: "First",
+				version: 1,
+				category: "web",
+				when: () => true,
+				contribute: vi.fn(() => []),
+			});
+
+			const second = defineTemplate<FailureConfig>({
+				...first,
+				id: "second/base",
+				framework: "second",
+				name: "Second",
+				contribute: vi.fn(() => []),
+			});
+
+			await Effect.runPromise(
+				plan(
+					directory,
+					defineRegistry({
+						addons: [],
+						frameworks: [],
+						templates: [first, second],
+					}),
+				),
+			);
+
+			expect(first.contribute).toHaveBeenCalledOnce();
+			expect(second.contribute).toHaveBeenCalledOnce();
 		});
 	});
 
@@ -144,6 +189,7 @@ describe("planner defensive failures", () => {
 				slots: ["entry"],
 				tsconfigPreset: { content: {}, name: "web" },
 			});
+
 			const backendFramework = defineFramework({
 				id: "backend",
 				buildOutputs: [],
@@ -153,6 +199,7 @@ describe("planner defensive failures", () => {
 				slots: ["entry"],
 				tsconfigPreset: { content: {}, name: "backend" },
 			});
+
 			const web = defineTemplate<FailureConfig>({
 				id: "web/base",
 				framework: "web",
@@ -168,6 +215,7 @@ describe("planner defensive failures", () => {
 					}),
 				],
 			});
+
 			const backend = defineTemplate<FailureConfig>({
 				id: "backend/base",
 				framework: "backend",
@@ -183,6 +231,7 @@ describe("planner defensive failures", () => {
 					}),
 				],
 			});
+
 			const webOnly = defineAddon<FailureConfig>({
 				id: "web-only",
 				name: "Web Only",
@@ -203,6 +252,7 @@ describe("planner defensive failures", () => {
 					frameworks: [webFramework, backendFramework],
 					templates: [web, backend],
 				});
+
 			const result = await Effect.runPromise(
 				plan(directory, registryFor([webOnly])),
 			);
@@ -220,6 +270,7 @@ describe("planner defensive failures", () => {
 				when: () => true,
 				contribute: () => [],
 			});
+
 			const backendResult = await Effect.runPromise(
 				plan(directory, registryFor([backendOnly])),
 			);
@@ -237,13 +288,16 @@ describe("planner defensive failures", () => {
 				when: () => true,
 				contribute: () => [],
 			});
+
 			const error = await Effect.runPromise(
 				Effect.flip(plan(directory, registryFor([unsupported]))),
 			);
 
 			expect(error).toBeInstanceOf(GeneratorError);
+
 			if (!(error instanceof GeneratorError))
 				throw new Error("Expected Generator Error");
+
 			expect(error.reason).toBe("framework-not-supported");
 		});
 	});
@@ -253,6 +307,7 @@ describe("planner defensive failures", () => {
 			const missing = addon("missing-parent", () => [], [
 				{ id: "absent", type: "addon" },
 			]);
+
 			expect(
 				(
 					await failure(
@@ -270,6 +325,7 @@ describe("planner defensive failures", () => {
 			const second = addon("second", () => [], [
 				{ id: "first", type: "addon" },
 			]);
+
 			expect(
 				(
 					await failure(
@@ -290,6 +346,7 @@ describe("planner defensive failures", () => {
 			const missing = addon("missing", () => [
 				leafTextFile(ensuredModuleTarget("absent"), "file.ts", "missing\n"),
 			]);
+
 			expect(
 				(
 					await failure(
@@ -311,6 +368,7 @@ describe("planner defensive failures", () => {
 			const projectSlot = addon("project-slot", () => [
 				leafTextFile(projectTarget(), slotPath(ensured, "layout"), "project\n"),
 			]);
+
 			expect(
 				(await failure(directory, webRegistry([projectSlot]))).reason,
 			).toBe("slot-path-requires-module-target");
@@ -326,10 +384,12 @@ describe("planner defensive failures", () => {
 				id: "zzzzz",
 				root: "apps/missing",
 			};
+
 			const resolved = moduleTarget(missingModule);
 			const missingSlotModule = addon("missing-slot-module", () => [
 				leafTextFile(resolved, slotPath(resolved, "layout"), "missing\n"),
 			]);
+
 			expect(
 				(await failure(directory, webRegistry([missingSlotModule]))).reason,
 			).toBe("slot-path-module-missing");
@@ -337,6 +397,7 @@ describe("planner defensive failures", () => {
 			const mismatch = addon("slot-mismatch", () => [
 				leafTextFile(ensured, slotPath(resolved, "layout"), "mismatch\n"),
 			]);
+
 			expect((await failure(directory, webRegistry([mismatch]))).reason).toBe(
 				"slot-path-target-mismatch",
 			);
@@ -344,6 +405,7 @@ describe("planner defensive failures", () => {
 			const invalid = addon("slot-invalid", () => [
 				leafTextFile(ensured, slotPath(ensured, "layout"), "invalid\n"),
 			]);
+
 			expect(
 				(await failure(directory, webRegistry([invalid], {}))).reason,
 			).toBe("slot-path-invalid");
@@ -357,6 +419,7 @@ describe("planner defensive failures", () => {
 			const hashing = addon("hashing", () => [
 				leafTextFile(projectTarget(), "file.ts", "content\n"),
 			]);
+
 			const error = await failure(
 				directory,
 				defineRegistry({

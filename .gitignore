@@ -22,6 +22,7 @@ coverage/
 out/
 build/
 dist/
+packages/cli/templates/
 
 # Debug
 npm-debug.log*

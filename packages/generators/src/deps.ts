@@ -6,6 +6,8 @@ function dep(key: VersionKey) {
 
 export const deps = {
 	biome: dep("biome"),
+	oxlint: dep("oxlint"),
+	oxfmt: dep("oxfmt"),
 	commitlintCli: dep("commitlintCli"),
 	commitlintConfigConventional: dep("commitlintConfigConventional"),
 	commitlintTypes: dep("commitlintTypes"),
@@ -35,8 +37,6 @@ export const deps = {
 
 	next: dep("next"),
 
-	react: dep("react"),
-	reactDom: dep("reactDom"),
 	reactNative: dep("reactNative"),
 	reactNativeSafeAreaContext: dep("reactNativeSafeAreaContext"),
 	reactNativeScreens: dep("reactNativeScreens"),
@@ -44,7 +44,7 @@ export const deps = {
 	reactRouter: dep("reactRouter"),
 	reactRouterDev: dep("reactRouterDev"),
 	reactRouterNode: dep("reactRouterNode"),
-	reactRouterServe: dep("reactRouterServe"),
+	srvx: dep("srvx"),
 
 	tanstackReactRouter: dep("tanstackReactRouter"),
 	tanstackReactStart: dep("tanstackReactStart"),
@@ -70,6 +70,9 @@ export const deps = {
 	twAnimateCss: dep("twAnimateCss"),
 
 	trpcServer: dep("trpcServer"),
+	orpcClient: dep("orpcClient"),
+	orpcServer: dep("orpcServer"),
+	orpcTanstackQuery: dep("orpcTanstackQuery"),
 	trpcClient: dep("trpcClient"),
 	trpcReactQuery: dep("trpcReactQuery"),
 	tanstackReactQuery: dep("tanstackReactQuery"),
@@ -103,9 +106,13 @@ export const deps = {
 	t3OssEnvNextjs: dep("t3OssEnvNextjs"),
 	zod: dep("zod"),
 
-	clsx: dep("clsx"),
+	cn: dep("cn"),
 	nanoid: dep("nanoid"),
-	tailwindMerge: dep("tailwindMerge"),
+	resend: dep("resend"),
+	postmark: dep("postmark"),
+	nodemailer: dep("nodemailer"),
+	reactEmail: dep("reactEmail"),
+	reactEmailUi: dep("reactEmailUi"),
 	classVarianceAuthority: dep("classVarianceAuthority"),
 
 	baseUiReact: dep("baseUiReact"),
@@ -115,4 +122,7 @@ export const deps = {
 	inputOtp: dep("inputOtp"),
 
 	betterAuth: dep("betterAuth"),
+	betterAuthPasskey: dep("betterAuthPasskey"),
+	polarBetterAuth: dep("polarBetterAuth"),
+	polarSdk: dep("polarSdk"),
 } as const;

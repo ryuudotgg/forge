@@ -9,6 +9,7 @@ import { withTempDir, writeJson, writeText } from "./harness";
 const subprocessLayer = Subprocess.Default.pipe(
 	Layer.provide(NodeServices.layer),
 );
+
 const commandLayer = CommandProbe.Default.pipe(Layer.provide(subprocessLayer));
 
 describe("CommandProbe", () => {
@@ -61,7 +62,6 @@ describe("readPersistedCommandVersions", () => {
 	it("returns an empty record when package.json fails schema decoding", async () => {
 		await withTempDir("command-persisted-invalid", async (directory) => {
 			await writeJson(join(directory, "package.json"), { engines: 42 });
-
 			expect(await readPersisted(directory)).toEqual({});
 		});
 	});
@@ -69,7 +69,6 @@ describe("readPersistedCommandVersions", () => {
 	it("returns an empty record when engines and packageManager are absent", async () => {
 		await withTempDir("command-persisted-empty", async (directory) => {
 			await writeJson(join(directory, "package.json"), {});
-
 			expect(await readPersisted(directory)).toEqual({});
 		});
 	});
@@ -117,7 +116,6 @@ describe("readPersistedCommandVersions", () => {
 	it("trims .nvmrc and strips its v prefix as a partial record", async () => {
 		await withTempDir("command-persisted-nvmrc", async (directory) => {
 			await writeText(join(directory, ".nvmrc"), "  v22.18.0\n");
-
 			expect(await readPersisted(directory)).toEqual({ node: "22.18.0" });
 		});
 	});
@@ -125,7 +123,6 @@ describe("readPersistedCommandVersions", () => {
 	it("ignores an empty .nvmrc", async () => {
 		await withTempDir("command-persisted-empty-nvmrc", async (directory) => {
 			await writeText(join(directory, ".nvmrc"), " \n");
-
 			expect(await readPersisted(directory)).toEqual({});
 		});
 	});
@@ -136,6 +133,7 @@ describe("readPersistedCommandVersions", () => {
 				engines: { bun: "1.2.20" },
 				packageManager: "pnpm@10.14.0",
 			});
+
 			await writeText(join(directory, ".nvmrc"), "v22.18.0\n");
 
 			expect(await readPersisted(directory)).toEqual({

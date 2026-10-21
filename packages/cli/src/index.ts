@@ -1,8 +1,9 @@
+#!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { checkRuntime, type EnvironmentCheck } from "@ryuujs/core";
+import { checkRuntime, type EnvironmentCheck } from "@ryuugg/core";
 import { version } from "../package.json" with { type: "json" };
-import { isUnknownCommand, parseCliArgs } from "./cli";
+import { findOptionMissingValue, isUnknownCommand, parseCliArgs } from "./cli";
 import {
 	defaultCommand,
 	getSubcommand,
@@ -63,8 +64,12 @@ export async function runCli(
 	try {
 		parsed = parseCliArgs(args);
 	} catch {
+		const missingValue = findOptionMissingValue(args);
+
 		cli.error(
-			"We don't recognize that option. Run forge --help to see the available flags.",
+			missingValue === undefined
+				? "We don't recognize that option. Run forge --help to see the available flags."
+				: `${missingValue} needs a value. Run forge --help to see the available flags.`,
 		);
 
 		cli.setExitCode(1);
@@ -73,7 +78,6 @@ export async function runCli(
 	}
 
 	const { values, positionals } = parsed;
-
 	if (values.help) {
 		cli.printHelp();
 		cli.exit(0);
@@ -94,7 +98,6 @@ export async function runCli(
 
 	const subcommand = positionals[0];
 	const cmd = subcommand ? cli.getSubcommand(subcommand) : undefined;
-
 	try {
 		if (isUnknownCommand(subcommand, cmd)) {
 			cli.error(

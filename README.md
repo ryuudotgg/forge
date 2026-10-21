@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://forge.ryuu.gg">Website</a>
+  <a href="https://github.com/ryuudotgg/forge">GitHub</a>
   ·
-  <a href="https://forge.ryuu.gg/docs">Documentation</a>
+  <a href="https://github.com/ryuudotgg/forge/releases">Releases</a>
   ·
   <a href="https://github.com/ryuudotgg/forge/issues">Issues</a>
 </p>
@@ -38,14 +38,39 @@ Ryuu's Forge is a powerful CLI tool designed to kickstart your new project in ju
 Run Forge with your package manager of choice, no install required:
 
 ```bash
-pnpm dlx @ryuujs/forge
+pnpm dlx @ryuugg/forge
 # or
-npx @ryuujs/forge
+npx @ryuugg/forge
 # or
-bunx @ryuujs/forge
+bunx @ryuugg/forge
 ```
 
 `create` is the default command, so a bare invocation launches the interactive wizard and walks you through your framework, addons, and tooling.
+
+### Secondary web apps
+
+The wizard can add web apps with separate names and frameworks. For flags, repeat
+`--web`: a bare framework selects the primary app, which defaults to `apps/web`.
+Use `--web-name` or `webName` in a config file to change its name. `name=framework`
+adds an app at `apps/<name>`, and `name=framework+client` adds one that calls
+your API.
+
+```bash
+pnpm dlx @ryuugg/forge --web tanstack-router --web admin=nextjs+client
+```
+
+An API client is a secondary app with `client: true` on its `webApps` entry, set
+by `+client`, by the wizard's API client question, or by `forge add` with
+`--client`. Forge wires it to call the API host:
+
+- An RPC client and its provider for tRPC or oRPC, when you picked one.
+- A Better Auth client in the app's `lib/auth-client.ts`, when you picked Better Auth.
+- An API URL variable, `NEXT_PUBLIC_SERVER_URL` for Next.js or `VITE_SERVER_URL` for the Vite frameworks, defaulting to the API host's local origin.
+- CORS trust: the app's local origin goes into `WEB_URLS`, which the API host's CORS rules and Better Auth's trusted origins read.
+
+Apps without `client: true` get none of this. Forge writes `.env` once and never
+edits it, so `forge add nextjs --name admin --client` prints the origin to add to
+`WEB_URLS` in `.env` instead, and `forge remove admin` prints the one to drop.
 
 ### Commands
 
@@ -66,12 +91,12 @@ Run `forge init` from an existing workspace to record its detected configuration
 Preview the adoption or reconcile immediately when you are ready:
 
 ```bash
-pnpm dlx @ryuujs/forge init --dry-run
-pnpm dlx @ryuujs/forge init
-pnpm dlx @ryuujs/forge update
+pnpm dlx @ryuugg/forge init --dry-run
+pnpm dlx @ryuugg/forge init
+pnpm dlx @ryuugg/forge update
 
 # Or adopt and reconcile in one command.
-pnpm dlx @ryuujs/forge init --reconcile
+pnpm dlx @ryuugg/forge init --reconcile
 ```
 
 The default flow is intentionally two steps: `forge init` records the current project, then `forge update` reconciles it with Forge's templates and addons. If conflicts surface in an interactive terminal, Forge guides you through each choice. You can also pass `--keep-user` or `--accept-forge` for one policy across the update.
@@ -81,10 +106,44 @@ The default flow is intentionally two steps: `forge init` records the current pr
 Skip the prompts by pointing Forge at a JSON config file:
 
 ```bash
-pnpm dlx @ryuujs/forge --config forge.json
+pnpm dlx @ryuugg/forge --config forge.json
 ```
 
 Pass `--no-install` to skip dependency installation and `--no-git` to skip Git initialization.
+
+Config files accept these top level keys. Unknown keys are rejected. Choice values take an ID or display name unless noted.
+
+| Key | Value |
+| --- | --- |
+| `name` | Project name, up to 15 characters. |
+| `slug` | Lowercase project slug, up to 15 characters. |
+| `path` | Directory for the project. |
+| `runtime` | Node.js, Bun, or Deno. |
+| `packageManager` | pnpm, npm, Yarn, or Bun. |
+| `catalogs` | Flat or scoped catalogs, requires pnpm. |
+| `linter` | Linter choice. |
+| `platforms` | Array of platform IDs: web, mobile, or desktop (unavailable). |
+| `web` | Primary web framework choice. |
+| `webName` | Primary web app name, defaults to web. |
+| `webApps` | Array of objects with name, framework, and optional client boolean and port number. |
+| `desktop` | Desktop framework choice, currently unavailable. |
+| `mobile` | Mobile framework choice. |
+| `backend` | Backend framework choice. |
+| `rpc` | RPC provider choice. |
+| `database` | MySQL, PostgreSQL, or SQLite. |
+| `orm` | Drizzle ORM or Prisma. |
+| `databaseProvider` | Hosting provider choice, requires a supported database. |
+| `authentication` | Authentication provider choice. |
+| `authMethods` | Nonempty array of authentication method IDs, requires Better Auth. |
+| `authPlugins` | Array of authentication plugin IDs, requires Better Auth. |
+| `authenticationCustomUI` | Boolean for a custom authentication UI. |
+| `style` | Web styling framework choice. |
+| `nativeStyleFramework` | Mobile styling framework choice. |
+| `uiLibrary` | UI library ID. |
+| `addons` | Array of optional addon IDs. |
+| `emailProvider` | Email provider choice. |
+| `installDeps` | Boolean to install dependencies. |
+| `gitInit` | Boolean to initialize Git. |
 
 Lifecycle commands support explicit conflict resolution:
 
@@ -109,7 +168,7 @@ Lifecycle commands support explicit conflict resolution:
 
 ## 📚 Documentation
 
-Visit our [Documentation](https://forge.ryuu.gg/docs) to view the full documentation
+The documentation site is not live yet. Until it is, this README covers usage, and [GitHub Discussions](https://github.com/ryuudotgg/forge/discussions) is the place for questions.
 
 ## 🤝 Contributing
 
@@ -134,7 +193,7 @@ We have a [Code of Conduct](CODE_OF_CONDUCT.md) in place to ensure a welcoming a
 
 ## 📝 Versioning
 
-We use [SemVer](http://semver.org) for versioning. For available versions, see the [tags on this repository](https://github.com/ryuudotgg/forge/tags).
+Forge follows [SemVer](https://semver.org). The CLI and its packages share one version number, and each release will be tagged `vx.y.z`. Once releases are published, every version and its changelog will be listed on the [releases page](https://github.com/ryuudotgg/forge/releases).
 
 ## 👥 Authors
 

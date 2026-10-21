@@ -1,4 +1,4 @@
-import { type PackageManagerId, packageManagerCommand } from "@ryuujs/core";
+import { type PackageManagerId, packageManagerCommand } from "@ryuugg/core";
 import type { ForgeConfig } from "./config";
 
 export function resolvePackageManager(config: ForgeConfig): PackageManagerId {
@@ -80,4 +80,13 @@ export function pmExec(pm: PackageManagerId, command: string): string {
 		case "bun":
 			return `bunx ${command}`;
 	}
+}
+
+export function installHook(
+	tool: string,
+	command: string,
+	from?: string,
+): string {
+	const paths = from === undefined ? "" : `,{paths:['${from}']}`;
+	return `node -e "try{require.resolve('${tool}/package.json'${paths});process.exit(1)}catch{}" || ${command}`;
 }

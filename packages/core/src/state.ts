@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import { Context, Effect, FileSystem, Layer, Schema } from "effect";
+import { CliVersion, compareCliVersions } from "./cli-version";
 import { ModuleIdSchema } from "./config";
-import { StateError } from "./errors";
+import { StateError, UNKNOWN_STATE_VERSION_MESSAGE } from "./errors";
 import { formatJson } from "./format/json";
 import { hashContentHex } from "./hash";
 import { decodeJsonString } from "./json";
@@ -16,10 +17,8 @@ const STATE_BUNDLE_FILE = "state.json";
 export const SURFACE_MERGE_SEMANTICS_VERSION = 1;
 
 const StateSchemaVersion = Schema.Literal(1).annotate({
-	message:
-		"We can't read this project's metadata because it was saved by a different version of Forge.",
-	messageMissingKey:
-		"We can't read this project's metadata because it was saved by a different version of Forge.",
+	message: UNKNOWN_STATE_VERSION_MESSAGE,
+	messageMissingKey: UNKNOWN_STATE_VERSION_MESSAGE,
 });
 
 const ModuleRecordSchema = Schema.Struct({
@@ -72,10 +71,15 @@ export type LockfileArtifactKind = typeof LockfileArtifactKindSchema.Type;
 const SurfaceMergeKindSchema = Schema.Literals(["json", "lines", "env"]);
 export type SurfaceMergeKind = typeof SurfaceMergeKindSchema.Type;
 
+const FileMergeKindSchema = Schema.Literal("yaml");
+export type FileMergeKind = typeof FileMergeKindSchema.Type;
+
 const ArtifactMergeKindSchema = Schema.Union([
 	SurfaceMergeKindSchema,
+	FileMergeKindSchema,
 	Schema.Literal("opaque"),
 ]);
+
 export type ArtifactMergeKind = typeof ArtifactMergeKindSchema.Type;
 
 const ArtifactBaseSchema = Schema.Struct({
@@ -90,10 +94,13 @@ export type ArtifactBase = typeof ArtifactBaseSchema.Type;
 
 const LockfileArtifactSchema = Schema.Struct({
 	base: Schema.optional(ArtifactBaseSchema),
+	generated: Schema.optional(Schema.Literal(true)),
 	kind: LockfileArtifactKindSchema,
 	definitionIds: Schema.Array(Schema.String),
 	hash: Schema.String,
+	owner: Schema.optional(Schema.Literal("user")),
 	path: Schema.String,
+	update: Schema.optional(Schema.Literal("starter")),
 });
 
 export type LockfileArtifact = typeof LockfileArtifactSchema.Type;
@@ -129,10 +136,10 @@ export const RegistryDescriptorSchema = Schema.Struct({
 export type RegistryDescriptor = typeof RegistryDescriptorSchema.Type;
 
 export const ManifestSchema = Schema.Struct({
+	cliVersion: Schema.optional(Schema.String),
 	schemaVersion: StateSchemaVersion.pipe(
 		Schema.annotateKey({
-			messageMissingKey:
-				"We can't read this project's metadata because it was saved by a different version of Forge.",
+			messageMissingKey: UNKNOWN_STATE_VERSION_MESSAGE,
 		}),
 	),
 	config: ConfigSnapshotSchema.pipe(
@@ -154,8 +161,7 @@ export type ManifestInput = Omit<Manifest, "schemaVersion"> & {
 export const LockfileSchema = Schema.Struct({
 	schemaVersion: StateSchemaVersion.pipe(
 		Schema.annotateKey({
-			messageMissingKey:
-				"We can't read this project's metadata because it was saved by a different version of Forge.",
+			messageMissingKey: UNKNOWN_STATE_VERSION_MESSAGE,
 		}),
 	),
 	artifacts: Schema.Record(Schema.String, LockfileArtifactSchema).pipe(
@@ -220,7 +226,6 @@ export interface ArtifactIndex {
 export function buildArtifactIndex(lockfile: Lockfile): ArtifactIndex {
 	const byId = new Map<string, LockfileArtifact>();
 	const byPath = new Map<string, LockfileArtifact>();
-
 	for (const [id, artifact] of Object.entries(lockfile.artifacts)) {
 		byId.set(id, artifact);
 		byPath.set(artifact.path, artifact);
@@ -238,10 +243,14 @@ function decodeManifest(raw: string, path: string) {
 				detail,
 				cause,
 			}),
-		onValidationError: (issues, cause) =>
+		onValidationError: (issues, cause, structuredIssues) =>
 			new StateError({
 				filePath: path,
-				reason: "manifest-invalid",
+				reason: structuredIssues.some(
+					(issue) => issue.path[0] === "schemaVersion",
+				)
+					? "schema-version-unknown"
+					: "manifest-invalid",
 				issues,
 				cause,
 			}),
@@ -257,10 +266,14 @@ function decodeLockfile(raw: string, path: string) {
 				detail,
 				cause,
 			}),
-		onValidationError: (issues, cause) =>
+		onValidationError: (issues, cause, structuredIssues) =>
 			new StateError({
 				filePath: path,
-				reason: "lockfile-invalid",
+				reason: structuredIssues.some(
+					(issue) => issue.path[0] === "schemaVersion",
+				)
+					? "schema-version-unknown"
+					: "lockfile-invalid",
 				issues,
 				cause,
 			}),
@@ -276,10 +289,16 @@ function decodeStateBundle(raw: string, path: string) {
 				detail,
 				cause,
 			}),
-		onValidationError: (issues, cause) =>
+		onValidationError: (issues, cause, structuredIssues) =>
 			new StateError({
 				filePath: path,
-				reason: "state-bundle-invalid",
+				reason: structuredIssues.some(
+					(issue) =>
+						(issue.path[0] === "manifest" || issue.path[0] === "lockfile") &&
+						issue.path[1] === "schemaVersion",
+				)
+					? "schema-version-unknown"
+					: "state-bundle-invalid",
 				issues,
 				cause,
 			}),
@@ -288,6 +307,7 @@ function decodeStateBundle(raw: string, path: string) {
 
 const makeState = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem;
+	const cliVersion = yield* CliVersion;
 
 	const hashBaseContent = Effect.fn("State.hashBaseContent")(function* (
 		content: string,
@@ -298,6 +318,24 @@ const makeState = Effect.gen(function* () {
 			(cause) =>
 				new StateError({ filePath: path, reason: "base-hash-failed", cause }),
 		);
+	});
+
+	const refuseOlderCli = Effect.fn("State.refuseOlderCli")(function* (
+		projectRoot: string,
+		manifest: Pick<Manifest, "cliVersion">,
+	) {
+		const projectCliVersion = manifest.cliVersion;
+		if (projectCliVersion === undefined) return;
+
+		const order = compareCliVersions(projectCliVersion, cliVersion.version);
+		if (order === undefined || order <= 0) return;
+
+		return yield* new StateError({
+			filePath: manifestPath(projectRoot),
+			reason: "cli-version-older",
+			projectCliVersion,
+			runningCliVersion: cliVersion.version,
+		});
 	});
 
 	const readStateBundle = Effect.fn("State.readStateBundle")(function* (
@@ -314,6 +352,7 @@ const makeState = Effect.gen(function* () {
 					}),
 			),
 		);
+
 		if (!exists) return undefined;
 
 		const raw = yield* fs.readFileString(path).pipe(
@@ -385,6 +424,7 @@ const makeState = Effect.gen(function* () {
 						}),
 				),
 			);
+
 			if (!exists) return defaultManifest();
 
 			return yield* readManifest(projectRoot);
@@ -396,7 +436,11 @@ const makeState = Effect.gen(function* () {
 		manifest: ManifestInput,
 	) {
 		const path = manifestPath(projectRoot);
-		const versionedManifest: Manifest = { ...manifest, schemaVersion: 1 };
+		const versionedManifest: Manifest = {
+			...manifest,
+			schemaVersion: 1,
+			cliVersion: cliVersion.version,
+		};
 
 		yield* fs
 			.makeDirectory(join(projectRoot, PROJECT_STATE_DIR), {
@@ -445,7 +489,30 @@ const makeState = Effect.gen(function* () {
 			),
 		);
 
-		if (!exists) return defaultLockfile();
+		if (!exists) {
+			const manifestExists = yield* fs.exists(manifestPath(projectRoot)).pipe(
+				Effect.mapError(
+					(cause) =>
+						new StateError({
+							filePath: manifestPath(projectRoot),
+							reason: "manifest-read-failed",
+							cause,
+						}),
+				),
+			);
+
+			if (manifestExists) {
+				const manifest = yield* readManifest(projectRoot);
+				yield* refuseOlderCli(projectRoot, manifest);
+
+				return yield* new StateError({
+					filePath: path,
+					reason: "lockfile-missing",
+				});
+			}
+
+			return defaultLockfile();
+		}
 
 		const raw = yield* fs.readFileString(path).pipe(
 			Effect.mapError(
@@ -567,6 +634,7 @@ const makeState = Effect.gen(function* () {
 					}),
 			),
 		);
+
 		if (exists) {
 			yield* readBase(projectRoot, hash);
 			return;
@@ -599,6 +667,7 @@ const makeState = Effect.gen(function* () {
 					}),
 			),
 		);
+
 		if (!exists) return;
 
 		const referenced = new Set(
@@ -649,6 +718,7 @@ const makeState = Effect.gen(function* () {
 					}),
 			),
 		);
+
 		if (stateBundleExists) return true;
 
 		const lockfile = lockfilePath(projectRoot);
@@ -662,6 +732,7 @@ const makeState = Effect.gen(function* () {
 					}),
 			),
 		);
+
 		if (lockfileExists) return true;
 
 		const manifest = manifestPath(projectRoot);
@@ -685,6 +756,7 @@ const makeState = Effect.gen(function* () {
 		readManifest,
 		readManifestOrDefault,
 		readStateBundle,
+		refuseOlderCli,
 		writeLockfile,
 		writeManifest,
 		writeBase,
@@ -715,6 +787,9 @@ export class State extends Context.Service<State, StateService>()("State") {
 	static readonly readStateBundle = (
 		...args: Parameters<StateService["readStateBundle"]>
 	) => State.use((service) => service.readStateBundle(...args));
+	static readonly refuseOlderCli = (
+		...args: Parameters<StateService["refuseOlderCli"]>
+	) => State.use((service) => service.refuseOlderCli(...args));
 	static readonly writeBase = (
 		...args: Parameters<StateService["writeBase"]>
 	) => State.use((service) => service.writeBase(...args));

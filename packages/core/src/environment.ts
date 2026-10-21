@@ -1,4 +1,5 @@
-import { Context, Effect, Layer } from "effect";
+import { join } from "node:path";
+import { Context, Effect, FileSystem, Layer, Option } from "effect";
 import { CommandProbe } from "./command";
 import { type DependencyFormat, defaultDependencyFormat } from "./operations";
 
@@ -66,6 +67,34 @@ export function packageManagerAddDevCommand(
 	};
 }
 
+export function packageManagerInstallCommand(pm: PackageManager) {
+	const command = packageManagerCommand(pm);
+	const args = {
+		pnpm: ["install", "--no-frozen-lockfile"],
+		npm: ["install"],
+		yarn: ["install", "--no-immutable"],
+		bun: ["install"],
+	} satisfies Record<PackageManagerId, ReadonlyArray<string>>;
+
+	return { command, args: args[command] };
+}
+
+export function packageManagerExecCommand(
+	pm: PackageManager,
+	bin: string,
+	args: ReadonlyArray<string>,
+) {
+	const command = packageManagerCommand(pm);
+	const prefix = {
+		pnpm: ["exec"],
+		npm: ["exec", "--no", "--"],
+		yarn: ["exec"],
+		bun: ["x"],
+	} satisfies Record<PackageManagerId, ReadonlyArray<string>>;
+
+	return { command, args: [...prefix[command], bin, ...args] };
+}
+
 export function packageManagerRemoveCommand(
 	pm: PackageManager,
 	packageId: string,
@@ -75,6 +104,22 @@ export function packageManagerRemoveCommand(
 		args: [...packageManagerRemoveArgs[command], packageId],
 		command,
 	};
+}
+
+export function packageManagerViewCommand(
+	pm: PackageManager,
+	packageId: string,
+) {
+	const command = packageManagerCommand(pm);
+	const spec = `${packageId}@latest`;
+	const args = {
+		pnpm: ["view", spec, "version", "_npmUser.name", "--json"],
+		npm: ["view", spec, "version", "_npmUser.name", "--json"],
+		yarn: ["npm", "info", spec, "--fields", "version", "--json"],
+		bun: ["info", spec, "--json"],
+	} satisfies Record<PackageManagerId, ReadonlyArray<string>>;
+
+	return { args: args[command], command };
 }
 
 export function isPackageManager(value: unknown): value is PackageManager {
@@ -115,7 +160,6 @@ function checkCurrentRuntime(): EnvironmentCheck {
 	const { id, version } = detectRuntime();
 	const { displayName, minimumMajor } = runtimes[id];
 	const major = parseMajor(version);
-
 	if (major === undefined)
 		return {
 			ok: false,
@@ -131,7 +175,7 @@ function checkCurrentRuntime(): EnvironmentCheck {
 	return { ok: true, message: `${displayName} v${version}` };
 }
 
-function buildPackageManagerCheck(
+export function buildPackageManagerCheck(
 	pm: PackageManager,
 	version: string,
 ): EnvironmentCheck {
@@ -154,6 +198,36 @@ function buildPackageManagerCheck(
 	return { ok: true, message: `${displayName} v${version}` };
 }
 
+function pathCandidates(command: string) {
+	const windows = process.platform === "win32";
+	const directories = (process.env.PATH ?? "")
+		.split(windows ? ";" : ":")
+		.filter((directory) => directory.length > 0);
+
+	const extensions = windows
+		? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")
+		: [""];
+
+	return directories.flatMap((directory) =>
+		extensions.map((extension) => join(directory, `${command}${extension}`)),
+	);
+}
+
+const isOnPath = Effect.fn("Environment.isOnPath")(function* (command: string) {
+	const fs = yield* FileSystem.FileSystem;
+	for (const candidate of pathCandidates(command)) {
+		const info = yield* fs.stat(candidate).pipe(Effect.option);
+		if (
+			Option.isSome(info) &&
+			info.value.type === "File" &&
+			(process.platform === "win32" || (info.value.mode & 0o111) !== 0)
+		)
+			return true;
+	}
+
+	return false;
+});
+
 const makeEnvironment = Effect.succeed({
 	checkRuntime: Effect.sync(checkCurrentRuntime),
 	checkPackageManager: (pm: PackageManager) => {
@@ -171,6 +245,20 @@ const makeEnvironment = Effect.succeed({
 	},
 	readPackageManagerVersion: (pm: PackageManager) =>
 		CommandProbe.readVersion(packageManagerCommand(pm)),
+	checkPackageManagerInstalled: (pm: PackageManager) => {
+		const displayName = packageManagers[pmCommandMap[pm]].displayName;
+		return isOnPath(packageManagerCommand(pm)).pipe(
+			Effect.map(
+				(found): EnvironmentCheck =>
+					found
+						? { ok: true, message: `${displayName} is installed.` }
+						: {
+								ok: false,
+								message: `You don't have ${displayName} installed, please install it and try again.`,
+							},
+			),
+		);
+	},
 });
 
 type EnvironmentService = Effect.Success<typeof makeEnvironment>;
@@ -192,7 +280,6 @@ export class Environment extends Context.Service<
 }
 
 const environmentLayer = Environment.Default;
-
 export function checkRuntime(): EnvironmentCheck {
 	return Effect.runSync(
 		Environment.checkRuntime.pipe(Effect.provide(environmentLayer)),
@@ -201,4 +288,8 @@ export function checkRuntime(): EnvironmentCheck {
 
 export function checkPackageManager(pm: PackageManager) {
 	return Environment.checkPackageManager(pm);
+}
+
+export function checkPackageManagerInstalled(pm: PackageManager) {
+	return Environment.use((service) => service.checkPackageManagerInstalled(pm));
 }

@@ -1,25 +1,50 @@
-import { intro, isCancel, log, select, spinner, text } from "@clack/prompts";
+import { resolve } from "node:path";
+import {
+	confirm,
+	intro,
+	isCancel,
+	log,
+	select,
+	spinner,
+	text,
+} from "@clack/prompts";
 import {
 	type AddonDefinition,
 	addonDeclaresFramework,
 	type DiscoveredModule,
 	type InstallRecord,
 	isAddonCompatibleWithModule,
+	type PackageManager,
 	packageManagerAddDevCommand,
-} from "@ryuujs/core";
+} from "@ryuugg/core";
 import {
 	type AddonCatalogEntry,
+	addWebAppConfig,
+	authChoice,
 	configWithInstall,
 	type ForgeConfig,
-	installConflict,
+	installChange,
 	type LoadedDefinitionRegistry,
 	loadAddonDefinition,
 	matchQuery,
 	orms,
 	RegistryLoadError,
-} from "@ryuujs/generators";
+	webAppNamesIssue,
+	webFrameworks,
+} from "@ryuugg/generators";
+import { Effect, FileSystem, Result, Schema } from "effect";
+import { runCliEffectValue } from "../runtime";
+import {
+	webAppNameIssue,
+	webAppsIssueMessage,
+	webAppsSchema,
+} from "../steps/platforms/web-apps";
 import { cancel } from "../utils/cancel";
+import { completionLine } from "../utils/completion";
 import { listAnd } from "../utils/list";
+import { addedClientEnvMessage } from "../utils/web-apps";
+import { runAuthChoiceChange } from "./auth-choice";
+import { isInteractiveLifecycleSession } from "./interactive-resolution";
 import {
 	applyInstalledPlan,
 	configuredPackageManager,
@@ -28,7 +53,27 @@ import {
 	loadProjectRegistry,
 	runPackageManagerOperation,
 } from "./lifecycle";
+import { resolveRegistryRelease } from "./registry-release";
 import { resolutionArguments } from "./resolution";
+import { runSwitch } from "./switch";
+
+function targetKey(target: InstallRecord["targets"][number]) {
+	return target.kind === "project" ? "project" : `module:${target.moduleId}`;
+}
+
+function coversInstall(
+	installs: ReadonlyArray<InstallRecord>,
+	record: InstallRecord,
+) {
+	const installed = installs.find(
+		(entry) => entry.definitionId === record.definitionId,
+	);
+
+	if (installed === undefined) return false;
+
+	const installedKeys = new Set(installed.targets.map(targetKey));
+	return record.targets.every((target) => installedKeys.has(targetKey(target)));
+}
 
 function mergeInstallRecord(
 	existing: ReadonlyArray<InstallRecord>,
@@ -47,21 +92,9 @@ function mergeInstallRecord(
 
 	const current = records.get(record.definitionId) ?? [];
 	const next = [...current];
-
 	for (const target of record.targets) {
-		const key =
-			target.kind === "project" ? "project" : `module:${target.moduleId}`;
-
-		if (
-			next.some(
-				(entry) =>
-					(entry.kind === "project"
-						? "project"
-						: `module:${entry.moduleId}`) === key,
-			)
-		)
-			continue;
-
+		const key = targetKey(target);
+		if (next.some((entry) => targetKey(entry) === key)) continue;
 		next.push(target);
 	}
 
@@ -222,13 +255,16 @@ function announceAdapterSupport(
 		const addonName =
 			loaded.registry.addons.find((entry) => entry.id === unit.addon)?.name ??
 			titleFromId(unit.addon);
+
 		const frameworkName =
 			loaded.registry.frameworks.find((entry) => entry.id === unit.framework)
 				?.name ?? titleFromId(unit.framework);
+
 		const support = supportByAddon.get(unit.addon) ?? {
 			frameworks: new Set<string>(),
 			name: addonName,
 		};
+
 		support.frameworks.add(frameworkName);
 		supportByAddon.set(unit.addon, support);
 	}
@@ -330,7 +366,6 @@ function retargetAdapterInstalls(
 				];
 
 		const uniqueTargetIds = [...new Set(targetIds)];
-
 		return {
 			definitionId: install.definitionId,
 			targets: uniqueTargetIds.map(
@@ -365,22 +400,67 @@ async function selectRegistryAddon(
 	return String(selected);
 }
 
+async function confirmRegistryInstall(
+	projectRoot: string,
+	packageManager: PackageManager,
+	registryId: string,
+) {
+	if (!isInteractiveLifecycleSession()) {
+		log.error(
+			`We won't install ${registryId} without asking first. Run this again with --yes to install it anyway.`,
+		);
+
+		process.exit(1);
+	}
+
+	const release = await resolveRegistryRelease(
+		projectRoot,
+		packageManager,
+		registryId,
+	);
+
+	const message =
+		release === undefined
+			? `We couldn't look up ${registryId}, so we can't show its version or publisher. Do you want to install it anyway?`
+			: release.publisher === undefined
+				? `${registryId} ${release.version} is a third-party package. Do you want to install it?`
+				: `${registryId} ${release.version} is a third-party package published by ${release.publisher}. Do you want to install it?`;
+
+	const accepted = await confirm({
+		message,
+		active: "Yes",
+		inactive: "No",
+	});
+
+	if (isCancel(accepted)) cancel(`We didn't install ${registryId}.`);
+	if (!accepted) cancel(`We didn't install ${registryId}.`, 0);
+
+	return release === undefined
+		? registryId
+		: `${registryId}@${release.version}`;
+}
+
+function shellCommand(operation: {
+	readonly args: ReadonlyArray<string>;
+	readonly command: string;
+}) {
+	return [operation.command, ...operation.args].join(" ");
+}
+
 async function installRegistryPackage(
 	projectRoot: string,
 	config: ForgeConfig,
 	registryId: string,
-	noInstall: boolean,
+	options: { readonly noInstall: boolean; readonly yes: boolean },
 ) {
 	if (await hasProjectDevDependency(projectRoot, registryId)) return true;
 
-	const operation = packageManagerAddDevCommand(
-		configuredPackageManager(config),
-		registryId,
-	);
+	const packageManager = configuredPackageManager(config);
+	if (options.noInstall) {
+		const manualCommand = shellCommand(
+			packageManagerAddDevCommand(packageManager, registryId),
+		);
 
-	const manualCommand = [operation.command, ...operation.args].join(" ");
-
-	if (noInstall) {
 		log.error(
 			`We can't add ${registryId} without installing it. Run "${manualCommand}" inside the project, then try again.`,
 		);
@@ -388,6 +468,11 @@ async function installRegistryPackage(
 		process.exit(1);
 	}
 
+	const packageSpec = options.yes
+		? registryId
+		: await confirmRegistryInstall(projectRoot, packageManager, registryId);
+
+	const operation = packageManagerAddDevCommand(packageManager, packageSpec);
 	const progress = spinner();
 	progress.start(`We're installing ${registryId}...`);
 
@@ -395,7 +480,7 @@ async function installRegistryPackage(
 	if (!installed) {
 		progress.stop(`We couldn't install ${registryId}.`);
 		log.warn(
-			`The install didn't finish, so run "${manualCommand}" yourself inside the project, then try again.`,
+			`The install didn't finish, so run "${shellCommand(operation)}" yourself inside the project, then try again.`,
 		);
 
 		process.exit(1);
@@ -411,173 +496,12 @@ function buildProjectInstallRecord(
 	return { definitionId: addon.id, targets: [{ kind: "project" }] };
 }
 
-export async function runAdd(
-	addonId: string | undefined,
-	values: Record<string, string | boolean | undefined>,
-) {
-	const resolution = resolutionArguments(values);
-	const project = await loadManagedProject(".", "add");
-
-	let registryIds = project.manifest.registries;
-	let loadedRegistry = await loadProjectRegistry(
-		project.projectRoot,
-		registryIds ?? [],
-	);
-
-	let resolvedAddonId = addonId ?? (await promptForAddonId(loadedRegistry));
-
-	const barePackageId = barePackageIdFromVersionedId(resolvedAddonId);
-	if (barePackageId !== undefined) {
-		log.error(
-			`We can't add "${resolvedAddonId}" with a version. Pass the bare package name "${barePackageId}" instead.`,
-		);
-
-		process.exit(1);
-	}
-
-	intro(`We're adding "${resolvedAddonId}"...`);
-
-	let baseInstalls = project.manifest.installs;
-	let registeredRegistry: { readonly id: string } | undefined;
-
-	const existingDescriptor = loadedRegistry.descriptors.find(
-		(entry) => entry.id === resolvedAddonId,
-	);
-
-	if (existingDescriptor !== undefined) {
-		const selectedAddonId = await selectRegistryAddon(
-			loadedRegistry,
-			resolvedAddonId,
-		);
-
-		if (selectedAddonId === undefined) {
-			log.warn(`${resolvedAddonId} is already part of this project.`);
-			return;
-		}
-
-		resolvedAddonId = selectedAddonId;
-	}
-
-	if (
-		catalogAddon(loadedRegistry, resolvedAddonId) === undefined &&
-		addonFromRegistry(loadedRegistry, resolvedAddonId) === undefined &&
-		scopedPackageId(resolvedAddonId)
-	) {
-		const registryId = resolvedAddonId;
-		await installRegistryPackage(
-			project.projectRoot,
-			project.config satisfies ForgeConfig,
-			registryId,
-			values["no-install"] === true,
-		);
-
-		const previousRegistry = loadedRegistry;
-
-		registryIds = [...(registryIds ?? []), registryId];
-		loadedRegistry = await loadProjectRegistry(
-			project.projectRoot,
-			registryIds,
-		);
-
-		registeredRegistry = { id: registryId };
-		baseInstalls = retargetAdapterInstalls(
-			project.manifest.installs,
-			project.config satisfies ForgeConfig,
-			previousRegistry,
-			loadedRegistry,
-			registryId,
-			project.modules,
-		);
-
-		const selectedAddonId = await selectRegistryAddon(
-			loadedRegistry,
-			registryId,
-		);
-
-		if (selectedAddonId === undefined) {
-			await applyInstalledPlan(
-				project.projectRoot,
-				project.config,
-				baseInstalls,
-				undefined,
-				registryIds,
-				...resolution,
-			);
-
-			if (announceAdapterSupport(loadedRegistry, registryId) === 0)
-				log.warn(
-					`${registryId} doesn't provide anything this project can use yet.`,
-				);
-
-			return;
-		}
-
-		resolvedAddonId = selectedAddonId;
-	}
-
-	const requestedCatalogEntry = loadedRegistry.catalog.find(
-		(entry) => entry.id === resolvedAddonId,
-	);
-
-	if (
-		requestedCatalogEntry?.kind === "framework" &&
-		(requestedCatalogEntry.category === "backend" ||
-			requestedCatalogEntry.category === "mobile")
-	) {
-		log.error(
-			requestedCatalogEntry.category === "backend"
-				? "We can't add a backend framework to an existing project yet."
-				: "We can't add a mobile framework to an existing project yet.",
-		);
-
-		process.exit(1);
-	}
-
-	let addon: AddonDefinition<ForgeConfig>;
-	try {
-		addon =
-			addonFromRegistry(loadedRegistry, resolvedAddonId) ??
-			loadAddonDefinition(resolvedAddonId).addon;
-	} catch (error) {
-		if (error instanceof RegistryLoadError) {
-			const catalogEntry = catalogAddon(loadedRegistry, resolvedAddonId);
-			if (catalogEntry?.kind === "addon" && !catalogEntry.available) {
-				log.error(`"${catalogEntry.name}" isn't available yet.`);
-				process.exit(1);
-			}
-
-			log.error(`We couldn't find the "${resolvedAddonId}" addon.`);
-			process.exit(1);
-		}
-
-		throw error;
-	}
-
-	if (addon.category === "packageManager") {
-		log.error("We can't switch package managers yet.");
-		process.exit(1);
-	}
-
-	if (addon.id === "better-auth" && !orms.normalize(project.config.orm)) {
-		log.error("You need to add an ORM before you can use Better Auth.");
-		process.exit(1);
-	}
-
-	const conflictId = installConflict(
-		addon.id,
-		project.manifest.installs.map((entry) => entry.definitionId),
-	);
-
-	if (conflictId !== undefined) {
-		const conflict =
-			addonFromRegistry(loadedRegistry, conflictId) ??
-			loadAddonDefinition(conflictId).addon;
-
-		log.error(`This project already uses ${conflict.name}.`);
-		process.exit(1);
-	}
-
-	const registry = loadedRegistry.registry;
+function selectInstallRecord(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	addon: AddonDefinition<ForgeConfig>,
+	loaded: LoadedDefinitionRegistry,
+): InstallRecord {
+	const registry = loaded.registry;
 	const hasAdapters = registry.adapters.some(
 		(adapter) => adapter.addon === addon.id,
 	);
@@ -656,6 +580,341 @@ export async function runAdd(
 			};
 	}
 
+	return record;
+}
+
+async function addWebApp(
+	project: Awaited<ReturnType<typeof loadManagedProject>>,
+	framework: NonNullable<ForgeConfig["web"]>,
+	values: Record<string, string | boolean | string[] | undefined>,
+) {
+	const config: ForgeConfig = project.config;
+	if (config.web === undefined) {
+		log.error("You need a primary web app before adding another web app.");
+		process.exit(1);
+	}
+
+	const loadedRegistry = await loadProjectRegistry(
+		project.projectRoot,
+		project.manifest.registries ?? [],
+	);
+
+	const addonIds = [
+		...loadedRegistry.registry.addons.map((addon) => addon.id),
+		...loadedRegistry.descriptors.map((descriptor) => descriptor.id),
+	];
+
+	const existingApps = config.webApps ?? [];
+	const draftApp = (name: string) => ({
+		name,
+		framework,
+		...(values.client === true ? { client: true } : {}),
+	});
+
+	const decodeApps = (name: string) =>
+		Schema.decodeResult(
+			webAppsSchema.check(
+				Schema.makeFilter((webApps) =>
+					webAppNamesIssue({ ...config, webApps }),
+				),
+			),
+		)([...existingApps, draftApp(name)]);
+
+	let name = typeof values.name === "string" ? values.name : undefined;
+	if (name === undefined) {
+		if (values.yes === true || !isInteractiveLifecycleSession()) {
+			log.error("Pass --name to name the web app you want to add.");
+			process.exit(1);
+		}
+
+		const result = await text({
+			message: "What is the name of this web app?",
+			validate(value) {
+				const decoded = decodeApps(value ?? "");
+				if (Result.isFailure(decoded))
+					return webAppsIssueMessage(decoded.failure);
+
+				return webAppNameIssue(value ?? "", addonIds);
+			},
+		});
+
+		if (isCancel(result)) cancel();
+		name = result;
+	}
+
+	const decoded = decodeApps(name);
+	if (Result.isFailure(decoded)) {
+		log.error(webAppsIssueMessage(decoded.failure));
+		process.exit(1);
+	}
+
+	const nameIssue = webAppNameIssue(name, addonIds);
+	if (nameIssue !== undefined) {
+		log.error(nameIssue);
+		process.exit(1);
+	}
+
+	const root = `apps/${name}`;
+	const exists = await runCliEffectValue(
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			return yield* fs.exists(resolve(project.projectRoot, root));
+		}),
+	);
+
+	if (exists || project.modules.some((module) => module.root === root)) {
+		log.error(`We can't add "${name}" because ${root} already exists.`);
+		process.exit(1);
+	}
+
+	const nextConfig = addWebAppConfig(config, draftApp(name));
+	await applyInstalledPlan(
+		project.projectRoot,
+		nextConfig,
+		project.manifest.installs,
+		undefined,
+		project.manifest.registries,
+		resolutionArguments(values)[0] ?? {},
+		{
+			additions: [{ framework, root }],
+			modules: project.modules,
+			records: project.manifest.modules,
+		},
+	);
+
+	log.success(`We added the ${name} web app.`);
+	if (values.client === true) log.info(addedClientEnvMessage(nextConfig, name));
+}
+
+export async function runAdd(
+	addonId: string | undefined,
+	values: Record<string, string | boolean | string[] | undefined>,
+) {
+	const resolution = resolutionArguments(values);
+	const project = await loadManagedProject(".", "add");
+	const webFramework = webFrameworks.ids.find((id) => id === addonId);
+	if (webFramework !== undefined) {
+		await addWebApp(project, webFramework, values);
+		return;
+	}
+
+	let registryIds = project.manifest.registries;
+	let loadedRegistry = await loadProjectRegistry(
+		project.projectRoot,
+		registryIds ?? [],
+	);
+
+	const choice = addonId === undefined ? undefined : authChoice(addonId);
+	const knownIds = new Set([
+		...loadedRegistry.registry.addons.map((addon) => addon.id),
+		...loadedRegistry.catalog.map((entry) => entry.id),
+		...loadedRegistry.descriptors.map((entry) => entry.id),
+	]);
+
+	if (
+		choice !== undefined &&
+		addonId !== undefined &&
+		!knownIds.has(addonId) &&
+		!knownIds.has(choice.id)
+	) {
+		await runAuthChoiceChange(project, choice, "add", values);
+		return;
+	}
+
+	let resolvedAddonId = addonId ?? (await promptForAddonId(loadedRegistry));
+
+	const barePackageId = barePackageIdFromVersionedId(resolvedAddonId);
+	if (barePackageId !== undefined) {
+		log.error(
+			`We can't add "${resolvedAddonId}" with a version. Pass the bare package name "${barePackageId}" instead.`,
+		);
+
+		process.exit(1);
+	}
+
+	intro(`We're adding "${resolvedAddonId}"...`);
+
+	let baseInstalls = project.manifest.installs;
+	let registeredRegistry: { readonly id: string } | undefined;
+
+	const existingDescriptor = loadedRegistry.descriptors.find(
+		(entry) => entry.id === resolvedAddonId,
+	);
+
+	if (existingDescriptor !== undefined) {
+		const selectedAddonId = await selectRegistryAddon(
+			loadedRegistry,
+			resolvedAddonId,
+		);
+
+		if (selectedAddonId === undefined) {
+			log.warn(`${resolvedAddonId} is already part of this project.`);
+			return;
+		}
+
+		resolvedAddonId = selectedAddonId;
+	}
+
+	if (
+		catalogAddon(loadedRegistry, resolvedAddonId) === undefined &&
+		addonFromRegistry(loadedRegistry, resolvedAddonId) === undefined &&
+		scopedPackageId(resolvedAddonId)
+	) {
+		const registryId = resolvedAddonId;
+		await installRegistryPackage(
+			project.projectRoot,
+			project.config satisfies ForgeConfig,
+			registryId,
+			{
+				noInstall: values["no-install"] === true,
+				yes: values.yes === true,
+			},
+		);
+
+		const previousRegistry = loadedRegistry;
+
+		registryIds = [...(registryIds ?? []), registryId];
+		loadedRegistry = await loadProjectRegistry(
+			project.projectRoot,
+			registryIds,
+		);
+
+		registeredRegistry = { id: registryId };
+		baseInstalls = retargetAdapterInstalls(
+			project.manifest.installs,
+			project.config satisfies ForgeConfig,
+			previousRegistry,
+			loadedRegistry,
+			registryId,
+			project.modules,
+		);
+
+		const selectedAddonId = await selectRegistryAddon(
+			loadedRegistry,
+			registryId,
+		);
+
+		if (selectedAddonId === undefined) {
+			await applyInstalledPlan(
+				project.projectRoot,
+				project.config,
+				baseInstalls,
+				undefined,
+				registryIds,
+				...resolution,
+			);
+
+			if (announceAdapterSupport(loadedRegistry, registryId) === 0)
+				log.warn(
+					`${registryId} doesn't provide anything this project can use yet.`,
+				);
+
+			return;
+		}
+
+		resolvedAddonId = selectedAddonId;
+	}
+
+	const requestedCatalogEntry = loadedRegistry.catalog.find(
+		(entry) => entry.id === resolvedAddonId,
+	);
+
+	if (
+		requestedCatalogEntry?.kind === "addon" &&
+		!requestedCatalogEntry.available
+	) {
+		log.error(`"${requestedCatalogEntry.name}" isn't available yet.`);
+		process.exit(1);
+	}
+
+	if (
+		requestedCatalogEntry?.kind === "framework" &&
+		(requestedCatalogEntry.category === "backend" ||
+			requestedCatalogEntry.category === "mobile")
+	) {
+		log.error(
+			requestedCatalogEntry.category === "backend"
+				? "We can't add a backend framework to an existing project yet."
+				: "We can't add a mobile framework to an existing project yet.",
+		);
+
+		process.exit(1);
+	}
+
+	if (resolvedAddonId === "email") {
+		log.error("We can't add email to an existing project yet.");
+		process.exit(1);
+	}
+
+	let addon: AddonDefinition<ForgeConfig>;
+	try {
+		addon =
+			addonFromRegistry(loadedRegistry, resolvedAddonId) ??
+			loadAddonDefinition(resolvedAddonId).addon;
+	} catch (error) {
+		if (error instanceof RegistryLoadError) {
+			log.error(`We couldn't find the "${resolvedAddonId}" addon.`);
+			process.exit(1);
+		}
+
+		throw error;
+	}
+
+	if (addon.category === "packageManager") {
+		log.error("We can't switch package managers yet.");
+		process.exit(1);
+	}
+
+	if (addon.id === "better-auth" && !orms.normalize(project.config.orm)) {
+		log.error("You need to add an ORM before you can use Better Auth.");
+		process.exit(1);
+	}
+
+	const change = installChange(
+		addon.id,
+		project.manifest.installs.map((entry) => entry.definitionId),
+		loadedRegistry.registry.addons,
+	);
+
+	if (change._tag === "Blocked") {
+		const conflict =
+			addonFromRegistry(loadedRegistry, change.holderId) ??
+			loadAddonDefinition(change.holderId).addon;
+
+		log.error(`This project already uses ${conflict.name}.`);
+		process.exit(1);
+	}
+
+	const record = selectInstallRecord(project, addon, loadedRegistry);
+	if (
+		registeredRegistry === undefined &&
+		coversInstall(project.manifest.installs, record)
+	) {
+		log.info(`${addon.name} is already installed.`);
+		return;
+	}
+
+	if (change._tag === "Switch") {
+		const holder =
+			addonFromRegistry(loadedRegistry, change.holderId) ??
+			loadAddonDefinition(change.holderId).addon;
+
+		await runSwitch(project, {
+			addon,
+			holder,
+			installs: mergeInstallRecord(
+				baseInstalls.filter((entry) => entry.definitionId !== holder.id),
+				record,
+				addon.targetMode,
+			),
+			registryIds,
+			noInstall: values["no-install"] === true,
+			resolution,
+		});
+
+		return;
+	}
+
 	const nextConfig = configWithInstall(project.config, addon.id);
 	const nextInstalls = mergeInstallRecord(
 		baseInstalls,
@@ -663,7 +922,7 @@ export async function runAdd(
 		addon.targetMode,
 	);
 
-	await applyInstalledPlan(
+	const applied = await applyInstalledPlan(
 		project.projectRoot,
 		nextConfig,
 		nextInstalls,
@@ -674,4 +933,12 @@ export async function runAdd(
 
 	if (registeredRegistry !== undefined)
 		announceAdapterSupport(loadedRegistry, registeredRegistry.id);
+
+	log.success(
+		completionLine(
+			`We added ${addon.name}.`,
+			applied,
+			configuredPackageManager(nextConfig),
+		),
+	);
 }

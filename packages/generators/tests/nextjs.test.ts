@@ -1,4 +1,4 @@
-import { type Contribution, ensuredModuleTarget } from "@ryuujs/core";
+import { type Contribution, ensuredModuleTarget } from "@ryuugg/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ForgeConfig } from "../src";
@@ -9,6 +9,7 @@ const template = (() => {
 	const found = loadDefinitionRegistry().registry.templates.find(
 		(entry) => entry.id === "nextjs/base",
 	);
+
 	if (!found) throw new Error("Template Not Found: nextjs/base");
 	return found;
 })();
@@ -19,6 +20,7 @@ function contributionsFor(config: ForgeConfig): ReadonlyArray<Contribution> {
 		config,
 		frameworks: [nextjsFramework],
 	});
+
 	if (result instanceof Promise || Effect.isEffect(result))
 		throw new Error("Synchronous Contributions Expected: nextjs/base");
 
@@ -85,6 +87,7 @@ describe("nextjs/base template", () => {
 			slug: "acme",
 			web: "nextjs",
 		});
+
 		expect(textSurface(full, "frameworkConfig").content).toContain(
 			'transpilePackages: ["@acme/auth", "@acme/db", "@acme/trpc", "@acme/ui"],',
 		);
@@ -94,6 +97,7 @@ describe("nextjs/base template", () => {
 			slug: "acme",
 			web: "nextjs",
 		});
+
 		expect(textSurface(ormOnly, "frameworkConfig").content).toContain(
 			'transpilePackages: ["@acme/db", "@acme/ui"],',
 		);
@@ -104,11 +108,33 @@ describe("nextjs/base template", () => {
 		);
 	});
 
+	it("wraps a transpile list that passes the line width", () => {
+		const full = contributionsFor({
+			authentication: "better-auth",
+			orm: "drizzle",
+			rpc: "trpc",
+			slug: "meisai",
+			web: "nextjs",
+		});
+
+		expect(textSurface(full, "frameworkConfig").content).toContain(
+			[
+				"  transpilePackages: [",
+				'    "@meisai/auth",',
+				'    "@meisai/db",',
+				'    "@meisai/trpc",',
+				'    "@meisai/ui",',
+				"  ],",
+			].join("\n"),
+		);
+	});
+
 	it("renders providers with the trpc wrapper only when trpc is selected", () => {
 		const bare = leafFile(
 			contributionsFor({ slug: "acme", web: "nextjs" }),
 			"app/providers.tsx",
 		);
+
 		expect(bare.target).toEqual(ensuredModuleTarget("web"));
 		expect(bare.content).toContain("{children}");
 		expect(bare.content).not.toContain("TRPCReactProvider");
@@ -118,9 +144,11 @@ describe("nextjs/base template", () => {
 			contributionsFor({ rpc: "trpc", slug: "acme", web: "nextjs" }),
 			"app/providers.tsx",
 		);
+
 		expect(withTrpc.content).toContain(
 			'import { TRPCReactProvider } from "@/trpc/react";',
 		);
+
 		expect(withTrpc.content).toContain(
 			"<TRPCReactProvider>{children}</TRPCReactProvider>",
 		);
@@ -138,7 +166,8 @@ describe("nextjs/base template", () => {
 		expect(pnpm.scripts).toEqual({
 			build: "pnpm with-env next build",
 			dev: "pnpm with-env next dev",
-			postinstall: "pnpm typegen",
+			postinstall:
+				"node -e \"try{require.resolve('typescript/package.json');process.exit(1)}catch{}\" || pnpm typegen",
 			pretypecheck: "pnpm with-env next typegen",
 			start: "pnpm with-env next start",
 			typecheck: "tsc --noEmit",
@@ -155,7 +184,8 @@ describe("nextjs/base template", () => {
 
 		expect(npm.scripts).toMatchObject({
 			build: "npm run with-env -- next build",
-			postinstall: "npm run typegen",
+			postinstall:
+				"node -e \"try{require.resolve('typescript/package.json');process.exit(1)}catch{}\" || npm run typegen",
 			pretypecheck: "npm run with-env -- next typegen",
 			typegen: "npm run with-env -- next typegen",
 		});
@@ -179,10 +209,15 @@ describe("nextjs/base template", () => {
 		expect(page.priority).toBe(0);
 		expect(page.content).toContain(">Acme App</h1>");
 
+		expect(leafFile(contributions, "app/icon.svg").content).toContain(
+			"<title>App icon</title>",
+		);
+
 		const ensure = must(
 			contributions.find(byTag("EnsureModuleContribution")),
 			"web module",
 		);
+
 		expect(ensure.moduleKey).toBe("web");
 		expect(ensure.root).toBe("apps/web");
 		expect(ensure.module.template).toEqual({ id: "nextjs/base", version: 1 });
@@ -217,6 +252,7 @@ describe("nextjs/base template", () => {
 			contributions.find(byTag("ManagedDependenciesSurfaceContribution")),
 			"packageJson dependencies",
 		);
+
 		expect(dependencies.dependencies).toEqual(
 			expect.arrayContaining([
 				{ name: "@acme/ui", version: "workspace:*", type: "dependencies" },
@@ -235,9 +271,11 @@ describe("nextjs/base template", () => {
 		expect(textSurface(contributions, "frameworkConfig").content).toContain(
 			'transpilePackages: ["@my-app/ui"],',
 		);
+
 		expect(jsonSurface(contributions, "packageJson").value).toMatchObject({
 			name: "@my-app/web",
 		});
+
 		expect(textSurface(contributions, "layout").content).toContain(
 			'title: "my-app",',
 		);
