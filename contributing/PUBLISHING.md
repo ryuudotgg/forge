@@ -20,7 +20,7 @@ A registry package has two parts: its `package.json` and the object its entry po
 		"index.mjs"
 	],
 	"dependencies": {
-		"effect": "4.0.0-rc.117"
+		"effect": "4.0.5"
 	}
 }
 ```

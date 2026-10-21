@@ -7,7 +7,7 @@ import {
 	type PlatformError,
 	Stream,
 } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { SubprocessError } from "./errors";
 
 export const PROBE_TIMEOUT_MS = 10_000;

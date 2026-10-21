@@ -1,7 +1,12 @@
 {
 	"extends": ["@ryuugg/tsconfig/base.json"],
 	"compilerOptions": {
-		"plugins": [{ "name": "@effect/language-service" }],
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"diagnosticSeverity": { "unstableApiUsage": "off" }
+			}
+		],
 		"types": ["node"]
 	},
 	"include": ["./**/*.ts"],
