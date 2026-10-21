@@ -191,7 +191,7 @@ catalogs:
       specifier: 4.0.5
       version: 4.0.5
     '@effect/tsgo':
-      specifier: ^0.54.0
+      specifier: ^0.54.1
       version: 0.54.1
     '@effect/vitest':
       specifier: 4.0.5
