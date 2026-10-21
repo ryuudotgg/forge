@@ -168,7 +168,7 @@ export const versions = {
 		group: "Tooling",
 	},
 
-	vite: { name: "vite", version: "8.2.2", group: "Tooling" },
+	vite: { name: "vite", version: "8.3.4", group: "Tooling" },
 	viteReact: {
 		name: "@vitejs/plugin-react",
 		version: "6.1.1",
