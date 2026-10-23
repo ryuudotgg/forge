@@ -191,11 +191,11 @@ catalogs:
       specifier: 4.0.5
       version: 4.0.5
     '@effect/tsgo':
-      specifier: ^0.54.1
-      version: 0.54.1
+      specifier: ^0.56.0
+      version: 0.56.0
     '@effect/vitest':
-      specifier: 4.0.5
-      version: 4.0.5
+      specifier: 4.0.6
+      version: 4.0.6
     effect:
       specifier: 4.0.5
       version: 4.0.5
@@ -275,7 +275,7 @@ catalogs:
       version: 6.11.0
 
 overrides:
-  '@effect/platform-node-shared': 4.0.5
+  '@effect/platform-node-shared': 4.0.6
 
 importers:
 
@@ -321,11 +321,11 @@ importers:
         specifier: catalog:effect
         version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/platform-node-shared':
-        specifier: 4.0.5
-        version: 4.0.5(effect@4.0.5)
+        specifier: 4.0.6
+        version: 4.0.6(effect@4.0.5)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.5(effect@4.0.5)(vitest@5.0.5)
+        version: 4.0.6(effect@4.0.5)(vitest@5.0.5)
       '@ryuugg/core':
         specifier: workspace:*
         version: link:../core
@@ -371,10 +371,10 @@ importers:
         version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/tsgo':
         specifier: catalog:effect
-        version: 0.54.1
+        version: 0.56.0
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.5(effect@4.0.5)(vitest@5.0.5)
+        version: 4.0.6(effect@4.0.5)(vitest@5.0.5)
       '@ryuugg/temper':
         specifier: workspace:*
         version: link:../../tooling/temper
@@ -417,7 +417,7 @@ importers:
         version: 4.0.5(effect@4.0.5)(redis@6.3.0)
       '@effect/tsgo':
         specifier: catalog:effect
-        version: 0.54.1
+        version: 0.56.0
       '@orpc/server':
         specifier: catalog:scaffold
         version: 1.15.4(ws@8.22.0)
@@ -1191,11 +1191,11 @@ packages:
     resolution: {integrity: sha512-aalGyl7dbB5PArRebDIX43ZvBlXrYm9uWzGJ26t+4SzJVPsOuvfILGGbw5X4yX7i50YEmJ8zvbiWnqH/AAnZqg==}
     engines: {node: '>=22'}
 
-  '@effect/platform-node-shared@4.0.5':
-    resolution: {integrity: sha512-a8rCdEkfZBGe9C6bsIjxVZuRp73svIyK5IHwHdDAVsvZXjrbkxusfI+rZ8WlX31RP1mKizwI/E72GQTNfdMWHw==}
+  '@effect/platform-node-shared@4.0.6':
+    resolution: {integrity: sha512-0PhyC4uG30xGtsajnxjkcBWfTjNRzUh4ZKl1Kvo/MNyCTb+W2O+fBzf7wCRCoqt+nLudiq4V7vX40Q8XIBuMaQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      effect: ^4.0.5
+      effect: ^4.0.6
 
   '@effect/platform-node@4.0.5':
     resolution: {integrity: sha512-v4KD5fWvEUa4QmWFpZFbBsRhmfnTP6ETCME2r9ifyXVDPjhfpxpTZl41prjgQFMqZBHdWWCl7YC5ImbXv5ui5g==}
@@ -1204,49 +1204,49 @@ packages:
       effect: ^4.0.5
       redis: '>=5.0.0 <7.0.0'
 
-  '@effect/tsgo-darwin-arm64@0.54.1':
-    resolution: {integrity: sha512-eVLYXfsik3FTO24dBoXZN/KVYPYVM36Kc18hXM/3y6ixNdaxVnqzNqFyLlAuNdgse6skBXjeZq1V+XyShcl+7Q==}
+  '@effect/tsgo-darwin-arm64@0.56.0':
+    resolution: {integrity: sha512-08yYRU3OOw/jKzy582EF741xKvLJ2HK6GO+L2zuSR97b61ES7fER2fxg1xp4mv8u2Fc3bBRvk7026GzdKEGFgw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@effect/tsgo-darwin-x64@0.54.1':
-    resolution: {integrity: sha512-RPB1eSzsldpAeg5cVnxhqwrDLppYLRNPZQICv/cHG/I8vIngf/O7/UqyxlTDueySGo6eV8DqGDBwbYiXUT+z6Q==}
+  '@effect/tsgo-darwin-x64@0.56.0':
+    resolution: {integrity: sha512-UQvYvVaam+EVMYm9gfHBx1WpKwLlW+ptjb2UD7qGhZdg+GzxMbl26AhuuqV2t/dN9shZ6EcFE2+++ThISMp/9g==}
     cpu: [x64]
     os: [darwin]
 
-  '@effect/tsgo-linux-arm64@0.54.1':
-    resolution: {integrity: sha512-S8gew1K70C8cbBHlAJ6L999Ca6UyOenaAJPnlc0dtvyi+7mRlA0GSM0ITUW62+dL0Y2ZanCB6L1d6CAgFd0Kdg==}
+  '@effect/tsgo-linux-arm64@0.56.0':
+    resolution: {integrity: sha512-zzzo/w7lLqiCMuJOI+jbjIuhHob3ccmth1bD9m1E98ukMuHhIqQMOXKU9EreoQkCGeoVrxGqHbXkl6E/+68/Sg==}
     cpu: [arm64]
     os: [linux]
 
-  '@effect/tsgo-linux-arm@0.54.1':
-    resolution: {integrity: sha512-IyYRagBLRjdcDq25aRVlk28RkS0ve5OfwoDMXg1OsLKjkfqKK+JDjUx1OlZsfoUTDIFx7BypYqvSYAdYVLDvcw==}
+  '@effect/tsgo-linux-arm@0.56.0':
+    resolution: {integrity: sha512-3WuPwP8vQPqKVpfGmKlnguuAZb7NGUyAhIHQjZnaINU6Aim7WczOy2WOmKjDPSKRlonU2WyYT+Q5T3B7f0VTLw==}
     cpu: [arm]
     os: [linux]
 
-  '@effect/tsgo-linux-x64@0.54.1':
-    resolution: {integrity: sha512-jWMxNGmkZ6MKNhtTc7H90TK6f3rZAYTeKy+erEsmi6q+rVecvE8wgxmIJTvh+aEYS7HEw3+1q2UmsfEtBBR+yQ==}
+  '@effect/tsgo-linux-x64@0.56.0':
+    resolution: {integrity: sha512-R0d3dGf8qKPtvjff+J9HL0UjIBIES6xZiU16rMMezI4K52b+DGQkaWi1OX3tSgGivjlV+NSN7UhPJ2pYKufglw==}
     cpu: [x64]
     os: [linux]
 
-  '@effect/tsgo-win32-arm64@0.54.1':
-    resolution: {integrity: sha512-0YAdScXZ944fH0BGULC8l6ZpGhXhX/RNv8LJWo7FW69QJ6q83QBF5aNOJnNmHKZko1TKAAtnoALDYX4GF7c4xQ==}
+  '@effect/tsgo-win32-arm64@0.56.0':
+    resolution: {integrity: sha512-uVaLdXULUZx9U30YxlVu5PBiu+1a+9/UT2Ex7jQpIasnJy1CHWlhMbfCD/+7Ez1vqG5fLOvUESoQu5XSjs3Lnw==}
     cpu: [arm64]
     os: [win32]
 
-  '@effect/tsgo-win32-x64@0.54.1':
-    resolution: {integrity: sha512-/BWavNrNQlH/Amn7cmO/xYEeKVc9Ir9PwAfQKy08V9Wt5a5iRE4FBVR2zHa1EEblkgJh4OjwV+S/q2eiymOMEw==}
+  '@effect/tsgo-win32-x64@0.56.0':
+    resolution: {integrity: sha512-Cf6SDixFTkp7Aoeg2eRwJps/2BG9lvx2m+iVRjUzxdqkTbCCNKmmOAIyDslNZm2sMwaDUw/iN/BPGqxx7xMxww==}
     cpu: [x64]
     os: [win32]
 
-  '@effect/tsgo@0.54.1':
-    resolution: {integrity: sha512-X7oGQODYMzAgeuVvOgQnEqDJqnWzn4CIY4ZJxYo8REHaMhCdlS8DXWoBHm3FhFpyAOF/8qrbqrY9hakx+pNGDg==}
+  '@effect/tsgo@0.56.0':
+    resolution: {integrity: sha512-/S5G8RJjtaVjE/RhwFNTvWQwFAQyDGc+3Ig4Oynvlo3gJu8le4MUgM/DBjoiwkwBsQ+BhufGDCBpwojplerGlw==}
     hasBin: true
 
-  '@effect/vitest@4.0.5':
-    resolution: {integrity: sha512-q64paZ/i4V2NiRhTyqCmT2KiDbFjlxc2EZrZca8GGt+Nf8844946HyJM5bPk/q+YeRkFSxIrlCs+J+LSfky/wA==}
+  '@effect/vitest@4.0.6':
+    resolution: {integrity: sha512-oKNbtyUHK5+0o730CXwojULEu7f3+c235pYFD4U5T//o+hHrJbYbZU4bRkcv936tPr5IOnmujeyQiC/LuJJjHw==}
     peerDependencies:
-      effect: ^4.0.5
+      effect: ^4.0.6
       vitest: '>=5.0.0 <6.0.0'
 
   '@esbuild/aix-ppc64@0.28.2':
@@ -5799,7 +5799,7 @@ snapshots:
 
   '@conventional-changelog/template@1.4.0': {}
 
-  '@effect/platform-node-shared@4.0.5(effect@4.0.5)':
+  '@effect/platform-node-shared@4.0.6(effect@4.0.5)':
     dependencies:
       '@types/ws': 8.18.2
       effect: 4.0.5
@@ -5810,7 +5810,7 @@ snapshots:
 
   '@effect/platform-node@4.0.5(effect@4.0.5)(redis@6.3.0)':
     dependencies:
-      '@effect/platform-node-shared': 4.0.5(effect@4.0.5)
+      '@effect/platform-node-shared': 4.0.6(effect@4.0.5)
       effect: 4.0.5
       redis: 6.3.0
       undici: 8.11.2
@@ -5818,38 +5818,38 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/tsgo-darwin-arm64@0.54.1':
+  '@effect/tsgo-darwin-arm64@0.56.0':
     optional: true
 
-  '@effect/tsgo-darwin-x64@0.54.1':
+  '@effect/tsgo-darwin-x64@0.56.0':
     optional: true
 
-  '@effect/tsgo-linux-arm64@0.54.1':
+  '@effect/tsgo-linux-arm64@0.56.0':
     optional: true
 
-  '@effect/tsgo-linux-arm@0.54.1':
+  '@effect/tsgo-linux-arm@0.56.0':
     optional: true
 
-  '@effect/tsgo-linux-x64@0.54.1':
+  '@effect/tsgo-linux-x64@0.56.0':
     optional: true
 
-  '@effect/tsgo-win32-arm64@0.54.1':
+  '@effect/tsgo-win32-arm64@0.56.0':
     optional: true
 
-  '@effect/tsgo-win32-x64@0.54.1':
+  '@effect/tsgo-win32-x64@0.56.0':
     optional: true
 
-  '@effect/tsgo@0.54.1':
+  '@effect/tsgo@0.56.0':
     optionalDependencies:
-      '@effect/tsgo-darwin-arm64': 0.54.1
-      '@effect/tsgo-darwin-x64': 0.54.1
-      '@effect/tsgo-linux-arm': 0.54.1
-      '@effect/tsgo-linux-arm64': 0.54.1
-      '@effect/tsgo-linux-x64': 0.54.1
-      '@effect/tsgo-win32-arm64': 0.54.1
-      '@effect/tsgo-win32-x64': 0.54.1
+      '@effect/tsgo-darwin-arm64': 0.56.0
+      '@effect/tsgo-darwin-x64': 0.56.0
+      '@effect/tsgo-linux-arm': 0.56.0
+      '@effect/tsgo-linux-arm64': 0.56.0
+      '@effect/tsgo-linux-x64': 0.56.0
+      '@effect/tsgo-win32-arm64': 0.56.0
+      '@effect/tsgo-win32-x64': 0.56.0
 
-  '@effect/vitest@4.0.5(effect@4.0.5)(vitest@5.0.5)':
+  '@effect/vitest@4.0.6(effect@4.0.5)(vitest@5.0.5)':
     dependencies:
       effect: 4.0.5
       vitest: 5.0.5(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.6.1)(terser@5.51.2)(yaml@2.9.1))
