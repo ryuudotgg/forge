@@ -28,17 +28,17 @@ const nodeMajor = Number(process.versions.node.split(".")[0]);
 export const versions = {
 	biome: {
 		name: "@biomejs/biome",
-		version: "2.5.14",
+		version: "2.6.2",
 		group: "Tooling",
 		linter: "biome",
 	},
 	oxlint: {
 		name: "oxlint",
-		version: "1.86.0",
+		version: "1.89.0",
 		group: "Tooling",
 		linter: "oxc",
 	},
-	oxfmt: { name: "oxfmt", version: "0.71.0", group: "Tooling", linter: "oxc" },
+	oxfmt: { name: "oxfmt", version: "0.74.0", group: "Tooling", linter: "oxc" },
 	commitlintCli: {
 		name: "@commitlint/cli",
 		version: "^21.0.2",
@@ -90,10 +90,10 @@ export const versions = {
 	},
 	isbot: { name: "isbot", version: "5.2.2", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
-	hono: { name: "hono", version: "4.13.12", group: "Framework" },
+	hono: { name: "hono", version: "4.13.13", group: "Framework" },
 	honoNodeServer: {
 		name: "@hono/node-server",
-		version: "2.1.1",
+		version: "2.1.5",
 		group: "Framework",
 	},
 	honoTrpcServer: {
@@ -104,10 +104,10 @@ export const versions = {
 	fastify: { name: "fastify", version: "5.12.7", group: "Framework" },
 	fastifyCors: {
 		name: "@fastify/cors",
-		version: "11.3.0",
+		version: "11.3.1",
 		group: "Framework",
 	},
-	express: { name: "express", version: "5.2.1", group: "Framework" },
+	express: { name: "express", version: "5.3.0", group: "Framework" },
 	expressCors: { name: "cors", version: "2.8.6", group: "Framework" },
 
 	next: { name: "next", version: "16.3.8", group: "Framework" },
@@ -132,46 +132,46 @@ export const versions = {
 
 	reactRouter: {
 		name: "react-router",
-		version: "8.3.1",
+		version: "8.5.0",
 		group: "Framework",
 	},
 	reactRouterDev: {
 		name: "@react-router/dev",
-		version: "8.3.1",
+		version: "8.5.0",
 		group: "Tooling",
 	},
 	reactRouterNode: {
 		name: "@react-router/node",
-		version: "8.3.1",
+		version: "8.5.0",
 		group: "Framework",
 	},
-	srvx: { name: "srvx", version: "1.0.5", group: "Framework" },
+	srvx: { name: "srvx", version: "1.0.6", group: "Framework" },
 
 	tanstackReactRouter: {
 		name: "@tanstack/react-router",
-		version: "1.170.45",
+		version: "1.170.46",
 		group: "Framework",
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.169.3",
+		version: "1.169.4",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.45",
+		version: "1.167.46",
 		group: "Tooling",
 	},
 	tanstackRouterPlugin: {
 		name: "@tanstack/router-plugin",
-		version: "1.168.47",
+		version: "1.168.48",
 		group: "Tooling",
 	},
 
-	vite: { name: "vite", version: "8.3.4", group: "Tooling" },
+	vite: { name: "vite", version: "8.3.5", group: "Tooling" },
 	viteReact: {
 		name: "@vitejs/plugin-react",
-		version: "6.1.1",
+		version: "6.1.2",
 		group: "Tooling",
 	},
 
@@ -214,19 +214,19 @@ export const versions = {
 
 	orpcClient: {
 		name: "@orpc/client",
-		version: "1.15.4",
+		version: "1.16.1",
 		rpc: "orpc",
 		group: "Framework",
 	},
 	orpcServer: {
 		name: "@orpc/server",
-		version: "1.15.4",
+		version: "1.16.1",
 		rpc: "orpc",
 		group: "Framework",
 	},
 	orpcTanstackQuery: {
 		name: "@orpc/tanstack-query",
-		version: "1.15.4",
+		version: "1.16.1",
 		rpc: "orpc",
 		group: "Framework",
 	},
@@ -350,15 +350,15 @@ export const versions = {
 	},
 	zod: { name: "zod", version: "^4.3.6", group: "Validation & Env" },
 
-	cn: { name: "cn", version: "^0.4.0", group: "Utilities" },
+	cn: { name: "cn", version: "^0.5.0", group: "Utilities" },
 	nanoid: { name: "nanoid", version: "^6.0.0", group: "Utilities" },
 	resend: { name: "resend", version: "^6.32.0", group: "Utilities" },
 	postmark: { name: "postmark", version: "^5.1.0", group: "Utilities" },
 	nodemailer: { name: "nodemailer", version: "^10.0.13", group: "Utilities" },
-	reactEmail: { name: "react-email", version: "6.11.0", group: "Utilities" },
+	reactEmail: { name: "react-email", version: "6.11.3", group: "Utilities" },
 	reactEmailUi: {
 		name: "@react-email/ui",
-		version: "6.11.0",
+		version: "6.11.3",
 		group: "Utilities",
 	},
 	classVarianceAuthority: {
@@ -385,7 +385,7 @@ export const versions = {
 	},
 	betterAuthPasskey: {
 		name: "@better-auth/passkey",
-		version: "1.7.7",
+		version: "1.7.12",
 		group: "Framework",
 		authMethod: "passkey",
 	},
@@ -424,7 +424,7 @@ export type VersionKey = keyof typeof versions;
 
 const passkeyBetterAuth = {
 	name: "better-auth",
-	version: "1.7.7",
+	version: "1.7.12",
 	group: "Framework",
 } as const satisfies CatalogEntry;
 
