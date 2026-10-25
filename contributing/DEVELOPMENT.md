@@ -55,7 +55,7 @@ pnpm dev
 - `pnpm clean:workspaces` - Clean **ALL** Dependencies and Build Artifacts
 - `pnpm dev` - Start a Development Server
 - `pnpm start` - Start Apps in Production
-- `pnpm tegami` - Draft a Change File
+- `pnpm tegami version --dry-run` - Preview the Next Release
 - `pnpm test` - Run Tests
 - `pnpm test:unit` - Run Package Unit Tests
 - `pnpm test:coverage` - Run Tests With Coverage + Thresholds
@@ -145,8 +145,8 @@ including uncommitted changes (diffed against the merge base with
 
 A pull request that changes something a user of the CLI or the published
 packages would notice adds one change file under `.tegami/`. Tests, CI and
-refactors need none. Draft it with `pnpm tegami` or write it by hand, under
-any name, such as `.tegami/2026-10-03-yarn-linker.md`:
+refactors need none. Name it after the day and the change, the topic in
+lowercase words joined by hyphens, such as `.tegami/2026-10-03-yarn-linker.md`:
 
 ```markdown
 ---
@@ -154,8 +154,28 @@ packages:
   "@ryuugg/forge": minor
 ---
 
-## Example note
+### ✨ Yarn linker choice
+
+`forge create` asks which Yarn linker to use and writes it to `.yarnrc.yml`.
 ```
+
+The file holds one `###` heading, its category's emoji, a space and a short
+title with no asterisk, then one paragraph of plain text: no list, table,
+code block, quote, HTML, rule, second heading or second paragraph, and no
+line ending in a backslash. The categories, in changelog order:
+
+| emoji | category | for                                                     |
+| ----- | -------- | ------------------------------------------------------- |
+| 🚨    | Heads up | a change users must act on, such as a removed flag      |
+| ✨    | New      | a new capability, such as a framework, addon or command |
+| 🎨    | Improved | existing behaviour that works better or faster          |
+| 🐛    | Fixed    | a bug fix                                               |
+
+The changelog groups each release by category under its version and the UTC
+date of the version run, and links each entry to the pull request whose
+commit added its change file, or to that commit when its title names no
+pull request. `pnpm tegami version` and `pnpm tegami version --dry-run` refuse a
+change file outside this format and name it.
 
 `@ryuugg/forge` is the only published package. It bundles `@ryuugg/core`
 and `@ryuugg/generators`, which stay private, so a change to either is
