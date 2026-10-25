@@ -2541,7 +2541,7 @@ const makeApply = Effect.gen(function* () {
 
 		return {
 			released: released.sort((left, right) =>
-				(left.paths[0] ?? "").localeCompare(right.paths[0] ?? ""),
+				String(left.paths).localeCompare(String(right.paths)),
 			),
 			retained: retained.sort(),
 			dropped: dropped.sort((left, right) =>

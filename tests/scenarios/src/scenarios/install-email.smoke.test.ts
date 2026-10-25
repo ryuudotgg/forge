@@ -25,40 +25,46 @@ import {
 // tsx watch restarts when another worker hardlinks the same pnpm store inode.
 const watchedInstallEnv = { pnpm_config_package_import_method: "copy" };
 
+const baselineConfig = {
+	name: "acme",
+	slug: "acme",
+	platforms: ["web"],
+	web: "tanstack-router",
+	backend: "hono",
+	rpc: "orpc",
+	orm: "drizzle",
+	database: "postgresql",
+	authentication: "better-auth",
+	authMethods: ["passkey", "email-otp", "magic-link"],
+	authPlugins: ["organization"],
+	emailProvider: "resend",
+	addons: ["vitest"],
+	packageManager: "pnpm",
+};
+
+const starterPaths = [
+	"packages/email/src/layout.tsx",
+	"packages/email/src/templates/verification-code.tsx",
+	"packages/email/src/templates/magic-link.tsx",
+	"packages/email/src/templates/invitation.tsx",
+];
+
+function baselineCliPath() {
+	const baselineCli = process.env.FORGE_SMOKE_BASELINE_CLI;
+	if (baselineCli === undefined)
+		throw new Error("Missing Baseline CLI: FORGE_SMOKE_BASELINE_CLI");
+
+	return baselineCli;
+}
+
 describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 	it.runIf(process.env.FORGE_SMOKE_BASELINE_CLI)(
 		"upgrades baseline email starters to the current design",
 		async () => {
-			const baselineCli = process.env.FORGE_SMOKE_BASELINE_CLI;
-			if (baselineCli === undefined)
-				throw new Error("Missing Baseline CLI: FORGE_SMOKE_BASELINE_CLI");
-
-			const config = {
-				name: "acme",
-				slug: "acme",
-				platforms: ["web"],
-				web: "tanstack-router",
-				backend: "hono",
-				rpc: "orpc",
-				orm: "drizzle",
-				database: "postgresql",
-				authentication: "better-auth",
-				authMethods: ["passkey", "email-otp", "magic-link"],
-				authPlugins: ["organization"],
-				emailProvider: "resend",
-				addons: ["vitest"],
-				packageManager: "pnpm",
-			};
-
-			const starterPaths = [
-				"packages/email/src/layout.tsx",
-				"packages/email/src/templates/verification-code.tsx",
-				"packages/email/src/templates/magic-link.tsx",
-				"packages/email/src/templates/invitation.tsx",
-			];
+			const baselineCli = baselineCliPath();
 
 			await withScenarioWorkspace("smoke-email-upgrade", async (baseline) => {
-				await createProject(baseline, config, { cliPath: baselineCli });
+				await createProject(baseline, baselineConfig, { cliPath: baselineCli });
 				await expectRun(baseline, "git", ["init", "-q"]);
 				await commitFixture(baseline);
 
@@ -80,7 +86,7 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 				);
 
 				await withScenarioWorkspace("smoke-email-current", async (current) => {
-					await createProject(current, config);
+					await createProject(current, baselineConfig);
 
 					for (const path of starterPaths) {
 						expect(
@@ -99,6 +105,87 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 			});
 		},
 		120_000,
+	);
+
+	it.runIf(process.env.FORGE_SMOKE_BASELINE_CLI)(
+		"upgrades baseline email starters to the current design, holding an edited design whole",
+		async () => {
+			await withScenarioWorkspace("smoke-email-held", async (workspace) => {
+				await createProject(workspace, baselineConfig, {
+					cliPath: baselineCliPath(),
+				});
+
+				const layoutPath = join(
+					workspace.projectRoot,
+					"packages/email/src/layout.tsx",
+				);
+
+				await writeFile(
+					layoutPath,
+					`${await readFile(layoutPath, "utf-8")}\n// acme brand\n`,
+				);
+
+				await expectRun(workspace, "git", ["init", "-q"]);
+				await commitFixture(workspace);
+
+				const before = await Promise.all(
+					starterPaths.map((path) =>
+						readFile(join(workspace.projectRoot, path), "utf-8"),
+					),
+				);
+
+				const update = await tryRunForge(workspace.projectRoot, ["update"], {
+					workspaceRoot: workspace.workspaceRoot,
+				});
+
+				const output = stripVTControlCharacters(
+					`${update.stdout}\n${update.stderr}`,
+				);
+
+				expect(update.exitCode, output).toBe(0);
+				expect(output).not.toMatch(/refus/i);
+				expect(output).toContain(
+					"since they work together and packages/email/src/layout.tsx has your changes.",
+				);
+
+				const lockfile = Schema.decodeUnknownSync(LockfileSchema)(
+					await readJson<unknown>(
+						join(workspace.projectRoot, ".forge/lock.json"),
+					),
+				);
+
+				for (const [index, path] of starterPaths.entries()) {
+					expect(
+						await readFile(join(workspace.projectRoot, path), "utf-8"),
+						path,
+					).toBe(before[index]);
+
+					expect(
+						Object.values(lockfile.artifacts).find(
+							(artifact) => artifact.path === path,
+						),
+						path,
+					).toMatchObject({ owner: "user" });
+				}
+
+				await expectInstallBuildAndTypecheck(
+					workspace,
+					"pnpm",
+					watchedInstallEnv,
+				);
+
+				const emailTest = await runCommand("pnpm", ["test"], {
+					cwd: join(workspace.projectRoot, "packages/email"),
+					env: { FORCE_COLOR: "0", NO_COLOR: "1" },
+				});
+
+				expect(
+					emailTest.exitCode,
+					`${emailTest.stdout}\n${emailTest.stderr}`,
+				).toBe(0);
+			});
+		},
+		600_000,
 	);
 
 	it.each([

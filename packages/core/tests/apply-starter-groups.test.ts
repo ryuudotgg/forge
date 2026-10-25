@@ -278,6 +278,30 @@ describe("starter groups", () => {
 		});
 	});
 
+	it("reports a held group and a released single starter on their own lines", async () => {
+		await withTempDir("apply-group-two-releases", async (directory) => {
+			const single = "packages/email/src/custom.tsx";
+			const files = (version: string) => ({
+				...design(version),
+				[single]: `custom ${version}\n`,
+			});
+
+			const policy = (path: string): Policy =>
+				path === single ? "starter" : "grouped";
+
+			await apply(directory, await planOf(files("v1"), policy));
+			await writeText(join(directory, single), "my custom\n");
+			await writeText(join(directory, magicLink), "my magic link\n");
+
+			const result = await apply(directory, await planOf(files("v2"), policy));
+
+			expect(result.released).toEqual([
+				{ paths: [single], heldBy: [single] },
+				{ paths: members, heldBy: [magicLink] },
+			]);
+		});
+	});
+
 	it("keeps every member of a held group when Forge stops planning it", async () => {
 		await withTempDir("apply-group-removal", async (directory) => {
 			await apply(directory, await planOf(design("v1")));
