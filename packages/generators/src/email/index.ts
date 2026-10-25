@@ -145,7 +145,8 @@ function messagesSource(config: ForgeConfig): string {
 	return interpolate(readTemplate("email/packages/email/src/messages.ts"), {
 		IMPORTS: imports.join(""),
 		MODULES: `{\n${entries.map((entry) => `  ${entry},`).join("\n")}\n}`,
-		PROPS: props.length === 0 ? "{}" : `{\n${props.join("\n")}\n}`,
+		PROPS:
+			props.length === 0 ? "Record<never, never>" : `{\n${props.join("\n")}\n}`,
 	});
 }
 

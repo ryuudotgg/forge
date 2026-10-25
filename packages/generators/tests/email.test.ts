@@ -776,10 +776,11 @@ describe("email templates", () => {
 	] satisfies ReadonlyArray<{ config: ForgeConfig; templates: string[] }>)(
 		"contributes one template per enabled message",
 		({ config, templates }) => {
+			const messages = leafFile(contributionsOf(config), "src/messages.ts");
+
 			expect(templatePaths(config)).toEqual(templates);
-			expect(leafFile(contributionsOf(config), "src/messages.ts")).not.toMatch(
-				/__[A-Z_]+__/,
-			);
+			expect(messages).not.toMatch(/__[A-Z_]+__/);
+			expect(messages).not.toMatch(/=\s*\{\};/);
 		},
 	);
 
