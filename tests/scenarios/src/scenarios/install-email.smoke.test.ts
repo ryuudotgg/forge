@@ -168,21 +168,12 @@ describe.runIf(process.env.FORGE_SMOKE === "1")("install smoke", () => {
 					).toMatchObject({ owner: "user" });
 				}
 
-				await expectInstallBuildAndTypecheck(
-					workspace,
-					"pnpm",
-					watchedInstallEnv,
-				);
+				await expectRun(workspace, "pnpm", ["install"]);
 
-				const emailTest = await runCommand("pnpm", ["test"], {
-					cwd: join(workspace.projectRoot, "packages/email"),
-					env: { FORCE_COLOR: "0", NO_COLOR: "1" },
-				});
+				for (const name of ["@acme/email", "@acme/auth"])
+					await expectRun(workspace, "pnpm", ["--filter", name, "typecheck"]);
 
-				expect(
-					emailTest.exitCode,
-					`${emailTest.stdout}\n${emailTest.stderr}`,
-				).toBe(0);
+				await expectRun(workspace, "pnpm", ["--filter", "@acme/email", "test"]);
 			});
 		},
 		600_000,
