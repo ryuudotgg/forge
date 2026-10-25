@@ -607,6 +607,26 @@ describe("email templates", () => {
 				(write) => write.path === "packages/email/src/index.test.ts",
 			)?.update,
 		).toBeUndefined();
+
+		const groups = Object.fromEntries(
+			plan.writes.flatMap((write) =>
+				write.group === undefined ? [] : [[write.path, write.group]],
+			),
+		);
+
+		const key = groups["packages/email/src/layout.tsx"]?.key;
+
+		expect(key).toMatch(/^group:\["module:[^"]+","email","email-design"\]$/);
+		expect(groups).toEqual({
+			"packages/email/src/layout.tsx": { key, companion: false },
+			...Object.fromEntries(
+				templatePaths(allMessages).map((path) => [
+					`packages/email/${path}`,
+					{ key, companion: false },
+				]),
+			),
+			"packages/email/src/verification-code.test.ts": { key, companion: true },
+		});
 	});
 
 	it.each([

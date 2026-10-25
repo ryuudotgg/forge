@@ -5,6 +5,7 @@ import {
 	interpolate,
 	leafTextFile,
 	projectTarget,
+	starterGroup,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,
@@ -76,6 +77,14 @@ const messageTemplates = [
 	{
 		name: "invitation",
 		file: "invitation",
+		props: [
+			"email: string;",
+			"inviterName: string;",
+			"inviterEmail: string;",
+			"organizationName: string;",
+			"invitationId: string;",
+			"url?: string;",
+		],
 		sample: [
 			'      email: "invitee@example.com",',
 			'      inviterName: "Ada",',
@@ -91,6 +100,7 @@ const messageTemplates = [
 	{
 		name: "magicLink",
 		file: "magic-link",
+		props: ["url: string;"],
 		sample: [
 			'      url: "https://app.example.com/api/auth/magic-link/verify?token=abc",',
 		],
@@ -101,6 +111,7 @@ const messageTemplates = [
 	{
 		name: "verificationCode",
 		file: "verification-code",
+		props: ["code: string;", "type: string;", "expiresInMinutes: number;"],
 		sample: [
 			'      code: "123456",',
 			'      type: "forget-password",',
@@ -125,9 +136,16 @@ function messagesSource(config: ForgeConfig): string {
 	);
 
 	const entries = ["...customTemplates", ...templates.map(({ name }) => name)];
+	const props = templates.flatMap((template) => [
+		`  ${template.name}: {`,
+		...template.props.map((line) => `    ${line}`),
+		"  };",
+	]);
+
 	return interpolate(readTemplate("email/packages/email/src/messages.ts"), {
 		IMPORTS: imports.join(""),
 		MODULES: `{\n${entries.map((entry) => `  ${entry},`).join("\n")}\n}`,
+		PROPS: props.length === 0 ? "{}" : `{\n${props.join("\n")}\n}`,
 	});
 }
 
@@ -231,22 +249,39 @@ const email = defineAddon<ForgeConfig, "email">({
 				readTemplate("email/packages/email/src/custom.ts"),
 				{ update: "write-once" },
 			),
-			leafTextFile(
-				ensuredModuleTarget("email"),
-				"src/layout.tsx",
-				readTemplate("email/packages/email/src/layout.tsx"),
-				{ update: "starter" },
-			),
-			...emailTemplates(config).map((template) =>
-				leafTextFile(
-					ensuredModuleTarget("email"),
-					`src/templates/${template.file}.tsx`,
-					readTemplate(
-						`email/packages/email/src/templates/${template.file}.tsx`,
+			...starterGroup("email-design", {
+				members: [
+					leafTextFile(
+						ensuredModuleTarget("email"),
+						"src/layout.tsx",
+						readTemplate("email/packages/email/src/layout.tsx"),
 					),
-					{ update: "starter" },
-				),
-			),
+					...emailTemplates(config).map((template) =>
+						leafTextFile(
+							ensuredModuleTarget("email"),
+							`src/templates/${template.file}.tsx`,
+							readTemplate(
+								`email/packages/email/src/templates/${template.file}.tsx`,
+							),
+						),
+					),
+				],
+				companions:
+					vitest.when(config) &&
+					emailTemplates(config).some(
+						(template) => template.name === "verificationCode",
+					)
+						? [
+								leafTextFile(
+									ensuredModuleTarget("email"),
+									"src/verification-code.test.ts",
+									readTemplate(
+										"email/packages/email/src/verification-code.test.ts",
+									),
+								),
+							]
+						: [],
+			}),
 			...(emailTemplates(config).length > 0
 				? [
 						surfaceDependencies(ensuredModuleTarget("email"), "packageJson", [
@@ -269,21 +304,6 @@ const email = defineAddon<ForgeConfig, "email">({
 							ensuredModuleTarget("email"),
 							"src/index.test.ts",
 							testSource(config, config.emailProvider),
-						),
-					]
-				: []),
-			...(vitest.when(config) &&
-			emailTemplates(config).some(
-				(template) => template.name === "verificationCode",
-			)
-				? [
-						leafTextFile(
-							ensuredModuleTarget("email"),
-							"src/verification-code.test.ts",
-							readTemplate(
-								"email/packages/email/src/verification-code.test.ts",
-							),
-							{ update: "starter" },
 						),
 					]
 				: []),

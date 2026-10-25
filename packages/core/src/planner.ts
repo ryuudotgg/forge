@@ -8,6 +8,7 @@ import type {
 	EnsureModuleContribution,
 	FileUpdate,
 	ModuleTarget,
+	PlannedStarterGroup,
 	ResolvedModuleTarget,
 	SlotPath,
 	TargetRef,
@@ -463,6 +464,7 @@ export interface PlannedFile {
 	readonly kind: "file" | "surface";
 	readonly path: string;
 	readonly update?: FileUpdate;
+	readonly group?: PlannedStarterGroup;
 	readonly target: RenderBucket;
 	readonly targetKey: string;
 }
@@ -1315,6 +1317,7 @@ const makePlanner = Effect.gen(function* () {
 				readonly content: string;
 				readonly definitionIds: ReadonlyArray<string>;
 				readonly update?: FileUpdate;
+				readonly group?: PlannedStarterGroup;
 				readonly generated: boolean;
 				readonly mergeKind?: "yaml";
 			}
@@ -1379,6 +1382,17 @@ const makePlanner = Effect.gen(function* () {
 							? contributionPath
 							: `${byId.get(target.moduleId)?.root ?? ""}/${contributionPath}`;
 
+					const bucketKey =
+						target.kind === "project" ? "project" : `module:${target.moduleId}`;
+
+					const group =
+						contribution.group === undefined
+							? undefined
+							: {
+									key: `group:${JSON.stringify([bucketKey, entry.definitionId, contribution.group.name])}`,
+									companion: contribution.group.companion,
+								};
+
 					const existing = leafFiles.get(relativePath);
 					if (existing !== undefined) {
 						const sameTarget =
@@ -1392,6 +1406,8 @@ const makePlanner = Effect.gen(function* () {
 							existing.content === contribution.content &&
 							existing.mergeKind === contribution.mergeKind &&
 							existing.update === contribution.update &&
+							existing.group?.key === group?.key &&
+							existing.group?.companion === group?.companion &&
 							existing.definitionIds.includes(entry.definitionId)
 						)
 							continue;
@@ -1409,6 +1425,7 @@ const makePlanner = Effect.gen(function* () {
 						...(contribution.update === undefined
 							? {}
 							: { update: contribution.update }),
+						...(group === undefined ? {} : { group }),
 						generated: contribution.generated === true,
 						...(contribution.mergeKind === undefined
 							? {}
@@ -1424,6 +1441,7 @@ const makePlanner = Effect.gen(function* () {
 				generators: file.definitionIds,
 				path: filePath(path),
 				...(file.update === undefined ? {} : { update: file.update }),
+				...(file.group === undefined ? {} : { group: file.group }),
 				...(file.generated ? { generated: true } : {}),
 				...(file.mergeKind === undefined ? {} : { mergeKind: file.mergeKind }),
 			}),
@@ -1596,6 +1614,7 @@ const makePlanner = Effect.gen(function* () {
 					kind: "file",
 					path: String(file.path),
 					...(file.update === undefined ? {} : { update: file.update }),
+					...(file.group === undefined ? {} : { group: file.group }),
 					target: file.bucket,
 					targetKey:
 						file.bucket.kind === "project"

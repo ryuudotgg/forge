@@ -5,6 +5,7 @@ import type {
 	Contribution,
 	DefinitionRegistry,
 	FileUpdate,
+	PlannedStarterGroup,
 	TemplateDefinition,
 } from "./authoring";
 import {
@@ -88,6 +89,7 @@ export interface TargetedLeafFile {
 	readonly generators: ReadonlyArray<string>;
 	readonly path: ReturnType<typeof filePath>;
 	readonly update?: FileUpdate;
+	readonly group?: PlannedStarterGroup;
 	readonly generated?: boolean;
 	readonly mergeKind?: "yaml";
 }

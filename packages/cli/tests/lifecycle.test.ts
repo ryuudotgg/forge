@@ -957,18 +957,50 @@ describe("applyLifecyclePlan", () => {
 
 	it.each([
 		{
-			released: ["packages/email/src/welcome.tsx"],
-			message:
+			name: "one file",
+			released: [
+				{
+					paths: ["packages/email/src/welcome.tsx"],
+					heldBy: ["packages/email/src/welcome.tsx"],
+				},
+			],
+			messages: [
 				"Forge will leave packages/email/src/welcome.tsx alone from now on, since it has your changes.",
+			],
 		},
 		{
-			released: ["a.tsx", "b.tsx"],
-			message:
+			name: "a group the user edited throughout",
+			released: [{ paths: ["a.tsx", "b.tsx"], heldBy: ["a.tsx", "b.tsx"] }],
+			messages: [
 				"Forge will leave a.tsx and b.tsx alone from now on, since they have your changes.",
+			],
+		},
+		{
+			name: "a group with one edited file",
+			released: [
+				{
+					paths: ["invitation.tsx", "layout.tsx", "magic-link.tsx"],
+					heldBy: ["layout.tsx"],
+				},
+			],
+			messages: [
+				"Forge will leave invitation.tsx, layout.tsx, and magic-link.tsx alone from now on, since they work together and layout.tsx has your changes.",
+			],
+		},
+		{
+			name: "two groups",
+			released: [
+				{ paths: ["a.tsx", "b.tsx", "c.tsx"], heldBy: ["a.tsx", "b.tsx"] },
+				{ paths: ["d.tsx"], heldBy: ["d.tsx"] },
+			],
+			messages: [
+				"Forge will leave a.tsx, b.tsx, and c.tsx alone from now on, since they work together and a.tsx and b.tsx have your changes.",
+				"Forge will leave d.tsx alone from now on, since it has your changes.",
+			],
 		},
 	])(
-		"reports released starter files: $message",
-		async ({ released, message }) => {
+		"reports released starter files: $name",
+		async ({ released, messages }) => {
 			const apply = vi
 				.spyOn(Apply, "applyPlan")
 				.mockReturnValue(
@@ -980,7 +1012,9 @@ describe("applyLifecyclePlan", () => {
 			await applyLifecyclePlan("unused", plan, {});
 			apply.mockRestore();
 
-			expect(promptMocks.logInfo).toHaveBeenCalledExactlyOnceWith(message);
+			expect(promptMocks.logInfo.mock.calls).toEqual(
+				messages.map((message) => [message]),
+			);
 		},
 	);
 });

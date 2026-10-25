@@ -258,17 +258,29 @@ export interface ModuleCapabilitiesContribution<
 	readonly capabilities: ReadonlyArray<Capability>;
 }
 
-export interface LeafTextFileContribution {
+export type LeafTextFileContribution = {
 	readonly _tag: "LeafTextFileContribution";
 	readonly target: TargetRef;
 	readonly path: string | SlotPath;
 	readonly content: string;
-	readonly update?: FileUpdate;
 	readonly generated?: boolean;
 	readonly mergeKind?: "yaml";
-}
+} & (
+	| { readonly update?: FileUpdate; readonly group?: never }
+	| { readonly update: "starter"; readonly group: StarterGroup }
+);
 
 export type FileUpdate = "write-once" | "starter";
+
+export interface StarterGroup {
+	readonly name: string;
+	readonly companion: boolean;
+}
+
+export interface PlannedStarterGroup {
+	readonly key: string;
+	readonly companion: boolean;
+}
 
 export type Contribution<Capability extends CapabilityId = CapabilityId> =
 	| EnsureModuleContribution
@@ -403,6 +415,30 @@ export function moduleCapabilities<Capability extends CapabilityId>(
 	};
 }
 
+type StarterGroupFile = LeafTextFileContribution & {
+	readonly mergeKind?: never;
+};
+
+export function leafTextFile(
+	target: TargetRef,
+	path: string | SlotPath,
+	content: string,
+	options?: {
+		readonly update?: FileUpdate;
+		readonly generated?: boolean;
+		readonly mergeKind?: never;
+	},
+): StarterGroupFile;
+export function leafTextFile(
+	target: TargetRef,
+	path: string | SlotPath,
+	content: string,
+	options: {
+		readonly update?: never;
+		readonly generated?: boolean;
+		readonly mergeKind: "yaml";
+	},
+): LeafTextFileContribution;
 export function leafTextFile(
 	target: TargetRef,
 	path: string | SlotPath,
@@ -430,6 +466,28 @@ export function leafTextFile(
 			? {}
 			: { mergeKind: options.mergeKind }),
 	};
+}
+
+export function starterGroup(
+	name: string,
+	files: {
+		readonly members: ReadonlyArray<StarterGroupFile>;
+		readonly companions?: ReadonlyArray<StarterGroupFile>;
+	},
+): ReadonlyArray<LeafTextFileContribution> {
+	const join = (
+		file: StarterGroupFile,
+		companion: boolean,
+	): LeafTextFileContribution => ({
+		...file,
+		update: "starter",
+		group: { name, companion },
+	});
+
+	return [
+		...files.members.map((file) => join(file, false)),
+		...(files.companions ?? []).map((file) => join(file, true)),
+	];
 }
 
 export function resolveSlotPath(
