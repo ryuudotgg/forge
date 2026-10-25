@@ -67,10 +67,10 @@ catalogs:
 
   # ===== EFFECT =====
   effect:
-    effect: 4.0.5
-    "@effect/platform-node": 4.0.5
+    effect: 4.0.6
+    "@effect/platform-node": 4.0.6
     "@effect/platform-node-shared": 4.0.6
-    "@effect/tsgo": ^0.56.0
+    "@effect/tsgo": ^0.56.1
     "@effect/vitest": 4.0.6
 
 nodeLinker: hoisted
