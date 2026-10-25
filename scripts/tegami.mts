@@ -50,6 +50,7 @@ const paragraphBreaks: [RegExp, string][] = [
 	[/^ {0,3}>/, "holds a blockquote"],
 	[/^(?=[^|]*\|)(?=[^-]*-)[\s|:-]+$/, "holds a table"],
 	[/^ {0,3}(?:(?:[-*_][ \t]*){3,}|=+[ \t]*|-+[ \t]*)$/, "holds a rule"],
+	[/^ {0,3}<(?:[A-Za-z][\w-]*(?:[\s/>]|$)|\/[A-Za-z]|!)/, "holds HTML"],
 	[/\\$/, "ends a line with a backslash"],
 	[/^\s*$/, "holds a second paragraph"],
 ];
@@ -57,7 +58,6 @@ const paragraphBreaks: [RegExp, string][] = [
 const blockOpenings: [RegExp, string][] = [
 	[/^ {0,3}\d{1,9}[.)](?:[ \t]|$)/, "holds a list"],
 	[/^(?: {4}|\t)/, "holds a code block"],
-	[/^ {0,3}<[A-Za-z/!?]/, "opens with HTML"],
 ];
 
 const emojiList = new Intl.ListFormat("en", { type: "disjunction" }).format(
@@ -140,6 +140,7 @@ function reference({ cwd, changelogDir }: TegamiContext, filename: string) {
 		"git",
 		[
 			"log",
+			"--follow",
 			"--diff-filter=A",
 			"--format=%H%x1f%h%x1f%s",
 			"--",

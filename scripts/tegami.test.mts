@@ -139,6 +139,32 @@ describe("tegami version", () => {
 			].join("\n"),
 		);
 	});
+
+	test("links a renamed change file to the pull request that added it", () => {
+		const cwd = fixtureRepo();
+
+		write(
+			cwd,
+			".tegami/2026-10-01-draft.md",
+			changeFile(
+				"### 🐛 Yarn installs finish",
+				"Wrapped lines stay one paragraph, see <https://forge.dev>.",
+			),
+		);
+		git(cwd, "add", "-A");
+		git(cwd, "commit", "--quiet", "-m", "fix: stop the yarn hang (#57)");
+
+		git(cwd, "mv", ".tegami/2026-10-01-draft.md", ".tegami/2026-10-01-yarn.md");
+		git(cwd, "commit", "--quiet", "-m", "chore: rename the change file");
+
+		const result = tegami(cwd, "version");
+		assert.equal(result.status, 0, result.output);
+
+		assert.match(
+			readFileSync(join(cwd, "packages/cli/CHANGELOG.md"), "utf8"),
+			/\*\*Yarn installs finish\*\* \(\[#57\]\(https:\/\/github\.com\/ryuudotgg\/forge\/pull\/57\)\)\\\n {2}Wrapped lines stay one paragraph, see <https:\/\/forge\.dev>\.\n/,
+		);
+	});
 });
 
 const valid = "### 🐛 Yarn installs finish";
@@ -188,6 +214,11 @@ const refusals: [string, string, string][] = [
 		"a second paragraph",
 		".tegami/2026-10-01-paragraphs.md",
 		changeFile(valid, "First paragraph.\n\nSecond paragraph."),
+	],
+	[
+		"HTML after the first line",
+		".tegami/2026-10-01-html.md",
+		changeFile(valid, 'First line.\n<img src="x.png">'),
 	],
 ];
 
