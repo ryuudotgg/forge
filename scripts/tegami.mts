@@ -7,6 +7,7 @@ import type {
 	PackageGraph,
 	TegamiContext,
 	TegamiPlugin,
+	WorkspacePackage,
 } from "tegami";
 import { tegami } from "tegami";
 import { runCli } from "tegami/cli";
@@ -118,6 +119,7 @@ function parseChangeFile(filename: string, content: string) {
 		.replace(/^(?:[ \t]*\r?\n)+/, "")
 		.trimEnd()
 		.split(/\r?\n/);
+
 	const [opening] = body;
 	if (!opening) throw invalid(filename, "has no body under its heading");
 
@@ -239,6 +241,10 @@ function forge(): TegamiPlugin {
 					packagePlan.git = { ...packagePlan.git, tag: `v${pkg.version}` };
 			}
 		},
+		afterPreflight({ plan }) {
+			for (const pkg of plan.getPackagesToPublish())
+				changelogSection(this, pkg);
+		},
 		initCliDraft(draft) {
 			readNotes(this, draft);
 
@@ -268,6 +274,31 @@ function forge(): TegamiPlugin {
 	};
 }
 
+function changelogSection(
+	{ cwd }: TegamiContext,
+	{ name, path, version }: WorkspacePackage,
+) {
+	const file = join(path, "CHANGELOG.md");
+	const lines = existsSync(file)
+		? readFileSync(file, "utf8").split(/\r?\n/)
+		: [];
+
+	const start = lines.indexOf(`## ${version}`);
+	if (start === -1)
+		throw new Error(
+			`Missing Changelog Section: ${name}@${version} has no ## ${version} in ${relative(cwd, file)}`,
+		);
+
+	const end = lines.findIndex(
+		(line, index) => index > start && line.startsWith("## "),
+	);
+
+	return lines
+		.slice(start + 1, end === -1 ? undefined : end)
+		.join("\n")
+		.trim();
+}
+
 function releaseTitle(graph: PackageGraph) {
 	return `chore: release ${graph.getByName("@ryuugg/forge")[0]?.version}`;
 }
@@ -281,6 +312,11 @@ const paper = tegami({
 	plugins: [
 		github({
 			repo: "ryuudotgg/forge",
+			release: {
+				create({ pkg }) {
+					return { notes: changelogSection(this, pkg) };
+				},
+			},
 			versionPr: {
 				create() {
 					return { title: releaseTitle(this.graph) };

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
@@ -14,8 +21,18 @@ const env = Object.fromEntries(
 	),
 );
 
-function run(cwd: string, command: string, args: string[]) {
-	const result = spawnSync(command, args, { cwd, encoding: "utf8", env });
+function run(
+	cwd: string,
+	command: string,
+	args: string[],
+	extraEnv: Record<string, string> = {},
+) {
+	const result = spawnSync(command, args, {
+		cwd,
+		encoding: "utf8",
+		env: { ...env, ...extraEnv },
+	});
+
 	return {
 		output: `${result.stdout}${result.stderr}`,
 		status: result.status,
@@ -151,6 +168,7 @@ describe("tegami version", () => {
 				"Wrapped lines stay one paragraph, see <https://forge.dev>.",
 			),
 		);
+
 		git(cwd, "add", "-A");
 		git(cwd, "commit", "--quiet", "-m", "fix: stop the yarn hang (#57)");
 
@@ -236,4 +254,183 @@ describe("tegami refuses a change file outside the format", () => {
 					result.output,
 				);
 			});
+});
+
+const fakeFetch = `import { appendFileSync } from "node:fs";
+
+globalThis.fetch = async (input, init = {}) => {
+	const url = new URL(String(input));
+	const method = init.method ?? "GET";
+	const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
+	appendFileSync(process.env.FORGE_TEST_REQUESTS, \`\${JSON.stringify({ method, url: url.href, body })}\\n\`);
+
+	if (url.host === "registry.npmjs.org") return new Response(null, { status: 404 });
+	if (url.pathname.startsWith("/repos/ryuudotgg/forge/releases/tags/")) return new Response(null, { status: 404 });
+	if (method === "POST" && url.pathname === "/repos/ryuudotgg/forge/releases") return Response.json({ id: 1 }, { status: 201 });
+
+	return new Response(\`Unexpected Request: \${method} \${url.href}\`, { status: 500 });
+};
+`;
+
+interface SentRequest {
+	method: string;
+	url: string;
+	body?: { name?: string; body?: string; prerelease?: boolean };
+}
+
+function publish(cwd: string) {
+	const sandbox = mkdtempSync(join(tmpdir(), "forge-tegami-publish-"));
+	const origin = join(sandbox, "origin.git");
+	const requests = join(sandbox, "requests.jsonl");
+
+	write(sandbox, "fetch.mjs", fakeFetch);
+	write(sandbox, "bin/pnpm", "#!/bin/sh\nexit 0\n");
+	chmodSync(join(sandbox, "bin/pnpm"), 0o755);
+
+	git(sandbox, "init", "--quiet", "--bare", origin);
+	git(cwd, "remote", "add", "origin", origin);
+	git(
+		cwd,
+		"config",
+		`url.${origin}.insteadOf`,
+		"https://x-access-token:fake@github.com/ryuudotgg/forge.git",
+	);
+
+	const result = run(
+		cwd,
+		process.execPath,
+		["--import", join(sandbox, "fetch.mjs"), script, "publish"],
+		{
+			CI: "true",
+			FORGE_TEST_REQUESTS: requests,
+			GITHUB_TOKEN: "fake",
+			PATH: `${join(sandbox, "bin")}:${process.env.PATH}`,
+		},
+	);
+
+	const sent: SentRequest[] = existsSync(requests)
+		? readFileSync(requests, "utf8")
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line))
+		: [];
+
+	return { ...result, sent };
+}
+
+function releases(sent: SentRequest[]) {
+	return sent.filter(
+		({ method, url }) =>
+			method === "POST" &&
+			url === "https://api.github.com/repos/ryuudotgg/forge/releases",
+	);
+}
+
+function versioned() {
+	const cwd = fixtureRepo();
+
+	write(
+		cwd,
+		".tegami/2026-10-01-yarn-hang.md",
+		changeFile(
+			"### 🐛 Yarn installs finish",
+			"`forge create` no longer hangs when Yarn asks for a linker.",
+		),
+	);
+
+	git(cwd, "add", "-A");
+	git(cwd, "commit", "--quiet", "-m", "fix: stop the yarn hang (#57)");
+
+	const result = tegami(cwd, "version");
+	assert.equal(result.status, 0, result.output);
+
+	git(cwd, "add", "-A");
+	git(cwd, "commit", "--quiet", "-m", "chore: release");
+
+	return cwd;
+}
+
+describe("tegami publish", () => {
+	test("creates the GitHub release from the changelog section", () => {
+		const cwd = versioned();
+		const section = readFileSync(
+			join(cwd, "packages/cli/CHANGELOG.md"),
+			"utf8",
+		);
+
+		write(
+			cwd,
+			"packages/cli/CHANGELOG.md",
+			`${section}\n## 0.0.0\n\nOlder notes.\n`,
+		);
+
+		git(cwd, "commit", "--quiet", "-am", "chore: keep older notes");
+
+		const result = publish(cwd);
+		assert.equal(result.status, 0, result.output);
+
+		const [release, ...rest] = releases(result.sent);
+		assert.ok(release, JSON.stringify(result.sent));
+		assert.deepEqual(rest, []);
+
+		assert.equal(
+			release.body?.body,
+			section.replace(/^## 0\.0\.1\n/, "").trim(),
+		);
+
+		assert.equal(release.body?.name, "@ryuugg/forge@0.0.1");
+		assert.equal(release.body?.prerelease, false);
+	});
+
+	test("marks a prerelease version as a prerelease", () => {
+		const cwd = versioned();
+		const manifest = join(cwd, "packages/cli/package.json");
+		const changelog = join(cwd, "packages/cli/CHANGELOG.md");
+
+		write(
+			cwd,
+			"packages/cli/package.json",
+			readFileSync(manifest, "utf8").replace("0.0.1", "0.1.0-beta.0"),
+		);
+
+		write(
+			cwd,
+			"packages/cli/CHANGELOG.md",
+			readFileSync(changelog, "utf8").replace("## 0.0.1", "## 0.1.0-beta.0"),
+		);
+
+		git(cwd, "commit", "--quiet", "-am", "chore: enter beta");
+
+		const result = publish(cwd);
+		assert.equal(result.status, 0, result.output);
+
+		const [release] = releases(result.sent);
+		assert.ok(release, JSON.stringify(result.sent));
+		assert.equal(release.body?.name, "@ryuugg/forge@0.1.0-beta.0");
+		assert.equal(release.body?.prerelease, true);
+		assert.equal(
+			release.body?.body,
+			readFileSync(changelog, "utf8")
+				.replace(/^## 0\.1\.0-beta\.0\n/, "")
+				.trim(),
+		);
+	});
+
+	test("refuses a version with no changelog section before any request", () => {
+		const cwd = versioned();
+
+		write(cwd, "packages/cli/CHANGELOG.md", "## 0.0.0\n\nOlder notes.\n");
+		git(cwd, "commit", "--quiet", "-am", "chore: drop the section");
+
+		const result = publish(cwd);
+		assert.notEqual(result.status, 0, result.output);
+		assert.ok(
+			result.output.includes(
+				"Missing Changelog Section: @ryuugg/forge@0.0.1 has no ## 0.0.1",
+			),
+			result.output,
+		);
+
+		assert.deepEqual(result.sent, []);
+	});
 });
