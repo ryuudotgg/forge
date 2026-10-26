@@ -210,7 +210,10 @@ describe("starter files", () => {
 				);
 
 				expect(await readFile(path, "utf-8")).toBe("mine\n");
-				expect(edited.released).toEqual([starter]);
+				expect(edited.released).toEqual([
+					{ paths: [starter], heldBy: [starter] },
+				]);
+
 				expect(await lockArtifact(directory, starterId)).toEqual({
 					definitionIds: ["email"],
 					hash: await hashContent("v2\n"),
@@ -264,7 +267,10 @@ describe("starter files", () => {
 				await planOf([starterFile("v1\n")]),
 			);
 
-			expect(result.released).toEqual([starter]);
+			expect(result.released).toEqual([
+				{ paths: [starter], heldBy: [starter] },
+			]);
+
 			expect((await lockArtifact(directory, starterId))?.hash).toBe(
 				await hashContent("v1\n"),
 			);
@@ -301,7 +307,10 @@ describe("starter files", () => {
 
 			expect(await readFile(join(directory, starter), "utf-8")).toBe("mine\n");
 
-			expect(result.released).toEqual([starter]);
+			expect(result.released).toEqual([
+				{ paths: [starter], heldBy: [starter] },
+			]);
+
 			expect((await lockArtifact(directory, starterId))?.hash).toBe(
 				await hashContent("v1\n"),
 			);
@@ -413,7 +422,10 @@ describe("starter files", () => {
 
 			expect(await readFile(join(directory, starter), "utf-8")).toBe("mine\n");
 
-			expect(result.released).toEqual([starter]);
+			expect(result.released).toEqual([
+				{ paths: [starter], heldBy: [starter] },
+			]);
+
 			expect((await lockArtifact(directory, starterId))?.owner).toBe("user");
 		});
 	});

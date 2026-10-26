@@ -42,6 +42,7 @@ import {
 	Subprocess,
 	selectedModuleTarget,
 	slotPath,
+	starterGroup,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceText,
@@ -3845,6 +3846,94 @@ describe("planner", () => {
 				expect(plannedRoots(added)).toEqual(["apps/server", "apps/web"]);
 			});
 		});
+
+		it.each([false, true])(
+			"keys a starter group by module and definition, refusing a file in two groups: %s",
+			async (duplicated) => {
+				await withTempDir("planner-starter-group", async (directory) => {
+					const layout = leafTextFile(
+						ensuredModuleTarget("web"),
+						"src/layout.tsx",
+						"l\n",
+					);
+
+					const template = defineTemplate<TestConfig>({
+						id: "nextjs/base",
+						framework: "nextjs",
+						name: "Base",
+						version: 1,
+						category: "web",
+						when: () => true,
+						contribute: () => [
+							ensureAppModule("web", "apps/web", {
+								framework: "nextjs",
+								template: { id: "nextjs/base", version: 1 },
+								slots: {},
+							}),
+							...starterGroup("design", {
+								members: [
+									layout,
+									leafTextFile(
+										ensuredModuleTarget("web"),
+										"src/page.tsx",
+										"p\n",
+									),
+								],
+								companions: [
+									leafTextFile(
+										ensuredModuleTarget("web"),
+										"src/page.test.ts",
+										"t\n",
+									),
+								],
+							}),
+							...(duplicated
+								? starterGroup("other", { members: [layout] })
+								: []),
+						],
+					});
+
+					const registry = defineRegistry({
+						addons: [],
+						frameworks: lifecycleRegistry().frameworks,
+						templates: [template],
+					});
+
+					const created = await Effect.runPromise(
+						Effect.exit(
+							planCreateEffect(directory, { web: "nextjs" }, registry),
+						),
+					);
+
+					if (duplicated) {
+						expect(
+							Exit.isFailure(created) && Cause.squash(created.cause),
+						).toMatchObject({ reason: "leaf-file-conflict" });
+
+						return;
+					}
+
+					if (Exit.isFailure(created)) throw Cause.squash(created.cause);
+
+					const groups = Object.fromEntries(
+						created.value.writes.flatMap((write) =>
+							write.group === undefined ? [] : [[write.path, write.group]],
+						),
+					);
+
+					const key = groups["apps/web/src/layout.tsx"]?.key;
+
+					expect(key).toMatch(
+						/^group:\["module:[^"]+","nextjs\/base","design"\]$/,
+					);
+					expect(groups).toEqual({
+						"apps/web/src/layout.tsx": { key, companion: false },
+						"apps/web/src/page.tsx": { key, companion: false },
+						"apps/web/src/page.test.ts": { key, companion: true },
+					});
+				});
+			},
+		);
 
 		it("threads removed roots and preserved leaf files into the plan", async () => {
 			await withTempDir("planner-removed-roots", async (directory) => {

@@ -4,10 +4,17 @@ import { customTemplates } from "./custom";
 __IMPORTS__
 const modules = __MODULES__;
 
-type TemplateProps = {
+type ForgeTemplateProps = __PROPS__;
+
+type ModuleProps = {
   [Name in keyof typeof modules]: Parameters<
     (typeof modules)[Name]["default"]
   >[0];
+};
+
+type TemplateProps = Omit<ModuleProps, keyof ForgeTemplateProps> & {
+  [Name in keyof ForgeTemplateProps & keyof ModuleProps]: ModuleProps[Name] &
+    ForgeTemplateProps[Name];
 };
 
 type TemplateName = keyof TemplateProps;

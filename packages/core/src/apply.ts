@@ -8,7 +8,7 @@ import {
 	sep,
 } from "node:path";
 import { Context, Effect, FileSystem, Layer, Result, Schema } from "effect";
-import type { FileUpdate } from "./authoring";
+import type { FileUpdate, PlannedStarterGroup } from "./authoring";
 import { CliVersion } from "./cli-version";
 import { ModuleIdSchema } from "./config";
 import { unifiedDiff } from "./diff";
@@ -56,6 +56,7 @@ export interface PlannedWrite {
 	readonly content: string;
 	readonly path: string;
 	readonly update?: FileUpdate;
+	readonly group?: PlannedStarterGroup;
 }
 
 export interface ApplyPlan {
@@ -71,10 +72,15 @@ export interface ApplyPlan {
 }
 
 export interface ApplyResult {
-	readonly released: ReadonlyArray<string>;
+	readonly released: ReadonlyArray<StarterRelease>;
 	readonly retained: ReadonlyArray<string>;
 	readonly declined: ReadonlyArray<DeclinedChange>;
 	readonly dropped: ReadonlyArray<DroppedEdit>;
+}
+
+export interface StarterRelease {
+	readonly paths: ReadonlyArray<string>;
+	readonly heldBy: ReadonlyArray<string>;
 }
 
 export interface DroppedEdit {
@@ -279,12 +285,38 @@ function descriptorMatchesArtifact(artifact: LockfileArtifact): boolean {
 				artifact.base.mergeKind === "yaml";
 }
 
+interface ResolvedWrite {
+	readonly plannedFile: PlannedWrite;
+	readonly file: PlannedWrite;
+	readonly exists: boolean;
+	readonly current:
+		| { readonly content: string; readonly hash: string }
+		| undefined;
+	readonly nextHash: string;
+	readonly previousArtifact: LockfileArtifact | undefined;
+	readonly managedArtifact: LockfileArtifact | undefined;
+	readonly nextArtifact: LockfileArtifact | undefined;
+	readonly starter:
+		| {
+				readonly artifactId: string;
+				readonly groupKey: string;
+				readonly nextArtifact: LockfileArtifact;
+		  }
+		| undefined;
+}
+
+interface StarterGroupState {
+	readonly grouped: boolean;
+	readonly paths: Array<string>;
+	readonly heldBy: Array<string>;
+	released: boolean;
+}
+
 function lastRender(
 	artifact: LockfileArtifact | undefined,
 ): string | undefined {
 	if (artifact === undefined) return undefined;
 	if (artifact.base === undefined) return artifact.hash;
-
 	return artifact.base.origin === "adopted" ? undefined : artifact.base.hash;
 }
 
@@ -962,7 +994,7 @@ const makeApply = Effect.gen(function* () {
 		const writesToApply: PreflightPhaseContract["result"]["writes"] = [];
 		const removalsToApply: PreflightPhaseContract["result"]["removals"] = [];
 		const retained: Array<string> = [];
-		const released: Array<string> = [];
+		const released: Array<StarterRelease> = [];
 		const declined: DeclinedChange[] = [];
 		const dropped: DroppedEdit[] = [];
 		const recordDeclined = (path: string, before: string, after: string) => {
@@ -1346,6 +1378,7 @@ const makeApply = Effect.gen(function* () {
 		const policyReadHashes: PreflightPhaseContract["result"]["policyReadHashes"] =
 			new Map();
 
+		const resolvedWrites: Array<ResolvedWrite> = [];
 		for (const plannedFile of plan.writes) {
 			const file: PlannedWrite = {
 				...plannedFile,
@@ -1353,20 +1386,14 @@ const makeApply = Effect.gen(function* () {
 			};
 
 			const fullPath = yield* ensureContained(projectRoot, file.path);
-			if (!(yield* pathExists(fullPath, file.path))) {
-				writesToApply.push(file);
-				continue;
-			}
-
-			if (isUserOwnedEnv(file.path)) continue;
-
-			const currentContent = yield* readFile(fullPath, file.path);
-
-			const currentHash = yield* hashContent(currentContent);
-			const nextHash = yield* hashContent(file.content);
-
-			const filePolicy = policyFor(file.path);
-			const fileResolution = resolutionFor(file.path);
+			const exists = yield* pathExists(fullPath, file.path);
+			const current =
+				!exists || isUserOwnedEnv(file.path)
+					? undefined
+					: yield* Effect.gen(function* () {
+							const content = yield* readFile(fullPath, file.path);
+							return { content, hash: yield* hashContent(content) };
+						});
 
 			const indexedArtifact = previousArtifacts.get(plannedFile.path);
 			const artifactPath = artifactFilePath(file.artifactId ?? "");
@@ -1401,6 +1428,108 @@ const makeApply = Effect.gen(function* () {
 				(artifactById === undefined
 					? undefined
 					: { ...artifactById, path: file.path });
+
+			const nextHash = yield* hashContent(file.content);
+
+			resolvedWrites.push({
+				plannedFile,
+				file,
+				exists,
+				current,
+				nextHash,
+				previousArtifact,
+				managedArtifact,
+				nextArtifact,
+				starter:
+					file.update !== "starter" ||
+					file.artifactId === undefined ||
+					nextArtifact === undefined
+						? undefined
+						: {
+								artifactId: file.artifactId,
+								groupKey: file.group?.key ?? file.artifactId,
+								nextArtifact,
+							},
+			});
+		}
+
+		const starterGroups = new Map<string, StarterGroupState>();
+		for (const write of resolvedWrites) {
+			if (write.starter === undefined || write.current === undefined) continue;
+
+			const group = starterGroups.get(write.starter.groupKey) ?? {
+				grouped: write.file.group !== undefined,
+				paths: [],
+				heldBy: [],
+				released: false,
+			};
+
+			const path = relocatePath(write.file.path, pendingChanges);
+			group.paths.push(path);
+			if (
+				write.managedArtifact?.owner === "user" ||
+				(write.current.hash !== write.nextHash &&
+					write.current.hash !== lastRender(write.managedArtifact))
+			)
+				group.heldBy.push(path);
+
+			starterGroups.set(write.starter.groupKey, group);
+		}
+
+		const heldGroup = (write: ResolvedWrite) => {
+			if (write.starter === undefined) return undefined;
+			const group = starterGroups.get(write.starter.groupKey);
+			return group !== undefined && group.heldBy.length > 0 ? group : undefined;
+		};
+
+		for (const write of resolvedWrites) {
+			const {
+				plannedFile,
+				file,
+				nextHash,
+				previousArtifact,
+				managedArtifact,
+				nextArtifact,
+				starter,
+			} = write;
+
+			const held = heldGroup(write);
+			if (!write.exists) {
+				if (starter === undefined || held === undefined) {
+					writesToApply.push(file);
+					continue;
+				}
+
+				if (managedArtifact !== undefined) {
+					committedArtifacts[starter.artifactId] = {
+						...starter.nextArtifact,
+						hash: lastRender(managedArtifact) ?? nextHash,
+						owner: "user",
+					};
+
+					continue;
+				}
+
+				if (file.group?.companion === true) {
+					delete committedArtifacts[starter.artifactId];
+					continue;
+				}
+
+				writesToApply.push(file);
+				committedArtifacts[starter.artifactId] = {
+					...starter.nextArtifact,
+					owner: "user",
+				};
+
+				continue;
+			}
+
+			if (write.current === undefined) continue;
+
+			const { content: currentContent, hash: currentHash } = write.current;
+
+			const filePolicy = policyFor(file.path);
+			const fileResolution = resolutionFor(file.path);
 
 			if (
 				managedArtifact?.owner === "user" &&
@@ -1448,24 +1577,19 @@ const makeApply = Effect.gen(function* () {
 				continue;
 			}
 
-			if (
-				file.update === "starter" &&
-				file.artifactId !== undefined &&
-				nextArtifact !== undefined
-			) {
-				const render = lastRender(managedArtifact);
-				if (currentHash === nextHash || currentHash === render) {
+			if (starter !== undefined) {
+				if (held === undefined) {
 					if (currentHash !== nextHash) writesToApply.push(file);
 					continue;
 				}
 
-				committedArtifacts[file.artifactId] = {
-					...nextArtifact,
-					hash: render ?? nextHash,
+				committedArtifacts[starter.artifactId] = {
+					...starter.nextArtifact,
+					hash: lastRender(managedArtifact) ?? nextHash,
 					owner: "user",
 				};
 
-				released.push(relocatePath(file.path, pendingChanges));
+				held.released = true;
 
 				continue;
 			}
@@ -1856,6 +1980,20 @@ const makeApply = Effect.gen(function* () {
 					};
 			}
 		}
+
+		const ungrouped = [...starterGroups.values()].flatMap((group) =>
+			group.released && !group.grouped ? group.paths : [],
+		);
+
+		if (ungrouped.length > 0)
+			released.push({ paths: ungrouped.sort(), heldBy: [...ungrouped] });
+
+		for (const group of starterGroups.values())
+			if (group.released && group.grouped)
+				released.push({
+					paths: group.paths.sort(),
+					heldBy: group.heldBy.sort(),
+				});
 
 		for (const label of requestedResolutions.keys())
 			if (!consumedResolutionLabels.has(label))
@@ -2402,7 +2540,9 @@ const makeApply = Effect.gen(function* () {
 		}
 
 		return {
-			released: released.sort(),
+			released: released.sort((left, right) =>
+				String(left.paths).localeCompare(String(right.paths)),
+			),
 			retained: retained.sort(),
 			dropped: dropped.sort((left, right) =>
 				left.path.localeCompare(right.path),

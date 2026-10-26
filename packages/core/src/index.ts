@@ -13,6 +13,7 @@ export type {
 	PlannedWrite,
 	ResolutionFlag,
 	ResolutionPolicy,
+	StarterRelease,
 } from "./apply";
 export {
 	Apply,
@@ -53,6 +54,7 @@ export type {
 	PackageManagedSurfaceName,
 	PackageSlotName,
 	PackageSurfaceName,
+	PlannedStarterGroup,
 	ProjectSurfaceName,
 	ProjectTarget,
 	ReadTemplate,
@@ -65,6 +67,7 @@ export type {
 	SlotAssetDefinition,
 	SlotPath,
 	SourceRootDestination,
+	StarterGroup,
 	TargetMode,
 	TemplateAssetDefinition,
 	TemplateAssetDestination,
@@ -109,6 +112,7 @@ export {
 	sharedAsset,
 	slotAsset,
 	slotPath,
+	starterGroup,
 	surfaceDependencies,
 	surfaceJson,
 	surfaceLines,

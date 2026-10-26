@@ -20,6 +20,7 @@ import {
 	packageManagerCommand,
 	readPersistedCommandVersions,
 	runtimeCommand,
+	type StarterRelease,
 	State,
 	StateError,
 	Subprocess,
@@ -176,11 +177,16 @@ function declinedLine(change: DeclinedChange): string {
 		: `${counts} Run "cat ${shellPath(change.diffPath)}" to see them.`;
 }
 
+function releasedLine(release: StarterRelease): string {
+	const files = `Forge will leave ${listAnd.format(release.paths)} alone from now on`;
+	if (release.heldBy.length === release.paths.length)
+		return `${files}, since ${release.paths.length === 1 ? "it has" : "they have"} your changes.`;
+
+	return `${files}, since they work together and ${listAnd.format(release.heldBy)} ${release.heldBy.length === 1 ? "has" : "have"} your changes.`;
+}
+
 function reportApplied(result: ApplyResult): ApplyResult {
-	if (result.released.length > 0)
-		log.info(
-			`Forge will leave ${listAnd.format(result.released)} alone from now on, since ${result.released.length === 1 ? "it has" : "they have"} your changes.`,
-		);
+	for (const release of result.released) log.info(releasedLine(release));
 
 	if (result.declined.length === 0) return result;
 
@@ -556,6 +562,7 @@ export async function applyInstalledPlan(
 				content: write.content,
 				path: write.path,
 				...(write.update === undefined ? {} : { update: write.update }),
+				...(write.group === undefined ? {} : { group: write.group }),
 			})),
 		},
 		options,
