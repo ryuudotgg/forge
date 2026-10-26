@@ -284,6 +284,9 @@ importers:
       '@biomejs/biome':
         specifier: catalog:lint
         version: 2.6.3
+      '@clack/prompts':
+        specifier: catalog:node
+        version: 1.8.1
       '@commitlint/cli':
         specifier: catalog:lint
         version: 21.2.4(conventional-commits-parser@7.1.3)(typescript@7.0.2)
