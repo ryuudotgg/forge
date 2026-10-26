@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
 	chmodSync,
 	existsSync,
@@ -278,6 +278,39 @@ function changeFiles(cwd: string) {
 	return existsSync(dir) ? readdirSync(dir).toSorted() : [];
 }
 
+function inTerminal(cwd: string, args: string[], replies: [string, string][]) {
+	const quote = (arg: string) => `'${arg.replaceAll("'", "'\\''")}'`;
+	const command = `stty cols 120 rows 40; ${[process.execPath, script, ...args].map(quote).join(" ")}; echo "<exit $?>"`;
+
+	const terminal =
+		process.platform === "darwin"
+			? `script -q /dev/null sh -c ${quote(command)}`
+			: `script -qfec ${quote(command)} /dev/null`;
+
+	const child = spawn("sh", ["-c", `cat | ${terminal}`], { cwd, env });
+
+	let output = "";
+	let next = 0;
+
+	child.stdout.on("data", (chunk: Buffer) => {
+		output += chunk.toString();
+
+		const reply = replies[next];
+		if (reply && output.includes(reply[0])) {
+			next++;
+			child.stdin.write(reply[1]);
+		}
+
+		if (/<exit \d+>/.test(output)) child.stdin.end();
+	});
+
+	return new Promise<{ output: string; status: number }>((resolve) =>
+		child.on("close", () =>
+			resolve({ output, status: Number(/<exit (\d+)>/.exec(output)?.[1]) }),
+		),
+	);
+}
+
 describe("tegami note", () => {
 	const today = () => new Date().toISOString().slice(0, 10);
 
@@ -348,6 +381,53 @@ describe("tegami note", () => {
 
 			assert.deepEqual(changeFiles(cwd), []);
 		});
+
+	test("asks a terminal only for what the flags left out", {
+		timeout: 30_000,
+	}, async () => {
+		const cwd = fixtureRepo();
+
+		const result = await inTerminal(
+			cwd,
+			["note", "--category", "new", "--bump", "minor"],
+			[
+				["What is the title of the change?", "Yarn linker choice\r"],
+				[
+					"Describe the change in one plain paragraph.",
+					"Asks for the linker.\r",
+				],
+			],
+		);
+
+		assert.equal(result.status, 0, result.output);
+		assert.doesNotMatch(result.output, /Which category|Which bump/);
+		assert.equal(
+			readFileSync(join(cwd, ".tegami", changeFiles(cwd)[0] ?? ""), "utf8"),
+			changeFile("### ✨ Yarn linker choice", "Asks for the linker.").replace(
+				"patch",
+				"minor",
+			),
+		);
+	});
+
+	test("writes nothing when a terminal prompt is cancelled", {
+		timeout: 30_000,
+	}, async () => {
+		const cwd = fixtureRepo();
+
+		const result = await inTerminal(
+			cwd,
+			["note", "--category", "fixed", "--bump", "patch"],
+			[
+				["What is the title of the change?", "Yarn linker\r"],
+				["Describe the change in one plain paragraph.", "\x03"],
+			],
+		);
+
+		assert.notEqual(result.status, 0, result.output);
+		assert.match(result.output, /Note Cancelled: no change file written/);
+		assert.deepEqual(changeFiles(cwd), []);
+	});
 
 	test("asks for nothing and names the missing flags without a terminal", () => {
 		const cwd = fixtureRepo();
