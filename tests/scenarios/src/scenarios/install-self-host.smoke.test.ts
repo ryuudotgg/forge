@@ -89,7 +89,7 @@ export async function GET() {
 				[
 					"AUTH_SECRET",
 					"DATABASE_URL",
-					"createRouterClient",
+					"globalThis.$client=",
 					"getSession",
 					"@libsql",
 				],
@@ -99,6 +99,7 @@ export async function GET() {
 				web: "nextjs",
 				rpc: "orpc",
 			});
+
 			await expectOtpSendTiming(workspace.projectRoot, "nextjs");
 		});
 	}, 600_000);
@@ -129,6 +130,7 @@ export async function GET() {
 			const { web, rpc, orm, secondary } = cell;
 			const otpTiming =
 				web === "tanstack-start" && rpc === "orpc" && !secondary;
+
 			await withScenarioWorkspace(
 				`smoke-${rpc}-self-${web}-${orm}`,
 				async (workspace) => {
@@ -174,6 +176,7 @@ export async function GET() {
 								}
 							: {}),
 					});
+
 					if (otpTiming)
 						await expectOtpSendTiming(workspace.projectRoot, "tanstack-start");
 				},
