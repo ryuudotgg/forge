@@ -55,6 +55,7 @@ pnpm dev
 - `pnpm clean:workspaces` - Clean **ALL** Dependencies and Build Artifacts
 - `pnpm dev` - Start a Development Server
 - `pnpm start` - Start Apps in Production
+- `pnpm tegami note` - Write a Change File
 - `pnpm tegami version --dry-run` - Preview the Next Release
 - `pnpm test` - Run Tests
 - `pnpm test:unit` - Run Package Unit Tests
@@ -145,8 +146,21 @@ including uncommitted changes (diffed against the merge base with
 
 A pull request that changes something a user of the CLI or the published
 packages would notice adds one change file under `.tegami/`. Tests, CI and
-refactors need none. Name it after the day and the change, the topic in
-lowercase words joined by hyphens, such as `.tegami/2026-10-03-yarn-linker.md`:
+refactors need none. Write it with `pnpm tegami note`, not Tegami's own
+`pnpm tegami` draft, which does not follow this format. In a terminal it asks
+for the category, the title, the bump and the body. Without one, pass all four
+as flags:
+
+```bash
+pnpm tegami note --category new --title "Yarn linker choice" --bump minor \
+  --body "\`forge create\` asks which Yarn linker to use and writes it to \`.yarnrc.yml\`."
+```
+
+The category is `heads-up`, `new`, `improved` or `fixed`. The command names
+the file after the UTC day and the title, the topic in lowercase words joined
+by hyphens, such as `.tegami/2026-10-03-yarn-linker-choice.md`, and refuses
+anything the version run would refuse before writing it. The file it writes
+looks like this:
 
 ```markdown
 ---

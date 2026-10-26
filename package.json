@@ -19,6 +19,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "catalog:lint",
+		"@clack/prompts": "catalog:node",
 		"@commitlint/cli": "catalog:lint",
 		"@commitlint/config-conventional": "catalog:lint",
 		"@commitlint/types": "catalog:lint",

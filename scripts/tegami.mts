@@ -1,7 +1,15 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { join, relative } from "node:path";
+import { select, text } from "@clack/prompts";
 import type {
+	BumpType,
 	Draft,
 	LogGenerator,
 	PackageGraph,
@@ -69,8 +77,19 @@ function categoryPrefix(emoji: string) {
 	return new RegExp(`^${emoji}\\uFE0F?(?:[ \\t]+|$)`, "u");
 }
 
-function invalid(filename: string, problem: string) {
-	return new Error(`Invalid Change File: .tegami/${filename} ${problem}`);
+type Fail = (problem: string) => never;
+
+function invalid(filename: string): Fail {
+	return (problem) => {
+		throw new Error(`Invalid Change File: .tegami/${filename} ${problem}`);
+	};
+}
+
+function topic(text: string) {
+	return text
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-|-$/g, "");
 }
 
 function isCalendarDate(date: string) {
@@ -80,23 +99,27 @@ function isCalendarDate(date: string) {
 	);
 }
 
-function parseChangeFile(filename: string, content: string) {
+function checkName(filename: string, fail: Fail) {
 	const date = changeFileName.exec(filename)?.[1];
 	if (!date || !isCalendarDate(date))
-		throw invalid(
-			filename,
-			"is not named <YYYY-MM-DD>-<lowercase-hyphenated-topic>.md",
-		);
+		fail("is not named <YYYY-MM-DD>-<lowercase-hyphenated-topic>.md");
+}
 
+function parseChangeFile(filename: string, content: string) {
+	const fail = invalid(filename);
+	checkName(filename, fail);
+	return parseEntry(content, fail);
+}
+
+function parseEntry(content: string, fail: Fail) {
 	const [first = "", ...rest] = content
 		.replace(frontmatter, "")
 		.trim()
 		.split(/\r?\n/);
 
 	const match = heading.exec(first);
-	if (!match) throw invalid(filename, "does not open with a ### heading");
-	if (match[1] !== "###")
-		throw invalid(filename, `opens with a ${match[1]} heading, not ###`);
+	if (!match) return fail("does not open with a ### heading");
+	if (match[1] !== "###") fail(`opens with a ${match[1]} heading, not ###`);
 
 	const text = (match[2] ?? "").replace(/[ \t]+#+[ \t]*$/, "");
 	const category = categories.find(({ emoji }) =>
@@ -104,15 +127,11 @@ function parseChangeFile(filename: string, content: string) {
 	);
 
 	if (!category)
-		throw invalid(
-			filename,
-			`has a heading that does not start with ${emojiList}`,
-		);
+		return fail(`has a heading that does not start with ${emojiList}`);
 
 	const title = text.replace(categoryPrefix(category.emoji), "").trim();
-	if (!title) throw invalid(filename, "has a heading with no title");
-	if (title.includes("*"))
-		throw invalid(filename, "has an asterisk in its title");
+	if (!title) fail("has a heading with no title");
+	if (title.includes("*")) fail("has an asterisk in its title");
 
 	const body = rest
 		.join("\n")
@@ -121,20 +140,137 @@ function parseChangeFile(filename: string, content: string) {
 		.split(/\r?\n/);
 
 	const [opening] = body;
-	if (!opening) throw invalid(filename, "has no body under its heading");
+	if (!opening) return fail("has no body under its heading");
 
 	for (const [pattern, problem] of blockOpenings)
-		if (pattern.test(opening)) throw invalid(filename, problem);
+		if (pattern.test(opening)) fail(problem);
 
 	for (const [pattern, problem] of paragraphBreaks)
-		if (body.some((line) => pattern.test(line)))
-			throw invalid(filename, problem);
+		if (body.some((line) => pattern.test(line))) fail(problem);
 
 	return {
 		body: body.map((line) => line.trim()).join(" "),
 		category,
 		title,
 	};
+}
+
+const bumps: BumpType[] = ["patch", "minor", "major"];
+
+function choiceList(choices: string[]) {
+	return new Intl.ListFormat("en", { type: "disjunction" }).format(choices);
+}
+
+const categoryFlags = choiceList(categories.map(({ label }) => topic(label)));
+
+interface NoteAnswers {
+	category?: string;
+	title?: string;
+	bump?: string;
+	body?: string;
+}
+
+function answered(value: string | symbol) {
+	if (typeof value === "symbol")
+		throw new Error("Note Cancelled: no change file written");
+
+	return value;
+}
+
+async function askMissing(answers: NoteAnswers): Promise<NoteAnswers> {
+	const missing = Object.entries({
+		category: answers.category,
+		title: answers.title,
+		bump: answers.bump,
+		body: answers.body,
+	}).flatMap(([name, value]) => (value === undefined ? [`--${name}`] : []));
+
+	if (missing.length === 0) return answers;
+
+	if (!process.stdin.isTTY)
+		throw new Error(
+			`Missing Note Flags: ${new Intl.ListFormat("en").format(missing)}, since there is no terminal to ask in`,
+		);
+
+	const category =
+		answers.category ??
+		answered(
+			await select({
+				message: "Which category is the change?",
+				options: categories.map(({ emoji, label }) => ({
+					value: topic(label),
+					label: `${emoji} ${label}`,
+				})),
+			}),
+		);
+
+	const title =
+		answers.title ??
+		answered(await text({ message: "What is the title of the change?" }));
+
+	const bump =
+		answers.bump ??
+		answered(
+			await select({
+				message: "Which bump does @ryuugg/forge take?",
+				options: bumps.map((value) => ({ value, label: value })),
+			}),
+		);
+
+	const body =
+		answers.body ??
+		answered(
+			await text({ message: "Describe the change in one plain paragraph." }),
+		);
+
+	return { category, title, bump, body };
+}
+
+function writeNote(changelogDir: string, answers: NoteAnswers) {
+	const fail: Fail = (problem) => {
+		throw new Error(`Invalid Note: the change file ${problem}`);
+	};
+
+	const category = categories.find(
+		({ label }) => topic(label) === answers.category,
+	);
+
+	if (!category)
+		return fail(
+			`needs a category of ${categoryFlags}, not ${answers.category}`,
+		);
+
+	const bump = bumps.find((value) => value === answers.bump);
+	if (!bump)
+		return fail(`needs a bump of ${choiceList(bumps)}, not ${answers.bump}`);
+
+	const title = answers.title?.trim() ?? "";
+	if (/[\r\n]/.test(title)) fail("has a title that spans more than one line");
+
+	const content = `---\npackages:\n  "@ryuugg/forge": ${bump}\n---\n\n### ${category.emoji} ${title}\n\n${answers.body?.trimEnd() ?? ""}\n`;
+	parseEntry(content, fail);
+
+	const name = topic(title);
+	if (!name) fail("has a title with no letter or digit to name the file by");
+
+	const date = new Date().toISOString().slice(0, 10);
+	checkName(`${date}-${name}.md`, fail);
+
+	mkdirSync(changelogDir, { recursive: true });
+
+	for (let copy = 1; ; copy++) {
+		const filename = `${date}-${name}${copy === 1 ? "" : `-${copy}`}.md`;
+
+		try {
+			writeFileSync(join(changelogDir, filename), content, { flag: "wx" });
+			return filename;
+		} catch (error) {
+			if (
+				!(error instanceof Error && "code" in error && error.code === "EEXIST")
+			)
+				throw error;
+		}
+	}
 }
 
 function reference({ cwd, changelogDir }: TegamiContext, filename: string) {
@@ -184,10 +320,7 @@ function readNotes(context: TegamiContext, draft: Draft) {
 		);
 
 		if (!attached.has(file))
-			throw invalid(
-				file,
-				"names no workspace package and bump that Tegami can read",
-			);
+			invalid(file)("names no workspace package and bump that Tegami can read");
 
 		notes.set(file, { ...note, reference: reference(context, file) });
 	}
@@ -240,6 +373,33 @@ function forge(): TegamiPlugin {
 				if (pkg?.version)
 					packagePlan.git = { ...packagePlan.git, tag: `v${pkg.version}` };
 			}
+		},
+		initCli(cli) {
+			cli
+				.command("note", {
+					description:
+						"write a change file, asking for anything not passed as a flag",
+				})
+				.option("category", {
+					type: "string",
+					description: categoryFlags,
+				})
+				.option("title", { type: "string", description: "the entry title" })
+				.option("bump", { type: "string", description: choiceList(bumps) })
+				.option("body", {
+					type: "string",
+					description: "one plain paragraph",
+				})
+				.action(async ({ context, values }) => {
+					const filename = writeNote(
+						context.changelogDir,
+						await askMissing(values),
+					);
+
+					console.log(
+						relative(context.cwd, join(context.changelogDir, filename)),
+					);
+				});
 		},
 		afterPreflight({ plan }) {
 			for (const pkg of plan.getPackagesToPublish())

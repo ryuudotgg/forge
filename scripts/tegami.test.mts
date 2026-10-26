@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
 	chmodSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
@@ -254,6 +255,194 @@ describe("tegami refuses a change file outside the format", () => {
 					result.output,
 				);
 			});
+});
+
+function note(cwd: string, overrides: Record<string, string> = {}) {
+	const answers = {
+		category: "fixed",
+		title: "Yarn linker keeps its choice",
+		bump: "patch",
+		body: "`forge create` keeps the Yarn linker it was given.",
+		...overrides,
+	};
+
+	return tegami(
+		cwd,
+		"note",
+		...Object.entries(answers).flatMap(([name, value]) => [`--${name}`, value]),
+	);
+}
+
+function changeFiles(cwd: string) {
+	const dir = join(cwd, ".tegami");
+	return existsSync(dir) ? readdirSync(dir).toSorted() : [];
+}
+
+function inTerminal(cwd: string, args: string[], replies: [string, string][]) {
+	const quote = (arg: string) => `'${arg.replaceAll("'", "'\\''")}'`;
+	const command = `stty cols 120 rows 40; ${[process.execPath, script, ...args].map(quote).join(" ")}; echo "<exit $?>"`;
+
+	const terminal =
+		process.platform === "darwin"
+			? `script -q /dev/null sh -c ${quote(command)}`
+			: `script -qfec ${quote(command)} /dev/null`;
+
+	const child = spawn("sh", ["-c", `cat | ${terminal}`], { cwd, env });
+
+	let output = "";
+	let next = 0;
+
+	child.stdout.on("data", (chunk: Buffer) => {
+		output += chunk.toString();
+
+		const reply = replies[next];
+		if (reply && output.includes(reply[0])) {
+			next++;
+			child.stdin.write(reply[1]);
+		}
+
+		if (/<exit \d+>/.test(output)) child.stdin.end();
+	});
+
+	return new Promise<{ output: string; status: number }>((resolve) =>
+		child.on("close", () =>
+			resolve({ output, status: Number(/<exit (\d+)>/.exec(output)?.[1]) }),
+		),
+	);
+}
+
+describe("tegami note", () => {
+	const today = () => new Date().toISOString().slice(0, 10);
+
+	test("writes a dated change file the version run accepts", () => {
+		const cwd = fixtureRepo();
+
+		const result = note(cwd);
+		assert.equal(result.status, 0, result.output);
+
+		const path = `.tegami/${today()}-yarn-linker-keeps-its-choice.md`;
+		assert.equal(result.stdout, path);
+		assert.equal(
+			readFileSync(join(cwd, path), "utf8"),
+			changeFile(
+				"### 🐛 Yarn linker keeps its choice",
+				"`forge create` keeps the Yarn linker it was given.",
+			),
+		);
+
+		const preview = tegami(cwd, "version", "--dry-run");
+		assert.equal(preview.status, 0, preview.output);
+		assert.match(preview.output, /@ryuugg\/forge: 0\.0\.0 -> 0\.0\.1/);
+	});
+
+	test("gives a second note on the same day and title its own file", () => {
+		const cwd = fixtureRepo();
+
+		assert.equal(note(cwd).status, 0);
+
+		const second = note(cwd, { body: "A second paragraph of news." });
+		assert.equal(second.status, 0, second.output);
+
+		const first = `${today()}-yarn-linker-keeps-its-choice.md`;
+		const copy = `${today()}-yarn-linker-keeps-its-choice-2.md`;
+		assert.deepEqual(changeFiles(cwd), [first, copy].toSorted());
+		assert.equal(second.stdout, `.tegami/${copy}`);
+		assert.match(
+			readFileSync(join(cwd, ".tegami", first), "utf8"),
+			/keeps the Yarn linker/,
+		);
+	});
+
+	const refused: [string, Record<string, string>, string][] = [
+		["a body with a list", { body: "Body:\n- one\n- two" }, "holds a list"],
+		[
+			"an unknown category",
+			{ category: "internal" },
+			"needs a category of heads-up, new, improved, or fixed, not internal",
+		],
+		["an empty title", { title: "" }, "has a heading with no title"],
+		[
+			"an indented code block",
+			{ body: "    first line\n    second line" },
+			"holds a code block",
+		],
+	];
+
+	for (const [name, overrides, problem] of refused)
+		test(`refuses ${name} and writes nothing`, () => {
+			const cwd = fixtureRepo();
+
+			const result = note(cwd, overrides);
+			assert.notEqual(result.status, 0, result.output);
+			assert.ok(
+				result.output.replace(/[│\s]+/g, " ").includes(problem),
+				result.output,
+			);
+
+			assert.deepEqual(changeFiles(cwd), []);
+		});
+
+	test("asks a terminal only for what the flags left out", {
+		timeout: 30_000,
+	}, async () => {
+		const cwd = fixtureRepo();
+
+		const result = await inTerminal(
+			cwd,
+			["note", "--category", "new", "--bump", "minor"],
+			[
+				["What is the title of the change?", "Yarn linker choice\r"],
+				[
+					"Describe the change in one plain paragraph.",
+					"Asks for the linker.\r",
+				],
+			],
+		);
+
+		assert.equal(result.status, 0, result.output);
+		assert.doesNotMatch(result.output, /Which category|Which bump/);
+		assert.equal(
+			readFileSync(join(cwd, ".tegami", changeFiles(cwd)[0] ?? ""), "utf8"),
+			changeFile("### ✨ Yarn linker choice", "Asks for the linker.").replace(
+				"patch",
+				"minor",
+			),
+		);
+	});
+
+	test("writes nothing when a terminal prompt is cancelled", {
+		timeout: 30_000,
+	}, async () => {
+		const cwd = fixtureRepo();
+
+		const result = await inTerminal(
+			cwd,
+			["note", "--category", "fixed", "--bump", "patch"],
+			[
+				["What is the title of the change?", "Yarn linker\r"],
+				["Describe the change in one plain paragraph.", "\x03"],
+			],
+		);
+
+		assert.notEqual(result.status, 0, result.output);
+		assert.match(result.output, /Note Cancelled: no change file written/);
+		assert.deepEqual(changeFiles(cwd), []);
+	});
+
+	test("asks for nothing and names the missing flags without a terminal", () => {
+		const cwd = fixtureRepo();
+
+		const result = tegami(cwd, "note", "--title", "Yarn linker");
+		assert.notEqual(result.status, 0, result.output);
+		assert.ok(
+			result.output
+				.replace(/[│\s]+/g, " ")
+				.includes("Missing Note Flags: --category, --bump, and --body"),
+			result.output,
+		);
+
+		assert.deepEqual(changeFiles(cwd), []);
+	});
 });
 
 const fakeFetch = `import { appendFileSync } from "node:fs";
