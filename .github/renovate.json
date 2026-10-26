@@ -8,6 +8,15 @@
 	"github-actions": {
 		"managerFilePatterns": ["/^\\.depot/workflows/[^/]+\\.ya?ml$/"]
 	},
+	"ignorePaths": [
+		"**/node_modules/**",
+		"**/bower_components/**",
+		"**/vendor/**",
+		"**/__tests__/**",
+		"**/test/**",
+		"**/tests/**",
+		"**/__fixtures__/**"
+	],
 	"labels": ["dependencies"],
 	"lockFileMaintenance": {
 		"enabled": true,
@@ -17,6 +26,12 @@
 	},
 	"osvVulnerabilityAlerts": true,
 	"customManagers": [
+		{
+			"customType": "regex",
+			"datasourceTemplate": "npm",
+			"managerFilePatterns": ["/^contributing/PUBLISHING\\.md$/"],
+			"matchStrings": ["\"(?<depName>effect)\": \"(?<currentValue>[^\"]+)\""]
+		},
 		{
 			"customType": "regex",
 			"datasourceTemplate": "npm",
