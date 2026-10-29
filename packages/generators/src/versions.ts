@@ -93,7 +93,7 @@ export const versions = {
 	hono: { name: "hono", version: "4.13.12", group: "Framework" },
 	honoNodeServer: {
 		name: "@hono/node-server",
-		version: "2.1.1",
+		version: "2.1.5",
 		group: "Framework",
 	},
 	honoTrpcServer: {
