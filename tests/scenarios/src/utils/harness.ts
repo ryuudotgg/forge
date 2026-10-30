@@ -82,7 +82,12 @@ export async function withScenarioWorkspace<T>(
 		return await run({ projectRoot, workspaceRoot });
 	} finally {
 		const startedAt = Date.now();
-		await rm(workspaceRoot, { force: true, recursive: true });
+		await rm(workspaceRoot, {
+			force: true,
+			maxRetries: 10,
+			recursive: true,
+			retryDelay: 200,
+		});
 		await recordCommandTiming("teardown", [], startedAt);
 	}
 }
