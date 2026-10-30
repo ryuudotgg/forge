@@ -329,7 +329,7 @@ export const versions = {
 	},
 	postgres: {
 		name: "postgres",
-		version: "^3.4.9",
+		version: "^4.0.0",
 		group: "Database",
 	},
 	dotenvCli: {
