@@ -1,15 +1,18 @@
+import type { Readable } from "node:stream";
 import { appRouter, reportServerError } from "@__SLUG__/orpc";
-import { onError } from "@orpc/server";
-import { BodyLimitPlugin, RPCHandler } from "@orpc/server/node";
+import { ORPCError, onError } from "@orpc/server";
+import { RPCHandler } from "@orpc/server/node";
 import { SimpleCsrfProtectionHandlerPlugin } from "@orpc/server/plugins";
 import type { Express, Request } from "express";
 
 __HEADERS_FROM_REQUEST__
 
+__LIMIT_BODY__
+
 const handler = new RPCHandler(appRouter, {
-  plugins: [
-    new SimpleCsrfProtectionHandlerPlugin(),
-    new BodyLimitPlugin({ maxBodySize: 1024 * 1024 }),
+  plugins: [new SimpleCsrfProtectionHandlerPlugin()],
+  adapterInterceptors: [
+    (options) => limitBody(options.request, () => options.next()),
   ],
   interceptors: [
     onError((error, { request }) =>
