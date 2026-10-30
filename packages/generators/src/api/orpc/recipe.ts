@@ -73,6 +73,7 @@ export const orpcStandaloneRecipe = defineTemplateRecipe({
 	markers: {
 		SLUG: marker.required,
 		HEADERS_FROM_REQUEST: marker.required,
+		LIMIT_BODY: marker.required,
 	},
 	assets: [
 		slotAsset("orpc", {
@@ -222,6 +223,7 @@ export const orpcStandaloneAdapters = deriveRecipeAdapters({
 		HEADERS_FROM_REQUEST: renderHeadersFromRequest(
 			framework.id === "fastify" ? "FastifyRequest" : "Request",
 		),
+		LIMIT_BODY: readTemplate("api/orpc/limit-body.ts").trimEnd(),
 	}),
 	target: (_asset, context) => moduleTarget(context.module),
 	before: ({ config }) => {
