@@ -8,18 +8,18 @@ overrides:
 
 catalogs:
   scaffold:
-    "@better-auth/passkey": 1.7.7
-    "@biomejs/biome": 2.5.14
-    "@orpc/server": 1.15.4
-    "@polar-sh/better-auth": ^2.0.1
+    "@better-auth/passkey": 1.7.14
+    "@biomejs/biome": 2.6.4
+    "@orpc/server": 1.16.1
+    "@polar-sh/better-auth": ^2.1.0
     "@polar-sh/sdk": ^1.0.2
-    better-auth: 1.7.7
-    expo: 58.0.16
-    oxfmt: 0.71.0
-    oxlint: 1.86.0
-    react: ^19.2.5
-    react-dom: ^19.2.5
-    react-email: 6.11.0
+    better-auth: 1.7.14
+    expo: 58.0.21
+    oxfmt: 0.75.0
+    oxlint: 1.90.0
+    react: ^19.3.1
+    react-dom: ^19.3.1
+    react-email: 6.11.6
 
   # ===== BUILD TOOLS =====
   build:
