@@ -40,7 +40,7 @@ catalogs:
   # ===== LINTING & FORMATTING =====
   lint:
     # Biome (ESLint/Prettier Alternative)
-    "@biomejs/biome": 2.6.3
+    "@biomejs/biome": 2.6.4
 
     # Commit Linting
     "@commitlint/cli": ^21.2.4
