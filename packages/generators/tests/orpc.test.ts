@@ -224,7 +224,7 @@ describe("oRPC on Express and Fastify", () => {
 
 				const route = writeContent(plan, "apps/server/src/routes/orpc.ts");
 				expect(route).toContain(
-					`import { ${backend === "express" ? "BodyLimitPlugin, " : ""}RPCHandler } from "@orpc/server/${entrypoint}"`,
+					`import { RPCHandler } from "@orpc/server/${entrypoint}"`,
 				);
 
 				expect(route).toContain("new RPCHandler(appRouter");
@@ -241,21 +241,29 @@ describe("oRPC on Express and Fastify", () => {
 				expect(route).toContain("result.set(name, value)");
 				expect(route).toContain("return result;");
 
+				expect(route).not.toContain("BodyLimitPlugin");
+				expect(route).toContain("const maxBodySize = 1024 * 1024;");
+				expect(route).toContain(
+					'emit.call(raw, "error", new ORPCError("PAYLOAD_TOO_LARGE"))',
+				);
+
+				expect(route).not.toContain("throw new ORPCError");
+				expect(route).toContain("received > maxBodySize");
+				expect(route).toContain("raw.emit = emit;");
+				expect(route).toContain("adapterInterceptors: [");
+
 				if (backend === "express") {
 					expect(route).toContain(
-						"new BodyLimitPlugin({ maxBodySize: 1024 * 1024 })",
+						"limitBody(options.request, () => options.next())",
 					);
 
 					expect(route).toContain("app.use(async (request, response, next)");
 					expect(route).toContain("handler.handle(request, response");
 					expect(route).toContain("if (!matched) next()");
 				} else {
-					expect(route).toContain("const maxBodySize = 1024 * 1024;");
-					expect(route).toContain('throw new ORPCError("PAYLOAD_TOO_LARGE")');
-					expect(route).toContain("received > maxBodySize");
-					expect(route).toContain("adapterInterceptors: [");
-					expect(route).toContain("return await options.next();");
-					expect(route).toContain("raw.emit = emit;");
+					expect(route).toContain(
+						"limitBody(options.request.raw, () => options.next())",
+					);
 
 					expect(route).toContain("scope.removeAllContentTypeParsers()");
 					expect(route).toContain('method: ["GET", "POST"]');

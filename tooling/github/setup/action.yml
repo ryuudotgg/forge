@@ -15,6 +15,7 @@ runs:
     - name: Setup Yarn
       shell: bash
       run: |
+        npm install -g corepack
         corepack enable
         corepack install -g yarn@stable
 
