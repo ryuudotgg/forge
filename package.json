@@ -29,9 +29,9 @@
 		"turbo": "catalog:monorepo",
 		"typescript": "catalog:dev"
 	},
-	"packageManager": "pnpm@12.16.1",
+	"packageManager": "pnpm@12.18.0",
 	"engines": {
 		"node": "26.13.0",
-		"pnpm": "^12.16.1"
+		"pnpm": "^12.18.0"
 	}
 }
