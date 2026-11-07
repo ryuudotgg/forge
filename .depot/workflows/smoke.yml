@@ -81,7 +81,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+        image: postgres:18-alpine@sha256:123b17998ccaf47e53b502e8c6a1e79afd8f579c6f3eec83c563da026f957395
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -93,7 +93,7 @@ jobs:
           --health-retries 10
 
       mysql:
-        image: mysql:26.10@sha256:7b16ec7caa94ca7e92f4c5ec287de69d2e8738db056ceb629022951a6f6d910b
+        image: mysql:26.10@sha256:3819b2b23835c4a73c8b022fafc33c8095c0f81c929a8b7a84613d2fba6c52f5
         env:
           MYSQL_ROOT_PASSWORD: mysql
         ports:
