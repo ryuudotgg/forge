@@ -90,7 +90,7 @@ export const versions = {
 	},
 	isbot: { name: "isbot", version: "5.2.2", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
-	hono: { name: "hono", version: "4.13.14", group: "Framework" },
+	hono: { name: "hono", version: "4.13.18", group: "Framework" },
 	honoNodeServer: {
 		name: "@hono/node-server",
 		version: "2.1.5",
