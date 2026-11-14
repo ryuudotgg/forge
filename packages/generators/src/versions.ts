@@ -28,17 +28,17 @@ const nodeMajor = Number(process.versions.node.split(".")[0]);
 export const versions = {
 	biome: {
 		name: "@biomejs/biome",
-		version: "2.6.4",
+		version: "2.6.7",
 		group: "Tooling",
 		linter: "biome",
 	},
 	oxlint: {
 		name: "oxlint",
-		version: "1.90.0",
+		version: "1.93.0",
 		group: "Tooling",
 		linter: "oxc",
 	},
-	oxfmt: { name: "oxfmt", version: "0.75.0", group: "Tooling", linter: "oxc" },
+	oxfmt: { name: "oxfmt", version: "0.78.0", group: "Tooling", linter: "oxc" },
 	commitlintCli: {
 		name: "@commitlint/cli",
 		version: "^21.0.2",
@@ -88,7 +88,7 @@ export const versions = {
 		version: expoNativeModules["expo-secure-store"],
 		group: "Framework",
 	},
-	isbot: { name: "isbot", version: "5.2.2", group: "Framework" },
+	isbot: { name: "isbot", version: "5.2.3", group: "Framework" },
 	serverOnly: { name: "server-only", version: "^0.0.1", group: "Framework" },
 	hono: { name: "hono", version: "4.13.14", group: "Framework" },
 	honoNodeServer: {
@@ -101,16 +101,16 @@ export const versions = {
 		version: "0.4.2",
 		group: "Framework",
 	},
-	fastify: { name: "fastify", version: "5.12.7", group: "Framework" },
+	fastify: { name: "fastify", version: "5.12.8", group: "Framework" },
 	fastifyCors: {
 		name: "@fastify/cors",
-		version: "11.3.1",
+		version: "11.4.3",
 		group: "Framework",
 	},
 	express: { name: "express", version: "5.3.0", group: "Framework" },
 	expressCors: { name: "cors", version: "2.8.6", group: "Framework" },
 
-	next: { name: "next", version: "16.4.3", group: "Framework" },
+	next: { name: "next", version: "16.4.6", group: "Framework" },
 
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
@@ -154,35 +154,35 @@ export const versions = {
 	},
 	tanstackReactStart: {
 		name: "@tanstack/react-start",
-		version: "1.169.4",
+		version: "1.169.5",
 		group: "Framework",
 	},
 	tanstackRouterCli: {
 		name: "@tanstack/router-cli",
-		version: "1.167.46",
+		version: "1.168.0",
 		group: "Tooling",
 	},
 	tanstackRouterPlugin: {
 		name: "@tanstack/router-plugin",
-		version: "1.168.48",
+		version: "1.169.0",
 		group: "Tooling",
 	},
 
-	vite: { name: "vite", version: "8.3.5", group: "Tooling" },
+	vite: { name: "vite", version: "8.3.8", group: "Tooling" },
 	viteReact: {
 		name: "@vitejs/plugin-react",
-		version: "6.1.2",
+		version: "6.3.0",
 		group: "Tooling",
 	},
 
 	nativewind: {
 		name: "nativewind",
-		version: "5.0.0-rc.0",
+		version: "5.0.0-rc.1",
 		group: "Styling",
 	},
 	reactNativeCss: {
 		name: "react-native-css",
-		version: "3.1.0-rc.0",
+		version: "3.1.0-rc.1",
 		group: "Styling",
 	},
 	reactNativeReanimated: {
@@ -214,19 +214,19 @@ export const versions = {
 
 	orpcClient: {
 		name: "@orpc/client",
-		version: "1.16.1",
+		version: "1.16.2",
 		rpc: "orpc",
 		group: "Framework",
 	},
 	orpcServer: {
 		name: "@orpc/server",
-		version: "1.16.1",
+		version: "1.16.2",
 		rpc: "orpc",
 		group: "Framework",
 	},
 	orpcTanstackQuery: {
 		name: "@orpc/tanstack-query",
-		version: "1.16.1",
+		version: "1.16.2",
 		rpc: "orpc",
 		group: "Framework",
 	},
@@ -355,10 +355,10 @@ export const versions = {
 	resend: { name: "resend", version: "^6.32.0", group: "Utilities" },
 	postmark: { name: "postmark", version: "^5.1.0", group: "Utilities" },
 	nodemailer: { name: "nodemailer", version: "^10.0.13", group: "Utilities" },
-	reactEmail: { name: "react-email", version: "6.11.6", group: "Utilities" },
+	reactEmail: { name: "react-email", version: "6.11.12", group: "Utilities" },
 	reactEmailUi: {
 		name: "@react-email/ui",
-		version: "6.11.6",
+		version: "6.11.12",
 		group: "Utilities",
 	},
 	classVarianceAuthority: {
@@ -385,7 +385,7 @@ export const versions = {
 	},
 	betterAuthPasskey: {
 		name: "@better-auth/passkey",
-		version: "1.7.14",
+		version: "1.7.22",
 		group: "Framework",
 		authMethod: "passkey",
 	},
@@ -424,7 +424,7 @@ export type VersionKey = keyof typeof versions;
 
 const passkeyBetterAuth = {
 	name: "better-auth",
-	version: "1.7.14",
+	version: "1.7.22",
 	group: "Framework",
 } as const satisfies CatalogEntry;
 
