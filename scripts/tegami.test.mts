@@ -456,6 +456,7 @@ globalThis.fetch = async (input, init = {}) => {
 	if (url.host === "registry.npmjs.org") return new Response(null, { status: 404 });
 	if (url.pathname.startsWith("/repos/ryuudotgg/forge/releases/tags/")) return new Response(null, { status: 404 });
 	if (method === "POST" && url.pathname === "/repos/ryuudotgg/forge/releases") return Response.json({ id: 1 }, { status: 201 });
+	if (url.pathname === "/repos/ryuudotgg/forge/pulls") return method === "GET" ? Response.json([]) : Response.json({ number: 1 }, { status: 201 });
 
 	return new Response(\`Unexpected Request: \${method} \${url.href}\`, { status: 500 });
 };
@@ -467,7 +468,7 @@ interface SentRequest {
 	body?: { name?: string; body?: string; prerelease?: boolean };
 }
 
-function publish(cwd: string) {
+function withGitHub(cwd: string, command: string) {
 	const sandbox = mkdtempSync(join(tmpdir(), "forge-tegami-publish-"));
 	const origin = join(sandbox, "origin.git");
 	const requests = join(sandbox, "requests.jsonl");
@@ -488,7 +489,7 @@ function publish(cwd: string) {
 	const result = run(
 		cwd,
 		process.execPath,
-		["--import", join(sandbox, "fetch.mjs"), script, "publish"],
+		["--import", join(sandbox, "fetch.mjs"), script, command],
 		{
 			CI: "true",
 			FORGE_TEST_REQUESTS: requests,
@@ -505,6 +506,21 @@ function publish(cwd: string) {
 		: [];
 
 	return { ...result, sent };
+}
+
+function publish(cwd: string) {
+	return withGitHub(cwd, "publish");
+}
+
+function versionRequest(cwd: string) {
+	const result = withGitHub(cwd, "version");
+	const pulls = result.sent.filter(
+		({ method, url }) =>
+			method === "POST" &&
+			url === "https://api.github.com/repos/ryuudotgg/forge/pulls",
+	);
+
+	return { ...result, pulls };
 }
 
 function releases(sent: SentRequest[]) {
@@ -621,5 +637,147 @@ describe("tegami publish", () => {
 		);
 
 		assert.deepEqual(result.sent, []);
+	});
+});
+
+function commitChange(
+	cwd: string,
+	file: string,
+	heading: string,
+	body: string,
+	subject: string,
+) {
+	write(cwd, `.tegami/${file}`, changeFile(heading, body));
+	git(cwd, "add", "-A");
+	git(cwd, "commit", "--quiet", "-m", subject);
+}
+
+const pull = (pr: number) =>
+	`[#${pr}](https://github.com/ryuudotgg/forge/pull/${pr})`;
+
+describe("tegami version request", () => {
+	test("lists the bump and each change with its text", () => {
+		const cwd = fixtureRepo();
+		commitChange(
+			cwd,
+			"2026-10-01-yarn-hang.md",
+			"### 🐛 Yarn installs finish",
+			"`forge create` no longer hangs when Yarn asks for a linker.",
+			"fix: stop the yarn hang (#57)",
+		);
+
+		commitChange(
+			cwd,
+			"2026-10-02-bun-default.md",
+			"### 🚨 Bun is the default runtime",
+			"Pass `--runtime node` to keep Node.",
+			"feat: default to bun (#58)",
+		);
+
+		const result = versionRequest(cwd);
+		assert.equal(result.status, 0, result.output);
+		assert.equal(result.pulls.length, 1, JSON.stringify(result.sent));
+		assert.equal(
+			result.pulls[0]?.body?.body,
+			[
+				"| Package | From | To |",
+				"| --- | --- | --- |",
+				"| `@ryuugg/forge` | `0.0.0` | `0.0.1` |",
+				"",
+				"### 🚨 Heads up",
+				"",
+				`- **Bun is the default runtime** (${pull(58)})\\`,
+				"  Pass `--runtime node` to keep Node.",
+				"",
+				"### 🐛 Fixed",
+				"",
+				`- **Yarn installs finish** (${pull(57)})\\`,
+				"  `forge create` no longer hangs when Yarn asks for a linker.",
+			].join("\n"),
+		);
+	});
+
+	test("past GitHub's limit keeps the text of its first categories", () => {
+		const cwd = fixtureRepo();
+		const text = (word: string) => Array(5000).fill(word).join(" ");
+		commitChange(
+			cwd,
+			"2026-10-01-runtime.md",
+			"### 🚨 Bun is the default runtime",
+			text("alpha"),
+			"feat: default to bun (#5)",
+		);
+
+		commitChange(
+			cwd,
+			"2026-10-02-installs.md",
+			"### 🎨 Faster installs",
+			text("bravo"),
+			"perf: faster installs (#6)",
+		);
+
+		commitChange(
+			cwd,
+			"2026-10-03-yarn.md",
+			"### 🐛 Yarn installs finish",
+			text("delta"),
+			"fix: stop the yarn hang (#7)",
+		);
+
+		const result = versionRequest(cwd);
+		const body = result.pulls[0]?.body?.body ?? "";
+
+		assert.equal(result.status, 0, result.output);
+		assert.ok(
+			Buffer.byteLength(body) <= 65_536,
+			`${Buffer.byteLength(body)} bytes`,
+		);
+
+		assert.ok(
+			body.includes(`- **Bun is the default runtime** (${pull(5)})\\\n  alpha`),
+		);
+
+		assert.ok(body.includes(`- **Faster installs** (${pull(6)})\\\n  bravo`));
+		assert.ok(
+			body.endsWith(`### 🐛 Fixed\n\n- **Yarn installs finish** (${pull(7)})`),
+			body.slice(-120),
+		);
+	});
+
+	test("whose titles pass GitHub's limit counts the changes it leaves out", () => {
+		const cwd = fixtureRepo();
+		const title = (index: number) =>
+			`Fix ${index} ${Array(400).fill("word").join(" ")}`;
+
+		for (let index = 10; index < 50; index++)
+			write(
+				cwd,
+				`.tegami/2026-10-01-fix-${index}.md`,
+				changeFile(`### 🐛 ${title(index)}`, "Notes."),
+			);
+
+		git(cwd, "add", "-A");
+		git(cwd, "commit", "--quiet", "-m", "fix: forty fixes (#9)");
+
+		const result = versionRequest(cwd);
+		const body = result.pulls[0]?.body?.body ?? "";
+		const shown = body
+			.split("\n")
+			.filter((line) => line.startsWith("- **Fix ")).length;
+
+		assert.equal(result.status, 0, result.output);
+		assert.ok(
+			Buffer.byteLength(body) <= 65_536,
+			`${Buffer.byteLength(body)} bytes`,
+		);
+
+		assert.ok(shown > 0 && shown < 40, `${shown} shown`);
+		assert.ok(body.includes(`- **${title(10)}** (${pull(9)})\n`));
+		assert.ok(
+			body.endsWith(
+				`\n\nAnd ${40 - shown} more in the changelog this pull request writes.`,
+			),
+			body.slice(-120),
+		);
 	});
 });

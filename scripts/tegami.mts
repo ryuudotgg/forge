@@ -12,6 +12,7 @@ import type {
 	BumpType,
 	Draft,
 	LogGenerator,
+	PackageDraft,
 	PackageGraph,
 	TegamiContext,
 	TegamiPlugin,
@@ -260,7 +261,6 @@ function writeNote(changelogDir: string, answers: NoteAnswers) {
 
 	for (let copy = 1; ; copy++) {
 		const filename = `${date}-${name}${copy === 1 ? "" : `-${copy}`}.md`;
-
 		try {
 			writeFileSync(join(changelogDir, filename), content, { flag: "wx" });
 			return filename;
@@ -331,37 +331,109 @@ const releaseDate = new Intl.DateTimeFormat("en-US", {
 	timeZone: "UTC",
 });
 
+interface Group {
+	category: Category;
+	items: Note[];
+}
+
+function draftNotes(packageDraft: PackageDraft) {
+	return (packageDraft.changelogs ?? [])
+		.map(({ filename }) => filename)
+		.toSorted()
+		.flatMap((filename) => notes.get(filename) ?? []);
+}
+
+function byCategory(entries: readonly Note[]): Group[] {
+	return categories.flatMap((category) => {
+		const items = entries.filter((entry) => entry.category === category);
+		return items.length === 0 ? [] : [{ category, items }];
+	});
+}
+
+function renderGroups(groups: readonly Group[], withBodies: number) {
+	return groups.flatMap(({ category, items }, index) => [
+		`### ${category.emoji} ${category.label}`,
+		"",
+		...items.map(({ title, reference, body }) =>
+			index < withBodies
+				? `- **${title}**${reference}\\\n  ${body}`
+				: `- **${title}**${reference}`,
+		),
+		"",
+	]);
+}
+
 const changelog: LogGenerator = {
 	generate({ pkg, packageDraft }) {
-		const entries = (packageDraft.changelogs ?? [])
-			.map(({ filename }) => filename)
-			.toSorted()
-			.flatMap((filename) => notes.get(filename) ?? []);
-
-		const sections = categories.flatMap((category) => {
-			const items = entries.filter((entry) => entry.category === category);
-			if (items.length === 0) return [];
-
-			return [
-				`### ${category.emoji} ${category.label}`,
-				"",
-				...items.map(
-					({ title, reference, body }) =>
-						`- **${title}**${reference}\\\n  ${body}`,
-				),
-				"",
-			];
-		});
-
+		const groups = byCategory(draftNotes(packageDraft));
 		return [
 			`## ${pkg.version}`,
 			"",
 			`*${releaseDate.format(new Date())}*`,
 			"",
-			...sections,
+			...renderGroups(groups, groups.length),
 		].join("\n");
 	},
 };
+
+const pullBodyLimit = 65_536;
+
+function versionPrBody(bumps: readonly string[], entries: readonly Note[]) {
+	const body = (changes: readonly string[]) =>
+		["| Package | From | To |", "| --- | --- | --- |", ...bumps, "", ...changes]
+			.join("\n")
+			.trimEnd();
+
+	const fits = (changes: readonly string[]) =>
+		Buffer.byteLength(body(changes)) <= pullBodyLimit;
+
+	const groups = byCategory(entries);
+	for (let withBodies = groups.length; withBodies >= 0; withBodies--) {
+		const changes = renderGroups(groups, withBodies);
+		if (fits(changes)) return body(changes);
+	}
+
+	const titles = renderGroups(groups, 0);
+	const isChange = (line: string) => line.startsWith("- ");
+	const total = titles.filter(isChange).length;
+	const clipped = (kept: number) => {
+		const shown = titles.slice(0, kept);
+		const more = total - shown.filter(isChange).length;
+		return [
+			...shown,
+			"",
+			`And ${more} more in the changelog this pull request writes.`,
+		];
+	};
+
+	let kept = titles.length;
+	while (kept > 0 && !(isChange(titles[kept - 1] ?? "") && fits(clipped(kept))))
+		kept--;
+
+	return body(clipped(kept));
+}
+
+function bumpRows(
+	graph: PackageGraph,
+	draft: Draft,
+	previousVersion: (id: string) => string | undefined,
+) {
+	return [...draft.getPackageDrafts().keys()]
+		.flatMap((id) => {
+			const pkg = graph.get(id);
+			const from = previousVersion(id);
+			return pkg?.name && pkg.version && from && from !== pkg.version
+				? [
+						{
+							name: pkg.name,
+							row: `| \`${pkg.name}\` | \`${from}\` | \`${pkg.version}\` |`,
+						},
+					]
+				: [];
+		})
+		.toSorted((a, b) => (a.name < b.name ? -1 : 1))
+		.map(({ row }) => row);
+}
 
 function forge(): TegamiPlugin {
 	return {
@@ -478,8 +550,16 @@ const paper = tegami({
 				},
 			},
 			versionPr: {
-				create() {
-					return { title: releaseTitle(this.graph) };
+				create({ draft, getPreviousVersion }) {
+					const [pkg] = this.graph.getByName("@ryuugg/forge");
+					const packageDraft = pkg && draft.getPackageDraft(pkg.id);
+					return {
+						title: releaseTitle(this.graph),
+						body: versionPrBody(
+							bumpRows(this.graph, draft, getPreviousVersion),
+							packageDraft ? draftNotes(packageDraft) : [],
+						),
+					};
 				},
 				commit({ type }) {
 					if (type === "version-packages")
