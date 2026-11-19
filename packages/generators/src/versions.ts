@@ -110,7 +110,7 @@ export const versions = {
 	express: { name: "express", version: "5.3.0", group: "Framework" },
 	expressCors: { name: "cors", version: "2.8.6", group: "Framework" },
 
-	next: { name: "next", version: "16.4.3", group: "Framework" },
+	next: { name: "next", version: "16.4.6", group: "Framework" },
 
 	react: { name: "react", version: "^19.2.5", group: "Framework" },
 	reactDom: { name: "react-dom", version: "^19.2.5", group: "Framework" },
